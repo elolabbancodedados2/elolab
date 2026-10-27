@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -307,7 +307,7 @@ export default function GuiasExternas() {
                 aria-pressed={ativo}
                 onClick={() => toggleFiltro(s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -354,7 +354,7 @@ export default function GuiasExternas() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {guiaMaisUrgente.paciente_telefone && (() => {
-                const waLink = linkWhatsApp(guiaMaisUrgente.paciente_telefone, `Olá, ${guiaMaisUrgente.paciente_nome}! Entramos em contato sobre sua guia de exames recebida.`);
+                const waLink = linkWhatsApp(guiaMaisUrgente.paciente_telefone, `Olá, ${guiaMaisUrgente.paciente_nome}. Entramos em contato sobre sua guia de exames recebida.`);
                 return waLink ? (
                   <Button
                     asChild
@@ -494,7 +494,7 @@ export default function GuiasExternas() {
                   {filtered.map((g: any) => {
                     const waLink = linkWhatsApp(
                       g.paciente_telefone,
-                      `Olá, ${g.paciente_nome}! Entramos em contato sobre sua guia de exames.`,
+                      `Olá, ${g.paciente_nome}. Entramos em contato sobre sua guia de exames.`,
                     );
                     return (
                       <TableRow key={g.id} className="hover:bg-[#F3F8FC]/60">
@@ -668,7 +668,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
         }
       }
     } catch (e: any) {
-      toast.error(e.message || 'Erro no upload');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível enviar o arquivo.'));
     } finally {
       setUploading(false);
     }
@@ -679,7 +679,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
     if (form.anexo_url) {
       try {
         const { error } = await supabase.storage.from('guias-externas').remove([form.anexo_url]);
-        if (error) toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: error.message });
+        if (error) toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: friendlyErrorMessage(error, 'Tente novamente mais tarde.') });
       } catch (error) {
         toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: mensagemDeErro(error) });
       }
@@ -740,7 +740,7 @@ function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
       toast.success('Guia externa registrada');
       onSaved();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a guia.'));
     } finally {
       saveLock.current = false;
       setSaving(false);
@@ -941,7 +941,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
     if (!terceirizacao.laudo_externo_url) return;
     const { data, error } = await supabase.storage.from('guias-externas').createSignedUrl(terceirizacao.laudo_externo_url, 300);
     if (error || !data?.signedUrl || !abrirUrlSegura(data.signedUrl, storageUrlSeguro)) {
-      toast.error('Não foi possível abrir o laudo do parceiro.', { description: error?.message }); return;
+      toast.error('Não foi possível abrir o laudo do parceiro.', { description: friendlyErrorMessage(error, 'Tente novamente.') }); return;
     }
   };
 
@@ -954,7 +954,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       if (!data) throw new Error('A guia mudou de estado ou não pertence à clínica atual. Atualize a lista.');
     },
     onSuccess: () => { onChanged(); toast.success('Atualizado'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível concluir a operação.')),
   });
 
   const enviarParaFila = useMutation({
@@ -972,7 +972,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       if (error) throw error;
     },
     onSuccess: () => { onChanged(); toast.success('Guia enviada para a fila de coleta'); onClose(); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível concluir a operação.')),
   });
 
   const gerarAgendamento = useMutation({
@@ -994,7 +994,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
       if (error) throw error;
     },
     onSuccess: () => { onChanged(); toast.success('Coleta agendada'); setAgendando(false); onClose(); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível concluir a operação.')),
   });
 
   const openAnexo = async () => {
@@ -1008,7 +1008,7 @@ function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
         throw new Error('O arquivo retornou um endereço não confiável');
       }
     } catch (e) {
-      toast.error('Não foi possível abrir o anexo.', { description: e instanceof Error ? e.message : String(e) });
+      toast.error('Não foi possível abrir o anexo.', { description: friendlyErrorMessage(e, 'Tente novamente.') });
     }
   };
 
@@ -1163,7 +1163,7 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
       if (error) throw error;
     },
     onSuccess: () => { setDescricao(''); queryClient.invalidateQueries({ queryKey: ['portal_guias_tokens'] }); toast.success('Link gerado'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível concluir a operação.')),
   });
 
   const toggleAtivo = useMutation({
@@ -1175,7 +1175,7 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
       if (!data) throw new Error('Este link não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portal_guias_tokens'] }),
-    onError: (error: any) => toast.error('Não foi possível atualizar o link', { description: error.message }),
+    onError: (error: any) => toast.error('Não foi possível atualizar o link', { description: friendlyErrorMessage(error, 'Tente novamente.') }),
   });
 
   const deletarToken = useMutation({
@@ -1187,7 +1187,7 @@ function TokensPortalDialog({ open, onClose, clinicaId, userId }: any) {
       if (!data) throw new Error('Este link não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['portal_guias_tokens'] }); toast.success('Removido'); },
-    onError: (error: any) => toast.error('Não foi possível remover o link', { description: error.message }),
+    onError: (error: any) => toast.error('Não foi possível remover o link', { description: friendlyErrorMessage(error, 'Tente novamente.') }),
   });
 
   const copiarLink = async (url: string) => {

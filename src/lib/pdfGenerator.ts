@@ -829,7 +829,7 @@ export async function gerarProntuarioPDF(
     doc.setFontSize(8);
     doc.setTextColor(185, 28, 28);
     doc.setFont('helvetica', 'bold');
-    doc.text(`⚠ ALERGIAS: ${paciente.alergias.join(', ')}`, margin + 4, yPos + 34);
+    doc.text(`ALERGIAS: ${paciente.alergias.join(', ')}`, margin + 4, yPos + 34);
     yPos += 40;
   } else {
     yPos += 32;
@@ -1415,7 +1415,7 @@ export function sharePDFWhatsApp(doc: jsPDF, filename: string, telefone?: string
 
   // Build WhatsApp message
   const msg = encodeURIComponent(
-    `📋 *Prontuário Digital${_cachedClinica?.nome ? ` - ${_cachedClinica.nome}` : ''}*\n\nOlá! Segue em anexo o prontuário do atendimento.\n\n_Documento gerado digitalmente pelo sistema EloLab._`
+    `*Prontuário Digital${_cachedClinica?.nome ? ` - ${_cachedClinica.nome}` : ''}*\n\nOlá. Segue em anexo o prontuário do atendimento.\n\n_Documento gerado digitalmente pelo sistema EloLab._`
   );
 
   const phone = telefone?.replace(/\D/g, '') || '';

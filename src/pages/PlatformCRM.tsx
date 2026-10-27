@@ -157,7 +157,7 @@ export default function PlatformCRM() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:p-6">
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
           <Building2 className="h-7 w-7 text-primary" />
           CRM da plataforma
@@ -176,7 +176,7 @@ export default function PlatformCRM() {
           <CardDescription className="flex items-center gap-1">
               <TrendingUp className="h-3.5 w-3.5" />Soma dos valores cadastrados
             </CardDescription>
-            <CardTitle className="text-2xl text-[#5240d6]">{dinheiro(resumo.receitaMensal)}</CardTitle>
+            <CardTitle className="text-2xl text-foreground">{dinheiro(resumo.receitaMensal)}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
             {resumo.pagantes} assinatura{resumo.pagantes === 1 ? '' : 's'} em dia, sem testes

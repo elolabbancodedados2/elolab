@@ -354,7 +354,7 @@ export default function AceitarConvite() {
           <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
             <CheckCircle className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle>Bem-vindo(a) à Equipe!</CardTitle>
+          <CardTitle>Bem-vindo(a) à equipe</CardTitle>
           <CardDescription>
             {invitation?.funcionario?.nome && (
               <span className="block text-foreground font-medium mt-1">

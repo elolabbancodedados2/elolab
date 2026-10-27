@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -231,18 +231,18 @@ function SalasManager() {
           .eq('id', editId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
         if (error) throw error;
         if (!data) throw new Error('Sala não encontrada ou sem permissão para alterar.');
-        toast.success('Sala atualizada!');
+        toast.success('Sala atualizada');
       } else {
         const { error } = await supabase.from('salas').insert([{
           ...payload,
           clinica_id: profile.clinica_id,
         }]);
         if (error) throw error;
-        toast.success('Sala criada!');
+        toast.success('Sala criada');
       }
       queryClient.invalidateQueries({ queryKey: ['salas-config'] });
       setShowForm(false); setEditId(null);
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: any) { toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a sala.')); }
     finally {
       saveLock.current = false;
       setSaving(false);
@@ -261,9 +261,9 @@ function SalasManager() {
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir esta sala.');
       await queryClient.invalidateQueries({ queryKey: ['salas-config'] });
       setSalaParaExcluir(null);
-      toast.success('Sala removida!');
+      toast.success('Sala removida');
     } catch (error) {
-      toast.error('Não foi possível excluir a sala', { description: (error as Error)?.message || 'Tente novamente.' });
+      toast.error('Não foi possível excluir a sala', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally {
       deleteLock.current = false;
       setDeleting(false);
@@ -423,7 +423,7 @@ export default function Configuracoes() {
       setShowCancelPlan(false);
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
     },
-    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+    onError: (err: any) => toast.error(friendlyErrorMessage(err, 'Não foi possível cancelar a assinatura.')),
     onSettled: () => { cancelPlanLock.current = false; },
   });
 
@@ -586,11 +586,11 @@ export default function Configuracoes() {
       if (chave === 'config_seguranca') window.dispatchEvent(new Event(CONFIG_SEGURANCA_ATUALIZADA_EVENT));
       if (generation === configLoadGeneration.current) {
         setIsCloudSynced(true);
-        toast.success(`${label} salvas na nuvem!`);
+        toast.success(`${label} salvas na nuvem`);
       }
     } catch (error: any) {
       if (generation === configLoadGeneration.current) {
-        toast.error('Erro ao salvar: ' + (error.message || 'Tente novamente.'));
+        toast.error('Não foi possível salvar.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
       }
     } finally {
       saveLocks.current.delete(saveLockKey);
@@ -619,7 +619,7 @@ export default function Configuracoes() {
       setHistoryCurrent((current?.valor as Record<string, unknown> | null) ?? null);
       setSelectedHistoryVersion(rows.find((row) => JSON.stringify(row.valor) !== JSON.stringify(current?.valor))?.id ?? rows[0]?.id ?? null);
     } catch (error: unknown) {
-      toast.error('Não foi possível carregar o histórico', { description: error instanceof Error ? error.message : 'Tente novamente.' });
+      toast.error('Não foi possível carregar o histórico', { description: friendlyErrorMessage(error, 'Tente novamente.') });
       setHistoryOpen(false);
     } finally {
       setHistoryLoading(false);
@@ -639,7 +639,7 @@ export default function Configuracoes() {
       setHistoryOpen(false);
       toast.success('Versão restaurada e registrada no histórico.');
     } catch (error: unknown) {
-      toast.error('Não foi possível restaurar esta versão', { description: error instanceof Error ? error.message : 'Recarregue e compare novamente.' });
+      toast.error('Não foi possível restaurar esta versão', { description: friendlyErrorMessage(error, 'Recarregue e compare novamente.') });
     } finally {
       setHistoryRestoring(false);
     }
@@ -885,7 +885,7 @@ export default function Configuracoes() {
                           </>
                         ) : (
                           <>
-                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">✓ Ativo</Badge>
+                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">Ativo</Badge>
                             <p className="text-xs text-white/70">{resumoPeriodo}</p>
                           </>
                         )}
@@ -901,7 +901,7 @@ export default function Configuracoes() {
                             <p className="text-sm text-white/70">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
                           </div>
                           <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
-                            ✕ Cancelar teste grátis
+                            Cancelar teste grátis
                           </Button>
                         </div>
                       </>
@@ -933,7 +933,7 @@ export default function Configuracoes() {
                                       ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planos.find(p => p.slug === planSlug)!.valor)
                                       : 'Plano não encontrado'}
                               </p>
-                              {erroAoCarregarPlanos && <p className="text-xs text-warning" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
+                              {erroAoCarregarPlanos && <p className="text-xs text-warning" title={friendlyErrorMessage(erroListaPlanos, 'Não foi possível carregar os planos.')}>Atualize os planos para consultar o valor.</p>}
                             </div>
                             <div className="rounded-lg bg-white/5 p-3">
                               <p className="text-xs text-white/70">Modalidade de cobrança</p>
@@ -959,7 +959,7 @@ export default function Configuracoes() {
                       </Button>
                       {!isTrial && assinaturaAtual?.cobranca_modalidade !== 'pre_pago' && (
                         <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
-                          ✕ Cancelar Plano
+                          Cancelar plano
                         </Button>
                       )}
                     </div>

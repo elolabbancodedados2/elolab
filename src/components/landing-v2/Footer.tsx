@@ -10,7 +10,7 @@ export default function Footer() {
 
   return (
     <footer className="relative bg-elolab-navy px-5 font-inter text-white sm:px-8 lg:px-10">
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-elolab-cyan/60 to-transparent" />
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-x-10 gap-y-9 py-14 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1.2fr] lg:py-16">
           <div>

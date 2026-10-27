@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Plus, RefreshCw, Trash2, QrCode, Smartphone, Wifi, WifiOff } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { WhatsAppSession, WhatsAppAgent } from './types';
 
 interface SessionsTabProps {
@@ -41,6 +42,7 @@ export function SessionsTab({
   const [isOpen, setIsOpen] = useState(false);
   const [newInstanceName, setNewInstanceName] = useState('');
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
 
   // A Evolution API can return either an image/base64 or the raw QR payload
   // (`code`). Generate the image in the browser for the latter so the user
@@ -230,11 +232,8 @@ export function SessionsTab({
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => {
-                      if (confirm('Deseja realmente remover esta sessão?')) {
-                        onDeleteSession(session.id);
-                      }
-                    }}
+                    aria-label="Remover sessão"
+                    onClick={() => setDeleteSessionId(session.id)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -244,6 +243,15 @@ export function SessionsTab({
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={!!deleteSessionId}
+        onOpenChange={(open) => { if (!open) setDeleteSessionId(null); }}
+        title="Remover sessão"
+        description="A sessão do WhatsApp será desconectada e removida. Esta ação não pode ser desfeita."
+        confirmLabel="Remover"
+        variant="destructive"
+        onConfirm={() => { if (deleteSessionId) onDeleteSession(deleteSessionId); }}
+      />
     </div>
   );
 }

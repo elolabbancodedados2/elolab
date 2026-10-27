@@ -8,6 +8,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { Clock, Save, Plus, AlertCircle } from 'lucide-react';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ErrorState } from '@/components/ErrorState';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const DAYS_OF_WEEK = [
@@ -44,6 +45,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [editing, setEditing] = useState<Partial<Availability> | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const loadRequestId = useRef(0);
 
   const loadAvailability = useCallback(async () => {
@@ -135,8 +137,6 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Remover este horário?')) return;
-
     try {
       const { error } = await db
         .from('medico_disponibilidade')
@@ -188,7 +188,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
                   </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" aria-label={`Editar horário de ${getDayLabel(av.dia_semana)}`} onClick={() => setEditing(av)}>Editar</Button>
-                    <Button size="sm" variant="destructive" aria-label={`Remover horário de ${getDayLabel(av.dia_semana)}`} onClick={() => handleDelete(av.id)}>×</Button>
+                    <Button size="sm" variant="destructive" aria-label={`Remover horário de ${getDayLabel(av.dia_semana)}`} onClick={() => setDeleteId(av.id)}>×</Button>
                   </div>
                 </div>
               ))}
@@ -257,6 +257,15 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
           </Button>
         )}
       </CardContent>
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Remover horário"
+        description="Este horário deixará de estar disponível para agendamentos."
+        confirmLabel="Remover"
+        variant="destructive"
+        onConfirm={() => { if (deleteId) void handleDelete(deleteId); }}
+      />
     </Card>
   );
 }

@@ -71,7 +71,7 @@ export default function PlatformRelatorioExecutivo() {
   const d = report.data;
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div><h1 className="flex items-center gap-2 text-2xl font-bold"><FileBarChart /> Relatório Executivo</h1><p className="text-muted-foreground">Receita recorrente, crescimento, suporte, adoção e IA.</p></div>
         <div className="flex gap-2">
           <Select value={String(periodo)} onValueChange={mudarPeriodo}><SelectTrigger className="w-32" aria-label="Período do relatório"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7">7 dias</SelectItem><SelectItem value="30">30 dias</SelectItem><SelectItem value="90">90 dias</SelectItem></SelectContent></Select>

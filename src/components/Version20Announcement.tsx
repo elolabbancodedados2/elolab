@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
+import { COOKIE_CONSENT_EVENT, hasConsented } from '@/lib/cookies';
 
 const ANNOUNCEMENT_VERSION = '2.0';
 const STORAGE_PREFIX = 'elolab-announcement-seen';
@@ -23,11 +24,18 @@ export function Version20Announcement() {
     if (!user?.id) return;
 
     const storageKey = `${STORAGE_PREFIX}:${ANNOUNCEMENT_VERSION}:${user.id}`;
-    try {
-      setOpen(window.localStorage.getItem(storageKey) !== 'true');
-    } catch {
-      setOpen(true);
-    }
+    // Só abre depois da escolha de cookies, para não empilhar com o banner.
+    const check = () => {
+      if (!hasConsented()) return;
+      try {
+        setOpen(window.localStorage.getItem(storageKey) !== 'true');
+      } catch {
+        setOpen(true);
+      }
+    };
+    check();
+    window.addEventListener(COOKIE_CONSENT_EVENT, check);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, check);
   }, [user?.id]);
 
   const dismiss = () => {
@@ -49,7 +57,7 @@ export function Version20Announcement() {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && dismiss()}>
       <DialogContent className="overflow-hidden border-0 p-0 sm:max-w-lg">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#0a5d94] via-[#1080CA] to-[#5FA8DD] px-6 pb-7 pt-8 text-white sm:px-8">
+        <div className="relative overflow-hidden bg-[#0a5d94] px-6 pb-7 pt-8 text-white sm:px-8">
           <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full border border-white/10" />
           <div className="pointer-events-none absolute -right-5 -top-9 h-32 w-32 rounded-full border border-white/10" />
           <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
@@ -62,7 +70,7 @@ export function Version20Announcement() {
             EloLab 2.0
           </h2>
           <p className="relative mt-3 max-w-md text-sm leading-6 text-white/85 sm:text-base">
-            Estamos atualizando a plataforma para uma nova versão, com uma experiência mais moderna e melhorias nos módulos do dia a dia.
+            Interface renovada e melhorias nos módulos de atendimento, prontuário e financeiro.
           </p>
           <img
             src={logoHorizontal}
@@ -73,13 +81,13 @@ export function Version20Announcement() {
 
         <div className="px-6 pb-6 pt-5 sm:px-8">
           <DialogHeader className="sr-only">
-            <DialogTitle>Estamos atualizando para o EloLab 2.0</DialogTitle>
+            <DialogTitle>EloLab 2.0</DialogTitle>
             <DialogDescription>
-              A plataforma está recebendo uma atualização para uma experiência mais moderna.
+              Interface renovada e melhorias nos módulos de atendimento, prontuário e financeiro.
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm leading-6 text-muted-foreground">
-            As novidades serão disponibilizadas gradualmente. Obrigado por fazer parte dessa evolução.
+            Seus dados, configurações e históricos continuam os mesmos. Em caso de dúvida, fale com o suporte.
           </p>
           <DialogFooter className="mt-5">
             <Button onClick={dismiss} className="w-full gap-2 sm:w-auto">

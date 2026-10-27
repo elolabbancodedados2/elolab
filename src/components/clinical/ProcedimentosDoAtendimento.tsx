@@ -11,6 +11,7 @@
  * Ao finalizar, o saldo reaberto manda o agendamento para
  * "aguardando pagamento adicional" e o paciente aparece no balcão.
  */
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, Scissors, Trash2 } from 'lucide-react';
@@ -113,7 +114,7 @@ export function ProcedimentosDoAtendimento({ agendamentoId, prontuarioId, podeLa
       });
     } catch (e: any) {
       toast.error('Não foi possível lançar o procedimento', {
-        description: e?.message || 'Tente novamente.',
+        description: friendlyErrorMessage(e, 'Tente novamente.'),
       });
     } finally {
       setSalvando(false);
@@ -134,7 +135,7 @@ export function ProcedimentosDoAtendimento({ agendamentoId, prontuarioId, podeLa
       toast.error('Não foi possível remover', {
         description: e?.message?.includes('valor_pago')
           ? 'Já houve pagamento nesta conta. Faça o acerto pelo caixa.'
-          : e?.message || 'Tente novamente.',
+          : friendlyErrorMessage(e, 'Tente novamente.'),
       });
     } finally {
       setSalvando(false);

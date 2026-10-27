@@ -29,7 +29,7 @@ import { Database } from '@/integrations/supabase/types';
 import { differenceInCalendarDays } from 'date-fns';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -233,11 +233,11 @@ export default function ContasPagar() {
 
       const { error } = await supabase.from('lancamentos').insert(payload);
       if (error) throw error;
-      toast.success('Conta cadastrada!');
+      toast.success('Conta cadastrada');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       setIsFormOpen(false);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível salvar a conta.'));
     } finally {
       submissionLock.current = false;
       setIsSubmitting(false);
@@ -297,7 +297,7 @@ export default function ContasPagar() {
       if ((resultado as any)?.repetido) toast.info('Este pagamento já havia sido registrado. Nada foi pago novamente.');
       else if (contaSelecionada.recorrente && (resultado as any)?.status === 'pago') {
         toast.success('Pagamento registrado e próxima despesa programada.');
-      } else toast.success('Pagamento registrado no caixa!');
+      } else toast.success('Pagamento registrado no caixa');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
       queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
@@ -309,7 +309,7 @@ export default function ContasPagar() {
         return next;
       });
     } catch (error: any) {
-      const message = error.message || 'Erro ao confirmar pagamento';
+      const message = friendlyErrorMessage(error, 'Não foi possível confirmar o pagamento.');
       if (!chamadaRpcIniciada || respostaServidorRecebida) {
         setPagamentoIncerto(false);
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
@@ -401,7 +401,7 @@ export default function ContasPagar() {
               aria-pressed={ativo}
               onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',

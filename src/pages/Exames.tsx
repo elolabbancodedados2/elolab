@@ -22,7 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -925,7 +925,7 @@ export default function Exames() {
           toast.warning('Solicitação salva, mas o PDF não foi baixado.', { description: mensagemDeErro(error) });
         }
       } else {
-        toast.success(`${examesSelecionados.length} exame(s) solicitados com sucesso!`);
+        toast.success(`${examesSelecionados.length} exame(s) solicitados com sucesso`);
       }
       if (coletasCriadas > 0) {
         toast.info(`${coletasCriadas} coleta(s) de laboratório criada(s) automaticamente.`);
@@ -1028,13 +1028,13 @@ export default function Exames() {
         toast.info(`Automações: ${result.actions.join(' • ')}`);
       }
 
-      toast.success('Status atualizado!');
+      toast.success('Status atualizado');
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       return true;
     } catch (error: any) {
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       queryClient.invalidateQueries({ queryKey: ['coletas_laboratorio'] });
-      toast.error(error.message || 'Erro ao atualizar status');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar o status.'));
       return false;
     } finally {
       updateStatusLock.current = false;
@@ -1069,11 +1069,11 @@ export default function Exames() {
         queryClient.invalidateQueries({ queryKey: ['exames'] });
         return;
       }
-      toast.success('Exame excluído!');
+      toast.success('Exame excluído');
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       setExameParaExcluir(null);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir exame');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível excluir o exame.'));
     } finally {
       setExcluindoExame(false);
     }
@@ -1208,7 +1208,7 @@ export default function Exames() {
                 aria-pressed={ativo}
                 onClick={() => setIndicador(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -1391,7 +1391,7 @@ export default function Exames() {
                                 i > step && 'bg-muted text-muted-foreground/40',
                                 step === -1 && 'bg-muted text-muted-foreground line-through',
                               )}>
-                                {i < step ? '✓' : label}
+                                {i < step ? <CheckCircle2 className="h-3 w-3" aria-label={label} /> : label}
                               </div>
                               {i < PIPELINE_STEPS.length - 1 && (
                                 <div className={cn('w-2 h-px', i < step ? 'bg-success' : 'bg-border')} />
@@ -1600,7 +1600,7 @@ export default function Exames() {
                     <Badge key={ex.nome} variant="secondary" className="gap-1.5 py-1.5 px-3 text-xs">
                       {ex.tuss && <span className="text-[10px] text-muted-foreground font-mono">{ex.tuss}</span>}
                       {ex.nome}
-                      {ex.necessita_contraste && <span className="text-warning">⚠ contraste</span>}
+                      {ex.necessita_contraste && <span className="inline-flex items-center gap-0.5 text-warning"><AlertTriangle className="h-3 w-3" aria-hidden="true" />contraste</span>}
                       <button onClick={() => removeExame(ex.nome)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
                     </Badge>
                   ))}
@@ -1776,7 +1776,7 @@ export default function Exames() {
               {Number(formData.preco_custo) > 0 && formData.preco_venda !== undefined && (
                 <div className="mt-3 p-3 bg-success/5 border border-success/20 rounded-lg">
                   <p className="text-sm text-success">
-                    💰 Margem: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
+                    Margem: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
                   </p>
                 </div>
               )}

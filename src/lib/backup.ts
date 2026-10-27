@@ -28,6 +28,7 @@
  * `tabelasTruncadas`. Um backup que não sabe se está inteiro não serve para
  * decidir nada na hora de restaurar.
  */
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -93,7 +94,10 @@ async function lerTabela(tabela: string): Promise<{ linhas: any[]; erro?: string
 
     // RLS que nega devolve lista vazia, não erro. Erro aqui é problema de
     // verdade (tabela sumiu, coluna quebrada, rede) e precisa aparecer.
-    if (error) return { linhas, erro: error.message, truncada: false };
+    if (error) {
+      console.error(`Backup: falha ao ler ${tabela}`, error);
+      return { linhas, erro: friendlyErrorMessage(error, 'Não foi possível ler esta tabela.'), truncada: false };
+    }
     if (!data || data.length === 0) break;
 
     linhas.push(...data);
@@ -225,7 +229,7 @@ async function ordemDeRestauracao(presentes: string[]): Promise<string[]> {
     // Sem a ordem do banco, restaurar às cegas produziria erro de chave
     // estrangeira em cascata e um banco meio preenchido.
     throw new Error(
-      `Não consegui obter a ordem de restauração do banco${error ? `: ${error.message}` : ''}. ` +
+      `Não consegui obter a ordem de restauração do banco${error ? `: ${friendlyErrorMessage(error, 'erro do servidor')}` : ''}. ` +
       'Restaurar sem ela deixaria o banco pela metade.',
     );
   }
@@ -336,7 +340,11 @@ export async function restoreBackup(
         .from(tabela)
         .upsert(lote, { onConflict: 'id', ignoreDuplicates: !overwrite });
 
-      if (error) { erroDaTabela = error.message; break; }
+      if (error) {
+        console.error(`Restauração: falha ao gravar ${tabela}`, error);
+        erroDaTabela = friendlyErrorMessage(error, 'Não foi possível gravar esta tabela.');
+        break;
+      }
       inseridas += lote.length;
     }
 

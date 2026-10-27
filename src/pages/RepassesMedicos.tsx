@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { isValidDateOnly, todaySaoPauloDateOnly, toDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { podeAprovarRepasse, podePagarRepasse, receitaOrigemQuitada } from '@/lib/repasseWorkflow';
@@ -68,7 +68,7 @@ function ConfiguracaoMedico({ medico, onSaved }: { medico: MedicoRepasse; onSave
       toast.success(`Regra de repasse de ${medico.nome || medico.crm} atualizada.`);
       onSaved();
     } catch (error: any) {
-      toast.error('Não foi possível salvar a regra de repasse.', { description: error?.message });
+      toast.error('Não foi possível salvar a regra de repasse.', { description: friendlyErrorMessage(error, 'Confira os dados e tente novamente.') });
     } finally {
       setSaving(false);
     }
@@ -139,7 +139,7 @@ export default function RepassesMedicos() {
       await queryClient.invalidateQueries({ queryKey: ['repasses-medicos'] });
       toast.success(data ? `${data} novo(s) repasse(s) conciliado(s).` : 'Não há novos recebimentos elegíveis nesta competência.');
     } catch (error: any) {
-      toast.error('Não foi possível conciliar os recebimentos.', { description: error?.message });
+      toast.error('Não foi possível conciliar os recebimentos.', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
     } finally {
       setProcessing(false);
     }
@@ -194,7 +194,7 @@ export default function RepassesMedicos() {
         toast.success('Repasse aprovado.');
       }
     } catch (error: any) {
-      toast.error('Não foi possível atualizar o repasse.', { description: error?.message });
+      toast.error('Não foi possível atualizar o repasse.', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
     } finally {
       setStatusProcessingId(null);
     }
@@ -249,7 +249,7 @@ export default function RepassesMedicos() {
             aria-pressed={ativo}
             onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
             className={cn(
-              'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+              'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
               kpi.escuro && 'border-transparent bg-gradient-primary text-white',
               ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
               ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',

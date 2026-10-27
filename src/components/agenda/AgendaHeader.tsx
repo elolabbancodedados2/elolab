@@ -103,7 +103,7 @@ export function AgendaHeader(p: Props) {
     .map(([iso]) => parseISO(iso));
 
   return (
-    <div className="flex flex-col gap-3 rounded-[24px] border border-border/60 bg-card p-3 shadow-xs sm:gap-4 sm:p-5">
+    <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-3 shadow-xs sm:gap-4 sm:p-5">
       {/* Linha 1: título + navegação de data | ações principais */}
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
@@ -335,7 +335,7 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
       aria-pressed={active}
       title={active && tone ? 'Clique para remover o filtro' : 'Clique para filtrar por este status'}
       className={cn(
-        'flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 transition hover:-translate-y-0.5 hover:shadow-sm sm:min-h-9',
+        'flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 transition hover:shadow-sm sm:min-h-9',
         tone === 'success' && 'border-success/30 bg-success/5',
         tone === 'warning' && 'border-warning/30 bg-warning/5',
         tone === 'destructive' && 'border-destructive/30 bg-destructive/5',

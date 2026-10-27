@@ -108,7 +108,7 @@ export function PatientPhoto({
 
       setPhotoUrl(fileName);
       onPhotoChange?.(fileName);
-      toast.success('Foto atualizada com sucesso!');
+      toast.success('Foto atualizada com sucesso');
       setIsOpen(false);
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
@@ -132,7 +132,7 @@ export function PatientPhoto({
 
       setPhotoUrl(null);
       onPhotoChange?.(null);
-      toast.success('Foto removida com sucesso!');
+      toast.success('Foto removida com sucesso');
       setIsOpen(false);
     } catch (error) {
       console.error('Erro ao remover foto:', error);

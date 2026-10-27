@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -216,7 +216,7 @@ export function Cid10Search({ value, onChange, placeholder = "Buscar CID-10...",
                           )}
                         </div>
                         {isSelected && (
-                          <span className="text-primary text-xs">✓</span>
+                          <Check className="h-3.5 w-3.5 text-primary" aria-label="Selecionado" />
                         )}
                       </div>
                     </CommandItem>

@@ -4,7 +4,7 @@ import { Beaker, Loader2, Pencil, Plus, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,7 +66,7 @@ export function CatalogoPerfisPanel() {
       ]);
       setForm(vazio); setEditando(null); toast.success('Perfil laboratorial salvo.');
     },
-    onError: (error: Error) => toast.error('Não foi possível salvar o perfil.', { description: error.message }),
+    onError: (error: Error) => toast.error('Não foi possível salvar o perfil.', { description: friendlyErrorMessage(error, 'Confira os dados e tente novamente.') }),
   });
   const editar = (perfil: Perfil) => {
     setEditando(perfil.id);

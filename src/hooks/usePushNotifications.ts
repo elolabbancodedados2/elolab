@@ -20,7 +20,7 @@ export function usePushNotifications() {
     setPermission(result);
     
     if (result === 'granted') {
-      toast.success('Notificações ativadas!');
+      toast.success('Notificações ativadas');
       return true;
     } else {
       toast.error('Permissão de notificação negada');

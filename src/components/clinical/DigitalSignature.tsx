@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { KeyRound, AlertTriangle, CheckCircle2, Loader2, FileKey, ExternalLink } from 'lucide-react';
@@ -93,7 +94,7 @@ export function DigitalSignature({
     } catch (error) {
       toast({
         title: 'Erro na assinatura',
-        description: (error as any)?.message || 'Não foi possível assinar o documento.',
+        description: friendlyErrorMessage(error, 'Não foi possível assinar o documento.'),
         variant: 'destructive',
       });
     } finally {
@@ -204,12 +205,12 @@ export function DigitalSignature({
               </Button>
             </div>
 
-            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-500/10 rounded p-2.5">
-              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
               <span>
-                Esta assinatura eletrônica simples não usa certificado ICP-Brasil e não substitui
-                uma assinatura digital qualificada. A verificação confirma a integridade do
-                conteúdo registrado no momento da assinatura.
+                Assinatura eletrônica com registro de autor, data e integridade do conteúdo,
+                verificável pelo código. Documentos que exigem certificado ICP-Brasil, como
+                receitas de controle especial, devem ser assinados pela prescrição Memed.
               </span>
             </div>
           </div>

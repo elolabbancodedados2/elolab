@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -116,7 +116,7 @@ export default function PlatformClinicas() {
       toast.success(`Entrando como ${alvo.nome}`);
       navigate('/dashboard');
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao impersonar clínica');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível acessar a clínica.'));
     } finally {
       impersonationLock.current = false;
       setImpersonatingId(null);
@@ -175,7 +175,7 @@ export default function PlatformClinicas() {
       }
       await refetchOrfaos();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao reconciliar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível reconciliar.'));
     } finally {
       reconcileLock.current = false;
       setReconciling(false);
@@ -195,7 +195,7 @@ export default function PlatformClinicas() {
       toast.success(`Código reenviado para ${email}`);
       await refetchOrfaos();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao reenviar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível reenviar.'));
     } finally {
       resendLock.current = false;
       setResendingId(null);
@@ -244,7 +244,7 @@ export default function PlatformClinicas() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#e6e2f7] bg-gradient-to-r from-[#f6f4ff] via-white to-[#f0edff] p-5 sm:flex-row sm:p-6">
+      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:p-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Crown className="h-7 w-7 text-primary" /> Plataforma — Clínicas

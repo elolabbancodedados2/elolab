@@ -37,7 +37,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 
 /* ─── Types ─── */
@@ -198,7 +198,7 @@ export function HealthCheckTab() {
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <Zap className="h-5 w-5 text-purple-600" />
+                        <Zap className="h-5 w-5 text-primary" />
                         <span className="font-semibold">Acesso aos anexos</span>
                       </div>
                       <StatusBadge status={health.storage.status} />
@@ -327,7 +327,7 @@ export function EspecialidadesTab() {
     if (!codigo) return;
     const descricao = window.prompt('Descrição:', '')?.trim() || '';
     const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true, clinica_id: profile.clinica_id });
-    if (error) return toast.error('Erro ao criar especialidade', { description: error.message });
+    if (error) return toast.error('Não foi possível criar a especialidade', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
     toast.success('Especialidade criada');
   };
@@ -340,7 +340,7 @@ export function EspecialidadesTab() {
     const descricao = window.prompt('Descrição:', esp.descricao)?.trim() ?? esp.descricao;
     const { data, error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao })
       .eq('id', esp.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
-    if (error) return toast.error('Erro ao editar', { description: error.message });
+    if (error) return toast.error('Não foi possível salvar a edição', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     if (!data) return toast.error('Especialidade não encontrada ou sem permissão para editar.');
     await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
     toast.success('Especialidade atualizada');
@@ -355,7 +355,7 @@ export function EspecialidadesTab() {
   const removerEspecialidade = async (esp: Especialidade) => {
     const { data, error } = await (supabase as any).from('especialidades_destino').delete()
       .eq('id', esp.id).eq('clinica_id', profile.clinica_id).select('id');
-    if (error) return toast.error('Não foi possível excluir', { description: error.message });
+    if (error) return toast.error('Não foi possível excluir', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     if (!data?.length) return toast.error('Especialidade não encontrada ou sem permissão para excluir.');
     await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
     toast.success('Especialidade excluída');

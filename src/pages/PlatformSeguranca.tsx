@@ -114,7 +114,7 @@ export default function PlatformSeguranca() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck />Central de Segurança</h1>
           <p className="text-muted-foreground">Postura de acesso, MFA, sessões e operações sensíveis.</p>

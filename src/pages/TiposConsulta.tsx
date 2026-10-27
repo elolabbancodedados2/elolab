@@ -27,7 +27,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useConvenios } from '@/hooks/useSupabaseData';
 import { CardGridSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { PageHeader } from '@/components/PageHeader';
@@ -178,16 +178,16 @@ export default function TiposConsulta() {
         const { data, error } = await supabase.from('tipos_consulta').update(payload).eq('id', editTarget.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
         if (error) throw error;
         if (!data) throw new Error('Tipo não encontrado ou sem permissão para alterar.');
-        toast.success('Tipo atualizado!');
+        toast.success('Tipo atualizado');
       } else {
         const { error } = await supabase.from('tipos_consulta').insert({ ...payload, clinica_id: profile.clinica_id });
         if (error) throw error;
-        toast.success('Tipo criado!');
+        toast.success('Tipo criado');
       }
       await queryClient.invalidateQueries({ queryKey: ['tipos_consulta'] });
       setFormOpen(false);
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(friendlyErrorMessage(e, 'Não foi possível salvar o tipo de consulta.'));
     } finally { setSaving(false); }
   };
 
@@ -200,10 +200,10 @@ export default function TiposConsulta() {
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir.');
       await queryClient.invalidateQueries({ queryKey: ['tipos_consulta'] });
-      toast.success('Tipo excluído!');
+      toast.success('Tipo excluído');
       setDeleteTarget(null);
     } catch (e: any) {
-      toast.error('Erro ao excluir: ' + (e?.message || 'Tente novamente.'));
+      toast.error('Não foi possível excluir.', { description: friendlyErrorMessage(e, 'Tente novamente.') });
     } finally {
       setDeleting(false);
     }
@@ -236,9 +236,9 @@ export default function TiposConsulta() {
         if (error) throw error;
       }
       await queryClient.invalidateQueries({ queryKey: ['precos_consulta_convenio'] });
-      toast.success('Preço salvo!');
+      toast.success('Preço salvo');
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(friendlyErrorMessage(e, 'Não foi possível salvar o tipo de consulta.'));
       throw e;
     }
   };
@@ -307,7 +307,7 @@ export default function TiposConsulta() {
               const precosConv = precos.filter(p => p.tipo_consulta_id === tipo.id);
               return (
                 <motion.div key={tipo.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03 }}>
-                  <Card className="group border-[#e6e2f7] bg-gradient-to-br from-white to-[#faf9fd] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                  <Card className="group border-border bg-card shadow-sm transition-shadow hover:shadow-md">
                     <CardContent className="pt-5 pb-4 px-5">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2.5">

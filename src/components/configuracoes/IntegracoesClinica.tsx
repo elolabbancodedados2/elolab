@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useMedicos } from '@/hooks/useSupabaseData';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { formatDateInTimeZone } from '@/lib/datePreference';
 
@@ -78,6 +79,7 @@ export function IntegracoesClinica() {
   const [valores, setValores] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
   const [testando, setTestando] = useState<string | null>(null);
+  const [desconectando, setDesconectando] = useState<{ integracao: Integracao; referencia_id: string | null } | null>(null);
 
   useEffect(() => {
     const retornoOAuth = searchParams.get('mercado_pago');
@@ -113,7 +115,7 @@ export function IntegracoesClinica() {
       setAberta(null);
       queryClient.invalidateQueries({ queryKey: ['integracoes-clinica'] });
     } catch (e: any) {
-      toast.error('Não foi possível conectar', { description: e.message });
+      toast.error('Não foi possível conectar', { description: friendlyErrorMessage(e, 'Revise a conexão ou contate o suporte.') });
     } finally {
       setSalvando(false);
     }
@@ -129,7 +131,7 @@ export function IntegracoesClinica() {
       }
       window.location.assign(authorizationUrl.toString());
     } catch (e: any) {
-      toast.error('Não foi possível iniciar a conexão', { description: e.message });
+      toast.error('Não foi possível iniciar a conexão', { description: friendlyErrorMessage(e, 'Revise a conexão ou contate o suporte.') });
       setSalvando(false);
     }
   };
@@ -152,23 +154,19 @@ export function IntegracoesClinica() {
       }
       await queryClient.invalidateQueries({ queryKey: ['integracoes-clinica'] });
     } catch (e: any) {
-      toast.error('Não foi possível testar a conexão', { description: e.message || 'Revise a conexão ou contate o suporte.' });
+      toast.error('Não foi possível testar a conexão', { description: friendlyErrorMessage(e, 'Revise a conexão ou contate o suporte.') });
     } finally {
       setTestando(null);
     }
   };
 
   const desconectar = async (integracao: Integracao, referencia_id: string | null) => {
-    const detalhe = integracao.id === 'mercado_pago'
-      ? 'O EloLab apagará a autorização salva. Para revogar também o acesso da aplicação, faça isso nas configurações da sua conta Mercado Pago.'
-      : 'A credencial salva será apagada.';
-    if (!window.confirm(`Desconectar ${integracao.nome}? ${detalhe}`)) return;
     try {
       await chamar({ action: 'disconnect', provedor: integracao.id, referencia_id });
       toast.success(`${integracao.nome} desconectado`);
       queryClient.invalidateQueries({ queryKey: ['integracoes-clinica'] });
     } catch (e: any) {
-      toast.error('Não foi possível desconectar', { description: e.message });
+      toast.error('Não foi possível desconectar', { description: friendlyErrorMessage(e, 'Revise a conexão ou contate o suporte.') });
     }
   };
 
@@ -227,7 +225,7 @@ export function IntegracoesClinica() {
             {integracao.id === 'mercado_pago' ? (ativa ? 'Trocar conta' : 'Conectar Mercado Pago') : (ativa ? 'Trocar credencial' : 'Conectar')}
           </Button>
           {ativa && (
-            <Button size="sm" variant="ghost" onClick={() => desconectar(integracao, referencia_id)} aria-label={`Desconectar ${integracao.nome}`}>
+            <Button size="sm" variant="ghost" onClick={() => setDesconectando({ integracao, referencia_id })} aria-label={`Desconectar ${integracao.nome}`}>
               <Unplug className="h-4 w-4" />
             </Button>
           )}
@@ -312,6 +310,18 @@ export function IntegracoesClinica() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!desconectando}
+        onOpenChange={(open) => { if (!open) setDesconectando(null); }}
+        title={`Desconectar ${desconectando?.integracao.nome ?? ''}`}
+        description={desconectando?.integracao.id === 'mercado_pago'
+          ? 'O EloLab apagará a autorização salva. Para revogar também o acesso da aplicação, faça isso nas configurações da sua conta Mercado Pago.'
+          : 'A credencial salva será apagada.'}
+        confirmLabel="Desconectar"
+        variant="destructive"
+        onConfirm={() => { if (desconectando) void desconectar(desconectando.integracao, desconectando.referencia_id); }}
+      />
     </div>
   );
 }

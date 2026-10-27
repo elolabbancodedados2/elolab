@@ -423,7 +423,7 @@ export default function Templates() {
                 aria-pressed={ativo}
                 onClick={() => setClinicalTab(ind.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   ativo && 'border-transparent bg-gradient-primary text-white',
                 )}
               >
@@ -515,7 +515,7 @@ export default function Templates() {
                     const linhas = medicamentosParaLinhas(template.medicamentos);
                     const podeEditar = template.clinica_id === profile?.clinica_id;
                     return (
-                      <Card key={template.id} className="flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                      <Card key={template.id} className="flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:shadow-md">
                         <CardContent className="flex flex-1 flex-col gap-3 p-4">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -564,7 +564,7 @@ export default function Templates() {
                   : (group.items as CertificateTemplate[]).map(template => {
                     const podeEditar = template.clinica_id === profile?.clinica_id;
                     return (
-                      <Card key={template.id} className="flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                      <Card key={template.id} className="flex flex-col rounded-2xl border-border/60 shadow-xs transition-all duration-200 hover:shadow-md">
                         <CardContent className="flex flex-1 flex-col gap-3 p-4">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">

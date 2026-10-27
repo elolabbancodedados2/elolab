@@ -727,7 +727,7 @@ export default function Documentacao() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
         <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-[#111111] sm:text-3xl">
           <BookOpen className="h-7 w-7 text-[#1080CA]" />
           Documentação do Sistema
@@ -856,7 +856,7 @@ export default function Documentacao() {
                         {item.tips && item.tips.length > 0 && (
                           <div className="bg-muted/50 rounded-lg p-4 border border-border/50 mt-3">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                              💡 Dicas
+                              Dicas
                             </p>
                             <ul className="space-y-1.5">
                               {item.tips.map((tip, tIdx) => (

@@ -37,7 +37,7 @@ import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
 import { allergyOverrideJustificationError, requiresAllergyOverrideJustification } from '@/lib/allergyOverride';
 import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
@@ -567,7 +567,7 @@ export default function Prescricoes() {
       setAllergyOverrideJustification('');
       setShowAlertsDialog(true);
       if (hasCriticalAlerts) {
-        toast.error('⚠️ Alertas de segurança críticos! Resolva antes de prescrever.');
+        toast.error('Há alertas de segurança críticos. Resolva-os antes de prescrever.');
       }
       setGerando(false);
       return;
@@ -862,7 +862,7 @@ export default function Prescricoes() {
           body: { action, pacienteId: paciente.id, medicoId: medico.id, payload },
         });
         if (result.error || result.data?.error) {
-          toast.error(result.data?.error || 'Não foi possível salvar a atualização da receita Memed.');
+          toast.error(friendlyErrorMessage(result.data?.error, 'Não foi possível salvar a atualização da receita Memed.'));
           return;
         }
         if (action === 'prescription_printed') {
@@ -898,7 +898,7 @@ export default function Prescricoes() {
       });
       await hub.module.show('plataforma.prescricao');
     } catch (error) {
-      toast.error((error as Error)?.message || 'Não foi possível abrir a Memed.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível abrir a Memed.'));
     } finally {
       setMemedOpening(false);
     }
@@ -1024,7 +1024,7 @@ export default function Prescricoes() {
               aria-pressed={ativo}
               onClick={() => setFiltroOrigem(ativo && s.key !== 'todos' ? 'todos' : s.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 s.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -1322,7 +1322,8 @@ export default function Prescricoes() {
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
-              ⚠️ Alertas de Segurança Clínica
+              <AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />
+              Alertas de segurança clínica
             </DialogTitle>
             <DialogDescription>
               Revisão antes de prescrever. Alertas com tag "Não ignorável" devem ser resolvidos
@@ -1373,7 +1374,7 @@ export default function Prescricoes() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-center gap-2 text-lg">
               <Clipboard className="h-5 w-5 text-primary" />
-              Receita Gerada!
+              Receita gerada
             </DialogTitle>
             <DialogDescription>O EloLab guarda o PDF emitido sem assinatura. Você pode assiná-lo externamente e manter a cópia assinada fora do sistema.</DialogDescription>
           </DialogHeader>

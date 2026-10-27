@@ -177,7 +177,7 @@ export const PatientListTable = memo(function PatientListTable({
                               {['M', 'masculino'].includes(paciente.sexo) ? 'M' : ['F', 'feminino'].includes(paciente.sexo) ? 'F' : 'O'}
                             </Badge>
                           )}
-                          {paciente.data_nascimento && Number.isFinite(idade) && idade >= 0 && idade < 18 && <Badge className="bg-amber-500/10 text-amber-700 text-[10px] px-1.5 py-0">Menor</Badge>}
+                          {paciente.data_nascimento && Number.isFinite(idade) && idade >= 0 && idade < 18 && <Badge className="bg-warning/10 text-warning text-[10px] px-1.5 py-0">Menor</Badge>}
                         </div>
                         {paciente.alergias && paciente.alergias.length > 0 && (
                           <AllergyAlert alergias={paciente.alergias} compact className="mt-1" />
@@ -211,7 +211,7 @@ export const PatientListTable = memo(function PatientListTable({
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden whitespace-nowrap lg:table-cell">
-                    <span className="text-sm tabular-nums">
+                    <span className="whitespace-nowrap text-sm tabular-nums">
                       {paciente.data_nascimento
                         ? Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : <span className="text-muted-foreground">Data inválida</span>
                         : <span className="text-muted-foreground">N/I</span>}
@@ -219,7 +219,7 @@ export const PatientListTable = memo(function PatientListTable({
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
-                      <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                      <motion.div>
                         <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -233,33 +233,33 @@ export const PatientListTable = memo(function PatientListTable({
                         ) : null;
                       })()}
                       {podeGerarLinkPortal && paciente.ativo !== false && (
-                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                        <motion.div>
                           <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                             <Link className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
                       {podeGerarLinkPortal && paciente.ativo !== false && (
-                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                        <motion.div>
                           <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-full text-destructive hover:bg-destructive/10">
                             <Unlink className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}
-                      {podeEditarPaciente && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                      {podeEditarPaciente && <motion.div>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                           <Edit className="h-4 w-4" />
                         </Button>
                       </motion.div>}
-                      {podeEditarPaciente && onChangeStatus && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                      {podeEditarPaciente && onChangeStatus && <motion.div>
                         <Button variant="ghost" size="icon" onClick={() => onChangeStatus(paciente)} title={paciente.ativo === false ? 'Reativar paciente' : 'Inativar paciente'} aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                           <Power className="h-4 w-4" />
                         </Button>
                       </motion.div>}
                       {podeExcluirPaciente && (
-                        <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                        <motion.div>
+                          <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </motion.div>
                       )}

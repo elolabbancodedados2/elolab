@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -366,7 +367,7 @@ export default function RelatorioCustomizado() {
           .filter((email) => emailsPermitidos.has(email.toLocaleLowerCase('pt-BR'))).join(', '),
       }));
     }).catch((error: unknown) => {
-      if (!cancelled) setPreflightError(error instanceof Error ? error.message : 'Não foi possível verificar o envio agendado.');
+      if (!cancelled) setPreflightError(friendlyErrorMessage(error, 'Não foi possível verificar o envio agendado.'));
     }).finally(() => {
       if (!cancelled) setPreflightLoading(false);
     });
@@ -444,7 +445,7 @@ export default function RelatorioCustomizado() {
     } catch (e: any) {
       console.error(e);
       setReportState('error');
-      toast.error(e.message || 'Erro ao gerar relatório');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível gerar o relatório.'));
     } finally {
       setLoading(false);
     }
@@ -793,13 +794,13 @@ export default function RelatorioCustomizado() {
               <Badge variant="secondary">{rows.length} registros</Badge>
               {totalValor && (
                 <>
-                  <Badge className="bg-emerald-100 text-emerald-800">
+                  <Badge className="bg-success/10 text-success">
                     Receitas: {totalValor.receitas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </Badge>
-                  <Badge className="bg-rose-100 text-rose-800">
+                  <Badge className="bg-destructive/10 text-destructive">
                     Despesas: {totalValor.despesas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </Badge>
-                  <Badge className={totalValor.saldo >= 0 ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}>
+                  <Badge className={totalValor.saldo >= 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}>
                     Saldo: {totalValor.saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </Badge>
                 </>
@@ -1060,7 +1061,7 @@ export default function RelatorioCustomizado() {
                   setSaveForm({ nome: '', descricao: '', frequencia: 'nenhuma', dia_semana: '1', dia_mes: '1', hora: '08:00', destinatarios: '', formato: 'csv' });
                   setSavedReport(null);
                 } catch (e: any) {
-                  toast.error(e.message || 'Erro ao salvar');
+                  toast.error(friendlyErrorMessage(e, 'Não foi possível salvar o relatório.'));
                 } finally {
                   setSaving(false);
                 }

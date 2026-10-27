@@ -30,7 +30,7 @@ import { parseDateOnly, toDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly
 import { useRecoverableDraft } from '@/hooks/useRecoverableDraft';
 import { DraftRecoveryNotice } from '@/components/DraftRecoveryNotice';
 import { withSafeRetry } from '@/lib/retry';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { getInitialTaskView, taskMatchesAssignee, taskMatchesSearch } from './taskViewMode';
 
@@ -108,7 +108,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, tarefa.id) : undefined}
         className={cn(
-          'group rounded-2xl border border-border/60 border-l-4 bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-[#1080CA]/40 hover:shadow-md',
+          'group rounded-2xl border border-border/60 border-l-4 bg-card p-3 shadow-xs transition-all hover:border-[#1080CA]/40 hover:shadow-md',
           pc.stripe,
           draggable && 'cursor-grab active:cursor-grabbing',
           isDragging && 'opacity-50 scale-[0.98]',
@@ -208,7 +208,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
   return (
     <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
       <Card className={cn(
-        'group rounded-2xl border-border/60 border-l-4 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1080CA]/40 hover:shadow-md',
+        'group rounded-2xl border-border/60 border-l-4 bg-card shadow-xs transition-all duration-200 hover:border-[#1080CA]/40 hover:shadow-md',
         pc.stripe,
         vencida && 'ring-1 ring-destructive/30',
         tarefa.status === 'concluida' && 'opacity-60',
@@ -427,12 +427,12 @@ export default function Tarefas() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
-      toast.success('Tarefa criada!');
+      toast.success('Tarefa criada');
       fecharDialogo();
       draft.clear();
     },
     onError: (err: any) => {
-      toast.error('Erro ao criar tarefa: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível criar a tarefa.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     },
   });
 
@@ -453,7 +453,7 @@ export default function Tarefas() {
     },
     onError: (error: Error) => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
-      toast.error('Não foi possível atualizar a tarefa: ' + error.message);
+      toast.error('Não foi possível atualizar a tarefa.', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
     },
   });
 
@@ -468,7 +468,7 @@ export default function Tarefas() {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.success('Tarefa removida');
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro ao remover tarefa'),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível remover a tarefa.')),
   });
 
   const enrichedTarefas = useMemo(() => {
@@ -630,7 +630,7 @@ export default function Tarefas() {
                 aria-pressed={ativo}
                 onClick={() => setFilterStatus(s.filter)}
                 className={cn(
-                  'flex min-h-[76px] w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md sm:gap-3 sm:px-4',
+                  'flex min-h-[76px] w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left transition-all hover:shadow-md sm:gap-3 sm:px-4',
                   ativo ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
                 )}
               >
@@ -655,7 +655,7 @@ export default function Tarefas() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 rounded-[22px] border border-border/60 bg-card p-3 shadow-xs sm:p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-3 shadow-xs sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="relative w-full flex-1 sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -745,7 +745,7 @@ export default function Tarefas() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="animate-in fade-in duration-300">
-          <Card className="rounded-[22px]">
+          <Card className="rounded-xl">
             <CardContent className="py-4">
               <ActionableEmptyState
                 title={enrichedTarefas.length === 0 ? 'Ainda não há tarefas cadastradas' : 'Nenhuma tarefa corresponde à busca e ao filtro'}
@@ -772,7 +772,7 @@ export default function Tarefas() {
               <div
                 key={col.key}
                 className={cn(
-                  'min-h-[340px] rounded-[22px] border border-border/60 bg-muted/40 p-3 transition-colors sm:min-h-[400px]',
+                  'min-h-[340px] rounded-xl border border-border/60 bg-muted/40 p-3 transition-colors sm:min-h-[400px]',
                   draggedTaskId && 'border-dashed border-[#1080CA]/50',
                 )}
                 onDragOver={handleDragOver}
@@ -816,7 +816,7 @@ export default function Tarefas() {
 
       {/* Dialog Nova / Editar Tarefa */}
       <Dialog open={showNew} onOpenChange={(open) => { if (!open) fecharDialogo(); }}>
-        <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-[22px]">
+        <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-white">
