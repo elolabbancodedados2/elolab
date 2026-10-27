@@ -310,20 +310,36 @@ export async function createAutoBillingDetailed(params: AutoBillingParams): Prom
     categoria = 'exame';
   }
 
+  // O tipo da clínica escolhido no agendamento manda; o nome é só o caminho antigo.
+  let tipoConsultaId: string | null = null;
+  if (!isExam) {
+    const { data: ag, error: agError } = await (supabase as any)
+      .from('agendamentos')
+      .select('tipo_consulta_id')
+      .eq('id', agendamentoId)
+      .maybeSingle();
+    if (agError) throw agError;
+    tipoConsultaId = ag?.tipo_consulta_id ?? null;
+  }
+
   // Try to find price from tipos_consulta
-  if (tipoConsulta && !isExam) {
-    // The return workflow may store "consulta de retorno", while the standard
-    // catalog entry is simply named "Retorno". They are the same service.
-    const catalogName = isReturnConsultationType(tipoConsulta) ? 'Retorno' : tipoConsulta;
+  if ((tipoConsulta || tipoConsultaId) && !isExam) {
     let tcQuery = (supabase as any)
       .from('tipos_consulta')
       .select('id, nome, valor_particular')
+      .eq('ativo', true);
+    if (tipoConsultaId) {
+      tcQuery = tcQuery.eq('id', tipoConsultaId);
+    } else {
+      // The return workflow may store "consulta de retorno", while the standard
+      // catalog entry is simply named "Retorno". They are the same service.
+      const catalogName = isReturnConsultationType(tipoConsulta) ? 'Retorno' : tipoConsulta;
       // `ilike` sem curinga é igualdade sem diferenciar maiúsculas. O
       // agendamento guarda o tipo em minúsculas ("retorno") e o catálogo tem
       // "Retorno" — com `eq` a busca não achava nada, e os 17 agendamentos de
       // retorno caíam no erro de "preço não cadastrado".
-      .ilike('nome', catalogName)
-      .eq('ativo', true);
+      tcQuery = tcQuery.ilike('nome', catalogName);
+    }
     if (resolvedClinicaId) tcQuery = tcQuery.eq('clinica_id', resolvedClinicaId);
     const { data: tc, error: tcError } = await tcQuery.limit(1).maybeSingle();
 
@@ -382,8 +398,8 @@ export async function createAutoBillingDetailed(params: AutoBillingParams): Prom
     }
     throw new Error(
       isExam
-        ? `Não há preço cadastrado para o exame "${tipoExame || tipoConsulta}".`
-        : `Não há preço cadastrado para a consulta "${tipoConsulta || 'atendimento'}".`
+        ? `Não há preço cadastrado para o exame "${tipoExame || tipoConsulta}". Cadastre o valor em Preços e serviços`
+        : `Não há preço cadastrado para o tipo "${tipoConsulta || 'atendimento'}". Cadastre o valor em Preços e serviços`
     );
   }
 
