@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { FieldHelp } from '@/components/ContextualHelp';
 import { PageHeader } from '@/components/PageHeader';
@@ -81,7 +81,7 @@ function formatarDataConsulta(pred: PredictedNoShow, padrao: string): string {
 
 function mensagemWhatsApp(pred: PredictedNoShow): string {
   const primeiroNome = pred.paciente_nome.split(' ')[0];
-  return `Olá, ${primeiroNome}! Passando para confirmar sua consulta em ${formatarDataConsulta(pred, 'dd/MM')} com ${pred.medico_nome}. Podemos contar com você?`;
+  return `Olá, ${primeiroNome}. Passando para confirmar sua consulta em ${formatarDataConsulta(pred, 'dd/MM')} com ${pred.medico_nome}. Podemos contar com você?`;
 }
 
 function BarraRisco({ probabilidade, className }: { probabilidade: number; className?: string }) {
@@ -187,9 +187,7 @@ export default function AnalisePreditiva() {
       if (error) throw error;
       toast.success(data ? 'Lembrete enfileirado' : 'Já existe um lembrete na fila ou enviado nas últimas 20 horas');
     } catch (error) {
-      const mensagem = error && typeof error === 'object' && 'message' in error
-        ? String(error.message)
-        : error instanceof Error ? error.message : 'Verifique a conexão e tente novamente.';
+      const mensagem = friendlyErrorMessage(error, 'Verifique a conexão e tente novamente.');
       toast.error('Não foi possível enfileirar o lembrete', {
         description: mensagem,
       });
@@ -312,7 +310,7 @@ export default function AnalisePreditiva() {
               onClick={() => setFiltroRisco(ativo && filtro !== 'todos' ? 'todos' : filtro)}
               className={cn(
                 classes,
-                'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
               )}

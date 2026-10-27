@@ -205,7 +205,7 @@ export function DrugInteractionChecker({
       >
         <AlertTriangle className="h-5 w-5" />
         <AlertTitle className="font-bold flex items-center gap-2">
-          {hasHighSeverity ? '⚠️ ALERTA DE INTERAÇÃO CRÍTICA' : '⚡ Alertas de Interação'}
+          {hasHighSeverity ? 'ALERTA DE INTERAÇÃO CRÍTICA' : 'Alertas de interação'}
         </AlertTitle>
         <AlertDescription>
           <div className="mt-2 space-y-2">

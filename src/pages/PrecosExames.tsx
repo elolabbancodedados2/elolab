@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { AlertTriangle, DollarSign, Plus, Search, Edit, Trash2, Building2, Stethoscope, Loader2, ExternalLink } from 'lucide-react';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { PageHeader } from '@/components/PageHeader';
@@ -370,7 +370,7 @@ function PrecosInternos() {
     try {
       setIsSaving(true);
       await saveAll(list);
-      toast.success(editIdx !== null ? 'Atualizado!' : 'Cadastrado!');
+      toast.success(editIdx !== null ? 'Atualizado' : 'Cadastrado');
       setShowForm(false);
       setEditIdx(null);
       setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
@@ -378,7 +378,7 @@ function PrecosInternos() {
       if (String(error?.message || '').includes('Outra pessoa')) {
         await precosQuery.refetch();
         toast.error(error.message, { description: 'A tabela foi atualizada. Confira os valores atuais antes de tentar novamente.' });
-      } else toast.error(error?.message || 'Erro ao salvar exame');
+      } else toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o exame.'));
     } finally {
       setIsSaving(false);
     }
@@ -390,13 +390,13 @@ function PrecosInternos() {
     setIsSaving(true);
     try {
       await saveAll(list);
-      toast.success('Removido!');
+      toast.success('Removido');
       setPrecoParaExcluir(null);
     } catch (error: any) {
       if (String(error?.message || '').includes('Outra pessoa')) {
         await precosQuery.refetch();
         toast.error(error.message, { description: 'A tabela foi atualizada. Confira os valores atuais antes de tentar novamente.' });
-      } else toast.error(error?.message || 'Erro ao remover exame');
+      } else toast.error(friendlyErrorMessage(error, 'Não foi possível remover o exame.'));
     } finally {
       setIsSaving(false);
     }
@@ -671,11 +671,11 @@ function PrecosConvenio() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['precos-exames'] });
-      toast.success(editing ? 'Preço atualizado!' : 'Preço cadastrado!');
+      toast.success(editing ? 'Preço atualizado' : 'Preço cadastrado');
       setShowNew(false);
       setEditing(null);
     },
-    onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : (e.message || 'Erro ao salvar')),
+    onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : friendlyErrorMessage(e, 'Não foi possível salvar o preço. Tente novamente.')),
   });
 
   const deleteMutation = useMutation({
@@ -691,7 +691,7 @@ function PrecosConvenio() {
       toast.success('Removido');
       setPrecoParaExcluir(null);
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro ao remover'),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível remover.')),
   });
 
   const filtered = precos?.filter((p: any) => {

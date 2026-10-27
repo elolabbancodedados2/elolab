@@ -64,7 +64,7 @@ function Foto({ pessoa }: { pessoa?: Pessoa | null }) {
   return (
     <Avatar className="h-6 w-6 ring-2 ring-[#171717]">
       {pessoa?.foto_url && <AvatarImage src={pessoa.foto_url} alt="" />}
-      <AvatarFallback className="bg-gradient-to-br from-[#d9c3a5] to-[#8c6a4f] text-[9px] font-semibold text-white">{inicial}</AvatarFallback>
+      <AvatarFallback className="bg-muted text-[9px] font-semibold text-muted-foreground">{inicial}</AvatarFallback>
     </Avatar>
   );
 }

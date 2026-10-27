@@ -275,8 +275,8 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                   <Bell className="h-[17px] w-[17px]" />
                   {totalUnread > 0 && (
                     <span className="absolute top-2 right-2.5 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-highlight opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-highlight ring-2 ring-card" />
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-brand ring-2 ring-card" />
                     </span>
                   )}
                 </Button>
@@ -368,7 +368,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge variant="outline" className="text-[9px] h-4 px-1.5">
-                            {notif.status === 'enviado' ? '✓ Enviado' : notif.status === 'erro' ? '✕ Erro' : notif.status}
+                            {notif.status === 'enviado' ? 'Enviado' : notif.status === 'erro' ? 'Erro' : notif.status}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground/40">
                             {formatDate(notif.created_at, 'short')}

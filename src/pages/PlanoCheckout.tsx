@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { descricaoComercialPlano } from '@/lib/planFeatures';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -236,7 +236,7 @@ function PagamentoCartao({
               if (result.status === 'recusado') throw new Error('O cartão foi recusado. Use outro cartão ou forma de pagamento.');
               await onAprovado({ emTrial: result.em_trial, emAnalise: result.status === 'em_analise' });
             } catch (error) {
-              setErro(error instanceof Error ? error.message : 'Não foi possível concluir o pagamento.');
+              setErro(friendlyErrorMessage(error, 'Não foi possível concluir o pagamento.'));
               // O token do cartão é de uso único: recria o formulário para nova tentativa.
               setPronto(false);
               setBrickKey((k) => k + 1);
@@ -520,7 +520,7 @@ function PedidoEmAndamento({ pedidoId, onPago, onNovo }: { pedidoId: string; onP
           disabled={cancelar.isPending}
           onClick={() => cancelar.mutate(pedido.id, {
             onSuccess: (p) => { if (p.status !== 'pago') onNovo(); },
-            onError: (e) => toast.error(e.message),
+            onError: (e) => toast.error(friendlyErrorMessage(e, 'Não foi possível cancelar o pedido.')),
           })}
         >
           {cancelar.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <XCircle className="mr-1.5 h-3.5 w-3.5" />}
@@ -641,7 +641,7 @@ export default function PlanoCheckout() {
       { plano_slug: plano.slug, metodo: m, pagador, device_id: deviceIdMercadoPago() },
       {
         onSuccess: (pedido) => setPedidoId(pedido.id),
-        onError: (e) => toast.error(e.message),
+        onError: (e) => toast.error(friendlyErrorMessage(e, 'Não foi possível gerar a cobrança. Tente novamente.')),
       },
     );
   };
@@ -653,7 +653,7 @@ export default function PlanoCheckout() {
           <CheckCircle2 className="h-11 w-11 text-success" />
         </div>
         <h1 className="text-3xl font-bold tracking-tight">
-          {sucesso.tipo === 'cartao' && sucesso.emAnalise ? 'Pagamento em análise' : 'Tudo certo!'}
+          {sucesso.tipo === 'cartao' && sucesso.emAnalise ? 'Pagamento em análise' : 'Pagamento confirmado'}
         </h1>
         <p className="mt-3 text-muted-foreground">
           {sucesso.tipo === 'cartao'
@@ -829,7 +829,7 @@ export default function PlanoCheckout() {
         {/* Resumo */}
         <aside aria-labelledby="titulo-resumo" className="lg:sticky lg:top-6">
           <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs">
-            <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6">
+            <div className="bg-primary/5 p-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-primary">Resumo</p>
               <h2 id="titulo-resumo" className="mt-1 text-2xl font-bold">{plano.nome}</h2>
               {descricaoComercialPlano(plano.slug, plano.descricao) && <p className="mt-1 text-sm text-muted-foreground">{descricaoComercialPlano(plano.slug, plano.descricao)}</p>}

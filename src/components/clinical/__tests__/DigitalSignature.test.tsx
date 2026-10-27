@@ -49,7 +49,7 @@ describe('descrição da assinatura do prontuário', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Assinatura eletrônica' }));
-    expect(screen.getByText(/não usa certificado ICP-Brasil/i)).toBeInTheDocument();
-    expect(screen.getByText(/não substitui uma assinatura digital qualificada/i)).toBeInTheDocument();
+    expect(screen.getByText(/exigem certificado ICP-Brasil/i)).toBeInTheDocument();
+    expect(screen.getByText(/prescrição Memed/i)).toBeInTheDocument();
   });
 });

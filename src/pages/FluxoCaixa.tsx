@@ -339,7 +339,7 @@ export default function FluxoCaixa() {
           <div
             key={s.label}
             className={cn(
-              'rounded-2xl border p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md',
+              'rounded-2xl border p-4 shadow-xs transition-all hover:shadow-md',
               s.escuro ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
             )}
           >

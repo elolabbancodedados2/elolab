@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { useState } from 'react';
 import { Download, FileJson, ShieldCheck, LockKeyhole, UnlockKeyhole } from 'lucide-react';
@@ -33,7 +34,7 @@ export default function Interoperabilidade() {
       toast.success(`${bundle.entry.length} recurso(s) FHIR pronto(s) para criptografia.`);
     } catch (error) {
       console.error('Falha ao exportar Bundle FHIR', error);
-      toast.error(error instanceof Error ? error.message : 'Não foi possível exportar os dados. Tente novamente.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível exportar os dados. Tente novamente.'));
     } finally {
       setExporting(false);
     }

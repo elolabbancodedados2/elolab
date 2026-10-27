@@ -62,9 +62,6 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
           <motion.div
             aria-hidden="true"
             tabIndex={-1}
-            whileHover={{ scale: 1.15, rotate: isActive ? 0 : 6 }}
-            whileTap={{ scale: 0.9 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200"
             style={isActive && !item.external ? { backgroundColor: `${groupColor ?? '#1080CA'}22` } : undefined}
           >

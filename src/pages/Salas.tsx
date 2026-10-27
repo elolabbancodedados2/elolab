@@ -22,7 +22,7 @@ import { useSalas, useMedicos } from '@/hooks/useSupabaseData';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Database } from '@/integrations/supabase/types';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { User } from 'lucide-react';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { formatarDataOcupacaoAntiga, summarizeRoomOccupancy } from '@/lib/roomOccupancy';
@@ -255,16 +255,16 @@ export default function Salas() {
           await queryClient.invalidateQueries({ queryKey: ['salas'] });
           throw new Error('Esta sala foi alterada por outra pessoa ou removida. Atualize a lista e confira os dados antes de salvar novamente.');
         }
-        toast.success('Sala atualizada!');
+        toast.success('Sala atualizada');
       } else {
         const { error } = await supabase.from('salas').insert({ ...payload, clinica_id: profile.clinica_id });
         if (error) throw error;
-        toast.success('Sala cadastrada!');
+        toast.success('Sala cadastrada');
       }
       queryClient.invalidateQueries({ queryKey: ['salas'] });
       setIsDialogOpen(false);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar sala.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível salvar a sala.'));
     } finally {
       setIsSaving(false);
     }
@@ -297,7 +297,7 @@ export default function Salas() {
       queryClient.invalidateQueries({ queryKey: ['salas'] });
       toast.success(`${sala.nome} → ${STATUS_LABELS[newStatus]}`);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao atualizar o estado da sala.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar o estado da sala.'));
     } finally {
       setUpdatingSalaId(null);
     }
@@ -410,7 +410,7 @@ export default function Salas() {
                 aria-pressed={ativo}
                 onClick={() => setFilterEstado(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',

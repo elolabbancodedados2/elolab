@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -18,10 +19,10 @@ export function ImpersonationBanner() {
       const { error } = await (supabase as any).rpc('platform_stop_impersonation');
       if (error) throw error;
       await refreshProfile();
-      toast.success('Impersonação encerrada');
+      toast.success('Acesso assistido encerrado');
       window.location.href = '/admin/clinicas';
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao encerrar impersonação');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível encerrar o acesso assistido.'));
     } finally {
       setLoading(false);
     }
@@ -32,11 +33,11 @@ export function ImpersonationBanner() {
       <div className="flex items-center gap-2">
         <Crown className="h-4 w-4 text-warning" />
         <span>
-          Você está visualizando o sistema como <strong>uma clínica específica</strong>. Todas as ações afetam dados reais.
+          <strong>Acesso assistido ativo</strong>: você está operando dentro de uma clínica. As ações afetam dados reais.
         </span>
       </div>
       <Button size="sm" variant="outline" onClick={handleStop} disabled={loading}>
-        <X className="h-3.5 w-3.5 mr-1" /> Encerrar impersonação
+        <X className="h-3.5 w-3.5 mr-1" /> Encerrar acesso
       </Button>
     </div>
   );

@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
@@ -36,7 +36,7 @@ function primeiroNome(nome?: string | null) {
 }
 
 function mensagemCobranca(nome: string, valor: string, dias: number) {
-  return `Olá, ${nome}! Identificamos uma pendência de ${valor} vencida há ${dias} dia(s). Podemos ajudar a regularizar o pagamento?`;
+  return `Olá, ${nome}. Identificamos uma pendência de ${valor} vencida há ${dias} dia(s). Podemos ajudar a regularizar o pagamento?`;
 }
 
 export default function CobrancaInadimplentes() {
@@ -135,7 +135,7 @@ export default function CobrancaInadimplentes() {
     } catch (e: any) {
       toast.error(loteAtual > 1
         ? `Falha no lote ${loteAtual} de ${lotesIds.length}. Processados ${processados} até aqui; atualize a lista antes de tentar novamente.`
-        : e.message || 'Falha ao disparar cobrança');
+        : friendlyErrorMessage(e, 'Não foi possível disparar a cobrança.'));
     } finally {
       setSending(false);
       setSendProgress({ batch: 0, total: 0 });
@@ -265,7 +265,7 @@ export default function CobrancaInadimplentes() {
               aria-pressed={ativo}
               onClick={() => setFiltroIndicador(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',

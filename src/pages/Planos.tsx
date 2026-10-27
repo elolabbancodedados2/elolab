@@ -32,7 +32,7 @@ import { descricaoComercialPlano } from '@/lib/planFeatures';
 import { cn } from '@/lib/utils';
 
 import { ptBR } from 'date-fns/locale';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageSkeleton } from '@/components/ui/loading-skeleton';
 
 const planConfig: Record<string, {
@@ -136,7 +136,7 @@ export default function Planos() {
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
       queryClient.invalidateQueries({ queryKey: ['billing_status'] });
     },
-    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+    onError: (err: any) => toast.error(friendlyErrorMessage(err, 'Não foi possível cancelar a assinatura.')),
   });
 
   if (isPlatformAdmin) {
@@ -288,7 +288,6 @@ export default function Planos() {
               )}
             >
               {/* Gradient overlay */}
-              {!isCurrentPlan && <div className={`absolute inset-0 bg-gradient-to-b ${config.gradient} pointer-events-none`} />}
 
               {/* Popular badge */}
               {isHighlighted && (

@@ -43,7 +43,7 @@ import { useMedicos, useAgendamentos, useAgendamentosPeriodo, useSupabaseQuery }
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { exportToFHIR, exportToXML } from '@/lib/clinicalExport';
 import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
@@ -258,9 +258,8 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
   return (
     <div className="space-y-4">
       {/* Header strip */}
-      <div className="rounded-[24px] overflow-hidden border border-border/60 bg-card shadow-xs">
+      <div className="rounded-xl overflow-hidden border border-border/60 bg-card shadow-xs">
         <div className="relative overflow-hidden bg-[image:var(--gradient-hero)] p-5 text-white">
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-highlight/40 blur-3xl" />
           <div className="relative flex items-start gap-4">
             <PatientPhoto
               pacienteId={paciente.id}
@@ -282,7 +281,7 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
                 </Badge>
                 {paciente.sexo && (
                   <Badge variant="outline" className="border-white/25 px-1.5 py-0 text-xs text-white">
-                    {paciente.sexo === 'masculino' ? '♂ Masc' : paciente.sexo === 'feminino' ? '♀ Fem' : 'Outro'}
+                    {paciente.sexo === 'masculino' ? 'Masc.' : paciente.sexo === 'feminino' ? 'Fem.' : 'Outro'}
                   </Badge>
                 )}
                 {paciente.data_nascimento && (
@@ -759,7 +758,7 @@ export default function Prontuarios() {
         toast.success(r.message, { description: r.actions.join(' • ') });
       }
     } catch (e: any) {
-      toast.error('Não foi possível dar baixa', { description: e?.message });
+      toast.error('Não foi possível dar baixa', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       setDispensando(false);
     }
@@ -1108,7 +1107,7 @@ export default function Prontuarios() {
 
       if (error || !agendamento || agendamento.paciente_id !== routePacienteId) {
         toast.error('Não foi possível abrir este atendimento', {
-          description: error?.message || 'O agendamento não pertence a este paciente ou não está disponível nesta clínica.',
+          description: friendlyErrorMessage(error, 'O agendamento não pertence a este paciente ou não está disponível nesta clínica.'),
         });
         limparAtalho();
         return;
@@ -1758,7 +1757,7 @@ export default function Prontuarios() {
           )}
           <Card
             id="prontuario-patient-picker"
-            className={`overflow-hidden rounded-[24px] border-border/60 ${selectedPacienteId && !showPatientPicker ? 'hidden lg:block' : ''}`}
+            className={`overflow-hidden rounded-xl border-border/60 ${selectedPacienteId && !showPatientPicker ? 'hidden lg:block' : ''}`}
           >
             <CardHeader className="space-y-2 pb-2 px-3 pt-3">
               <Label htmlFor="prontuario-busca-paciente" className="text-xs font-semibold">Buscar paciente</Label>
@@ -1919,10 +1918,9 @@ export default function Prontuarios() {
           ) : selectedPacienteId && pacienteSelecionadoQuery.isLoading ? (
             <Card><CardContent className="space-y-3 py-6"><Skeleton className="h-8 w-48" /><Skeleton className="h-24" /></CardContent></Card>
           ) : !selectedPaciente ? (
-            <Card className="relative overflow-hidden rounded-[24px] border-dashed border-border/70">
-              <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+            <Card className="relative overflow-hidden rounded-xl border-dashed border-border/70">
               <CardContent className="relative flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground lg:py-20">
-                <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[image:var(--gradient-primary)] text-white shadow-glow">
+                <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] text-white shadow-glow">
                   <FileText className="h-7 w-7" />
                 </span>
                 <p className="text-lg font-extrabold text-foreground">Escolha um paciente para começar</p>

@@ -47,7 +47,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
 import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import { Paciente } from '@/types';
 import { cn, sanitizeText } from '@/lib/utils';
@@ -691,7 +691,7 @@ export default function Pacientes() {
       });
 
       if (trilhaOk) {
-        toast.success('Prontuário salvo com sucesso!');
+        toast.success('Prontuário salvo com sucesso');
       } else {
         toast.warning('Prontuário salvo, mas não registrado na auditoria.', {
           description: 'O registro ficou na fila de reenvio. Se persistir, avise o suporte.',
@@ -1162,7 +1162,7 @@ export default function Pacientes() {
         toast.success(`Paciente ${acao} com sucesso`);
       } catch (erroComorbidades: any) {
         toast.warning(`Paciente ${acao}, mas as comorbidades não foram salvas`, {
-          description: erroComorbidades?.message || 'Edite a ficha para tentar de novo.',
+          description: friendlyErrorMessage(erroComorbidades, 'Edite a ficha para tentar de novo.'),
         });
       }
 
@@ -1179,10 +1179,10 @@ export default function Pacientes() {
         atualizarListasPacientes();
         return;
       }
-      // A mensagem do banco costuma dizer exatamente o que faltou (campo
-      // obrigatório, CPF duplicado, permissão). Esconder isso obriga a adivinhar.
+      // O código do banco vira frase que diz o que faltou (campo obrigatório,
+      // duplicidade, permissão), sem expor o texto cru do Postgres.
       toast.error('Erro ao salvar paciente', {
-        description: error?.message || error?.details || 'Verifique os dados e tente novamente.',
+        description: friendlyErrorMessage(error, 'Verifique os dados e tente novamente.'),
       });
     } finally {
       pacienteSaveLockRef.current = false;
@@ -1201,7 +1201,7 @@ export default function Pacientes() {
       try {
         if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
         await navigator.clipboard.writeText(url);
-        toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
+        toast.success('Link copiado', { description: `Link do portal de ${pacienteNome} copiado.` });
       } catch {
         setLinkPortalGerado({ nome: pacienteNome, url });
         toast.info('O link foi gerado', { description: 'A cópia automática não funcionou. Copie o link na janela aberta.' });
@@ -1256,7 +1256,7 @@ export default function Pacientes() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
       await navigator.clipboard.writeText(linkPortalGerado.url);
-      toast.success('Link copiado!');
+      toast.success('Link copiado');
     } catch {
       const campo = document.getElementById('link-portal-paciente') as HTMLInputElement | null;
       campo?.focus();
@@ -1307,7 +1307,7 @@ export default function Pacientes() {
           title="Pacientes"
           description="Gestão completa do cadastro de pacientes"
           actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
-          <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+          <motion.div>
             <Button
               variant="outline"
               size="lg"
@@ -1329,7 +1329,7 @@ export default function Pacientes() {
               Revisar duplicidades
             </Button>
           )}
-          <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+          <motion.div>
             <Button
               size="lg"
               onClick={handleNew}
@@ -1943,7 +1943,7 @@ export default function Pacientes() {
                         ? `${calcularIdade(selectedPaciente.data_nascimento)}a`
                         : 'Nascimento inválido'
                       : 'Idade N/I'}</span>
-                    {selectedPaciente.sexo && <span>• {selectedPaciente.sexo === 'M' ? '♂' : selectedPaciente.sexo === 'F' ? '♀' : '⚧'}</span>}
+                    {selectedPaciente.sexo && <span>• {selectedPaciente.sexo === 'M' ? 'Masculino' : selectedPaciente.sexo === 'F' ? 'Feminino' : 'Outro'}</span>}
                     {selectedPaciente.cpf && <span>• {selectedPaciente.cpf}</span>}
                     <span>• {getConvenioNome(selectedPaciente.convenio_id)}</span>
                   </div>
@@ -2222,7 +2222,7 @@ export default function Pacientes() {
                                 clinica_id: authProfile?.clinica_id || null,
                               });
                               if (error) throw error;
-                              toast.info('Consulta agendada!');
+                              toast.info('Consulta agendada');
                               setShowAgendamentoForm(false);
                               loadAgendamentos(selectedPacienteId!);
                             } catch (err: any) {
@@ -2361,7 +2361,7 @@ export default function Pacientes() {
                                 clinica_id: authProfile.clinica_id,
                               });
                               if (error) throw error;
-                              toast.success('Exame solicitado!');
+                              toast.success('Exame solicitado');
                               setShowExameForm(false);
                               loadExames(selectedPacienteId!);
                             } catch (err: any) {

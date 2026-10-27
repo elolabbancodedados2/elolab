@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -148,7 +149,7 @@ export function useSupabaseUpdate<T extends Record<string, unknown>>(tableName: 
       queryClient.invalidateQueries({ queryKey: [tableName] });
     },
     onError: (error: Error) => {
-      toast.error(`Erro ao atualizar registro: ${error.message}`);
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar o registro.'));
     },
   });
 }

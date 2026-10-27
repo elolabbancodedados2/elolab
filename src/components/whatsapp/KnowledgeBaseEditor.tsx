@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useCallback, useEffect, useState } from 'react';
 import { BookOpen, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 type KnowledgeItem = {
   id: string;
@@ -27,6 +29,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<KnowledgeItem | null>(null);
 
   const invoke = useCallback(async (action: KnowledgeAction, values: Record<string, string> = {}) => {
     const { data, error } = await supabase.functions.invoke('whatsapp-agent-knowledge', {
@@ -44,7 +47,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
       setItems(Array.isArray(result?.data) ? result.data : []);
     } catch (error) {
       toast.error('Não foi possível carregar os conteúdos do agente.', {
-        description: error instanceof Error ? error.message : undefined,
+        description: friendlyErrorMessage(error, 'Tente novamente em instantes.'),
       });
     } finally {
       setIsLoading(false);
@@ -76,7 +79,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
       await loadItems();
     } catch (error) {
       toast.error('Não foi possível salvar o conteúdo.', {
-        description: error instanceof Error ? error.message : undefined,
+        description: friendlyErrorMessage(error, 'Tente novamente em instantes.'),
       });
     } finally {
       setIsSaving(false);
@@ -84,7 +87,6 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
   };
 
   const remove = async (item: KnowledgeItem) => {
-    if (!window.confirm(`Remover “${item.titulo}” da base de conhecimento?`)) return;
     setBusyId(item.id);
     try {
       await invoke('delete', { document_id: item.id });
@@ -93,7 +95,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
       toast.success('Conteúdo removido.');
     } catch (error) {
       toast.error('Não foi possível remover o conteúdo.', {
-        description: error instanceof Error ? error.message : undefined,
+        description: friendlyErrorMessage(error, 'Tente novamente em instantes.'),
       });
     } finally {
       setBusyId(null);
@@ -159,7 +161,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
                   <Button variant="ghost" size="icon" aria-label={`Editar ${item.titulo}`} onClick={() => { setEditingId(item.id); setTitulo(item.titulo); setConteudo(item.conteudo); }}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" aria-label={`Remover ${item.titulo}`} disabled={busyId === item.id} onClick={() => void remove(item)}>
+                  <Button variant="ghost" size="icon" aria-label={`Remover ${item.titulo}`} disabled={busyId === item.id} onClick={() => setRemoveTarget(item)}>
                     {busyId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
                   </Button>
                 </div>
@@ -168,6 +170,15 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
           </ul>
         )}
       </CardContent>
+      <ConfirmDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => { if (!open) setRemoveTarget(null); }}
+        title="Remover conteúdo"
+        description={`Remover “${removeTarget?.titulo ?? ''}” da base de conhecimento?`}
+        confirmLabel="Remover"
+        variant="destructive"
+        onConfirm={() => { if (removeTarget) void remove(removeTarget); }}
+      />
     </Card>
   );
 }

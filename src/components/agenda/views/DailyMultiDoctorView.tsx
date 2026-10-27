@@ -134,7 +134,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
           <>
             <span className="h-1.5 w-1.5 rounded-full bg-[#1080CA]" />
             <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
-            {confirmed > 0 && <span className="text-success">✓ {confirmed}</span>}
+            {confirmed > 0 && <span className="text-success">{confirmed} conf.</span>}
           </>
         ) : (
           <span className="italic text-muted-foreground/60">{total === 0 ? 'Agenda livre' : 'Sem próximas consultas'}</span>

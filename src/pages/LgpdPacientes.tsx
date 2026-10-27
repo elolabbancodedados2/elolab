@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -96,7 +96,7 @@ export default function LgpdPacientes() {
       void pendentes.refetch();
     } catch (err: unknown) {
       console.error(err);
-      toast.error(err instanceof Error ? err.message : 'Erro ao exportar dados');
+      toast.error(friendlyErrorMessage(err, 'Não foi possível exportar os dados.'));
     } finally {
       setIsProcessing(false);
     }

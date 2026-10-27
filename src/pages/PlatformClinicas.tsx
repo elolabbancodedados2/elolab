@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -133,7 +133,7 @@ export default function PlatformClinicas() {
       toast.success(`Entrando como ${alvo.nome}`);
       navigate('/dashboard');
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao impersonar clínica');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível acessar a clínica.'));
     } finally {
       impersonationLock.current = false;
       setImpersonatingId(null);
@@ -192,7 +192,7 @@ export default function PlatformClinicas() {
       }
       await refetchOrfaos();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao reconciliar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível reconciliar.'));
     } finally {
       reconcileLock.current = false;
       setReconciling(false);
@@ -212,7 +212,7 @@ export default function PlatformClinicas() {
       toast.success(`Código reenviado para ${email}`);
       await refetchOrfaos();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao reenviar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível reenviar.'));
     } finally {
       resendLock.current = false;
       setResendingId(null);

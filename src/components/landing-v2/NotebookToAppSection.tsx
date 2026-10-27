@@ -64,7 +64,7 @@ export default function NotebookToAppSection() {
                 width={1122}
                 height={1402}
                 sizes="(min-width: 1024px) 30vw, (min-width: 768px) 32vw, 92vw"
-                className="h-auto w-full object-contain drop-shadow-[0_18px_30px_rgba(10,34,55,0.08)] transition-transform duration-500 ease-out group-hover:-translate-y-1"
+                className="h-auto w-full object-contain drop-shadow-[0_18px_30px_rgba(10,34,55,0.08)]"
               />
             </FadeIn>
           ))}

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { formatCPF, validateCPF } from '@/lib/formatters';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 export default function PortalGuias() {
   const { token } = useParams<{ token: string }>();
@@ -94,7 +95,7 @@ export default function PortalGuias() {
       if (!resp.ok) throw new Error(json.error || 'Erro ao enviar');
       setSuccess(true);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao enviar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível enviar.'));
     } finally {
       setSubmitting(false);
     }
@@ -145,7 +146,7 @@ export default function PortalGuias() {
           <Card className="max-w-md w-full rounded-2xl">
             <CardContent className="p-8 text-center space-y-3">
               <CheckCircle2 className="h-14 w-14 text-success mx-auto" />
-              <h2 className="text-2xl font-bold">Guia enviada!</h2>
+              <h2 className="text-2xl font-bold">Guia enviada</h2>
               <p className="text-muted-foreground text-sm">
                 A clínica <strong>{clinicaNome}</strong> recebeu sua solicitação. Em breve entrarão em contato para agendar a coleta.
               </p>

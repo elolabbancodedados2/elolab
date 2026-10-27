@@ -50,7 +50,7 @@ import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { canalUnico } from '@/lib/realtimeCanal';
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -608,16 +608,16 @@ export default function Fila() {
       if (result.actions.length === 0) {
         toast.info('Este agendamento já estava na fila.');
       } else if (isMedicoOnly) {
-        toast.success('Paciente adicionado à fila!', {
+        toast.success('Paciente adicionado à fila', {
           description: 'A recepção deve confirmar a cobrança antes do atendimento.',
         });
       } else {
-        toast.success('Paciente adicionado à fila!', {
+        toast.success('Paciente adicionado à fila', {
           description: prioridade === 'normal' ? undefined : `Prioridade ${prioridade} aplicada.`,
         });
       }
     } catch (e: any) {
-      toast.error('Erro: ' + e.message);
+      toast.error(friendlyErrorMessage(e, 'Não foi possível adicionar o paciente à fila.'));
     } finally {
       setIsSaving(false);
     }
@@ -666,7 +666,7 @@ export default function Fila() {
       return;
     }
     setFinalizando(null);
-    toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
+    toast.success(`Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
       description: result.actions.join(' • '),
       duration: 8000,
       action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') },
@@ -708,7 +708,7 @@ export default function Fila() {
       // O Painel TV é o único dispositivo que anuncia chamadas; evita duas
       // vozes simultâneas em recepção e sala de espera.
       refresh();
-      toast.success(statusEsperado === 'chamado' ? '📢 Paciente chamado novamente!' : '📢 Paciente chamado!');
+      toast.success(statusEsperado === 'chamado' ? 'Paciente chamado novamente' : 'Paciente chamado');
       return;
     }
 
@@ -764,7 +764,7 @@ export default function Fila() {
 
     if (erroFila) {
       toast.error('Não foi possível mudar o status na fila.', {
-        description: erroFila.message,
+        description: friendlyErrorMessage(erroFila, 'Tente novamente.'),
       });
       refresh();
       return;
@@ -787,7 +787,7 @@ export default function Fila() {
       if (erroAg || !agendamentoAtualizado) {
         toast.warning('A fila foi atualizada, mas o agendamento não acompanhou.', {
           description: erroAg
-            ? `${erroAg.message}. A agenda pode mostrar este paciente com status antigo.`
+            ? 'A agenda pode mostrar este paciente com status antigo. Atualize a agenda para conferir.'
             : 'O agendamento mudou ou não foi encontrado na clínica atual. Atualize a agenda para conferir.',
         });
       }

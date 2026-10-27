@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Activity, AlertTriangle, Bell, BellOff, CheckCircle2, Clock3, RefreshCw, RotateCcw, Search, ServerCrash, Webhook } from 'lucide-react';
 import { toast } from 'sonner';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -82,7 +82,7 @@ export default function PlatformFilas() {
       }
       await queryClient.invalidateQueries({ queryKey: ['platform-queues'] });
     } catch (error) {
-      toast.error('Reprocessamento falhou', { description: error instanceof Error ? error.message : 'Tente novamente.' });
+      toast.error('Reprocessamento falhou', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally {
       retryLock.current = false;
       setBusyJob(null);

@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 import { CardGridSkeleton, TableSkeleton } from '@/components/ui/loading-skeleton';
 import { EmptyEstoque } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -330,7 +330,7 @@ export default function Estoque() {
           await queryClient.invalidateQueries({ queryKey: ['estoque'] });
           throw new Error('Este produto foi alterado por outra pessoa ou removido. Atualize a lista e confira os dados antes de salvar novamente.');
         }
-        toast.success('Produto atualizado!');
+        toast.success('Produto atualizado');
     } else {
         const { data, error } = await (supabase as any).rpc('cadastrar_item_estoque', {
           p_clinica_id: profile.clinica_id,
@@ -356,12 +356,12 @@ export default function Estoque() {
         });
         if (error) throw error;
         if (typeof data !== 'string' || !data) throw new Error('O servidor não confirmou o cadastro. Tente novamente antes de abrir outro produto.');
-        toast.success('Produto cadastrado!');
+        toast.success('Produto cadastrado');
       }
       await queryClient.invalidateQueries({ queryKey: ['estoque'] });
       setIsFormOpen(false);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível salvar o item.'));
     } finally {
       saveLock.current = false;
       setIsSaving(false);
@@ -393,14 +393,14 @@ export default function Estoque() {
       });
       if (error) throw error;
       if (!Number.isInteger(data)) throw new Error('O servidor não confirmou o novo saldo. Atualize o estoque antes de repetir.');
-      toast.success(`${movimentacao.tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada!`);
+      toast.success(`${movimentacao.tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['estoque'] }),
         queryClient.invalidateQueries({ queryKey: ['movimentacoes-timeline'] }),
       ]);
       setIsMovimentacaoOpen(false);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao registrar.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível registrar a movimentação.'));
     } finally {
       saveLock.current = false;
       setIsSaving(false);
@@ -436,12 +436,12 @@ export default function Estoque() {
         toast.error('Sem permissão para excluir ou produto já removido.');
         return;
       }
-      toast.success('Produto excluído!');
+      toast.success('Produto excluído');
       await queryClient.invalidateQueries({ queryKey: ['estoque'] });
       setIsDeleteOpen(false);
       setDeleteId(null);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível excluir o item.'));
     } finally {
       saveLock.current = false;
       setIsSaving(false);
@@ -566,7 +566,7 @@ export default function Estoque() {
             const Icon = item.icon;
             const ativo = filterAlerta === item.key;
             return <button key={item.key} type="button" aria-pressed={ativo} onClick={() => { setActiveTab('produtos'); setFilterAlerta(ativo ? 'todos' : item.key); }}
-              className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+              className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 item.escuro && 'border-transparent bg-gradient-primary text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#1080CA]/60')}>
               <div className="flex min-h-[96px] items-center gap-3 p-3">
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', item.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', item.color)} /></div>

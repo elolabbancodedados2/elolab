@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Ban, Building2, CheckCircle2, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, Ban, Building2, Check, CheckCircle2, Circle, RefreshCw, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
@@ -309,7 +309,7 @@ export default function PlatformOnboarding() {
                   [`Equipe (${item.team_size})`, item.team_size > 1],
                   ['Primeiro uso', item.has_activity],
                 ] as Array<[string, boolean]>).map(([label, done]) => (
-                  <Badge key={label} variant={done ? 'outline' : 'secondary'} className={cn('rounded-full', done && 'border-[#BFD8EE] text-[#1080CA]')}>{done ? '✓' : '○'} {label}</Badge>
+                  <Badge key={label} variant={done ? 'outline' : 'secondary'} className={cn('rounded-full', done && 'border-[#BFD8EE] text-[#1080CA]')}>{done ? <Check className="mr-1 h-3 w-3" aria-hidden="true" /> : <Circle className="mr-1 h-3 w-3" aria-hidden="true" />}{label}</Badge>
                 ))}
               </div>
             </CardContent>

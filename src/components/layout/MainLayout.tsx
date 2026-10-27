@@ -62,7 +62,7 @@ export function MainLayout() {
           role="main"
           tabIndex={-1}
         >
-          <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(2rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
+          <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(6rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
             <Breadcrumbs />
             <div className="animate-fade-in">
               {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,

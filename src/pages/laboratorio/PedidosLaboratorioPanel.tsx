@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { normalizarExamesSolicitados } from '@/lib/laboratorio/pedidos';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -153,7 +153,7 @@ export function PedidosLaboratorioPanel() {
       toast.success('Pedido laboratorial registrado');
       limparFormulario();
     },
-    onError: (error) => toast.error('Não foi possível criar o pedido', { description: error.message }),
+    onError: (error) => toast.error('Não foi possível criar o pedido', { description: friendlyErrorMessage(error, 'Confira os dados do pedido e tente novamente.') }),
   });
 
   const limparFormulario = () => {
@@ -186,7 +186,7 @@ export function PedidosLaboratorioPanel() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="border-border/70 bg-gradient-to-br from-primary/[0.07] to-background"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : emAberto}</p></div><span className="rounded-xl bg-primary/10 p-2.5 text-primary"><Activity className="h-5 w-5" /></span></CardContent></Card>
+        <Card className="border-border/70 bg-card"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : emAberto}</p></div><span className="rounded-xl bg-primary/10 p-2.5 text-primary"><Activity className="h-5 w-5" /></span></CardContent></Card>
         <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Prioridade alta</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : urgentes}</p></div><span className="rounded-xl bg-amber-500/10 p-2.5 text-amber-700"><AlertTriangle className="h-5 w-5" /></span></CardContent></Card>
         <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Liberados</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : liberados}</p></div><span className="rounded-xl bg-cyan-500/10 p-2.5 text-cyan-700"><ClipboardList className="h-5 w-5" /></span></CardContent></Card>
       </div>

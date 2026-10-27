@@ -87,7 +87,7 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
                 )}
               </div>
               {confirmed > 0 && dayAppts.length <= 3 && (
-                <div className="mt-1 text-[9px] text-success">✓ {confirmed} conf.</div>
+                <div className="mt-1 text-[9px] text-success">{confirmed} conf.</div>
               )}
             </button>
           );

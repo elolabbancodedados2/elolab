@@ -93,7 +93,7 @@ export default function PlatformRelatorioExecutivo() {
           <Button asChild variant="outline" className="gap-2 rounded-full">
             <Link to="/admin/relatorios-agendados"><CalendarClock className="h-4 w-4" />Agendar envio</Link>
           </Button>
-          <Button onClick={exportar} disabled={!d || report.isFetching} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+          <Button onClick={exportar} disabled={!d || report.isFetching} className="gap-2 rounded-full">
             <Download className="h-4 w-4" />CSV
           </Button>
         </>}

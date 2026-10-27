@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -118,7 +119,7 @@ export function AutorizacaoConvenioModal({
         toast.warning('Solicitação registrada internamente', { description: 'Este convênio não possui e-mail cadastrado. Entre em contato manualmente e atualize o status depois.' });
       }
     } catch (e: any) {
-      toast.error('Erro ao solicitar autorização: ' + e.message);
+      toast.error('Erro ao solicitar autorização', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       setSubmitting(false);
     }
@@ -223,7 +224,7 @@ export function AutorizacaoConvenioModal({
                       </div>
 
                       {auth.observacoes && (
-                        <p className="text-xs italic text-muted-foreground">💬 {auth.observacoes}</p>
+                        <p className="text-xs italic text-muted-foreground">Obs.: {auth.observacoes}</p>
                       )}
                     </div>
                   ))}
@@ -254,13 +255,13 @@ export function AutorizacaoConvenioModal({
                   {selectedConvenioData && (
                     <div className="p-2 rounded bg-muted/50 text-xs space-y-1">
                       {selectedConvenioData.carencia > 0 && (
-                        <p>📅 Período de carência: {selectedConvenioData.carencia} dias</p>
+                        <p>Período de carência: {selectedConvenioData.carencia} dias</p>
                       )}
                       {selectedConvenioData.telefone && (
-                        <p>📞 Suporte: {selectedConvenioData.telefone}</p>
+                        <p>Suporte: {selectedConvenioData.telefone}</p>
                       )}
                       {selectedConvenioData.email && (
-                        <p>✉️ Email: {selectedConvenioData.email}</p>
+                        <p>E-mail: {selectedConvenioData.email}</p>
                       )}
                     </div>
                   )}

@@ -8,7 +8,6 @@ import {
   ListChecks,
   Signature,
   UsersRound,
-  Video,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -20,7 +19,6 @@ const CAPABILITIES: { label: string; Icon: LucideIcon }[] = [
   { label: "Fila e triagem", Icon: ListChecks },
   { label: "Prontuário eletrônico", Icon: FileText },
   { label: "Prescrições e exames", Icon: ClipboardList },
-  { label: "Teleconsulta", Icon: Video },
   { label: "Assistente Elo com IA", Icon: Bot },
   { label: "Lembretes e confirmações", Icon: BellRing },
   { label: "Financeiro e repasses", Icon: Wallet },

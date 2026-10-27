@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface OperationalTransitionResult {
@@ -38,7 +39,7 @@ export async function atomicCheckin(
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Não foi possível realizar o check-in.',
+      message: friendlyErrorMessage(error, 'Não foi possível realizar o check-in.'),
       actions: [],
     };
   }
@@ -80,7 +81,7 @@ export async function atomicMarkNoShow(
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Não foi possível marcar o atendimento como não realizado.',
+      message: friendlyErrorMessage(error, 'Não foi possível marcar o atendimento como não realizado.'),
     };
   }
 }
@@ -105,7 +106,7 @@ export async function atomicStartAppointment(
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Não foi possível iniciar o atendimento.',
+      message: friendlyErrorMessage(error, 'Não foi possível iniciar o atendimento.'),
       actions: [],
     };
   }
@@ -128,7 +129,7 @@ export async function atomicConcludeQueue(
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Não foi possível concluir o atendimento.',
+      message: friendlyErrorMessage(error, 'Não foi possível concluir o atendimento.'),
       actions: [],
     };
   }

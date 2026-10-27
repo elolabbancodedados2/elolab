@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 type Signal = { id: number; sender: 'provider' | 'guest'; signal_type: 'offer' | 'answer' | 'ice-candidate'; payload: RTCSessionDescriptionInit | RTCIceCandidateInit };
 type SessionInfo = { status: string; expires_at: string; provider_present: boolean; guest_present: boolean };
@@ -68,7 +69,7 @@ export default function Teleconsulta() {
     if (!sessionId || (!user && !guestToken)) return;
     let alive = true;
     call('state').then((state: SessionInfo) => { if (alive) setSession(state); })
-      .catch((cause: Error) => { if (alive) setError(cause.message); });
+      .catch((cause: Error) => { if (alive) setError(friendlyErrorMessage(cause, 'Não foi possível carregar a teleconsulta.')); });
     return () => { alive = false; };
   }, [call, guestToken, sessionId, user]);
 
@@ -110,7 +111,7 @@ export default function Teleconsulta() {
         await send('offer', { type: offer.type, sdp: offer.sdp });
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Libere o acesso ao microfone e à câmera para continuar.');
+      setError(friendlyErrorMessage(cause, 'Libere o acesso ao microfone e à câmera para continuar.'));
       if (peer.current) peer.current.close();
       peer.current = null;
       localStream.current?.getTracks().forEach((track) => track.stop());
@@ -165,7 +166,7 @@ export default function Teleconsulta() {
       await call('consent');
       setAccepted(true);
       setSession((current) => current ? { ...current, status: isProvider ? 'active' : current.status } : current);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível aceitar o consentimento.'); }
+    } catch (cause) { setError(friendlyErrorMessage(cause, 'Não foi possível aceitar o consentimento.')); }
   };
 
   const closeRoom = async () => {
@@ -183,7 +184,7 @@ export default function Teleconsulta() {
       await call('reconnect');
       await startConnection(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível reconectar.');
+      setError(friendlyErrorMessage(cause, 'Não foi possível reconectar.'));
     }
   };
 

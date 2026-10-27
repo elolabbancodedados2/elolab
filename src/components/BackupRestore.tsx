@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -110,7 +111,7 @@ export function BackupRestore() {
     } catch (e: any) {
       toast({
         title: 'Erro ao criar backup',
-        description: e?.message || 'Tente novamente.',
+        description: friendlyErrorMessage(e, 'Tente novamente.'),
         variant: 'destructive',
       });
     } finally {
@@ -212,7 +213,7 @@ export function BackupRestore() {
     } catch (e: any) {
       toast({
         title: 'Erro ao restaurar backup',
-        description: e?.message || 'Tente novamente.',
+        description: friendlyErrorMessage(e, 'Tente novamente.'),
         variant: 'destructive',
       });
     } finally {

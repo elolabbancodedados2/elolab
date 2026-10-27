@@ -203,7 +203,7 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
                       {protocol.exames_sugeridos && protocol.exames_sugeridos.length > 0 && (
                         <div>
                           <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-                            <TestTube className="h-4 w-4 text-purple-500" />
+                            <TestTube className="h-4 w-4 text-primary" />
                             Exames Sugeridos
                           </h4>
                           <div className="flex flex-wrap gap-1">

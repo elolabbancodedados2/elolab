@@ -39,6 +39,7 @@ import {
 import { toast } from 'sonner';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { chaveChamada, lerChamadasAnunciadas, salvarChamadasAnunciadas } from '@/lib/painelChamadas';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 interface FilaItem {
   id: string;
@@ -451,7 +452,7 @@ export default function PainelTV() {
       });
       if (dbError) throw dbError;
       arquivoEnviado = null;
-      toast.success('Mídia adicionada com sucesso!');
+      toast.success('Mídia adicionada com sucesso');
       loadMedia();
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro no upload:', error);
@@ -461,11 +462,11 @@ export default function PainelTV() {
           if (cleanupError) throw cleanupError;
         } catch (cleanupError: any) {
           toast.warning('O cadastro da mídia falhou e o arquivo temporário não pôde ser removido.', {
-            description: cleanupError?.message || 'Verifique o armazenamento do painel.',
+            description: friendlyErrorMessage(cleanupError, 'Verifique o armazenamento do painel.'),
           });
         }
       }
-      toast.error(error.message || 'Erro ao fazer upload');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível enviar a mídia.'));
     } finally {
       setUploading(false);
       event.target.value = '';
@@ -492,7 +493,7 @@ export default function PainelTV() {
           if (storageError) throw storageError;
         } catch (storageError: any) {
           toast.warning('A mídia saiu do painel, mas o arquivo não foi removido do Storage.', {
-            description: storageError?.message || 'Verifique o armazenamento do painel.',
+            description: friendlyErrorMessage(storageError, 'Verifique o armazenamento do painel.'),
           });
           loadMedia();
           return;
@@ -501,7 +502,7 @@ export default function PainelTV() {
       toast.success('Mídia removida');
       loadMedia();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao remover mídia');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível remover a mídia.'));
     }
   };
 
@@ -514,7 +515,7 @@ export default function PainelTV() {
       if (!data) throw new Error('A mídia não pertence à clínica atual ou já foi removida.');
       void loadMedia();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao atualizar mídia');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar a mídia.'));
     }
   };
 
@@ -538,7 +539,7 @@ export default function PainelTV() {
   const currentMedia = mediaItems[currentMediaIndex];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#04182B] via-[#0A3558] to-[#062540] text-white relative overflow-hidden">
+    <div className="min-h-screen bg-slate-900 text-white relative overflow-hidden">
       {/* Background Media Carousel */}
       {mediaItems.length > 0 && currentMedia && (
         <div className="absolute inset-0 z-0">
@@ -718,7 +719,7 @@ export default function PainelTV() {
                   key={chamado.id}
                   animate={{ scale: [1, 1.01, 1] }}
                   transition={{ repeat: Infinity, duration: 2 }}
-                  className="bg-gradient-primary rounded-2xl p-6 md:p-8 shadow-[0_16px_48px_rgba(16,128,202,0.45)] ring-1 ring-white/20 cursor-pointer mb-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
+                  className="bg-primary rounded-xl p-6 md:p-8 shadow-2xl shadow-primary/20 cursor-pointer mb-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
                   onClick={() => rechamarPaciente(chamado)}
                   onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); rechamarPaciente(chamado); } }}
                   role="button"
@@ -752,8 +753,8 @@ export default function PainelTV() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
           {/* Em Atendimento */}
-          <div className="bg-white/[0.07] backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
-            <div className="flex items-center justify-between gap-3 bg-gradient-primary px-6 py-4">
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
+            <div className="flex items-center justify-between gap-3 bg-white/10 px-6 py-4">
               <h2 className="text-xl md:text-2xl font-bold font-display">Em Atendimento</h2>
               <span className="rounded-full bg-white/20 px-3 py-1 text-base font-bold tabular-nums">{emAtendimento.length}</span>
             </div>
@@ -763,13 +764,13 @@ export default function PainelTV() {
               ) : (
                 <div className="space-y-3">
                   {emAtendimento.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-[#1080CA]/20 rounded-xl border border-[#5BB4EE]/30">
+                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/10">
                       <div>
                         <p className="text-lg md:text-xl font-semibold">{getPacienteNome(item.agendamento_id)}</p>
                         <p className="text-white/60">{getMedicoNome(item.agendamento_id)}</p>
                       </div>
                       <div className="text-right">
-                        <span className="bg-[#1080CA] px-4 py-2 rounded-full text-sm md:text-base font-semibold">
+                        <span className="bg-white/15 px-4 py-2 rounded-full text-sm md:text-base font-medium">
                           {getSalaNome(item.sala_id)}
                         </span>
                       </div>

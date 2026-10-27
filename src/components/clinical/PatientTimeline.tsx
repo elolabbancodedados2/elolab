@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDateTimePreference, nomeMedico } from '@/lib/formatters';
 import { useMemo, useState } from 'react';
@@ -394,7 +395,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       doc.save(`prontuario-${pac?.nome?.replace(/\s+/g, '_') || pacienteId}.pdf`);
       toast.success('PDF gerado com sucesso');
     } catch (err: any) {
-      toast.error('Falha ao gerar PDF: ' + err.message);
+      toast.error('Falha ao gerar PDF', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     } finally {
       setPdfLoading(false);
     }
@@ -412,7 +413,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       if (data?.error) throw new Error(data.error);
       setAiSummary(data?.summary || 'Sem resumo gerado.');
     } catch (err: any) {
-      toast.error('Falha ao gerar resumo: ' + err.message);
+      toast.error('Falha ao gerar resumo', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
       setAiSummary('Erro ao gerar resumo clínico.');
     } finally {
       setAiLoading(false);

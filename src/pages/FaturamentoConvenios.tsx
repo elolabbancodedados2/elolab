@@ -17,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { FieldHelp } from '@/components/ContextualHelp';
@@ -224,7 +224,7 @@ export default function FaturamentoConvenios() {
       toast.error('Não foi possível criar o lote.', {
         description: error?.code === '23505'
           ? 'Este número de lote já está cadastrado para o convênio selecionado.'
-          : error?.message || 'Verifique os dados e tente novamente.',
+          : friendlyErrorMessage(error, 'Verifique os dados e tente novamente.'),
       });
     } finally { setSaving(false); }
   }
@@ -268,7 +268,7 @@ export default function FaturamentoConvenios() {
       if (data.repetido) toast.info('Esta glosa já havia sido registrada. Nenhuma duplicata foi criada.');
       else toast.success('Glosa registrada.');
     } catch (error: any) {
-      toast.error('Não foi possível registrar a glosa.', { description: error?.message });
+      toast.error('Não foi possível registrar a glosa.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally { setSaving(false); }
   }
 
@@ -282,7 +282,7 @@ export default function FaturamentoConvenios() {
       if (!data?.success) throw new Error('O lote já foi alterado. Atualize a lista antes de registrar o envio.');
       await queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }); toast.success('Envio registrado.');
       return true;
-    } catch (error: any) { toast.error('Não foi possível atualizar o lote.', { description: error?.message }); return false; }
+    } catch (error: any) { toast.error('Não foi possível atualizar o lote.', { description: friendlyErrorMessage(error, 'Tente novamente.') }); return false; }
     finally { setLoteEnviandoId(null); }
   }
 
@@ -354,7 +354,7 @@ export default function FaturamentoConvenios() {
         toast.success('Retorno atualizado no lote. Nenhum lançamento financeiro foi criado.');
       }
     } catch (error: any) {
-      toast.error('Não foi possível registrar o retorno do lote.', { description: error?.message });
+      toast.error('Não foi possível registrar o retorno do lote.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally {
       setSavingRetornoLote(false);
     }
@@ -390,7 +390,7 @@ export default function FaturamentoConvenios() {
       await queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] });
       toast.success(({ recurso_preparacao: 'Preparação do recurso registrada.', recurso_enviado: 'Recurso marcado como enviado.', aceita: 'Glosa aceita; valor recuperado registrado.', mantida: 'Decisão da operadora registrada.' })[status]);
       return true;
-    } catch (error: any) { toast.error('Não foi possível atualizar a glosa.', { description: error?.message }); }
+    } catch (error: any) { toast.error('Não foi possível atualizar a glosa.', { description: friendlyErrorMessage(error, 'Tente novamente.') }); }
     finally {
       glosaAtualizacaoLock.current = false;
       setGlosaAtualizandoId(null);
@@ -541,7 +541,7 @@ export default function FaturamentoConvenios() {
         <AlertDialogHeader>
           <AlertDialogTitle>Confirmar envio do lote?</AlertDialogTitle>
           <AlertDialogDescription>
-            Lote {loteParaConfirmarEnvio?.numero_lote}. O EloLab não transmite este arquivo à operadora. Marque como enviado somente depois de transmitir o lote pelo canal oficial. O XML baixado aqui é um resumo operacional e não substitui a guia TISS.
+            Lote {loteParaConfirmarEnvio?.numero_lote}. Registre o envio somente depois de transmitir as guias TISS pelo portal da operadora.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

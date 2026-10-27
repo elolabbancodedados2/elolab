@@ -12,7 +12,7 @@ const sampleAppointments = [
 
 /** Demonstração estática e isolada: sem sessão, consultas ou gravações no Supabase. */
 export default function DemonstracaoClinica() {
-  return <main className="min-h-screen bg-gradient-to-br from-[#F3F8FC] via-background to-[#EEF4FA] px-4 py-8 text-foreground sm:px-8">
+  return <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-8">
     <div className="mx-auto max-w-6xl space-y-7">
       <header className="flex flex-wrap items-center justify-between gap-4"><Button asChild variant="outline" className="rounded-full gap-2"><Link to="/"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button><Badge variant="outline" className="gap-2 rounded-full border-[#BFD8EE] bg-white px-3 py-1 text-[#1080CA]"><LockKeyhole className="h-3.5 w-3.5" />Ambiente demonstrativo isolado</Badge></header>
       <div><p className="text-sm font-semibold uppercase tracking-widest text-[#1080CA]">EloLab · demonstração</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Conheça a rotina da clínica</h1><p className="mt-2 max-w-2xl text-muted-foreground">Os nomes, horários e números abaixo são exemplos fictícios desta página. Nada é lido ou salvo na sua conta.</p></div>

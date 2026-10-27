@@ -7,6 +7,7 @@
  * sessão ainda está em AAL1.
  */
 
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useState } from 'react';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,7 @@ export function MFAVerifyDialog({ open, factorId, onVerified, onCancel }: MFAVer
       if (error) throw error;
       onVerified();
     } catch (err: any) {
-      toast.error(err?.message || 'Código inválido. Tente novamente.');
+      toast.error(friendlyErrorMessage(err, 'Código inválido. Tente novamente.'));
       setToken('');
     } finally {
       setIsVerifying(false);

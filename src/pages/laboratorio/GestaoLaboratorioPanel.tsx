@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { formatDate } from '@/lib/formatters';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -88,7 +88,7 @@ export function GestaoLaboratorioPanel() {
       if (variables.tabela === 'laboratorio_controles_qualidade') setNovoControle({ analito: '', nivel: '', resultado: '', unidade: '', limite_inferior: '', limite_superior: '', equipamento_id: '', setor_id: '' });
       if (variables.tabela === 'laboratorio_setores') setNovoSetor('');
     },
-    onError: (error) => toast.error('Não foi possível salvar', { description: error.message }),
+    onError: (error) => toast.error('Não foi possível salvar', { description: friendlyErrorMessage(error, 'Confira os dados e tente novamente.') }),
   });
   const alterarEquipamento = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -98,7 +98,7 @@ export function GestaoLaboratorioPanel() {
       if (error) throw error; if (!data) throw new Error('Equipamento não encontrado nesta clínica.');
     },
     onSuccess: async () => { await invalidate(); toast.success('Estado do equipamento atualizado'); },
-    onError: (error) => toast.error('Não foi possível alterar o equipamento', { description: error.message }),
+    onError: (error) => toast.error('Não foi possível alterar o equipamento', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
   const salvarSla = useMutation({
     mutationFn: async ({ id, valor }: { id: string; valor: string }) => {
