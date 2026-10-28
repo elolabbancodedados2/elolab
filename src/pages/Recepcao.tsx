@@ -27,6 +27,8 @@ import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
+import { IdentificacaoPaciente } from '@/components/clinical/IdentificacaoPaciente';
+import { paraIdentificacao } from '@/lib/pacienteDoRegistro';
 import { cn, sanitizeText } from '@/lib/utils';
 import {
   UserCheck, Clock, Play, Check, Banknote, QrCode, CreditCard,
@@ -1673,6 +1675,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             </DialogTitle>
             <DialogDescription>Registre o pagamento do paciente.</DialogDescription>
           </DialogHeader>
+
+          {/* Confirme o paciente antes de cobrar (CLIN-QA-402). */}
+          {selectedLancamento && (
+            <IdentificacaoPaciente
+              variante="dialogo"
+              contexto="cobranca"
+              paciente={selectedPacienteBalcao ? paraIdentificacao(selectedPacienteBalcao) : null}
+            />
+          )}
 
           {selectedLancamento && (
             <div className="space-y-4">
