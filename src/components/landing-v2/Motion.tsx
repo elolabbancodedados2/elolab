@@ -132,8 +132,8 @@ export function ContactButton({
       <GradientWaveText
         as="span"
         align="left"
-        baseColor="rgb(10,34,55)"
-        customColors={["#ffffff", "#dbeafe", "#ffffff"]}
+        baseColor="hsl(var(--primary-foreground))"
+        customColors={["hsl(var(--primary-foreground))", "hsl(var(--muted))", "hsl(var(--primary-foreground))"]}
         inView
         once={false}
         repeat
@@ -149,7 +149,7 @@ export function LiveProjectButton() {
   return (
     <button
       type="button"
-      className="inline-flex shrink-0 items-center gap-2 rounded-full border-2 border-elolab-cyan/60 px-8 py-3 text-sm font-medium uppercase tracking-widest text-foreground transition-colors duration-200 hover:bg-elolab-blue/15 sm:px-10 sm:py-3.5 sm:text-base"
+      className="inline-flex shrink-0 items-center gap-2 rounded-full border-2 border-border px-8 py-3 text-sm font-medium uppercase tracking-widest text-foreground transition-colors duration-200 hover:bg-primary/15 sm:px-10 sm:py-3.5 sm:text-base"
     >
       <GradientWaveText
         as="span"

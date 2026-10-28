@@ -1,15 +1,10 @@
+/*
+ * Landing pública. Cores só por tokens do design system (src/index.css).
+ * Exceção: as duas variáveis abaixo existem apenas para o logotipo
+ * (src/components/landing-v2/Logo.tsx), que mantém as cores próprias.
+ */
 .landing-v2 {
-  --background: 204 73% 97%;
-  --foreground: 208 69% 13%;
-  --elolab-navy: #06111b;
-  --elolab-navy-rgb: 6 17 27;
-  --elolab-blue: #2f6bff;
   --elolab-blue-rgb: 47 107 255;
-  --elolab-cyan: #2fe0c9;
-  --elolab-cyan-rgb: 47 224 201;
-  --elolab-paper: #f2f9fd;
-  --elolab-paper-rgb: 242 249 253;
-  --elolab-ink: #0a2237;
   --elolab-ink-rgb: 10 34 55;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
@@ -17,27 +12,24 @@
 }
 
 .landing-v2 ::selection {
-  background: var(--elolab-cyan);
-  color: var(--elolab-navy);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 .landing-v2 .font-inter {
   font-family: "Inter", system-ui, sans-serif;
 }
 
+/* Botão principal da landing: cor sólida de marca, sem degradê nem brilho. */
 .landing-v2 .elolab-gradient-button {
-  background: linear-gradient(115deg, var(--elolab-blue) 0%, var(--elolab-cyan) 100%);
-  color: var(--elolab-navy);
-  box-shadow: 0 8px 28px rgba(47, 107, 255, 0.28);
-  outline: 1px solid rgba(47, 107, 255, 0.2);
-  outline-offset: -3px;
-  transition: box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: var(--shadow-sm);
+  transition: background-color 180ms ease;
 }
 
 .landing-v2 .elolab-gradient-button:hover {
-  box-shadow: 0 12px 34px rgba(47, 107, 255, 0.4);
-  opacity: 0.96;
-  transform: translateY(-1px);
+  background: hsl(var(--brand-hover));
 }
 
 .landing-v2 .app-capabilities {
@@ -56,7 +48,7 @@
   aspect-ratio: 1;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(47, 107, 255, 0.08), transparent 68%);
+  background: hsl(var(--primary) / 0.04);
   content: "";
   pointer-events: none;
 }
@@ -73,11 +65,11 @@
   align-items: center;
   gap: 0.55rem;
   margin: 0 0 0.8rem;
-  border: 1px solid rgba(47, 107, 255, 0.16);
+  border: 1px solid hsl(var(--border));
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: hsl(var(--card));
   padding: 0.45rem 0.8rem;
-  color: var(--elolab-blue);
+  color: hsl(var(--primary));
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -88,14 +80,13 @@
   width: 0.4rem;
   height: 0.4rem;
   border-radius: 999px;
-  background: var(--elolab-cyan);
-  box-shadow: 0 0 0.8rem rgba(47, 224, 201, 0.6);
+  background: hsl(var(--primary));
   content: "";
 }
 
 .landing-v2 .app-capabilities__title {
   margin: 0 auto;
-  color: var(--elolab-ink);
+  color: hsl(var(--foreground));
   font-size: clamp(1.8rem, 3.8vw, 3rem);
   font-weight: 500;
   letter-spacing: -0.055em;
@@ -105,7 +96,7 @@
 .landing-v2 .app-capabilities__description {
   max-width: 34rem;
   margin: 0.9rem auto 0;
-  color: rgba(10, 34, 55, 0.66);
+  color: hsl(var(--muted-foreground));
   font-size: clamp(0.9rem, 1.4vw, 1.05rem);
   line-height: 1.6;
 }
@@ -114,7 +105,7 @@
   overflow: hidden;
   width: 100%;
   padding-block: 0.65rem;
-  mask-image: linear-gradient(90deg, transparent 0%, #000 5%, #000 95%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, black 5%, black 95%, transparent 100%);
 }
 
 .landing-v2 .logos-carousel__track {
@@ -145,22 +136,20 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 0.7rem;
-  border: 1px solid rgba(47, 107, 255, 0.13);
+  border: 1px solid hsl(var(--border));
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.9);
+  background: hsl(var(--card));
   padding: 0.55rem 1rem 0.55rem 0.6rem;
-  box-shadow: 0 0.5rem 1.5rem rgba(10, 34, 55, 0.045);
-  color: var(--elolab-ink);
+  box-shadow: var(--shadow-sm);
+  color: hsl(var(--foreground));
   font-size: 0.84rem;
   font-weight: 500;
   white-space: nowrap;
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: border-color 180ms ease;
 }
 
 .landing-v2 .app-capability:hover {
-  transform: translateY(-2px);
-  border-color: rgba(47, 107, 255, 0.35);
-  box-shadow: 0 0.75rem 1.75rem rgba(10, 34, 55, 0.09);
+  border-color: hsl(var(--primary) / 0.4);
 }
 
 .landing-v2 .app-capability__icon {
@@ -169,10 +158,10 @@
   height: 2rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgba(47, 107, 255, 0.1);
+  border: 1px solid hsl(var(--primary) / 0.15);
   border-radius: 0.7rem;
-  background: linear-gradient(145deg, rgba(47, 107, 255, 0.11), rgba(47, 224, 201, 0.12));
-  color: var(--elolab-blue);
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
 .landing-v2 .about-feature {
@@ -180,16 +169,15 @@
   min-height: 3.5rem;
   align-items: center;
   gap: 0.7rem;
-  border: 1px solid rgba(100, 206, 251, 0.2);
+  border: 1px solid hsl(var(--border));
   border-radius: 1rem;
-  background: rgba(8, 29, 48, 0.82);
+  background: hsl(var(--card));
   padding: 0.65rem 0.85rem;
-  color: rgba(215, 226, 234, 0.82);
+  color: hsl(var(--foreground));
   font-size: 0.78rem;
   font-weight: 500;
   white-space: nowrap;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .landing-v2 .about-feature__icon {
@@ -198,10 +186,10 @@
   height: 2rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgba(47, 224, 201, 0.28);
+  border: 1px solid hsl(var(--primary) / 0.15);
   border-radius: 0.65rem;
-  background: rgba(47, 107, 255, 0.16);
-  color: var(--elolab-cyan);
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
 .landing-v2 .about-feature__icon svg {

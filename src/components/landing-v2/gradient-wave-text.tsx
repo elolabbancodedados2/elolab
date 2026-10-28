@@ -5,7 +5,8 @@ import { useRef, useEffect, useMemo, useCallback, useState, type ElementType } f
 
 type Align = "left" | "center" | "right";
 
-const defaultColors = ["#2f6bff", "#1684d8", "#00b9f2", "#2fe0c9", "#78defc", "#2f6bff"];
+// Cores padrão: tokens do design system (uma cor de marca sobre o texto principal).
+const defaultColors = ["hsl(var(--primary))", "hsl(var(--foreground))", "hsl(var(--primary))"];
 type RootTag = "div" | "span" | "strong" | "h1" | "h2" | "h3" | "h4" | "p";
 
 interface GradientWaveTextProps {
@@ -45,7 +46,7 @@ export function GradientWaveText({
   align = "center",
   alignClassName,
   className,
-  baseColor = "rgb(10,34,55)",
+  baseColor = "hsl(var(--foreground))",
 
   speed = 1,
   paused = false,
@@ -113,7 +114,7 @@ export function GradientWaveText({
 
   const stops = useMemo(() => {
     const arr: string[] = [];
-    const baseColor = "var(--gradient-wave-base, rgb(29,29,31))";
+    const baseColor = "var(--gradient-wave-base, hsl(var(--foreground)))";
     arr.push(`${baseColor} calc((var(--gi) + 0) * 1%)`);
     for (let i = 0; i < bandCount && i < resolvedColors.length * 2; i++) {
       const color = resolvedColors[i % resolvedColors.length];

@@ -38,14 +38,14 @@ export default function InstagramUpdatesSection() {
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -right-32 top-1/2 size-[28rem] -translate-y-1/2 rounded-full bg-elolab-blue/[0.08] blur-[100px]"
+        className="pointer-events-none absolute -right-32 top-1/2 size-[28rem] -translate-y-1/2 rounded-full bg-primary/[0.08] blur-[100px]"
       />
 
       <div className="relative mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
         <div className="max-w-xl">
           <FadeIn>
-            <span className="inline-flex items-center gap-2 rounded-full border border-elolab-blue/15 bg-white/80 px-3.5 py-1.5 font-inter text-xs font-semibold text-elolab-blue shadow-sm">
-              <span className="grid size-5 place-items-center rounded-full bg-[linear-gradient(135deg,#f9ce34,#ee2a7b,#6228d7)] text-white">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 font-inter text-xs font-semibold text-primary shadow-sm">
+              <span className="grid size-5 place-items-center rounded-full bg-primary text-primary-foreground">
                 <InstagramMark className="size-3" />
               </span>
               EloLab no Instagram
@@ -61,14 +61,14 @@ export default function InstagramUpdatesSection() {
               once={false}
               repeat
               speed={0.75}
-              className="mt-6 font-inter text-3xl font-medium leading-[1.04] tracking-[-0.045em] text-elolab-navy sm:text-4xl lg:text-5xl"
+              className="mt-6 font-inter text-3xl font-medium leading-[1.04] tracking-[-0.045em] text-foreground sm:text-4xl lg:text-5xl"
             >
               Acompanhe as novidades da EloLab.
             </GradientWaveText>
           </FadeIn>
 
           <FadeIn delay={0.2}>
-            <p className="mt-5 max-w-lg font-inter text-base leading-relaxed text-elolab-navy/65 sm:text-lg">
+            <p className="mt-5 max-w-lg font-inter text-base leading-relaxed text-muted-foreground sm:text-lg">
               Siga nossos canais para ver novidades do app, dicas para a rotina da clínica e ideias para cuidar melhor de cada paciente.
             </p>
           </FadeIn>
@@ -78,14 +78,14 @@ export default function InstagramUpdatesSection() {
               href={instagramUrl}
               target="_blank"
               rel="noreferrer"
-              className="elolab-gradient-button group mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 font-inter text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-elolab-cyan"
+              className="elolab-gradient-button group mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 font-inter text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ring"
             >
               <InstagramMark className="size-4" />
               <GradientWaveText
                 as="span"
                 align="left"
-                baseColor="rgb(10,34,55)"
-                customColors={["#0a2237", "#2f6bff", "#0a2237"]}
+                baseColor="hsl(var(--primary-foreground))"
+                customColors={["hsl(var(--primary-foreground))", "hsl(var(--muted))", "hsl(var(--primary-foreground))"]}
                 inView
                 once={false}
                 repeat
@@ -108,7 +108,7 @@ export default function InstagramUpdatesSection() {
             width={1122}
             height={1402}
             sizes="(min-width: 1024px) 520px, 90vw"
-            className="relative z-10 h-auto max-h-[34rem] w-auto max-w-full object-contain drop-shadow-[0_24px_48px_rgba(10,34,55,0.16)] lg:max-h-[40rem]"
+            className="relative z-10 h-auto max-h-[34rem] w-auto max-w-full object-contain drop-shadow-xl lg:max-h-[40rem]"
           />
         </FadeIn>
       </div>
