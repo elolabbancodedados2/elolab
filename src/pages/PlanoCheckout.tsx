@@ -23,6 +23,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCEP, formatCNPJ, formatCPF } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import { track } from '@/lib/analytics';
 import {
   type OrderPayer,
   type PlanOrder,
@@ -575,6 +576,16 @@ export default function PlanoCheckout() {
   useEffect(() => {
     setTrialConsent(false);
   }, [plano?.slug, plano?.valor, plano?.periodo_meses, trialDias]);
+  // Funil: sem valores nem dados de pagamento, só plano, modo e método.
+  useEffect(() => {
+    if (plano?.slug) track('checkout_viewed', { plan_slug: plano.slug, mode: solicitouTrial ? 'trial' : 'buy' });
+  }, [plano?.slug, solicitouTrial]);
+  useEffect(() => {
+    if (sucesso && plano?.slug) {
+      track('checkout_completed', { plan_slug: plano.slug, mode: sucesso.tipo === 'cartao' && sucesso.emTrial ? 'trial' : 'buy', metodo: sucesso.tipo === 'cartao' ? 'cartao' : sucesso.pedido.metodo });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dispara uma vez por conclusão
+  }, [sucesso]);
   const trialEndEstimate = trialDias > 0 ? new Date(checkoutNow + trialDias * 24 * 60 * 60 * 1000) : null;
   const primeiraCobrancaAdiada = metodoCheckout === 'cartao' && assinatura?.modalidade === 'pre_pago' &&
     assinatura.status === 'ativa' && assinatura.data_fim && new Date(assinatura.data_fim).getTime() > checkoutNow
