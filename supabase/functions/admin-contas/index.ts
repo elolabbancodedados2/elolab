@@ -12,6 +12,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
+import { respostaMfaNecessaria, verificarMfa } from '../_shared/aal.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -103,6 +104,20 @@ Deno.serve(async (req) => {
         detalhe: { recusado_antes_de_agir: true, acao_pedida: acaoPedida },
       });
       return json({ error: "Esta ferramenta é do dono da plataforma." }, 403);
+    }
+
+    // Mesma regra de is_platform_admin() no banco: a plataforma só age em AAL2
+    // (ou sem fator, com a política desligada). Vale também para a prévia,
+    // que expõe dados da conta-alvo.
+    const mfa = await verificarMfa(service, authHeader, ator, true);
+    if (!mfa.permitido) {
+      await registrar({
+        ator_id: ator.id, ator_email: atorEmail,
+        alvo_id: alvoId || null, alvo_email: "(não avaliado)", acao,
+        sucesso: false, erro: `mfa: ${mfa.motivo}`,
+        detalhe: { recusado_antes_de_agir: true, acao_pedida: acaoPedida },
+      });
+      return respostaMfaNecessaria(corsHeaders, mfa.motivo);
     }
 
     if (!alvoId) return json({ error: "Escolha a conta." }, 400);

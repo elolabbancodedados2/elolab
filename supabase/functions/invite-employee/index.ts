@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClinica.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
+import { respostaMfaNecessaria, verificarMfa } from '../_shared/aal.ts';
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -76,6 +77,11 @@ Deno.serve(async (req) => {
       .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
     if (roleError) throw new Error("Não foi possível validar as permissões da conta.");
     if (!adminRole) return json({ success: false, error: "Apenas admins podem convidar." }, 403);
+
+    // O convite é gravado com service_role e não passa pelo trigger de MFA de
+    // employee_invitations; a mesma regra é conferida aqui. Admin é perfil sensível.
+    const mfa = await verificarMfa(service, authHeader, user, true);
+    if (!mfa.permitido) return respostaMfaNecessaria(corsHeaders, mfa.motivo, { success: false });
 
     // E-mail já em outra clínica?
     const { data: existingProfile, error: existingProfileError } = await service

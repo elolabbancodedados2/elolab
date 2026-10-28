@@ -3,6 +3,7 @@ import { usuariosNoLimite, validarLimitesDeEquipe } from "../_shared/limitesClin
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { isInvitationExpired } from "../_shared/invitationExpiry.ts";
+import { perfilExigeMfa, respostaMfaNecessaria, verificarMfa } from "../_shared/aal.ts";
 
 // Atribuído em cada request (reflete a origem permitida). Helpers
 // top-level (json/reply) capturam esta variável por closure.
@@ -107,6 +108,12 @@ Deno.serve(async (req) => {
       if (isInvitationExpired((invite as any).expires_at)) {
         return json({ success: false, error: 'Convite expirado.' }, 410);
       }
+
+      // Papéis são gravados com service_role, fora do trigger de MFA de
+      // user_roles. Conta com fator precisa estar em AAL2; com a política
+      // ligada, plataforma, admin ou financeiro sem fator também é negado.
+      const mfa = await verificarMfa(service, authorization, authenticatedUser, () => perfilExigeMfa(service, userId!));
+      if (!mfa.permitido) return respostaMfaNecessaria(corsHeaders, mfa.motivo, { success: false });
     } else {
       if (action !== 'accept') return json({ success: false, error: 'Ação inválida.' }, 400);
       if (isInvitationExpired((invite as any).expires_at)) {
