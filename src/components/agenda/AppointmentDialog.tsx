@@ -15,6 +15,7 @@ import { CircleX, History, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { prefixoTabela, queryKeys } from '@/lib/queryKeys';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -83,7 +84,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
 
   const { data: paciente } = usePacienteResumo(form.paciente_id);
   const ultimoAtendimentoQuery = useQuery({
-    queryKey: ['agenda-ultimo-atendimento', profile?.clinica_id, form.paciente_id, initial?.id ?? null],
+    queryKey: queryKeys.agenda.ultimoAtendimento(profile?.clinica_id, form.paciente_id, initial?.id),
     enabled: open && !!profile?.clinica_id && !!form.paciente_id,
     staleTime: 60_000,
     queryFn: async () => {
@@ -364,7 +365,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           : updateQuery.is('updated_at', null);
         result = await (updateQuery.select('id').maybeSingle() as any);
         if (!result.error && !result.data) {
-          queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+          queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
           throw new Error('Esta consulta foi atualizada ou removida enquanto o formulário estava aberto. Feche e abra novamente antes de salvar.');
         }
       } else {
@@ -401,7 +402,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
       try {
         await onSaved?.();
       } catch (error) {
@@ -422,7 +423,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         toast.error('Horário bloqueado', {
           description: 'Este período foi bloqueado para o profissional. Atualize a agenda e escolha outro horário.',
         });
-        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
       } else if (violouSobreposicao) {
         const conflitoDeRecurso = String(e?.message || '').includes('AGENDA_RECURSO_CONFLITO');
         toast.error(conflitoDeRecurso ? 'Paciente ou sala acabaram de ser ocupados' : 'Este horário acabou de ser ocupado', {
@@ -430,7 +431,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             ? 'Outro usuário marcou neste período enquanto você preenchia. Escolha outro horário ou sala.'
             : 'Outro usuário marcou nesta janela enquanto você preenchia. Escolha outro horário.',
         });
-        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
       } else {
         toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a consulta. Tente novamente.'));
       }
@@ -454,7 +455,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       if (error) throw error;
       if (!data?.atualizado) throw new Error('Esta consulta foi atualizada por outra pessoa. Atualize a agenda e confira o estado antes de tentar novamente.');
       toast.success('Consulta cancelada; o histórico foi preservado.');
-      await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      await queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
       setConfirmCancel(false);
       onOpenChange(false);
     } catch (error) {

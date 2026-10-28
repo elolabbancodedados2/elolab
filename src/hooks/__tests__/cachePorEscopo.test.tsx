@@ -12,6 +12,7 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => mocks.
 vi.mock('@/lib/auditTrail', () => ({ logAudit: vi.fn() }));
 
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
+import { queryKeys } from '@/lib/queryKeys';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -87,6 +88,31 @@ describe('cache de consultas por escopo', () => {
     liberarUsuario2({ data: [{ id: 'user-2-data' }], error: null });
     await waitFor(() => expect(result.current.data).toEqual([{ id: 'user-2-data' }]));
 
+    queryClient.clear();
+  });
+
+  it('usa a fábrica de chaves com clinica_id primeiro e segue invalidável por [tabela]', async () => {
+    const query = {
+      select: vi.fn(() => query),
+      order: vi.fn(() => query),
+      range: vi.fn(() => Promise.resolve({ data: [{ id: 'p1' }], error: null })),
+    };
+    mocks.from.mockReturnValue(query);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const opcoes = { orderBy: { column: 'nome' } };
+    const { result } = renderHook(() => useSupabaseQuery<{ id: string }>('pacientes', opcoes), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 'p1' }]));
+
+    const chaves = queryClient.getQueryCache().getAll().map((q) => q.queryKey);
+    expect(chaves).toEqual([queryKeys.tabela.consulta('clinica-a', 'pacientes', 'user-1', opcoes)]);
+    expect(chaves[0][0]).toBe('clinica-a');
+
+    const chamadasAntes = query.range.mock.calls.length;
+    await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+    await waitFor(() => expect(query.range.mock.calls.length).toBeGreaterThan(chamadasAntes));
     queryClient.clear();
   });
 });

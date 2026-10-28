@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { logAudit as registrarAuditoria } from '@/lib/auditTrail';
+import { instalarCompatibilidadeTabelas, prefixoTabela, queryKeys } from '@/lib/queryKeys';
 
 /**
  * Teto de segurança para o carregamento automático em blocos. Existe para que
@@ -32,14 +33,21 @@ export function useSupabaseQuery<T>(
   }
 ) {
   const { user, profile } = useSupabaseAuth();
+  const queryClient = useQueryClient();
+  // As telas ainda invalidam por `[tabela]`; isso mantém o prefixo legado
+  // alcançando a chave nova.
+  instalarCompatibilidadeTabelas(queryClient);
   const limit = options?.limit ?? MAX_LINHAS_AUTO;
   const page = options?.page ?? 0;
+  const clinicaId = profile?.clinica_id ?? null;
+  const userId = user?.id ?? null;
 
   return useQuery({
     // A limpeza do cache na troca de conta/clínica não cancela requisições que
-    // já estavam em andamento. Incluir o escopo na chave impede que a resposta
-    // antiga seja reutilizada ou sobrescreva a consulta da clínica atual.
-    queryKey: [tableName, user?.id ?? null, profile?.clinica_id ?? null, options],
+    // já estavam em andamento. Incluir o escopo na chave (clínica primeiro,
+    // depois usuário) impede que a resposta antiga seja reutilizada ou
+    // sobrescreva a consulta da clínica atual.
+    queryKey: queryKeys.tabela.consulta(clinicaId, tableName, userId, options),
     queryFn: async () => {
       const montar = () => {
         let query = supabase
@@ -112,8 +120,9 @@ export function useSupabaseQuery<T>(
     ...(options?.staleTime !== undefined ? { staleTime: options.staleTime } : {}),
     ...(options?.keepPrevious ? {
       placeholderData: (previousData: T[] | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) => {
+        // [clinica, 'tabela', tabela, usuario, opções]
         const previousKey = previousQuery?.queryKey;
-        return previousKey?.[1] === (user?.id ?? null) && previousKey?.[2] === (profile?.clinica_id ?? null)
+        return previousKey?.[0] === clinicaId && previousKey?.[3] === userId
           ? previousData
           : undefined;
       },
@@ -125,6 +134,7 @@ export function useSupabaseQuery<T>(
 export function useSupabaseUpdate<T extends Record<string, unknown>>(tableName: string) {
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
+  instalarCompatibilidadeTabelas(queryClient);
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<T> }) => {
@@ -146,7 +156,9 @@ export function useSupabaseUpdate<T extends Record<string, unknown>>(tableName: 
       return result as unknown as T;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [tableName] });
+      // Prefixo legado: alcança esta tabela nas chaves novas e nos hooks que
+      // ainda usam `[tabela, ...]`.
+      queryClient.invalidateQueries({ queryKey: prefixoTabela(tableName) });
     },
     onError: (error: Error) => {
       toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar o registro.'));

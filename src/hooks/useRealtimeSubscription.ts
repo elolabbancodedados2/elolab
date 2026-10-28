@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { filtroSomenteLegado, instalarCompatibilidadeTabelas, queryKeys } from '@/lib/queryKeys';
 
 const CRITICAL_TABLES = [
   { table: 'agendamentos', queryKeys: ['agendamentos'] },
@@ -15,6 +16,22 @@ const CRITICAL_TABLES = [
   { table: 'tarefas', queryKeys: ['tarefas', 'minha-fila-tarefas', 'minhas-tarefas-pendentes', 'central-notificacoes'] },
 ] as const;
 
+/**
+ * Invalida cada chave em dois formatos: as consultas genéricas da clínica
+ * atual (`queryKeys.tabela`, primeiro segmento `clinica_id`) e as chaves
+ * legadas `[chave, ...]` dos hooks que ainda não migraram para a fábrica.
+ */
+export function invalidarChavesDaClinica(
+  queryClient: QueryClient,
+  clinicaId: string | null | undefined,
+  chaves: readonly string[],
+) {
+  chaves.forEach((chave) => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tabela.todos(clinicaId, chave) });
+    void queryClient.invalidateQueries(filtroSomenteLegado(chave));
+  });
+}
+
 const INITIAL_POLL_INTERVAL = 30_000; // 30s
 const MAX_POLL_INTERVAL = 120_000;    // 2min
 const BACKOFF_FACTOR = 1.5;
@@ -26,14 +43,18 @@ const BACKOFF_FACTOR = 1.5;
  */
 export function useRealtimeSubscription() {
   const queryClient = useQueryClient();
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
+  instalarCompatibilidadeTabelas(queryClient);
+  // Em ref para que a troca de clínica não recrie o canal.
+  const clinicaIdRef = useRef<string | null>(profile?.clinica_id ?? null);
+  clinicaIdRef.current = profile?.clinica_id ?? null;
   const pollIntervalRef = useRef(INITIAL_POLL_INTERVAL);
   const lastRealtimeEventRef = useRef<number>(Date.now());
   const isActiveRef = useRef(true);
 
   const invalidateAll = useCallback(() => {
-    CRITICAL_TABLES.forEach(({ queryKeys }) => {
-      queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
+    CRITICAL_TABLES.forEach(({ queryKeys: chaves }) => {
+      invalidarChavesDaClinica(queryClient, clinicaIdRef.current, chaves);
     });
   }, [queryClient]);
 
@@ -47,12 +68,12 @@ export function useRealtimeSubscription() {
     // Primary: Realtime subscription
     let channel = supabase.channel(canalUnico('global-realtime'));
 
-    CRITICAL_TABLES.forEach(({ table, queryKeys }) => {
+    CRITICAL_TABLES.forEach(({ table, queryKeys: chaves }) => {
       channel = channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table },
         () => {
-          queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
+          invalidarChavesDaClinica(queryClient, clinicaIdRef.current, chaves);
           lastRealtimeEventRef.current = Date.now();
           pollIntervalRef.current = INITIAL_POLL_INTERVAL; // reset backoff
         }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -115,7 +116,7 @@ export function useBuscaPacientes(termo: string, opcoes?: {
 export function usePacienteResumo(id: string | null | undefined) {
   const { user, profile } = useSupabaseAuth();
   return useQuery({
-    queryKey: ['paciente-resumo', user?.id ?? null, profile?.clinica_id ?? null, id],
+    queryKey: queryKeys.pacienteResumo(profile?.clinica_id, user?.id, id),
     enabled: !!id && !!user && !!profile?.clinica_id,
     staleTime: 60_000,
     queryFn: async (): Promise<PacienteResumo | null> => {

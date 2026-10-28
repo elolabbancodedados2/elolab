@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { prefixoTabela, queryKeys } from '@/lib/queryKeys';
 
 import { MAX_LINHAS_AUTO, useAgendamentosPeriodo, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useAgendaColorScheme } from './hooks/useAgendaColorScheme';
@@ -241,7 +242,7 @@ export function AgendaPage() {
   const { data: tipos = [] } = tiposQuery;
   const { data: salas = [] } = salasQuery;
   const reagendamentoQuery = useQuery({
-    queryKey: ['agenda-reagendar', profile?.clinica_id, reagendarIdDaRota],
+    queryKey: queryKeys.agenda.reagendar(profile?.clinica_id, reagendarIdDaRota),
     enabled: !!profile?.clinica_id && !!reagendarIdDaRota,
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
@@ -466,7 +467,7 @@ export function AgendaPage() {
   const diaSemana = new Date(`${date}T12:00:00Z`).getUTCDay();
   const idsMedicosVisiveis = useMemo(() => visibleMedicos.map((m: any) => m.id).sort(), [visibleMedicos]);
   const expedienteQuery = useQuery({
-    queryKey: ['agenda-expediente', profile?.clinica_id, diaSemana, idsMedicosVisiveis],
+    queryKey: queryKeys.agenda.expediente(profile?.clinica_id, diaSemana, idsMedicosVisiveis),
     enabled: !!profile?.clinica_id && idsMedicosVisiveis.length > 0 && view === 'daily',
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -683,18 +684,18 @@ export function AgendaPage() {
           toast.error('Paciente ou sala acabaram de ser ocupados', {
             description: 'Outro usuário marcou neste período enquanto você movia a consulta. Atualize a agenda e escolha outro horário.',
           });
-          void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+          void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
         } else if (overlap) {
           toast.error('Horário indisponível', { description: 'Outra consulta deste médico se sobrepõe a este período.' });
-          void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+          void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
         } else {
           toast.error('Erro ao mover consulta', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
         }
       } else if (!data) {
         toast.error('A consulta não foi remarcada.', { description: 'Ela pode ter sido alterada ou removida por outro usuário. Atualize a agenda.' });
-        void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
       } else {
-        void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
         if (opcoes.desfazendo) {
           toast.success('Remarcação desfeita');
         } else {
@@ -882,7 +883,7 @@ export function AgendaPage() {
                 description: friendlyErrorMessage(error, 'Tente atualizar a lista de espera.'),
               });
             } finally {
-              void queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
+              void queryClient.invalidateQueries({ queryKey: prefixoTabela('lista_espera') });
             }
           }
         }}
