@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Shield, Search, FileJson, AlertTriangle, Users, LifeBuoy, CheckCircle2 } from 'lucide-react';
+import { Shield, Search, FileJson, AlertTriangle, Users, LifeBuoy, CheckCircle2, Trash2, UserX } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
@@ -19,7 +19,15 @@ import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ESCOPOS_EXPORTACAO_LGPD, concluirExportacaoLgpd, exportPatientData, type EscopoExportacaoLgpd } from '@/lib/lgpdCompliance';
+import {
+  ANONIMIZACAO_LGPD_HABILITADA,
+  ESCOPOS_EXPORTACAO_LGPD,
+  concluirExportacaoLgpd,
+  exportPatientData,
+  registrarSolicitacaoExclusaoLgpd,
+  type EscopoExportacaoLgpd,
+} from '@/lib/lgpdCompliance';
+import { AnonimizarPacienteDialog } from '@/components/lgpd/AnonimizarPacienteDialog';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimePreference } from '@/lib/formatters';
 
@@ -42,6 +50,9 @@ export default function LgpdPacientes() {
   const [escopo, setEscopo] = useState<EscopoExportacaoLgpd[]>(TODOS_ESCOPOS);
   const [pedidoConclusao, setPedidoConclusao] = useState<PedidoPendente | null>(null);
   const [evidencia, setEvidencia] = useState('');
+  const [pacienteExclusao, setPacienteExclusao] = useState<PacienteLGPD | null>(null);
+  const [motivoExclusao, setMotivoExclusao] = useState('');
+  const [anonimizarPaciente, setAnonimizarPaciente] = useState<{ id: string; nome: string } | null>(null);
 
   const pendentes = useQuery({
     queryKey: ['lgpd-exportacoes-pendentes', profile?.clinica_id ?? null],
@@ -119,6 +130,34 @@ export default function LgpdPacientes() {
     }
   };
 
+  // A exclusão automática está suspensa (CLIN-QA-004): a tela só registra o
+  // pedido como tarefa urgente para tratamento manual e não apaga nada.
+  const registrarExclusao = async () => {
+    const paciente = pacienteExclusao;
+    if (!paciente || !motivoExclusao.trim()) return;
+    if (!profile?.clinica_id) {
+      toast.error('Não foi possível identificar a clínica. Entre novamente e tente outra vez.');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await registrarSolicitacaoExclusaoLgpd({
+        pacienteId: paciente.id,
+        pacienteNome: paciente.nome,
+        clinicaId: profile.clinica_id,
+        motivo: motivoExclusao,
+      });
+      toast.success(`Solicitação de exclusão de ${paciente.nome} registrada em Tarefas para tratamento manual.`);
+      setPacienteExclusao(null);
+      setMotivoExclusao('');
+    } catch (err: unknown) {
+      console.error(err);
+      toast.error(friendlyErrorMessage(err, 'Não foi possível registrar a solicitação.'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-6 p-2 sm:p-6">
       <PageHeader
@@ -143,7 +182,7 @@ export default function LgpdPacientes() {
         <AlertTriangle className="h-4 w-4 !text-[#1080CA]" />
         <AlertDescription>
           Cada exportação recebe um protocolo e gera um registro de auditoria da clínica antes de preparar o arquivo JSON para download. Escolha as categorias pedidas pelo titular; o cadastro é sempre incluído. O pedido continua pendente até a clínica confirmar a entrega ao titular. Anexos do prontuário de até 30 MB no total são incluídos no JSON em Base64; arquivos externos e outros documentos vinculados por módulos específicos ainda exigem conferência manual. Armazene o arquivo em local seguro e compartilhe apenas com pessoas autorizadas.
-          <span className="mt-2 block font-medium">A exclusão de dados não pode ser concluída por esta tela neste momento. Solicite análise ao suporte antes de confirmar o atendimento ao titular.</span>
+          <span className="mt-2 block font-medium">A exclusão automática de dados está suspensa. O pedido de exclusão do titular fica registrado em Tarefas para tratamento manual pelo encarregado de dados, e nenhum dado é apagado por esta tela.</span>
         </AlertDescription>
       </Alert>
 
@@ -215,6 +254,31 @@ export default function LgpdPacientes() {
                     <FileJson aria-hidden="true" className="h-4 w-4" />
                     Exportar
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 gap-1.5 rounded-full text-xs"
+                    onClick={() => { setMotivoExclusao(''); setPacienteExclusao(p); }}
+                    disabled={isProcessing}
+                    title="Registrar pedido de exclusão (direito ao esquecimento)"
+                  >
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    Solicitar exclusão
+                  </Button>
+                  {/* Anonimização transacional (CLIN-QA-004): só com a trava ligada. */}
+                  {ANONIMIZACAO_LGPD_HABILITADA && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 gap-1.5 rounded-full text-xs"
+                      onClick={() => setAnonimizarPaciente({ id: p.id, nome: p.nome })}
+                      disabled={isProcessing}
+                      title="Anonimizar o cadastro (preserva o prontuário)"
+                    >
+                      <UserX aria-hidden="true" className="h-4 w-4" />
+                      Anonimizar
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -297,6 +361,38 @@ export default function LgpdPacientes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!pacienteExclusao} onOpenChange={(open) => { if (!open && !isProcessing) setPacienteExclusao(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar solicitação de exclusão</DialogTitle>
+            <DialogDescription>
+              O pedido de exclusão de dados de {pacienteExclusao?.nome} será registrado como tarefa urgente para tratamento manual pelo encarregado de dados. Nenhum dado é apagado agora: a exclusão automática está suspensa até existir um processo que preserve o prontuário.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="motivo-exclusao">Motivo informado pelo titular</Label>
+            <Textarea id="motivo-exclusao" value={motivoExclusao} maxLength={1000} onChange={e => setMotivoExclusao(e.target.value)} placeholder="Ex.: pedido do titular por escrito, protocolo de atendimento." />
+            <p className="text-[11px] text-muted-foreground">Não inclua dados clínicos.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-full" onClick={() => setPacienteExclusao(null)} disabled={isProcessing}>Cancelar</Button>
+            <LoadingButton className="rounded-full" onClick={() => void registrarExclusao()} disabled={!motivoExclusao.trim()} isLoading={isProcessing} loadingText="Registrando...">
+              Registrar solicitação
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {ANONIMIZACAO_LGPD_HABILITADA && (
+        <AnonimizarPacienteDialog
+          paciente={anonimizarPaciente}
+          clinicaId={profile?.clinica_id}
+          open={!!anonimizarPaciente}
+          onOpenChange={(aberto) => { if (!aberto) setAnonimizarPaciente(null); }}
+          onConcluido={() => { void refetch(); }}
+        />
+      )}
     </div>
   );
 }
