@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachPortalPreparationInstructions } from './portalAppointmentPreparation';
+import { attachPortalPreparationInstructions } from '../../supabase/functions/_shared/portalAppointmentPreparation';
 import { readFileSync } from 'node:fs';
 
 describe('portal appointment preparation instructions', () => {
