@@ -6,26 +6,12 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-  VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-  CLINICA_A_EMAIL: ${{ secrets.CLINICA_A_EMAIL }}
-  CLINICA_A_SENHA: ${{ secrets.CLINICA_A_SENHA }}
-  CLINICA_B_EMAIL: ${{ secrets.CLINICA_B_EMAIL }}
-  CLINICA_B_SENHA: ${{ secrets.CLINICA_B_SENHA }}
-  E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-  E2E_ADMIN_SENHA: ${{ secrets.E2E_ADMIN_SENHA }}
-  E2E_MEDICO_EMAIL: ${{ secrets.E2E_MEDICO_EMAIL }}
-  E2E_MEDICO_SENHA: ${{ secrets.E2E_MEDICO_SENHA }}
-  E2E_RECEPCAO_EMAIL: ${{ secrets.E2E_RECEPCAO_EMAIL }}
-  E2E_RECEPCAO_SENHA: ${{ secrets.E2E_RECEPCAO_SENHA }}
-  E2E_ENFERMAGEM_EMAIL: ${{ secrets.E2E_ENFERMAGEM_EMAIL }}
-  E2E_ENFERMAGEM_SENHA: ${{ secrets.E2E_ENFERMAGEM_SENHA }}
-  E2E_FINANCEIRO_EMAIL: ${{ secrets.E2E_FINANCEIRO_EMAIL }}
-  E2E_FINANCEIRO_SENHA: ${{ secrets.E2E_FINANCEIRO_SENHA }}
-  E2E_PACIENTE_TOKEN: ${{ secrets.E2E_PACIENTE_TOKEN }}
-  PRODUCAO_URL: https://app.elolab.com.br
-  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+permissions:
+  contents: read
+
+# Os secrets ficam só no job que os usa (e2e-tests). No nível do workflow eles
+# vazavam para todos os jobs, inclusive o security-e2e, que precisa rodar só
+# contra o Supabase local do runner.
 
 jobs:
   static-checks:
@@ -65,9 +51,9 @@ jobs:
       - run: npm run lint
       - name: Dependency audit
         run: npm audit --omit=dev --audit-level=high
-      - name: Supabase database lint
-        if: ${{ env.SUPABASE_ACCESS_TOKEN != '' }}
-        run: npx supabase link --project-ref gebygucrpipaufrlyqqj && npx supabase db lint --linked --level warning
+      # O lint do banco saiu daqui: ele fazia `supabase link` com um projeto
+      # Cloud que não é a produção. Agora roda no security-e2e, contra o banco
+      # local montado do zero pelas migrations do repositório.
 
   unit-tests:
     name: Unit & Integration Tests
@@ -80,20 +66,164 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:run
+      - name: Teste do gate de skip do security-e2e
+        run: node --test scripts/ci/falhar-se-pulado.test.mjs
+
+  # RLS, isolamento entre clínicas e RBAC contra um Supabase LOCAL e
+  # descartável, criado no runner a cada execução (CLIN-QA-002, ação 30.1).
+  # Nenhum segredo: as chaves são as de desenvolvimento geradas pela CLI e só
+  # valem dentro do runner. Documentação: docs/operations/ci-banco-efemero.md.
+  security-e2e:
+    name: Segurança (Supabase local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      QA_SUPABASE_DISPOSABLE: ELOLAB_LOCAL_DISPOSABLE
+      # A patient-portal é servida pelo Edge Runtime do `supabase start` e só
+      # usa o banco local, sem integração externa. Liga os 2 testes do portal
+      # em tests/perfis-rbac.spec.ts (tests/fixtures/portalEdge.ts). O passo
+      # "Conferir patient-portal servida" confirma antes do seed.
+      QA_PORTAL_EDGE_LOCAL: ELOLAB_LOCAL_PORTAL
+      # Fase 2 (edge functions com stub): QA_EDGE_STUB_CONFIRMED e
+      # QA_WHATSAPP_STUB_CONFIRMED. NÃO defina antes do stub: liberam os
+      # testes de WhatsApp e IA, que chamariam a Evolution e o provedor de IA.
+      # Até lá esses testes pulam e estão na allowlist com prazo
+      # (scripts/ci/security-e2e-skips-permitidos.json).
+    steps:
+      - uses: actions/checkout@v6
+
+      # Antes de baixar imagens: com prefixo repetido o `supabase start` para
+      # na segunda migration (a CLI grava a versão com INSERT simples numa
+      # tabela com chave primária em `version`).
+      - name: Versões de migration únicas
+        run: |
+          dup=$(find supabase/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | cut -c1-14 | sort | uniq -d)
+          if [ -n "$dup" ]; then
+            echo "::error::Prefixo de migration repetido: $dup. Ver docs/arquitetura/banco/versoes-duplicadas.md"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.122.0
+
+      # Aplica TODAS as migrations do repositório a partir do zero; se uma não
+      # aplicar, o job falha aqui. Só sobe o que as três suítes usam.
+      # Não exclua edge_runtime: ele serve supabase/functions (patient-portal).
+      - name: Subir Supabase local
+        run: supabase start -x studio,imgproxy,mailpit,postgres-meta,logflare,vector,supavisor
+
+      - name: Exportar variáveis do Supabase local
+        run: |
+          supabase status -o env \
+            --override-name api.url=QA_SUPABASE_URL \
+            --override-name auth.anon_key=QA_SUPABASE_ANON_KEY \
+            --override-name auth.service_role_key=QA_SUPABASE_SERVICE_ROLE_KEY \
+            --override-name db.url=QA_DB_URL > "$RUNNER_TEMP/supabase-status.env"
+          grep -E '^QA_[A-Z0-9_]+=' "$RUNNER_TEMP/supabase-status.env" \
+            | sed -E 's/^([A-Z0-9_]+)="?([^"]*)"?$/\1=\2/' > "$RUNNER_TEMP/qa.env"
+          rm -f "$RUNNER_TEMP/supabase-status.env"
+          [ "$(wc -l < "$RUNNER_TEMP/qa.env")" -eq 4 ] || { echo "::error::supabase status não devolveu as 4 variáveis esperadas"; exit 1; }
+          while IFS='=' read -r nome valor; do
+            case "$nome" in *KEY*|*DB_URL*) echo "::add-mask::$valor" ;; esac
+          done < "$RUNNER_TEMP/qa.env"
+          cat "$RUNNER_TEMP/qa.env" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/qa.env"
+
+      - name: Conferir que o alvo é loopback
+        run: |
+          [ "$QA_SUPABASE_URL" = "http://127.0.0.1:54321" ] || { echo "::error::QA_SUPABASE_URL não é http://127.0.0.1:54321"; exit 1; }
+          case "$QA_DB_URL" in postgresql://*@127.0.0.1:*) ;; *) echo "::error::QA_DB_URL não é local"; exit 1 ;; esac
+
+      # Falha cedo, com motivo legível (404 não servida, 429 rate limit, 5xx
+      # boot), se a patient-portal não responder 401 a um token inválido. A
+      # primeira chamada compila a função e baixa dependências, por isso há
+      # até 3 tentativas. Em falha, mostra o fim do log do Edge Runtime.
+      - name: Conferir patient-portal servida
+        run: |
+          for tentativa in 1 2 3; do
+            if node scripts/qa/conferir-portal-local.mjs; then exit 0; fi
+            [ "$tentativa" -lt 3 ] && sleep 10
+          done
+          echo "::error::patient-portal não respondeu como esperado no Supabase local. Ver docs/operations/ci-banco-efemero.md (B9)"
+          docker logs --tail 80 "$(docker ps --filter name=supabase_edge_runtime --format '{{.Names}}' | head -n1)" 2>&1 || true
+          exit 1
+
+      # Informativo por enquanto (sem --fail-on). Subir para --fail-on error
+      # depois da primeira execução verde e da triagem dos achados.
+      - name: Lint do schema local
+        run: supabase db lint --local --level warning
+
+      # Massa do qa-engineer: 2 clínicas, 5 perfis, 1 linha por tabela
+      # sensível em cada clínica, token de portal. Grava as QA_* no
+      # GITHUB_ENV com ::add-mask:: e recusa URL fora de loopback.
+      - name: Seed sintético de duas clínicas
+        run: node tests/fixtures/seed-duas-clinicas.ts
+
+      - name: Conferir variáveis das suítes
+        run: bash scripts/ci/security-e2e-conferir-env.sh
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Suítes de segurança
+        id: suites
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/seguranca.json
+        run: >-
+          npx playwright test
+          tests/rls.spec.ts tests/isolamento-entre-clinicas.spec.ts tests/perfis-rbac.spec.ts
+          --reporter=list,json,html
+
+      # O Playwright sai com 0 quando tudo é pulado. Este passo reprova skip
+      # fora da allowlist, spec sem nenhum teste executado e allowlist vencida.
+      - name: Falhar se houve teste pulado
+        if: ${{ !cancelled() && steps.suites.outcome != 'skipped' }}
+        run: >-
+          node scripts/ci/falhar-se-pulado.mjs "$RUNNER_TEMP/seguranca.json"
+          --exigir rls.spec.ts,isolamento-entre-clinicas.spec.ts,perfis-rbac.spec.ts
+          --permitidos scripts/ci/security-e2e-skips-permitidos.json
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: seguranca-report
+          path: |
+            ${{ runner.temp }}/seguranca.json
+            playwright-report/
+          retention-days: 7
 
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: unit-tests
-    # Bloqueante desde 2026-07-30. O continue-on-error existia porque o job
-    # nunca tinha chegado a rodar (dependia de unit-tests, que estourava
-    # memória). Verificado no log do CI: 18 passam, 0 falham. Manter como
-    # informativo agora só serviria para deixar regressão passar despercebida.
-    #
-    # Os 19 testes de RLS ficavam PULADOS por falta do secret com a chave anon,
-    # então o job passava verde sem nunca ter checado vazamento de dados. A
-    # spec agora lê a chave do client.ts quando a variável não existe — ela é
-    # pública, vai no bundle de todo jeito.
+    # Bloqueante desde 2026-07-30. As suítes de segurança (rls, isolamento
+    # entre clínicas e RBAC) NÃO rodam aqui: sem Supabase local elas só pulam.
+    # Elas rodam no job security-e2e, com banco efêmero e gate de skip.
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      CLINICA_A_EMAIL: ${{ secrets.CLINICA_A_EMAIL }}
+      CLINICA_A_SENHA: ${{ secrets.CLINICA_A_SENHA }}
+      CLINICA_B_EMAIL: ${{ secrets.CLINICA_B_EMAIL }}
+      CLINICA_B_SENHA: ${{ secrets.CLINICA_B_SENHA }}
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_SENHA: ${{ secrets.E2E_ADMIN_SENHA }}
+      E2E_MEDICO_EMAIL: ${{ secrets.E2E_MEDICO_EMAIL }}
+      E2E_MEDICO_SENHA: ${{ secrets.E2E_MEDICO_SENHA }}
+      E2E_RECEPCAO_EMAIL: ${{ secrets.E2E_RECEPCAO_EMAIL }}
+      E2E_RECEPCAO_SENHA: ${{ secrets.E2E_RECEPCAO_SENHA }}
+      E2E_ENFERMAGEM_EMAIL: ${{ secrets.E2E_ENFERMAGEM_EMAIL }}
+      E2E_ENFERMAGEM_SENHA: ${{ secrets.E2E_ENFERMAGEM_SENHA }}
+      E2E_FINANCEIRO_EMAIL: ${{ secrets.E2E_FINANCEIRO_EMAIL }}
+      E2E_FINANCEIRO_SENHA: ${{ secrets.E2E_FINANCEIRO_SENHA }}
+      E2E_PACIENTE_TOKEN: ${{ secrets.E2E_PACIENTE_TOKEN }}
+      PRODUCAO_URL: https://app.elolab.com.br
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -102,7 +232,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      # Lista explícita de arquivos (e não --grep-invert) para as specs de
+      # segurança nem serem carregadas: se a trava de CI pedida ao qa-engineer
+      # for feita no carregamento, elas falhariam aqui por falta de banco local.
+      # Specs com prefixo `_` são utilitários locais (ex.: _redesign-capturas,
+      # captura de telas com timeout de 30 min) e não fazem parte da suíte.
+      - name: E2E (exceto suítes de segurança)
+        run: |
+          mapfile -t specs < <(find tests -maxdepth 1 -name '*.spec.ts' ! -name '_*' | sort | grep -vE '/(rls|isolamento-entre-clinicas|perfis-rbac)\.spec\.ts$')
+          echo "Specs: ${specs[*]}"
+          npx playwright test "${specs[@]}"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
