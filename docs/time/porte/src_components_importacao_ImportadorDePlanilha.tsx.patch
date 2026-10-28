@@ -1,0 +1,39 @@
+diff --git a/src/components/importacao/ImportadorDePlanilha.tsx b/src/components/importacao/ImportadorDePlanilha.tsx
+index 51568efa..61f5c59f 100644
+--- a/src/components/importacao/ImportadorDePlanilha.tsx
++++ b/src/components/importacao/ImportadorDePlanilha.tsx
+@@ -28,6 +28,7 @@ import { carregarExistentes, importarPacientes, csvDasRecusadas, type ResultadoI
+ import {
+   carregarIndices, carregarAgendaExistente, prepararAgenda, importarAgendamentos,
+ } from '@/lib/importacao/agendamentos';
++import { friendlyErrorMessage } from '@/components/ErrorState';
+ 
+ const SEM_CAMPO = '__nenhum__';
+ 
+@@ -70,7 +71,7 @@ export function ImportadorDePlanilha() {
+       setMapeamento(mapearAutomaticamente(p.cabecalhos, campos));
+       setPasso(2);
+     } catch (err: any) {
+-      toast.error('Não consegui ler o arquivo', { description: err?.message });
++      toast.error('Não consegui ler o arquivo', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     } finally {
+       setOcupado(false);
+     }
+@@ -106,7 +107,7 @@ export function ImportadorDePlanilha() {
+       }
+       setPasso(3);
+     } catch (err: any) {
+-      toast.error('Não consegui conferir com os pacientes atuais', { description: err?.message });
++      toast.error('Não consegui conferir com os pacientes atuais', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     } finally {
+       setOcupado(false);
+     }
+@@ -128,7 +129,7 @@ export function ImportadorDePlanilha() {
+         toast.warning(`${r.inseridos} importado(s), ${r.falhas.length} recusado(s)`);
+       }
+     } catch (err: any) {
+-      toast.error('A importação parou', { description: err?.message });
++      toast.error('A importação parou', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     } finally {
+       setOcupado(false);
+       setProgresso(null);

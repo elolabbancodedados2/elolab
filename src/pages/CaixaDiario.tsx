@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -706,7 +707,7 @@ export default function CaixaDiario() {
       const estado = { aberto: true, data: today, valorAbertura: valorConfirmado, operador: profile?.nome };
       const estadoLocalSalvo = salvarEstadoLocalCaixa(estado, profile?.id, profile?.clinica_id);
 
-      toast.success('Caixa aberto com sucesso!');
+      toast.success('Caixa aberto com sucesso');
       if (!estadoLocalSalvo) toast.warning('O caixa foi aberto, mas a Recepção pode precisar atualizar o estado direto do sistema. Recarregue a tela da Recepção.');
       setShowAbertura(false);
       setValorAbertura('');
@@ -716,7 +717,7 @@ export default function CaixaDiario() {
     onError: (e: any) => {
       queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      toast.error(e?.message || 'Erro ao abrir caixa');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível abrir o caixa.'));
     },
   });
 
@@ -747,7 +748,7 @@ export default function CaixaDiario() {
         operador_fechamento: profile?.nome || current.operador_fechamento,
       } : current);
 
-      toast.success('Caixa fechado com sucesso!');
+      toast.success('Caixa fechado com sucesso');
       if (!estadoLocalLimpo) toast.warning('O caixa foi fechado, mas a Recepção pode exibir o estado anterior até atualizar. Recarregue a tela da Recepção.');
       setShowFechamento(false);
       setValorFechamento('');
@@ -764,7 +765,7 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      toast.error(e?.message || 'Erro ao fechar caixa');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível fechar o caixa.'));
     },
   });
 
@@ -792,7 +793,7 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      toast.error(e?.message || 'Erro ao reabrir caixa');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível reabrir o caixa.'));
     },
   });
 
@@ -851,7 +852,7 @@ export default function CaixaDiario() {
       posIdempotenciaRef.current = null;
       toast.success(resultado?.jaRegistrada
         ? 'Venda já estava registrada. O estoque não foi baixado novamente.'
-        : pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
+        : pacienteId ? 'Venda registrada e vinculada ao paciente' : 'Venda registrada');
       setShowLancamento(false);
       resetPOS();
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -868,7 +869,7 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['estoque'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      toast.error(e?.message || 'Erro');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível registrar a venda.'));
     },
   });
 
@@ -893,7 +894,7 @@ export default function CaixaDiario() {
     },
     onSuccess: () => {
       sangriaIdempotenciaRef.current = null;
-      toast.success('Sangria registrada!');
+      toast.success('Sangria registrada');
       setShowSangria(false);
       setSangriaForm({ valor: '', motivo: '' });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -904,7 +905,7 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.error(e?.message || 'Não foi possível confirmar a sangria.', {
+      toast.error(friendlyErrorMessage(e, 'Não foi possível confirmar a sangria.'), {
         description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
       });
     },
@@ -930,7 +931,7 @@ export default function CaixaDiario() {
     },
     onSuccess: () => {
       suprimentoIdempotenciaRef.current = null;
-      toast.success('Suprimento adicionado!');
+      toast.success('Suprimento adicionado');
       setShowSuprimento(false);
       setSuprimentoForm({ valor: '', descricao: '' });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -941,7 +942,7 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.error(e?.message || 'Não foi possível confirmar o suprimento.', {
+      toast.error(friendlyErrorMessage(e, 'Não foi possível confirmar o suprimento.'), {
         description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
       });
     },
@@ -974,7 +975,7 @@ export default function CaixaDiario() {
     },
     onSuccess: () => {
       despesaIdempotenciaRef.current = null;
-      toast.success('Despesa registrada!');
+      toast.success('Despesa registrada');
       setShowDespesa(false);
       setDespesaForm({ valor: '', descricao: '', categoria: 'Outros', forma_pagamento: 'dinheiro' });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -984,7 +985,7 @@ export default function CaixaDiario() {
     onError: (e: any) => {
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      toast.error(e?.message || 'Não foi possível registrar a despesa.', {
+      toast.error(friendlyErrorMessage(e, 'Não foi possível registrar a despesa.'), {
         description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
       });
     },
@@ -999,13 +1000,13 @@ export default function CaixaDiario() {
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir este lançamento.');
     },
     onSuccess: () => {
-      toast.success('Lançamento removido!');
+      toast.success('Lançamento removido');
       setConfirmDelete(null);
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro'),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível concluir a operação.')),
   });
 
   const editarLancamentoMutation = useMutation({
@@ -1020,13 +1021,13 @@ export default function CaixaDiario() {
       if (!data || data.length === 0) throw new Error('Sem permissão para editar este lançamento.');
     },
     onSuccess: () => {
-      toast.success('Lançamento atualizado!');
+      toast.success('Lançamento atualizado');
       setEditLanc(null);
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
     },
-    onError: (e: any) => toast.error(e?.message || 'Erro ao editar'),
+    onError: (e: any) => toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a edição.')),
   });
 
   // ─── Helpers ────────────────────────────────────
@@ -1363,7 +1364,7 @@ export default function CaixaDiario() {
                         }
                       }}
                       className={cn(
-                        'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                         card.escuro && 'border-transparent bg-gradient-primary text-white',
                         ativo && !card.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                         ativo && card.escuro && 'ring-2 ring-[#1080CA]/60',

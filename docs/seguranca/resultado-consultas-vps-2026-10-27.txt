@@ -1,0 +1,782 @@
+SET
+SET
+BEGIN
+== 0. Contexto
+  papel   |  banco   |                               versao_postgres                                |         executado_em          | somente_leitura 
+----------+----------+------------------------------------------------------------------------------+-------------------------------+-----------------
+ postgres | postgres | PostgreSQL 15.8 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 13.2.0, 64-bit | 2026-10-28 01:25:56.586179+00 | on
+(1 row)
+
+== 0.1 Papeis da API
+    rolname    | rolsuper | rolbypassrls | rolinherit | rolcanlogin 
+---------------+----------+--------------+------------+-------------
+ anon          | f        | f            | t          | f
+ authenticated | f        | f            | t          | f
+ authenticator | f        | f            | f          | t
+ service_role  | f        | t            | t          | f
+(4 rows)
+
+== 0.2 Configuracao do authenticator
+    rolname    |                                  rolconfig                                  
+---------------+-----------------------------------------------------------------------------
+ authenticator | {session_preload_libraries=safeupdate,statement_timeout=8s,lock_timeout=8s}
+(1 row)
+
+COMMIT
+BEGIN
+== 1.1 Funcoes de public executaveis por anon
+                    funcao                    |                                                                                         argumentos                                                                                          | security_definer |     retorno      |      dono      | de_extensao | na_allowlist 
+----------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------+------------------+----------------+-------------+--------------
+ accept_employee_invitation                   | _token text, _user_id uuid                                                                                                                                                                  | t                | jsonb            | postgres       | f           | t
+ aceitar_oferta_lista_espera                  | p_lista_espera_id uuid, p_paciente_id uuid                                                                                                                                                  | t                | uuid             | postgres       | f           | f
+ activate_public_registration                 | _user_id uuid, _codigo_convite text                                                                                                                                                         | t                | jsonb            | postgres       | f           | f
+ admin_acoes_imutavel                         |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ admin_encerrar_sessoes                       | p_user_id uuid                                                                                                                                                                              | t                | integer          | postgres       | f           | f
+ admin_situacao_contas                        |                                                                                                                                                                                             | t                | record           | postgres       | f           | f
+ alterar_status_conversa_whatsapp             | _conversation_id uuid, _status text                                                                                                                                                         | t                | void             | postgres       | f           | f
+ assinar_prontuario_verificavel               | p_prontuario_id uuid                                                                                                                                                                        | t                | jsonb            | postgres       | f           | f
+ auto_billing_on_appointment_complete         |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ auto_provision_subscriber                    |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ bloquear_escrita_operacional                 |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ busca_global                                 | p_termo text, p_limite integer                                                                                                                                                              | t                | record           | postgres       | f           | f
+ can_access_clinical                          | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ can_access_financial                         | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ can_manage_data                              | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ capture_operational_event                    |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ capture_subscription_event                   |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ carimba_liberacao_sem_triagem                |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ carimba_resultado_do_exame                   |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ central_notificacoes_usuario                 | p_limit integer                                                                                                                                                                             | t                | record           | postgres       | f           | f
+ checar_rate_limit                            | p_chave text, p_limite integer, p_janela_segundos integer                                                                                                                                   | t                | boolean          | postgres       | f           | f
+ check_critical_stock                         |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ clinica_acesso_bloqueado                     |                                                                                                                                                                                             | t                | boolean          | postgres       | f           | f
+ configurar_percentual_repasse                | p_medico_id uuid, p_percentual numeric                                                                                                                                                      | t                | void             | postgres       | f           | f
+ configurar_repasse_medico                    | p_medico_id uuid, p_tipo text, p_valor numeric                                                                                                                                              | t                | void             | postgres       | f           | f
+ criar_coleta_para_exame_de_lab               |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ current_clinica_id                           |                                                                                                                                                                                             | t                | uuid             | postgres       | f           | f
+ decide_support_access                        | p_request_id uuid, p_decision text, p_hours integer                                                                                                                                         | t                | void             | postgres       | f           | f
+ estado_operacional                           |                                                                                                                                                                                             | t                | jsonb            | postgres       | f           | f
+ estornar_pagamento                           | p_pagamento_id uuid, p_motivo text                                                                                                                                                          | t                | jsonb            | postgres       | f           | f
+ exige_coleta_antes_de_realizado              |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ exige_conferencia_antes_de_liberar           |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ exige_pagamento_antes_do_atendimento         |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ exige_triagem_antes_do_atendimento           |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ exigir_caixa_aberto_para_lancamento          |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ exigir_caixa_aberto_para_pagamento           |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ exigir_resultados_liberados_na_coleta        |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ expirar_ofertas_lista_espera                 |                                                                                                                                                                                             | t                | integer          | postgres       | f           | f
+ expire_trials                                |                                                                                                                                                                                             | t                | void             | postgres       | f           | f
+ fn_audit_row                                 |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ fn_block_if_subscription_expired             |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ fn_fill_clinica_id                           |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ fn_guard_profile_clinica                     |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ get_my_clinica_id                            |                                                                                                                                                                                             | t                | uuid             | postgres       | f           | f
+ get_user_plan                                | _user_id uuid                                                                                                                                                                               | t                | record           | postgres       | f           | f
+ handle_new_user                              |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ has_any_role                                 | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ has_role                                     | _user_id uuid, _role app_role                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ impedir_medico_com_registro_duplicado        |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ impedir_pedido_ativo_duplicado_lista_espera  |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ impedir_triagem_duplicada_por_agendamento    |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ incrementar_whatsapp_nao_lidas               | _conversation_id uuid                                                                                                                                                                       | t                | void             | postgres       | f           | f
+ is_admin                                     | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ is_clinica_owner                             | p_clinica_id uuid                                                                                                                                                                           | t                | boolean          | postgres       | f           | f
+ is_enfermagem                                | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ is_financeiro                                | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ is_medico                                    | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ is_platform_admin                            |                                                                                                                                                                                             | t                | boolean          | postgres       | f           | f
+ is_recepcao                                  | _user_id uuid                                                                                                                                                                               | t                | boolean          | postgres       | f           | f
+ laboratorio_auditar_guia_terceirizada        |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ laboratorio_auditar_status_amostra           |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ laboratorio_recalcular_pedido                |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ laboratorio_registrar_evento_pedido          |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ laboratorio_validar_guia_terceirizada        |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ laboratorio_versionar_resultado              |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ laudo_exige_resultado                        |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ limpar_logs_antigos                          |                                                                                                                                                                                             | t                | integer          | postgres       | f           | f
+ limpar_rate_limit_antigos                    |                                                                                                                                                                                             | t                | integer          | postgres       | f           | f
+ link_portal_paciente                         | p_paciente_id uuid                                                                                                                                                                          | t                | text             | postgres       | f           | f
+ manage_product_feedback                      | p_id uuid, p_status text, p_resposta text                                                                                                                                                   | t                | void             | postgres       | f           | f
+ meu_historico_acoes                          | p_action text, p_collection text, p_from timestamp with time zone, p_to timestamp with time zone, p_page integer, p_page_size integer                                                       | t                | record           | postgres       | f           | f
+ notify_exam_result_available                 |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ ordem_de_restauracao                         |                                                                                                                                                                                             | t                | text             | postgres       | f           | f
+ platform_arquivar_clinica                    | _clinica_id uuid, _motivo text                                                                                                                                                              | t                | jsonb            | postgres       | f           | f
+ platform_conteudo_da_clinica                 | _clinica_id uuid                                                                                                                                                                            | t                | jsonb            | postgres       | f           | f
+ platform_decide_restore                      | p_id uuid, p_approve boolean                                                                                                                                                                | t                | void             | postgres       | f           | f
+ platform_desarquivar_clinica                 | _clinica_id uuid                                                                                                                                                                            | t                | jsonb            | postgres       | f           | f
+ platform_excluir_clinica_vazia               | _clinica_id uuid, _confirmacao text                                                                                                                                                         | t                | jsonb            | postgres       | f           | f
+ platform_financial_history                   | p_days integer                                                                                                                                                                              | t                | jsonb            | postgres       | f           | f
+ platform_get_backup_overview                 |                                                                                                                                                                                             | t                | jsonb            | postgres       | f           | f
+ platform_get_clinicas_saude                  |                                                                                                                                                                                             | t                | record           | postgres       | f           | f
+ platform_queue_overview                      |                                                                                                                                                                                             | t                | jsonb            | postgres       | f           | f
+ platform_request_restore                     | p_backup_name text, p_reason text, p_scope text, p_scope_ref text                                                                                                                           | t                | uuid             | postgres       | f           | f
+ platform_retry_notification                  | p_id uuid                                                                                                                                                                                   | t                | boolean          | postgres       | f           | f
+ platform_set_tenant_limits                   | p_clinica_id uuid, p_max_users integer, p_max_ai_tokens integer, p_max_notifications integer                                                                                                | t                | void             | postgres       | f           | f
+ platform_stop_impersonation                  |                                                                                                                                                                                             | t                | jsonb            | postgres       | f           | f
+ platform_update_incident                     | p_id uuid, p_status text, p_message text                                                                                                                                                    | t                | void             | postgres       | f           | f
+ preencher_clinica_nos_fluxos                 |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ prontuario_conteudo_hash                     | p_prontuario_id uuid                                                                                                                                                                        | t                | text             | postgres       | f           | f
+ recalcular_conta                             | p_lancamento_id uuid                                                                                                                                                                        | t                | void             | postgres       | f           | f
+ recalcular_conta_trigger                     |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ registrar_historico_status_encaminhamento    |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ registrar_quem_mudou_manutencao              |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ registrar_venda_pdv                          | p_chave text, p_clinica_id uuid, p_paciente_id uuid, p_data date, p_descricao text, p_valor_cobrado numeric, p_valor_pago numeric, p_forma_pagamento text, p_produtos jsonb, p_exames jsonb | t                | record           | postgres       | f           | f
+ registrar_versao_modelo_atestado             |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ request_support_access                       | p_clinica_id uuid, p_reason text, p_scopes text[]                                                                                                                                           | t                | uuid             | postgres       | f           | f
+ resend_activation_manual                     | _registro_id uuid                                                                                                                                                                           | t                | jsonb            | postgres       | f           | f
+ saldo_devedor_do_agendamento                 | p_agendamento_id uuid                                                                                                                                                                       | t                | numeric          | postgres       | f           | f
+ semear_automacoes_da_clinica                 |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ sincronizar_comorbidades_paciente            | p_paciente_id uuid, p_descricoes text[]                                                                                                                                                     | t                | void             | postgres       | f           | f
+ storage_patient_photo_allowed                | _name text                                                                                                                                                                                  | t                | boolean          | postgres       | f           | f
+ submit_product_feedback                      | p_categoria text, p_mensagem text, p_contexto jsonb                                                                                                                                         | t                | record           | postgres       | f           | f
+ support_ticket_defaults                      |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ support_ticket_message_workflow              |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ tabelas_para_backup                          |                                                                                                                                                                                             | t                | text             | postgres       | f           | f
+ update_ultimo_acesso                         |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ user_has_feature                             | _user_id uuid, _feature text                                                                                                                                                                | t                | boolean          | postgres       | f           | f
+ user_in_same_clinica                         | _target_user_id uuid                                                                                                                                                                        | t                | boolean          | postgres       | f           | f
+ validar_autoria_documento_clinico            |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ validar_paciente_da_tarefa                   |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ validar_referencias_prontuario               |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ validar_responsavel_da_tarefa                |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ validar_tenant_preco_exame_convenio          |                                                                                                                                                                                             | t                | trigger          | postgres       | f           | f
+ validar_tipo_consulta_agendamento            |                                                                                                                                                                                             | t                | trigger          | supabase_admin | f           | f
+ validate_invitation_token                    | _token text                                                                                                                                                                                 | t                | jsonb            | postgres       | f           | t
+ validate_invite_code                         | _codigo text                                                                                                                                                                                | t                | jsonb            | postgres       | f           | t
+ verificar_assinatura_prontuario              | p_codigo uuid                                                                                                                                                                               | t                | jsonb            | postgres       | f           | t
+ verificar_saude_clinicas_e_alertar           |                                                                                                                                                                                             | t                | record           | postgres       | f           | f
+ watchdog_atendimento_travado                 |                                                                                                                                                                                             | t                | integer          | postgres       | f           | f
+ automacoes_padrao                            |                                                                                                                                                                                             | f                | record           | postgres       | f           | f
+ cancelar_coletas_pendentes_antigas           | p_dias integer, p_motivo text                                                                                                                                                               | f                | integer          | postgres       | f           | f
+ canonicalizar_tipo_agendamento               |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ chave_config_da_clinica                      | p_chave text                                                                                                                                                                                | f                | boolean          | postgres       | f           | f
+ convite_status_coerente                      |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ exame_e_de_laboratorio                       | p_tipo text                                                                                                                                                                                 | f                | boolean          | postgres       | f           | f
+ fn_sanitizar_auditoria_prontuario            |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ gerar_proxima_despesa_recorrente             |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ impedir_alteracao_autoria_tarefa             |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ impedir_exclusao_estoque_com_saldo           |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ impedir_prontuario_duplicado_por_agendamento |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ lancar_item_no_atendimento                   | p_agendamento_id uuid, p_descricao text, p_valor_unitario numeric, p_quantidade numeric, p_categoria text, p_prontuario_id uuid                                                             | f                | jsonb            | postgres       | f           | f
+ marcar_lote_pagamento                        |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ mask_cpf                                     | cpf_value text                                                                                                                                                                              | f                | text             | postgres       | f           | f
+ nome_catalogo_tipo_consulta                  | p_tipo text                                                                                                                                                                                 | f                | text             | postgres       | f           | f
+ normalizar_nome_exame                        | p_nome text                                                                                                                                                                                 | f                | text             | postgres       | f           | f
+ normalizar_telefone_jornada                  | p_telefone text                                                                                                                                                                             | f                | text             | postgres       | f           | f
+ normalize_cpf                                | cpf_value text                                                                                                                                                                              | f                | text             | postgres       | f           | f
+ pacientes_sincroniza_digitos                 |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ preencher_convenio_agendamento               |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ prevent_platform_ai_prompt_version_change    |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ prevent_platform_announcement_creator_change |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ prevent_prontuario_patient_reassignment      |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ prevent_signed_prontuario_change             |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ protect_room_hygiene_immutability            |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ protect_room_hygiene_room_release            |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ proteger_conteudo_mensagem_chat              |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ proteger_dependencia_prontuario_assinado     |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ proteger_identidade_conversa_chat            |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ public_availability_check                    |                                                                                                                                                                                             | f                | jsonb            | supabase_admin | f           | f
+ require_prontuario_author_to_sign            |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ solicitar_autorizacao_convenio               | p_paciente_id uuid, p_convenio_id uuid, p_tipo_servico text, p_descricao text, p_observacoes text                                                                                           | f                | jsonb            | postgres       | f           | f
+ support_sla                                  | p text                                                                                                                                                                                      | f                | interval         | postgres       | f           | f
+ touch_user_preferences                       |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ update_updated_at_column                     |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ validar_auditoria_alerta_prescricao          |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ validar_limites_ajuste_lancamento            |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ validar_limites_estoque                      |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ validar_prescricao_clinica                   |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ validar_tenant_atestado                      |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ validar_tenant_encaminhamento                |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ validar_tenant_memed_prescricao              |                                                                                                                                                                                             | f                | trigger          | postgres       | f           | f
+ validar_transicao_encaminhamento             |                                                                                                                                                                                             | f                | trigger          | supabase_admin | f           | f
+ cash_dist                                    | money, money                                                                                                                                                                                | f                | money            | supabase_admin | t           | f
+ date_dist                                    | date, date                                                                                                                                                                                  | f                | integer          | supabase_admin | t           | f
+ float4_dist                                  | real, real                                                                                                                                                                                  | f                | real             | supabase_admin | t           | f
+ float8_dist                                  | double precision, double precision                                                                                                                                                          | f                | double precision | supabase_admin | t           | f
+ gbt_bit_compress                             | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_bit_consistent                           | internal, bit, smallint, oid, internal                                                                                                                                                      | f                | boolean          | supabase_admin | t           | f
+ gbt_bit_penalty                              | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_bit_picksplit                            | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_bit_same                                 | gbtreekey_var, gbtreekey_var, internal                                                                                                                                                      | f                | internal         | supabase_admin | t           | f
+ gbt_bit_union                                | internal, internal                                                                                                                                                                          | f                | gbtreekey_var    | supabase_admin | t           | f
+ gbt_bool_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_bool_consistent                          | internal, boolean, smallint, oid, internal                                                                                                                                                  | f                | boolean          | supabase_admin | t           | f
+ gbt_bool_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_bool_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_bool_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_bool_same                                | gbtreekey2, gbtreekey2, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_bool_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey2       | supabase_admin | t           | f
+ gbt_bpchar_compress                          | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_bpchar_consistent                        | internal, character, smallint, oid, internal                                                                                                                                                | f                | boolean          | supabase_admin | t           | f
+ gbt_bytea_compress                           | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_bytea_consistent                         | internal, bytea, smallint, oid, internal                                                                                                                                                    | f                | boolean          | supabase_admin | t           | f
+ gbt_bytea_penalty                            | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_bytea_picksplit                          | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_bytea_same                               | gbtreekey_var, gbtreekey_var, internal                                                                                                                                                      | f                | internal         | supabase_admin | t           | f
+ gbt_bytea_union                              | internal, internal                                                                                                                                                                          | f                | gbtreekey_var    | supabase_admin | t           | f
+ gbt_cash_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_cash_consistent                          | internal, money, smallint, oid, internal                                                                                                                                                    | f                | boolean          | supabase_admin | t           | f
+ gbt_cash_distance                            | internal, money, smallint, oid, internal                                                                                                                                                    | f                | double precision | supabase_admin | t           | f
+ gbt_cash_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_cash_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_cash_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_cash_same                                | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_cash_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_date_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_date_consistent                          | internal, date, smallint, oid, internal                                                                                                                                                     | f                | boolean          | supabase_admin | t           | f
+ gbt_date_distance                            | internal, date, smallint, oid, internal                                                                                                                                                     | f                | double precision | supabase_admin | t           | f
+ gbt_date_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_date_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_date_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_date_same                                | gbtreekey8, gbtreekey8, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_date_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey8       | supabase_admin | t           | f
+ gbt_decompress                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_enum_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_enum_consistent                          | internal, anyenum, smallint, oid, internal                                                                                                                                                  | f                | boolean          | supabase_admin | t           | f
+ gbt_enum_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_enum_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_enum_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_enum_same                                | gbtreekey8, gbtreekey8, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_enum_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey8       | supabase_admin | t           | f
+ gbt_float4_compress                          | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_float4_consistent                        | internal, real, smallint, oid, internal                                                                                                                                                     | f                | boolean          | supabase_admin | t           | f
+ gbt_float4_distance                          | internal, real, smallint, oid, internal                                                                                                                                                     | f                | double precision | supabase_admin | t           | f
+ gbt_float4_fetch                             | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_float4_penalty                           | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_float4_picksplit                         | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_float4_same                              | gbtreekey8, gbtreekey8, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_float4_union                             | internal, internal                                                                                                                                                                          | f                | gbtreekey8       | supabase_admin | t           | f
+ gbt_float8_compress                          | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_float8_consistent                        | internal, double precision, smallint, oid, internal                                                                                                                                         | f                | boolean          | supabase_admin | t           | f
+ gbt_float8_distance                          | internal, double precision, smallint, oid, internal                                                                                                                                         | f                | double precision | supabase_admin | t           | f
+ gbt_float8_fetch                             | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_float8_penalty                           | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_float8_picksplit                         | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_float8_same                              | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_float8_union                             | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_inet_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_inet_consistent                          | internal, inet, smallint, oid, internal                                                                                                                                                     | f                | boolean          | supabase_admin | t           | f
+ gbt_inet_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_inet_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_inet_same                                | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_inet_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_int2_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_int2_consistent                          | internal, smallint, smallint, oid, internal                                                                                                                                                 | f                | boolean          | supabase_admin | t           | f
+ gbt_int2_distance                            | internal, smallint, smallint, oid, internal                                                                                                                                                 | f                | double precision | supabase_admin | t           | f
+ gbt_int2_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_int2_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_int2_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_int2_same                                | gbtreekey4, gbtreekey4, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_int2_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey4       | supabase_admin | t           | f
+ gbt_int4_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_int4_consistent                          | internal, integer, smallint, oid, internal                                                                                                                                                  | f                | boolean          | supabase_admin | t           | f
+ gbt_int4_distance                            | internal, integer, smallint, oid, internal                                                                                                                                                  | f                | double precision | supabase_admin | t           | f
+ gbt_int4_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_int4_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_int4_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_int4_same                                | gbtreekey8, gbtreekey8, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_int4_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey8       | supabase_admin | t           | f
+ gbt_int8_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_int8_consistent                          | internal, bigint, smallint, oid, internal                                                                                                                                                   | f                | boolean          | supabase_admin | t           | f
+ gbt_int8_distance                            | internal, bigint, smallint, oid, internal                                                                                                                                                   | f                | double precision | supabase_admin | t           | f
+ gbt_int8_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_int8_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_int8_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_int8_same                                | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_int8_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_intv_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_intv_consistent                          | internal, interval, smallint, oid, internal                                                                                                                                                 | f                | boolean          | supabase_admin | t           | f
+ gbt_intv_decompress                          | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_intv_distance                            | internal, interval, smallint, oid, internal                                                                                                                                                 | f                | double precision | supabase_admin | t           | f
+ gbt_intv_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_intv_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_intv_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_intv_same                                | gbtreekey32, gbtreekey32, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_intv_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey32      | supabase_admin | t           | f
+ gbt_macad8_compress                          | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_macad8_consistent                        | internal, macaddr8, smallint, oid, internal                                                                                                                                                 | f                | boolean          | supabase_admin | t           | f
+ gbt_macad8_fetch                             | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_macad8_penalty                           | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_macad8_picksplit                         | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_macad8_same                              | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_macad8_union                             | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_macad_compress                           | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_macad_consistent                         | internal, macaddr, smallint, oid, internal                                                                                                                                                  | f                | boolean          | supabase_admin | t           | f
+ gbt_macad_fetch                              | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_macad_penalty                            | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_macad_picksplit                          | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_macad_same                               | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_macad_union                              | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_numeric_compress                         | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_numeric_consistent                       | internal, numeric, smallint, oid, internal                                                                                                                                                  | f                | boolean          | supabase_admin | t           | f
+ gbt_numeric_penalty                          | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_numeric_picksplit                        | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_numeric_same                             | gbtreekey_var, gbtreekey_var, internal                                                                                                                                                      | f                | internal         | supabase_admin | t           | f
+ gbt_numeric_union                            | internal, internal                                                                                                                                                                          | f                | gbtreekey_var    | supabase_admin | t           | f
+ gbt_oid_compress                             | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_oid_consistent                           | internal, oid, smallint, oid, internal                                                                                                                                                      | f                | boolean          | supabase_admin | t           | f
+ gbt_oid_distance                             | internal, oid, smallint, oid, internal                                                                                                                                                      | f                | double precision | supabase_admin | t           | f
+ gbt_oid_fetch                                | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_oid_penalty                              | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_oid_picksplit                            | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_oid_same                                 | gbtreekey8, gbtreekey8, internal                                                                                                                                                            | f                | internal         | supabase_admin | t           | f
+ gbt_oid_union                                | internal, internal                                                                                                                                                                          | f                | gbtreekey8       | supabase_admin | t           | f
+ gbt_text_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_text_consistent                          | internal, text, smallint, oid, internal                                                                                                                                                     | f                | boolean          | supabase_admin | t           | f
+ gbt_text_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_text_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_text_same                                | gbtreekey_var, gbtreekey_var, internal                                                                                                                                                      | f                | internal         | supabase_admin | t           | f
+ gbt_text_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey_var    | supabase_admin | t           | f
+ gbt_time_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_time_consistent                          | internal, time without time zone, smallint, oid, internal                                                                                                                                   | f                | boolean          | supabase_admin | t           | f
+ gbt_time_distance                            | internal, time without time zone, smallint, oid, internal                                                                                                                                   | f                | double precision | supabase_admin | t           | f
+ gbt_time_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_time_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_time_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_time_same                                | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_time_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_timetz_compress                          | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_timetz_consistent                        | internal, time with time zone, smallint, oid, internal                                                                                                                                      | f                | boolean          | supabase_admin | t           | f
+ gbt_ts_compress                              | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_ts_consistent                            | internal, timestamp without time zone, smallint, oid, internal                                                                                                                              | f                | boolean          | supabase_admin | t           | f
+ gbt_ts_distance                              | internal, timestamp without time zone, smallint, oid, internal                                                                                                                              | f                | double precision | supabase_admin | t           | f
+ gbt_ts_fetch                                 | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_ts_penalty                               | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_ts_picksplit                             | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_ts_same                                  | gbtreekey16, gbtreekey16, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_ts_union                                 | internal, internal                                                                                                                                                                          | f                | gbtreekey16      | supabase_admin | t           | f
+ gbt_tstz_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_tstz_consistent                          | internal, timestamp with time zone, smallint, oid, internal                                                                                                                                 | f                | boolean          | supabase_admin | t           | f
+ gbt_tstz_distance                            | internal, timestamp with time zone, smallint, oid, internal                                                                                                                                 | f                | double precision | supabase_admin | t           | f
+ gbt_uuid_compress                            | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_uuid_consistent                          | internal, uuid, smallint, oid, internal                                                                                                                                                     | f                | boolean          | supabase_admin | t           | f
+ gbt_uuid_fetch                               | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_uuid_penalty                             | internal, internal, internal                                                                                                                                                                | f                | internal         | supabase_admin | t           | f
+ gbt_uuid_picksplit                           | internal, internal                                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_uuid_same                                | gbtreekey32, gbtreekey32, internal                                                                                                                                                          | f                | internal         | supabase_admin | t           | f
+ gbt_uuid_union                               | internal, internal                                                                                                                                                                          | f                | gbtreekey32      | supabase_admin | t           | f
+ gbt_var_decompress                           | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbt_var_fetch                                | internal                                                                                                                                                                                    | f                | internal         | supabase_admin | t           | f
+ gbtreekey16_in                               | cstring                                                                                                                                                                                     | f                | gbtreekey16      | supabase_admin | t           | f
+ gbtreekey16_out                              | gbtreekey16                                                                                                                                                                                 | f                | cstring          | supabase_admin | t           | f
+ gbtreekey2_in                                | cstring                                                                                                                                                                                     | f                | gbtreekey2       | supabase_admin | t           | f
+ gbtreekey2_out                               | gbtreekey2                                                                                                                                                                                  | f                | cstring          | supabase_admin | t           | f
+ gbtreekey32_in                               | cstring                                                                                                                                                                                     | f                | gbtreekey32      | supabase_admin | t           | f
+ gbtreekey32_out                              | gbtreekey32                                                                                                                                                                                 | f                | cstring          | supabase_admin | t           | f
+ gbtreekey4_in                                | cstring                                                                                                                                                                                     | f                | gbtreekey4       | supabase_admin | t           | f
+ gbtreekey4_out                               | gbtreekey4                                                                                                                                                                                  | f                | cstring          | supabase_admin | t           | f
+ gbtreekey8_in                                | cstring                                                                                                                                                                                     | f                | gbtreekey8       | supabase_admin | t           | f
+ gbtreekey8_out                               | gbtreekey8                                                                                                                                                                                  | f                | cstring          | supabase_admin | t           | f
+ gbtreekey_var_in                             | cstring                                                                                                                                                                                     | f                | gbtreekey_var    | supabase_admin | t           | f
+ gbtreekey_var_out                            | gbtreekey_var                                                                                                                                                                               | f                | cstring          | supabase_admin | t           | f
+ int2_dist                                    | smallint, smallint                                                                                                                                                                          | f                | smallint         | supabase_admin | t           | f
+ int4_dist                                    | integer, integer                                                                                                                                                                            | f                | integer          | supabase_admin | t           | f
+ int8_dist                                    | bigint, bigint                                                                                                                                                                              | f                | bigint           | supabase_admin | t           | f
+ interval_dist                                | interval, interval                                                                                                                                                                          | f                | interval         | supabase_admin | t           | f
+ oid_dist                                     | oid, oid                                                                                                                                                                                    | f                | oid              | supabase_admin | t           | f
+ time_dist                                    | time without time zone, time without time zone                                                                                                                                              | f                | interval         | supabase_admin | t           | f
+ ts_dist                                      | timestamp without time zone, timestamp without time zone                                                                                                                                    | f                | interval         | supabase_admin | t           | f
+ tstz_dist                                    | timestamp with time zone, timestamp with time zone                                                                                                                                          | f                | interval         | supabase_admin | t           | f
+(350 rows)
+
+== 1.2 Resumo: SECURITY DEFINER executaveis por anon fora da allowlist
+ definer_anon_total | definer_anon_fora_allowlist | invoker_anon_total 
+--------------------+-----------------------------+--------------------
+                119 |                          67 |                 43
+(1 row)
+
+== 1.3 Funcoes dos achados de acesso
+               funcao               |             argumentos              | security_definer | anon_executa | authenticated_executa |                                                acl                                                 |                config                 
+------------------------------------+-------------------------------------+------------------+--------------+-----------------------+----------------------------------------------------------------------------------------------------+---------------------------------------
+ accept_employee_invitation         | _token text, _user_id uuid          | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ activate_public_registration       | _user_id uuid, _codigo_convite text | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ enfileirar_lembretes_retorno       |                                     | t                | f            | f                     | {postgres=X/postgres,service_role=X/postgres}                                                      | {search_path=public}
+ expirar_ofertas_lista_espera       |                                     | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ is_platform_admin                  |                                     | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {"search_path=public, auth, pg_temp"}
+ link_portal_paciente               | p_paciente_id uuid                  | t                | t            | t                     | {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}             | {"search_path=public, extensions"}
+ platform_get_clinicas_saude        |                                     | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ start_free_trial                   | _user_id uuid, _plano_slug text     | t                | f            | f                     | {postgres=X/postgres,service_role=X/postgres}                                                      | {search_path=public}
+ validate_invitation_token          | _token text                         | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ validate_invite_code               | _codigo text                        | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ verificar_assinatura_prontuario    | p_codigo uuid                       | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {"search_path=public, extensions"}
+ verificar_saude_clinicas_e_alertar |                                     | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+ watchdog_atendimento_travado       |                                     | t                | t            | t                     | {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} | {search_path=public}
+(13 rows)
+
+== 1.4 Versao viva das funcoes do P0
+           funcao            |          hash_definicao          |                            versao_inferida                            
+-----------------------------+----------------------------------+-----------------------------------------------------------------------
+ link_portal_paciente        | ba58e229c729c0561610f7a31aed6f0e | 20261011010000: confere a clinica, mas pula a checagem sem auth.uid()
+ platform_get_clinicas_saude | c81ce702846470aed257637c7a72bbfc | 20260817240000: passa sem JWT
+(2 rows)
+
+== 1.5 SECURITY DEFINER sem search_path
+ funcao | argumentos | config | anon_executa | authenticated_executa 
+--------+------------+--------+--------------+-----------------------
+(0 rows)
+
+== 1.6 SECURITY DEFINER sem argumentos executaveis por authenticated
+                  funcao                  |   retorno    | anon_executa 
+------------------------------------------+--------------+--------------
+ admin_situacao_contas                    | record       | t
+ buscar_medico_atual                      | record       | f
+ clinic_onboarding_overview               | jsonb        | f
+ clinica_acesso_bloqueado                 | boolean      | t
+ contar_equipe_ativa                      | record       | f
+ current_clinica_id                       | uuid         | t
+ estado_operacional                       | jsonb        | t
+ expirar_ofertas_lista_espera             | integer      | t
+ expire_trials                            | void         | t
+ get_my_clinica_id                        | uuid         | t
+ integracoes_da_clinica                   | record       | f
+ is_platform_admin                        | boolean      | t
+ limpar_logs_antigos                      | integer      | t
+ limpar_rate_limit_antigos                | integer      | t
+ list_my_account_sessions                 | record       | f
+ listar_funcionarios_chat_equipe          | record       | f
+ listar_funcionarios_equipe_admin         | funcionarios | f
+ listar_medicos_equipe_admin              | medicos      | f
+ listar_medicos_repasse_equipe            | record       | f
+ meus_comunicados                         | record       | f
+ ordem_de_restauracao                     | text         | t
+ platform_ai_usage_summary                | jsonb        | f
+ platform_billing_overview                | jsonb        | f
+ platform_clinic_integration_overview     | jsonb        | f
+ platform_crm_overview                    | record       | f
+ platform_get_backup_overview             | jsonb        | t
+ platform_get_clinicas_overview           | record       | f
+ platform_get_clinicas_saude              | record       | t
+ platform_onboarding_overview             | jsonb        | f
+ platform_queue_overview                  | jsonb        | t
+ platform_security_overview               | jsonb        | f
+ platform_stop_impersonation              | jsonb        | t
+ platform_usage_overview                  | jsonb        | f
+ registrar_visualizacao_historico_clinica | integer      | f
+ tabelas_para_backup                      | text         | t
+ verificar_saude_clinicas_e_alertar       | record       | t
+ watchdog_atendimento_travado             | integer      | t
+(37 rows)
+
+COMMIT
+BEGIN
+== 2.1 pg_default_acl
+    dono_que_cria    |       schema       | tipo |                                                               acl_padrao                                                               | concede_a_anon 
+---------------------+--------------------+------+----------------------------------------------------------------------------------------------------------------------------------------+----------------
+ postgres            | public             | S    | {postgres=rwU/postgres,anon=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}                                         | t
+ postgres            | public             | f    | {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}                                                 | t
+ postgres            | public             | r    | {postgres=arwdDxt/postgres,anon=arwdDxt/postgres,authenticated=arwdDxt/postgres,service_role=arwdDxt/postgres}                         | t
+ postgres            | storage            | S    | {postgres=rwU/postgres,anon=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}                                         | t
+ postgres            | storage            | f    | {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}                                                 | t
+ postgres            | storage            | r    | {postgres=arwdDxt/postgres,anon=arwdDxt/postgres,authenticated=arwdDxt/postgres,service_role=arwdDxt/postgres}                         | t
+ postgres            | supabase_functions | S    | {postgres=rwU/postgres,anon=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}                                         | t
+ postgres            | supabase_functions | f    | {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}                                                 | t
+ postgres            | supabase_functions | r    | {postgres=arwdDxt/postgres,anon=arwdDxt/postgres,authenticated=arwdDxt/postgres,service_role=arwdDxt/postgres}                         | t
+ supabase_admin      | cron               | S    | {postgres=r*w*U*/supabase_admin}                                                                                                       | f
+ supabase_admin      | cron               | f    | {postgres=X*/supabase_admin}                                                                                                           | f
+ supabase_admin      | cron               | r    | {postgres=a*r*w*d*D*x*t*/supabase_admin}                                                                                               | f
+ supabase_admin      | extensions         | S    | {postgres=r*w*U*/supabase_admin}                                                                                                       | f
+ supabase_admin      | extensions         | f    | {postgres=X*/supabase_admin}                                                                                                           | f
+ supabase_admin      | extensions         | r    | {postgres=a*r*w*d*D*x*t*/supabase_admin}                                                                                               | f
+ supabase_admin      | graphql            | S    | {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}                 | t
+ supabase_admin      | graphql            | f    | {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}                         | t
+ supabase_admin      | graphql            | r    | {postgres=arwdDxt/supabase_admin,anon=arwdDxt/supabase_admin,authenticated=arwdDxt/supabase_admin,service_role=arwdDxt/supabase_admin} | t
+ supabase_admin      | graphql_public     | S    | {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}                 | t
+ supabase_admin      | graphql_public     | f    | {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}                         | t
+ supabase_admin      | graphql_public     | r    | {postgres=arwdDxt/supabase_admin,anon=arwdDxt/supabase_admin,authenticated=arwdDxt/supabase_admin,service_role=arwdDxt/supabase_admin} | t
+ supabase_admin      | public             | S    | {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}                 | t
+ supabase_admin      | public             | f    | {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}                         | t
+ supabase_admin      | public             | r    | {postgres=arwdDxt/supabase_admin,anon=arwdDxt/supabase_admin,authenticated=arwdDxt/supabase_admin,service_role=arwdDxt/supabase_admin} | t
+ supabase_admin      | realtime           | S    | {postgres=rwU/supabase_admin,dashboard_user=rwU/supabase_admin}                                                                        | f
+ supabase_admin      | realtime           | f    | {postgres=X/supabase_admin,dashboard_user=X/supabase_admin}                                                                            | f
+ supabase_admin      | realtime           | r    | {postgres=arwdDxt/supabase_admin,dashboard_user=arwdDxt/supabase_admin}                                                                | f
+ supabase_auth_admin | auth               | S    | {postgres=rwU/supabase_auth_admin,dashboard_user=rwU/supabase_auth_admin}                                                              | f
+ supabase_auth_admin | auth               | f    | {postgres=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}                                                                  | f
+ supabase_auth_admin | auth               | r    | {postgres=arwdDxt/supabase_auth_admin,dashboard_user=arwdDxt/supabase_auth_admin}                                                      | f
+(30 rows)
+
+== 2.2 Donos das funcoes de public
+      dono      | funcoes | security_definer 
+----------------+---------+------------------
+ supabase_admin |     296 |               94
+ postgres       |     264 |              210
+(2 rows)
+
+== 2.3 Funcoes de public executaveis por PUBLIC
+ funcoes_com_execute_para_public 
+---------------------------------
+                             153
+(1 row)
+
+COMMIT
+BEGIN
+== 3.1 Tabelas de public sem RLS
+    tabela     | anon_select | anon_insert | auth_select | auth_update 
+---------------+-------------+-------------+-------------+-------------
+ cid10_codigos | t           | t           | t           | t
+(1 row)
+
+== 3.2 Views sem security_invoker
+            view            | tipo | opcoes | anon_select | auth_select 
+----------------------------+------+--------+-------------+-------------
+ fila_alertas_lab_esquecido | v    |        | t           | t
+(1 row)
+
+== 3.3 RLS ativo sem policy
+               tabela                
+-------------------------------------
+ account_session_activity
+ caixa_vendas_pos_idempotencia
+ clinic_equipment_assets
+ clinic_equipment_audit
+ clinic_equipment_documents
+ clinic_equipment_work_orders
+ clinical_safety_access_audit
+ clinical_safety_correction_requests
+ clinical_safety_reports
+ clinical_safety_updates
+ cobranca_inadimplente_claims
+ integracoes_clinica
+ memed_prescricoes
+ mercadopago_oauth_refresh_locks
+ mercadopago_oauth_states
+ mercadopago_point_orders
+ platform_ai_token_reservations
+ platform_plan_trial_claims
+ public_booking_holds
+ rate_limit_counters
+ room_hygiene_active_checklists
+ room_hygiene_audit
+ room_hygiene_checklist_versions
+ room_hygiene_executions
+ room_hygiene_reviews
+ teleconsulta_sessions
+ teleconsulta_signals
+(27 rows)
+
+== 3.4 Tabelas com privilegio para anon (contagem)
+ anon_select | anon_insert | anon_update | anon_delete | tabelas_public 
+-------------+-------------+-------------+-------------+----------------
+         130 |         125 |         123 |         125 |            167
+(1 row)
+
+COMMIT
+BEGIN
+== 4.1 Policies com true ou para anon
+ schemaname |         tablename          |               policyname               | permissive |        roles         |  cmd   |   using_expr   | check_expr 
+------------+----------------------------+----------------------------------------+------------+----------------------+--------+----------------+------------
+ public     | cid10                      | cid10_select_authenticated             | PERMISSIVE | {authenticated}      | SELECT | true           | 
+ public     | employee_invitations       | employee_invitations_anon_block        | PERMISSIVE | {anon}               | SELECT | false          | 
+ public     | planos                     | planos_public_select                   | PERMISSIVE | {anon,authenticated} | SELECT | (ativo = true) | 
+ public     | plataforma_estado          | plataforma_estado_leitura_publica      | PERMISSIVE | {anon,authenticated} | SELECT | true           | 
+ public     | platform_operational_state | autenticado le operacao                | PERMISSIVE | {authenticated}      | SELECT | true           | 
+ public     | registros_pendentes        | anon_select_registros_pendentes_denied | PERMISSIVE | {anon}               | SELECT | false          | 
+(6 rows)
+
+== 4.2 Policies TO public sem referencia a auth, clinica ou papel
+ schemaname | tablename | policyname | cmd | using_expr | check_expr 
+------------+-----------+------------+-----+------------+------------
+(0 rows)
+
+== 4.3 Policies que aceitam clinica_id IS NULL
+        tablename        |              policyname               |  cmd   |                                      using_expr                                      |                                                                                                                check_expr                                                                                                                
+-------------------------+---------------------------------------+--------+--------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ anexos_prontuario       | anexos_insert                         | INSERT |                                                                                      | (can_access_clinical(auth.uid()) AND ((clinica_id IS NULL) OR is_same_clinica(clinica_id)) AND (EXISTS ( SELECT 1                                                                                                                       +
+                         |                                       |        |                                                                                      |    FROM prontuarios p                                                                                                                                                                                                                   +
+                         |                                       |        |                                                                                      |   WHERE ((p.id = anexos_prontuario.prontuario_id) AND is_same_clinica(p.clinica_id)))))
+ audit_log               | audit_log_insert_safe                 | INSERT |                                                                                      | (has_any_role(auth.uid()) AND ((user_id IS NULL) OR (user_id = auth.uid())) AND ((clinica_id IS NULL) OR (clinica_id = get_my_clinica_id())))
+ audit_log               | audit_log_insert_scoped               | INSERT |                                                                                      | ((user_id = auth.uid()) AND (((clinica_id IS NOT NULL) AND (clinica_id = get_my_clinica_id())) OR ((clinica_id IS NULL) AND is_platform_admin())))
+ automation_logs         | automation_logs_insert_workflow_v3    | INSERT |                                                                                      | (has_any_role(auth.uid()) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ autorizacoes_convenio   | autorizacoes_convenio_insert          | INSERT |                                                                                      | ((can_manage_data(auth.uid()) OR is_medico(auth.uid())) AND ((clinica_id IS NULL) OR (clinica_id = get_my_clinica_id())))
+ bloqueios_agenda        | bloqueios_insert                      | INSERT |                                                                                      | ((is_admin(auth.uid()) OR is_medico(auth.uid()) OR is_recepcao(auth.uid())) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ configuracoes_clinica   | config_insert                         | INSERT |                                                                                      | ((user_id = auth.uid()) AND ((clinica_id IS NULL) OR is_same_clinica(clinica_id)) AND ((NOT chave_config_da_clinica(chave)) OR ((chave = 'precos_exames_internos'::text) AND can_access_financial(auth.uid())) OR is_admin(auth.uid())))
+ consentimentos_lgpd     | consentimentos_insert                 | INSERT |                                                                                      | (can_manage_data(auth.uid()) AND ((clinica_id IS NULL) OR is_same_clinica(clinica_id)))
+ convenios               | convenios_insert                      | INSERT |                                                                                      | (is_admin(auth.uid()) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ especialidades_destino  | especialidades_destino_select         | SELECT | (has_any_role(auth.uid()) AND ((clinica_id IS NULL) OR is_same_clinica(clinica_id))) | 
+ exames                  | exames_insert                         | INSERT |                                                                                      | ((is_admin(auth.uid()) OR is_medico(auth.uid()) OR is_enfermagem(auth.uid()) OR is_recepcao(auth.uid())) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ lancamentos             | lancamentos_insert_fluxo_v3           | INSERT |                                                                                      | ((can_access_financial(auth.uid()) OR is_recepcao(auth.uid()) OR (can_access_clinical(auth.uid()) AND (categoria = ANY (ARRAY['consulta'::text, 'exame'::text])))) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ lgpd_access_request_log | lgpd_access_request_log_insert        | INSERT |                                                                                      | (has_any_role(auth.uid()) AND ((clinica_id IS NULL) OR (clinica_id = get_my_clinica_id())))
+ lgpd_consent_log        | lgpd_consent_log_insert               | INSERT |                                                                                      | (has_any_role(auth.uid()) AND ((clinica_id IS NULL) OR (clinica_id = get_my_clinica_id())))
+ lgpd_deletion_log       | lgpd_deletion_log_insert              | INSERT |                                                                                      | (is_admin(auth.uid()) AND ((clinica_id IS NULL) OR (clinica_id = get_my_clinica_id())))
+ lista_espera            | lista_espera_insert                   | INSERT |                                                                                      | (can_manage_data(auth.uid()) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ medicos                 | medicos_insert                        | INSERT |                                                                                      | (is_admin(auth.uid()) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ notification_queue      | notification_queue_insert_workflow_v3 | INSERT |                                                                                      | ((is_admin(auth.uid()) OR is_recepcao(auth.uid()) OR is_medico(auth.uid()) OR is_enfermagem(auth.uid())) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ notification_templates  | notification_templates_select_staff   | SELECT | (has_any_role(auth.uid()) AND ((clinica_id IS NULL) OR is_same_clinica(clinica_id))) | 
+ paciente_comorbidades   | paciente_comorbidades_insert          | INSERT |                                                                                      | ((can_access_clinical(auth.uid()) OR can_manage_data(auth.uid())) AND ((clinica_id IS NULL) OR (clinica_id = get_my_clinica_id())))
+ templates_atestado      | templates_atestado_insert_scoped      | INSERT |                                                                                      | ((is_admin(auth.uid()) OR is_medico(auth.uid())) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ templates_prescricao    | templates_prescricao_insert_scoped    | INSERT |                                                                                      | ((is_admin(auth.uid()) OR is_medico(auth.uid())) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ tipos_consulta          | tipos_consulta_insert                 | INSERT |                                                                                      | (is_admin(auth.uid()) AND ((clinica_id IS NULL) OR is_same_clinica(clinica_id)))
+ tipos_exame_custom      | tipos_exame_custom_insert_scoped      | INSERT |                                                                                      | ((user_id = auth.uid()) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+ triagens                | triagens_insert_scoped                | INSERT |                                                                                      | (can_access_clinical(auth.uid()) AND ((clinica_id = get_my_clinica_id()) OR (clinica_id IS NULL)))
+(25 rows)
+
+== 4.4 Buckets do Storage
+             id             | public | file_size_limit 
+----------------------------+--------+-----------------
+ backups                    | f      |                
+ backups-arquivos           | f      |                
+ clinic-equipment-documents | f      |        10485760
+ guias-externas             | f      |                
+ medical-attachments        | f      |                
+ patient-photos             | f      |                
+ tv-panel-media             | f      |                
+(7 rows)
+
+COMMIT
+BEGIN
+== 5.1 Regras que leem aal
+  tipo  |          objeto          
+--------+--------------------------
+ funcao | public.is_platform_admin
+(1 row)
+
+== 5.2 Cobertura de MFA (contagens)
+         grupo          | usuarios | com_mfa 
+------------------------+----------+---------
+ platform_admins ativos |        1 |       0
+ papel admin            |        4 |       0
+ papel financeiro       |        1 |       0
+(3 rows)
+
+COMMIT
+BEGIN
+== 6.1 Tokens do portal (contagens)
+ ativos_validos | ativos_fora_do_formato_hash | ativos_sem_expiracao | sem_clinica 
+----------------+-----------------------------+----------------------+-------------
+             82 |                           0 |                    0 |           0
+(1 row)
+
+== 6.2 Tokens com clinica divergente do paciente
+ tokens_com_clinica_divergente 
+-------------------------------
+                             0
+(1 row)
+
+COMMIT
+BEGIN
+== 7.1 Tabelas publicadas no Realtime e RLS
+ schemaname |           tablename            | rls_ativo 
+------------+--------------------------------+-----------
+ public     | assinaturas_mercadopago        | t
+ public     | assinaturas_plano              | t
+ public     | clinicas                       | t
+ public     | mercadopago_webhook_logs       | t
+ public     | pagamentos                     | t
+ public     | platform_plan_orders           | t
+ public     | platform_subscription_events   | t
+ public     | platform_subscription_invoices | t
+ public     | profiles                       | t
+ public     | registros_pendentes            | t
+ public     | resultado_critico_confirmacoes | t
+(11 rows)
+
+COMMIT
+BEGIN
+== 8.1 Jobs do pg_cron (falha se a extensao nao existir)
+ jobid |                jobname                |   schedule   | active |    username    
+-------+---------------------------------------+--------------+--------+----------------
+     1 | process-notification-queue            | */5 * * * *  | t      | postgres
+     2 | send-appointment-reminders            | 0 * * * *    | t      | postgres
+     3 | stock-alerts                          | 0 8 * * *    | t      | postgres
+     4 | birthday-greetings                    | 0 9 * * *    | t      | postgres
+     5 | monthly-report                        | 0 7 1 * *    | t      | postgres
+     6 | payment-reminders                     | 0 8 * * *    | t      | postgres
+     7 | welcome-emails                        | */5 * * * *  | t      | postgres
+     8 | reconcile-pending-registrations-daily | 15 3 * * *   | t      | postgres
+     9 | auto-backup-diario                    | 0 3 * * *    | t      | postgres
+    10 | backup-verificar-diario               | 30 3 * * *   | t      | postgres
+    12 | scheduled-reports-runner              | 5 * * * *    | t      | postgres
+    13 | limpar-logs-antigos                   | 0 4 * * 0    | t      | postgres
+    14 | watchdog-atendimento-travado          | 17 * * * *   | t      | postgres
+    15 | limpar-rate-limit-antigos             | 47 * * * *   | t      | postgres
+    16 | alerta-saude-clinicas                 | 0 11 * * *   | t      | postgres
+    17 | lembretes-retorno                     | 0 12 * * *   | t      | postgres
+    18 | expirar-ofertas-lista-espera          | */10 * * * * | t      | postgres
+    19 | atualizar-risco-no-show               | 15 * * * *   | t      | postgres
+    20 | platform-reports-runner               | 0 * * * *    | t      | postgres
+    23 | expire-platform-trials                | */15 * * * * | t      | supabase_admin
+    24 | expire-prepaid-platform-plans         | */15 * * * * | t      | supabase_admin
+(21 rows)
+
+COMMIT
+BEGIN
+== 9.1 Tabela de historico de migrations
+           tabela_historico            
+---------------------------------------
+ supabase_migrations.schema_migrations
+(1 row)
+
+COMMIT
+BEGIN
+== 9.2 Migrations: diferencas entre VPS e repositorio
+     versao     |         nome_no_repositorio          |     situacao      
+----------------+--------------------------------------+-------------------
+ 20261010198100 |                                      | so_na_vps
+ 20261011480000 |                                      | so_na_vps
+ 20261012120000 |                                      | so_na_vps
+ 20261012130000 |                                      | so_na_vps
+ 20261013100000 |                                      | so_na_vps
+ 20261013110000 |                                      | so_na_vps
+ 20261013120000 |                                      | so_na_vps
+ 20261013130000 |                                      | so_na_vps
+ 20261013140000 |                                      | so_na_vps
+ 20261013143000 |                                      | so_na_vps
+ 20261013150000 |                                      | so_na_vps
+ 20261013160000 |                                      | so_na_vps
+ 20261013170000 |                                      | so_na_vps
+ 20261013190000 |                                      | so_na_vps
+ 20261013191000 |                                      | so_na_vps
+ 20261013200000 |                                      | so_na_vps
+ 20261014100000 |                                      | so_na_vps
+ 20261014100500 |                                      | so_na_vps
+ 20261014110000 |                                      | so_na_vps
+ 20261014110500 |                                      | so_na_vps
+ 20261014120000 |                                      | so_na_vps
+ 20261014120500 |                                      | so_na_vps
+ 20261014130000 |                                      | so_na_vps
+ 20261014130500 |                                      | so_na_vps
+ 20261014140000 |                                      | so_na_vps
+ 20261014140500 |                                      | so_na_vps
+ 20261014150000 |                                      | so_na_vps
+ 20261014150500 |                                      | so_na_vps
+ 20261014160000 |                                      | so_na_vps
+ 20261014160500 |                                      | so_na_vps
+ 20261014170000 |                                      | so_na_vps
+ 20261014171000 |                                      | so_na_vps
+ 20261014172000 |                                      | so_na_vps
+ 20261014173000 |                                      | so_na_vps
+ 20261014180000 |                                      | so_na_vps
+ 20261014180500 |                                      | so_na_vps
+ 20261014181000 |                                      | so_na_vps
+ 20261014190000 |                                      | so_na_vps
+ 20261014200000 |                                      | so_na_vps
+ 20261014210000 |                                      | so_na_vps
+ 20261014210500 |                                      | so_na_vps
+ 20261014220000 |                                      | so_na_vps
+ 20261014220500 |                                      | so_na_vps
+ 20261014230000 |                                      | so_na_vps
+ 20261014230500 |                                      | so_na_vps
+ 20261014231000 |                                      | so_na_vps
+ 20261014233000 |                                      | so_na_vps
+ 20261014234500 |                                      | so_na_vps
+ 20261014240000 |                                      | so_na_vps
+ 20261015010000 |                                      | so_na_vps
+ 20261015020000 |                                      | so_na_vps
+ 20261015100000 |                                      | so_na_vps
+ 20261016120000 |                                      | so_na_vps
+ 20261016150000 |                                      | so_na_vps
+ 20261016190000 |                                      | so_na_vps
+ 20261021120000 | perfil_proprio_medico_e_logo_clinica | so_no_repositorio
+ 20261021130000 | pre_consulta_portal                  | so_no_repositorio
+ 20261027120000 | desfazer_checkin_volta_status        | so_no_repositorio
+ 20261027130000 | agendamento_tipo_consulta_da_clinica | so_no_repositorio
+ 20261028090000 | revogar_anon_e_privilegios_padrao    | so_no_repositorio
+ 20261028100000 | lgpd_anonimizacao_transacional       | so_no_repositorio
+(61 rows)
+
+== 9.3 Migrations: resumo
+ registradas_na_vps | ultima_registrada_na_vps | arquivos_no_repositorio | versoes_distintas_no_repositorio 
+--------------------+--------------------------+-------------------------+----------------------------------
+                504 | 20261016190000           |                     456 |                              455
+(1 row)
+
+COMMIT

@@ -39,7 +39,7 @@ const formatarDataClinica = (valor: string, incluirHora = false) =>
 
 // Paleta de dados do padrão azul/preto.
 const COR_SERIE_PRIMARIA = '#1080CA';
-const COR_SERIE_SECUNDARIA = '#111111';
+const COR_SERIE_SECUNDARIA = '#0B4F7D';
 const COR_GRADE = '#DCE6F2';
 const COR_EIXO = '#64748b';
 const ESTILO_TOOLTIP = {
@@ -416,7 +416,7 @@ export default function VitaisGraficos() {
                     onClick={() => item.key && setGraficoFoco(ativo ? null : item.key)}
                     className={cn(
                       'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                      item.key !== null && 'hover:-translate-y-0.5 hover:shadow-md',
+                      item.key !== null && 'hover:shadow-md',
                       item.key === null && 'cursor-default',
                       escuro && 'border-transparent bg-gradient-primary text-white',
                       !escuro && item.alterado && 'border-destructive/30',

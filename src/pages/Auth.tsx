@@ -20,7 +20,10 @@ import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { checkRateLimit, resetRateLimit } from '@/lib/rateLimiter';
 import { MFAVerifyDialog } from '@/components/MFAVerifyDialog';
+import { MFASetupDialog } from '@/components/MFASetupDialog';
+import { mfaExigidoParaMim, proximoPassoMfa } from '@/components/MFAObrigatorio';
 import { passwordSchema } from '@/lib/passwordPolicy';
+import { anexarUtm, capturarUtm, track } from '@/lib/analytics';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
@@ -86,6 +89,9 @@ export default function Auth() {
   const activationRequests = useRef(new Map<string, Promise<boolean>>());
   /** Fator TOTP a confirmar: senha aceita, sessão ainda em AAL1. */
   const [pendingFactorId, setPendingFactorId] = useState<string | null>(null);
+  // Perfil obrigado a ter 2FA (política do servidor) e ainda sem fator.
+  const [mfaSetupObrigatorio, setMfaSetupObrigatorio] = useState(false);
+  const mfaSetupConcluido = useRef(false);
 
   const urlCodigo = searchParams.get('codigo') || '';
   const urlEmail = searchParams.get('email') || '';
@@ -104,6 +110,19 @@ export default function Auth() {
   useEffect(() => {
     if (urlCodigo || urlCadastro) { setActiveTab('signup'); setDirection(1); }
   }, [urlCodigo, urlCadastro]);
+
+  // Funil de cadastro (docs/gtm/plano-analytics.md). Sem consentimento ou
+  // provedor registrado, `track` não envia nada.
+  const signupStartedRef = useRef(false);
+  useEffect(() => {
+    if (!urlCadastro || signupStartedRef.current) return;
+    signupStartedRef.current = true;
+    track('signup_started', {
+      plan_slug: hasPlanIntent ? urlPlan : undefined,
+      mode: hasPlanIntent ? urlPlanMode : undefined,
+      ...capturarUtm(),
+    });
+  }, [urlCadastro, hasPlanIntent, urlPlan, urlPlanMode]);
 
   // Feedback visual quando cliente volta do Mercado Pago checkout
   useEffect(() => {
@@ -199,12 +218,21 @@ export default function Auth() {
         setLoginFeedback(null);
 
         const factorId = await requiresSecondFactor();
-        if (factorId) {
+        const passo = proximoPassoMfa({
+          fatorPendente: factorId,
+          exigido: factorId ? false : await mfaExigidoParaMim(),
+        });
+        if (passo === 'verificar') {
           setPendingFactorId(factorId);
           return;
         }
+        if (passo === 'cadastrar') {
+          mfaSetupConcluido.current = false;
+          setMfaSetupObrigatorio(true);
+          return;
+        }
 
-        toast.success('Login realizado!');
+        toast.success('Login realizado');
         if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
         else navigate(destinoSemPlano);
       }
@@ -245,7 +273,7 @@ export default function Auth() {
 
   const handleMfaVerified = () => {
     setPendingFactorId(null);
-    toast.success('Login realizado!');
+    toast.success('Login realizado');
     if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
     else navigate(destinoSemPlano);
   };
@@ -254,6 +282,22 @@ export default function Auth() {
     setPendingFactorId(null);
     await supabase.auth.signOut();
     toast.info('Login cancelado');
+  };
+
+  // O cadastro conclui com challengeAndVerify, que eleva a sessão a AAL2.
+  const handleMfaSetupComplete = () => {
+    mfaSetupConcluido.current = true;
+  };
+
+  const handleMfaSetupOpenChange = async (aberto: boolean) => {
+    if (aberto) return;
+    setMfaSetupObrigatorio(false);
+    if (mfaSetupConcluido.current) {
+      handleMfaVerified();
+      return;
+    }
+    await supabase.auth.signOut();
+    toast.info('Para este perfil, a verificação em duas etapas é obrigatória. Configure-a para entrar.');
   };
 
   const activateSubscription = useCallback(async (userId: string, codigoConvite: string): Promise<boolean> => {
@@ -272,9 +316,9 @@ export default function Auth() {
         const res = result as any;
         if (!res?.success) throw new Error(res?.error || 'Não foi possível ativar o plano.');
 
-        if (res.mode === 'paid') toast.success(`Plano ${res.plano_nome} ativado! 🎉`);
-        else if (res.mode === 'trial') toast.success(`Teste grátis ativado! Plano ${res.plano_nome}. 🎉`);
-        else toast.success(`Plano ${res.plano_nome} ativado!`);
+        if (res.mode === 'paid') toast.success(`Plano ${res.plano_nome} ativado`);
+        else if (res.mode === 'trial') toast.success(`Teste grátis ativado. Plano ${res.plano_nome}.`);
+        else toast.success(`Plano ${res.plano_nome} ativado`);
         return true;
       } catch (err) {
         if (import.meta.env.DEV) console.error('Erro ao ativar assinatura:', err);
@@ -346,6 +390,7 @@ export default function Auth() {
           activationRedirect.searchParams.set('plano', urlPlan);
           activationRedirect.searchParams.set('modo', urlPlanMode);
         }
+        anexarUtm(activationRedirect.searchParams);
       }
       if (inviteCode) {
         setActivationCode(inviteCode);
@@ -373,6 +418,14 @@ export default function Auth() {
           setActivationStatus('failed');
           toast.error('O cadastro foi enviado, mas não recebemos a confirmação da conta. Confira seu e-mail e tente entrar.');
           return;
+        }
+
+        if (!inviteCode) {
+          track('signup_submitted', {
+            plan_slug: hasPlanIntent ? urlPlan : undefined,
+            mode: hasPlanIntent ? urlPlanMode : undefined,
+            ...capturarUtm(),
+          });
         }
 
         if (result.data?.session) {
@@ -454,7 +507,7 @@ export default function Auth() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[32px] border border-border/70 bg-card/80 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(49,27,158,0.38)] backdrop-blur-2xl sm:px-10 sm:py-9"
+          className="relative z-10 mx-auto w-full max-w-[490px] rounded-xl border border-border/70 bg-card/80 px-6 py-7 shadow-lg sm:px-10 sm:py-9"
         >
           <div className="mb-6 text-center">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -606,7 +659,7 @@ export default function Auth() {
                     />
                     <Button
                       type="submit"
-                      className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(47,12,223,0.75)]"
+                      className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105"
                       disabled={isLoading}
                     >
                       {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Acessando…</> : 'Acessar conta'}
@@ -906,6 +959,14 @@ export default function Auth() {
           factorId={pendingFactorId}
           onVerified={handleMfaVerified}
           onCancel={handleMfaCancel}
+        />
+      )}
+
+      {mfaSetupObrigatorio && (
+        <MFASetupDialog
+          open
+          onOpenChange={handleMfaSetupOpenChange}
+          onMFASetupComplete={handleMfaSetupComplete}
         />
       )}
     </div>

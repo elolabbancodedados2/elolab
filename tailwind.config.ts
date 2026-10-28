@@ -4,7 +4,7 @@ import tailwindcssTypography from "@tailwindcss/typography";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}", "!./src/**/*.test.{ts,tsx}", "!./src/**/__tests__/**"],
   prefix: "",
   theme: {
     container: {
@@ -109,8 +109,8 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
         xl: "calc(var(--radius) + 4px)",
-        "2xl": "calc(var(--radius) + 8px)",
-        "3xl": "calc(var(--radius) + 14px)",
+        "2xl": "calc(var(--radius) + 4px)",
+        "3xl": "calc(var(--radius) + 6px)",
       },
       boxShadow: {
         'xs': 'var(--shadow-xs)',

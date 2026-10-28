@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserPlus, Play, Check, Loader2, Clock, ArrowUp, ArrowDown,
   Users, CheckCircle2, Bell, XCircle, Stethoscope, AlertTriangle,
-  RefreshCw, Timer, LockOpen,
+  RefreshCw, Timer, Lock, LockOpen, CircleCheck, CircleAlert,
   FileText, ClipboardCopy,
   MonitorPlay,
 } from 'lucide-react';
@@ -25,6 +25,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
+import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
+import { formatarEspera, minutosDeEspera } from '@/lib/filaEspera';
+import { explicarBloqueioFila, PERFIS_LIBERACAO_EXCEPCIONAL } from '@/lib/filaBloqueio';
+import { primeiraFalhaCheckin, validarCheckin } from '@/lib/checkinValidacao';
+import { chamarPacienteNaFila } from '@/lib/filaChamada';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
@@ -45,26 +50,10 @@ import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { canalUnico } from '@/lib/realtimeCanal';
 
 // ─── Helpers ───────────────────────────────────────────────
-function calcularEspera(horarioChegada: string | null): string {
-  if (!horarioChegada) return '—';
-  const mins = Math.floor((Date.now() - new Date(horarioChegada).getTime()) / 60000);
-  if (mins < 1) return 'agora';
-  if (mins < 60) return `${mins}min`;
-  return `${Math.floor(mins / 60)}h ${mins % 60}min`;
-}
-
-function corEspera(horarioChegada: string | null): string {
-  if (!horarioChegada) return 'text-muted-foreground';
-  const mins = Math.floor((Date.now() - new Date(horarioChegada).getTime()) / 60000);
-  if (mins < 15) return 'text-success';
-  if (mins < 30) return 'text-warning-foreground';
-  return 'text-destructive font-semibold';
-}
-
 function formatarHorarioClinica(horarioChegada: string | null): string {
   if (!horarioChegada) return '—';
   const instante = new Date(horarioChegada);
@@ -100,6 +89,19 @@ const cardAnim = {
   visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
   exit: { opacity: 0, x: 16, transition: { duration: 0.2 } },
 };
+
+/** Por que o atendimento está bloqueado, quem resolve e quem pode liberar. */
+function MotivoBloqueio({ motivo, resolve, liberacao }: ReturnType<typeof explicarBloqueioFila>) {
+  return (
+    <p className="mt-0.5 flex items-start gap-1 text-[11px] text-muted-foreground">
+      <Lock aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+      <span>
+        <span className="font-medium text-foreground">Bloqueado: {motivo}</span> {resolve}
+        {liberacao && <> {liberacao}</>}
+      </span>
+    </p>
+  );
+}
 
 // ─── Queue Card ────────────────────────────────────────────
 const FilaCard = forwardRef<HTMLDivElement, {
@@ -172,10 +174,7 @@ const FilaCard = forwardRef<HTMLDivElement, {
 
           {/* Timer */}
           <div className="ml-auto text-right shrink-0 sm:ml-0 sm:mr-2">
-            <p className={cn('text-sm font-medium tabular-nums', corEspera(item.horario_chegada))}>
-              <Timer className="h-3.5 w-3.5 inline mr-1" />
-              {calcularEspera(item.horario_chegada)}
-            </p>
+            <EsperaIndicador desde={item.horario_chegada} agora={now} className="text-sm font-medium" />
             <p className="text-[10px] text-muted-foreground">
               {formatarHorarioClinica(item.horario_chegada)}
             </p>
@@ -565,6 +564,16 @@ export default function Fila() {
     }
   };
 
+  const agendamentoSelecionado = agendamentos.find((item) => item.id === selectedAgendamento);
+  const validacaoCheckin = agendamentoSelecionado
+    ? validarCheckin({
+        agendamento: agendamentoSelecionado as any,
+        paciente: (agendamentoSelecionado as any).pacientes,
+        clinicaId: profile?.clinica_id,
+        hoje: today,
+      })
+    : [];
+
   const handleAddToFila = async () => {
     if (!selectedAgendamento) { toast.error('Selecione um agendamento.'); return; }
 
@@ -575,6 +584,8 @@ export default function Fila() {
       if (!agendamento || !paciente) {
         throw new Error('Não foi possível carregar os dados do agendamento. Atualize a tela e tente novamente.');
       }
+      const falhaCheckin = primeiraFalhaCheckin(validacaoCheckin);
+      if (falhaCheckin) throw new Error(falhaCheckin);
       const prioridade = ['normal', 'preferencial', 'urgente'].includes(selectedPrioridade)
         ? selectedPrioridade as 'normal' | 'preferencial' | 'urgente'
         : 'normal';
@@ -597,16 +608,16 @@ export default function Fila() {
       if (result.actions.length === 0) {
         toast.info('Este agendamento já estava na fila.');
       } else if (isMedicoOnly) {
-        toast.success('Paciente adicionado à fila!', {
+        toast.success('Paciente adicionado à fila', {
           description: 'A recepção deve confirmar a cobrança antes do atendimento.',
         });
       } else {
-        toast.success('Paciente adicionado à fila!', {
+        toast.success('Paciente adicionado à fila', {
           description: prioridade === 'normal' ? undefined : `Prioridade ${prioridade} aplicada.`,
         });
       }
     } catch (e: any) {
-      toast.error('Erro: ' + e.message);
+      toast.error(friendlyErrorMessage(e, 'Não foi possível adicionar o paciente à fila.'));
     } finally {
       setIsSaving(false);
     }
@@ -655,7 +666,7 @@ export default function Fila() {
       return;
     }
     setFinalizando(null);
-    toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
+    toast.success(`Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
       description: result.actions.join(' • '),
       duration: 8000,
       action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') },
@@ -678,25 +689,26 @@ export default function Fila() {
       const item = fila.find(f => f.id === id);
       const statusEsperado = item?.status === 'chamado' ? 'chamado' : 'aguardando';
       const salaId = ag?.sala_id ?? item?.sala_id ?? null;
-      const { data: chamadaAtualizada, error: errFila } = await supabase
-        .from('fila_atendimento').update({ status, sala_id: salaId })
-        .eq('id', id).eq('clinica_id', profile.clinica_id)
-        .eq('status', statusEsperado).select('id');
-      if (errFila) {
+      let chamada: 'chamado' | 'mudou';
+      try {
+        chamada = await chamarPacienteNaFila({ filaId: id, clinicaId: profile.clinica_id, versao: item?.updated_at, salaId });
+      } catch (errFila) {
         toast.error('Não foi possível chamar o paciente. Tente novamente.', { description: mensagemDeErro(errFila) });
         return;
       }
 
-      if (!chamadaAtualizada?.length) {
+      if (chamada === 'mudou') {
         refresh();
-        toast.warning('A fila mudou. Atualize a tela antes de chamar este paciente.');
+        toast.warning('Outra pessoa já atualizou este paciente na fila.', {
+          description: 'A lista foi recarregada; confira o status antes de chamar de novo.',
+        });
         return;
       }
 
       // O Painel TV é o único dispositivo que anuncia chamadas; evita duas
       // vozes simultâneas em recepção e sala de espera.
       refresh();
-      toast.success(statusEsperado === 'chamado' ? '📢 Paciente chamado novamente!' : '📢 Paciente chamado!');
+      toast.success(statusEsperado === 'chamado' ? 'Paciente chamado novamente' : 'Paciente chamado');
       return;
     }
 
@@ -752,7 +764,7 @@ export default function Fila() {
 
     if (erroFila) {
       toast.error('Não foi possível mudar o status na fila.', {
-        description: erroFila.message,
+        description: friendlyErrorMessage(erroFila, 'Tente novamente.'),
       });
       refresh();
       return;
@@ -775,7 +787,7 @@ export default function Fila() {
       if (erroAg || !agendamentoAtualizado) {
         toast.warning('A fila foi atualizada, mas o agendamento não acompanhou.', {
           description: erroAg
-            ? `${erroAg.message}. A agenda pode mostrar este paciente com status antigo.`
+            ? 'A agenda pode mostrar este paciente com status antigo. Atualize a agenda para conferir.'
             : 'O agendamento mudou ou não foi encontrado na clínica atual. Atualize a agenda para conferir.',
         });
       }
@@ -1112,7 +1124,7 @@ export default function Fila() {
                     <p className={cn('truncate text-[11px]', 'escuro' in etapa && etapa.escuro ? 'text-white/60' : 'text-muted-foreground')}>{etapa.caption}</p>
                     {etapa.id === 'triagem' && primeiroPendenteTriagem && (
                       <p className="mt-0.5 truncate text-[10px] font-medium text-foreground" title={getPacienteNome(primeiroPendenteTriagem.agendamento_id)}>
-                        {getPacienteNome(primeiroPendenteTriagem.agendamento_id)} · aguardando {calcularEspera(primeiroPendenteTriagem.horario_chegada)}
+                        {getPacienteNome(primeiroPendenteTriagem.agendamento_id)} · aguardando {formatarEspera(minutosDeEspera(primeiroPendenteTriagem.horario_chegada, now))}
                       </p>
                     )}
                     {etapa.overdue > 0 ? (
@@ -1270,8 +1282,7 @@ export default function Fila() {
               ? 'Não é possível validar as regras da clínica; atualize antes de continuar.'
               : erroVerificacaoPagamento
                 ? 'Não é possível confirmar o pagamento agora. Tente atualizar a fila.'
-                : <>Não podem ser chamados até passarem pelo balcão. A recepção resolve em
-                    Recepção &rarr; Balcão{hasAnyRole(['admin', 'medico']) && ', ou um médico libera com justificativa'}.</>}
+                : 'Não podem ser chamados até passarem pelo balcão. Veja em cada paciente o motivo e quem pode liberar.'}
           </p>
           {erroCobrancas && podeVerValorCobranca && (
             <p className="text-xs text-destructive" role="alert">
@@ -1293,13 +1304,19 @@ export default function Fila() {
           )}
           <div className="space-y-1.5 pt-1">
             {filaAguardandoPagamento.map(item => (
-              <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
-                <span className="font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <span className="block font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+                  <MotivoBloqueio {...explicarBloqueioFila({
+                    tipo: 'pagamento',
+                    cobrancaEstado: item.cobranca_estado,
+                    erroRegras: erroRegrasClinica,
+                    verificando: verificandoPagamento,
+                    erroVerificacao: erroVerificacaoPagamento,
+                  })} />
+                </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className={cn('text-xs tabular-nums', corEspera(item.horario_chegada))}>
-                    <Timer className="h-3 w-3 inline mr-1" />
-                    {calcularEspera(item.horario_chegada)}
-                  </span>
+                  <EsperaIndicador desde={item.horario_chegada} agora={now} className="text-xs" />
                   <Badge variant="outline" className="text-[10px] border-warning/40 text-warning-foreground tabular-nums">
                     {item.cobranca_estado === 'pendente'
                       ? 'Confirmando cobrança'
@@ -1315,7 +1332,7 @@ export default function Fila() {
                                 : `${formatCurrency(saldoDoAgendamento(item.agendamento_id))}`
                             : 'Pendente no balcão'}
                   </Badge>
-                  {item.cobranca_estado !== 'pendente' && hasAnyRole(['admin', 'medico']) && (
+                  {item.cobranca_estado !== 'pendente' && hasAnyRole([...PERFIS_LIBERACAO_EXCEPCIONAL]) && (
                     <Button
                       size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
                       disabled={salvandoLiberacao}
@@ -1347,19 +1364,18 @@ export default function Fila() {
               : `${filaAguardandoTriagem.length} pacientes aguardando triagem`}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Já pagaram. A enfermagem registra os sinais vitais em Triagem e eles
-            entram na fila de chamada{hasAnyRole(['admin', 'medico']) && ' — ou um médico libera com justificativa'}.
+            Já pagaram e entram na fila de chamada depois da triagem.
           </p>
           <div className="space-y-1.5 pt-1">
             {filaAguardandoTriagem.map(item => (
-              <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
-                <span className="font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <span className="block font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+                  <MotivoBloqueio {...explicarBloqueioFila({ tipo: 'triagem', erroRegras: erroRegrasClinica })} />
+                </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={cn('text-xs tabular-nums', corEspera(item.horario_chegada))}>
-                    <Timer className="h-3 w-3 inline mr-1" />
-                    {calcularEspera(item.horario_chegada)}
-                  </span>
-                  {hasAnyRole(['admin', 'medico']) && (
+                  <EsperaIndicador desde={item.horario_chegada} agora={now} className="text-xs" />
+                  {hasAnyRole([...PERFIS_LIBERACAO_EXCEPCIONAL]) && (
                     <Button
                       size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
                       disabled={salvandoLiberacao}
@@ -1466,6 +1482,22 @@ export default function Fila() {
                 </SelectContent>
               </Select>
             </div>
+            {validacaoCheckin.length > 0 && (
+              <ul aria-label="Validação do check-in" className="space-y-1.5 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
+                {validacaoCheckin.map((item) => {
+                  const Icone = item.ok ? CircleCheck : CircleAlert;
+                  return (
+                    <li key={item.id} className="flex items-start gap-2 text-xs">
+                      <Icone aria-hidden="true" className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', item.ok ? 'text-[#1080CA]' : 'text-destructive')} />
+                      <span>
+                        <span className="font-semibold">{item.rotulo}: {item.ok ? 'ok' : 'pendente'}</span>
+                        <span className="text-muted-foreground"> — {item.detalhe}</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <div className="space-y-2">
               <Label htmlFor="fila-prioridade">Prioridade</Label>
               <Select value={selectedPrioridade} onValueChange={setSelectedPrioridade}>
@@ -1480,7 +1512,7 @@ export default function Fila() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAddToFila} disabled={isSaving || !selectedAgendamento} className="gap-2">
+            <Button onClick={handleAddToFila} disabled={isSaving || !selectedAgendamento || primeiraFalhaCheckin(validacaoCheckin) !== null} className="gap-2">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Adicionar
             </Button>

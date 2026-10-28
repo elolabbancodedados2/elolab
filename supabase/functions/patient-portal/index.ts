@@ -2,10 +2,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/medicalAttachmentPath.ts';
-import { attachPortalPreparationInstructions } from '../../../src/lib/portalAppointmentPreparation.ts';
+import { attachPortalPreparationInstructions } from '../_shared/portalAppointmentPreparation.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
 import { assinarDocumentosPortal } from '../_shared/portalDocuments.ts';
+import {
+  acaoExigeTitular,
+  buscarTokenPortal,
+  COLUNAS_PERFIL_PORTAL,
+  dependentesDoTitular,
+  ERRO_DEPENDENTE_NAO_AUTORIZADO,
+  resolverPacienteDaSessao,
+} from './acessoPortal.ts';
 
 /** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
 function todayISO(): string {
@@ -21,12 +29,6 @@ function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number);
   const total = (h * 60 + m + minutes) % (24 * 60);
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 Deno.serve(async (req) => {
@@ -67,7 +69,7 @@ Deno.serve(async (req) => {
     const { action, token } = body;
     const offset = body.offset === undefined ? 0 : Number(body.offset);
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100_000) {
-      return new Response(JSON.stringify({ error: "?ndice de p?gina inv?lido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: "Índice de página inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (!token) {
@@ -78,44 +80,66 @@ Deno.serve(async (req) => {
     }
 
     // O segredo bruto nunca fica no banco; comparamos apenas sua impressão.
-    const tokenHash = await sha256Hex(String(token));
-    let { data: tokenData, error: tokenError } = await supabase
-      .from("paciente_portal_tokens")
-      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id, ativo)")
-      .eq("token", tokenHash)
-      .eq("ativo", true)
-      .gte("expires_at", new Date().toISOString())
-      .single();
+    // Sem fallback pelo valor sem hash (SEC-R1-06, ver acessoPortal.ts).
+    const tokenData = await buscarTokenPortal(supabase, token);
 
-    // Compatibilidade durante o deploy: a Edge Function entra antes da
-    // migration. Enquanto a tabela ainda tiver os três tokens legados em
-    // texto puro, eles continuam aceitos; após o UPDATE, este ramo não acha
-    // mais nenhuma linha e pode ser removido numa migração futura.
     if (!tokenData) {
-      ({ data: tokenData, error: tokenError } = await supabase
-        .from("paciente_portal_tokens")
-        .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id, ativo)")
-        .eq("token", String(token))
-        .eq("ativo", true)
-        .gte("expires_at", new Date().toISOString())
-        .single());
-    }
-
-    if (tokenError || !tokenData) {
       return new Response(JSON.stringify({ error: "Token inválido ou expirado" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const pacienteId = tokenData.paciente_id;
+    const titularId = tokenData.paciente_id;
     // Clínica do paciente — usada para impedir que o portal exponha ou agende
     // com médicos de outras clínicas.
     const pacienteClinicaId =
-      (tokenData as any).pacientes?.clinica_id ?? (tokenData as any).clinica_id ?? null;
-    if (!pacienteId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id || (tokenData as any).pacientes?.ativo === false) {
+      tokenData.pacientes?.clinica_id ?? tokenData.clinica_id ?? null;
+    if (!titularId || !pacienteClinicaId || pacienteClinicaId !== tokenData.clinica_id || tokenData.pacientes?.ativo === false) {
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Dependentes (CLIN-QA-512): o titular só age por outro paciente com vínculo
+    // explícito e confirmado pela clínica. Enquanto esse vínculo não existir no
+    // banco, dependentesDoTitular devolve [] e qualquer dependente_id diferente
+    // do titular recebe 403 (ver acessoPortal.ts). O texto cpf_responsavel não
+    // concede acesso. Todas as ações abaixo usam pacienteId.
+    const titular = { id: titularId, clinica_id: pacienteClinicaId };
+    let perfilAtual: unknown = tokenData.pacientes;
+    const pedeDependente = body.dependente_id !== undefined && body.dependente_id !== null
+      && body.dependente_id !== "" && body.dependente_id !== titularId;
+    const sessao = resolverPacienteDaSessao(
+      titularId,
+      body.dependente_id,
+      pedeDependente ? await dependentesDoTitular(supabase, titular, todayISO()) : [],
+    );
+    if (!sessao.ok) {
+      return new Response(JSON.stringify(ERRO_DEPENDENTE_NAO_AUTORIZADO), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const pacienteId: string = sessao.pacienteId;
+    if (sessao.comoDependente) {
+      const { data: perfilDependente, error: perfilError } = await supabase.from("pacientes")
+        .select(COLUNAS_PERFIL_PORTAL)
+        .eq("id", pacienteId).eq("clinica_id", pacienteClinicaId).maybeSingle();
+      if (perfilError || !perfilDependente || (perfilDependente as { ativo?: boolean }).ativo === false) {
+        return new Response(JSON.stringify(ERRO_DEPENDENTE_NAO_AUTORIZADO), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      perfilAtual = perfilDependente;
+    }
+    // Contato (telefone e e-mail) recebe as notificações da clínica; só o
+    // titular altera o próprio, nunca o de um dependente.
+    if (acaoExigeTitular(action, pacienteId, titularId)) {
+      return new Response(JSON.stringify(ERRO_DEPENDENTE_NAO_AUTORIZADO), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -130,7 +154,11 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case "get_profile":
-        result = tokenData.pacientes;
+        result = perfilAtual;
+        break;
+
+      case "get_dependentes":
+        result = await dependentesDoTitular(supabase, titular, todayISO());
         break;
 
       case "update_contact": {

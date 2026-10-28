@@ -22,8 +22,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
+import { FieldHelp } from '@/components/ContextualHelp';
+import { gravarFiltrosExames, lerFiltrosExames, type FiltrosExames } from '@/lib/examesFiltros';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -43,7 +45,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame, autoVincularResultadoProntuario } from '@/lib/workflowAutomation';
-import { podeExcluirExame, proximaAcaoExame } from '@/lib/examesWorkflow';
+import { podeExcluirExame, preparosAusentesNaGuia, proximaAcaoExame, textoPreparosParaGuia } from '@/lib/examesWorkflow';
 import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
 import { LancarResultado } from '@/components/exames/LancarResultado';
 import { parseDateOnly } from '@/lib/dateOnly';
@@ -350,9 +352,14 @@ export default function Exames() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('todos');
-  const [tipoFilter, setTipoFilter] = useState<string>('todos');
-  const [indicador, setIndicador] = useState<IndicadorExame>('todos');
+  const filtrosUrl = lerFiltrosExames(searchParams);
+  const statusFilter = filtrosUrl.status;
+  const tipoFilter = filtrosUrl.tipo;
+  const indicador = filtrosUrl.indicador as IndicadorExame;
+  const atualizarFiltros = (filtros: Partial<FiltrosExames>) => setSearchParams(gravarFiltrosExames(searchParams, filtros), { replace: true });
+  const setStatusFilter = (status: string) => atualizarFiltros({ status });
+  const setTipoFilter = (tipo: string) => atualizarFiltros({ tipo });
+  const setIndicador = (valor: IndicadorExame) => atualizarFiltros({ indicador: valor });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
@@ -412,6 +419,26 @@ export default function Exames() {
     enabled: !!profile?.clinica_id && isDialogOpen,
   });
   const laboratorios = laboratoriosQuery.data ?? [];
+
+  // Preparo configurado no catálogo do laboratório. Consulta auxiliar: se falhar, a guia segue sem o aviso.
+  const preparosCatalogoQuery = useQuery({
+    queryKey: ['tipo_exames_catalog_preparo', profile?.clinica_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tipo_exames_catalog')
+        .select('nome, preparo')
+        .eq('clinica_id', profile!.clinica_id!)
+        .not('preparo', 'is', null);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!profile?.clinica_id && isDialogOpen,
+  });
+  const preparosAusentes = preparosAusentesNaGuia(
+    examesSelecionados,
+    preparosCatalogoQuery.data ?? [],
+    [formData.jejum && formData.jejum !== 'nao' ? `Jejum: ${formData.jejum}` : '', formData.observacoes].join('\n'),
+  );
 
   // Merge catalog with custom types
   const allExames = useMemo(() => {
@@ -532,9 +559,7 @@ export default function Exames() {
   const temFiltroExames = searchTerm.trim() !== '' || statusFilter !== 'todos' || tipoFilter !== 'todos' || indicador !== 'todos';
   const limparFiltrosExames = () => {
     setSearchTerm('');
-    setStatusFilter('todos');
-    setTipoFilter('todos');
-    setIndicador('todos');
+    atualizarFiltros({ status: 'todos', tipo: 'todos', indicador: 'todos' });
   };
 
   const contagens = useMemo(() => ({
@@ -925,7 +950,7 @@ export default function Exames() {
           toast.warning('Solicitação salva, mas o PDF não foi baixado.', { description: mensagemDeErro(error) });
         }
       } else {
-        toast.success(`${examesSelecionados.length} exame(s) solicitados com sucesso!`);
+        toast.success(`${examesSelecionados.length} exame(s) solicitados com sucesso`);
       }
       if (coletasCriadas > 0) {
         toast.info(`${coletasCriadas} coleta(s) de laboratório criada(s) automaticamente.`);
@@ -1028,13 +1053,13 @@ export default function Exames() {
         toast.info(`Automações: ${result.actions.join(' • ')}`);
       }
 
-      toast.success('Status atualizado!');
+      toast.success('Status atualizado');
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       return true;
     } catch (error: any) {
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       queryClient.invalidateQueries({ queryKey: ['coletas_laboratorio'] });
-      toast.error(error.message || 'Erro ao atualizar status');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar o status.'));
       return false;
     } finally {
       updateStatusLock.current = false;
@@ -1069,11 +1094,11 @@ export default function Exames() {
         queryClient.invalidateQueries({ queryKey: ['exames'] });
         return;
       }
-      toast.success('Exame excluído!');
+      toast.success('Exame excluído');
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       setExameParaExcluir(null);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir exame');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível excluir o exame.'));
     } finally {
       setExcluindoExame(false);
     }
@@ -1208,7 +1233,7 @@ export default function Exames() {
                 aria-pressed={ativo}
                 onClick={() => setIndicador(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -1250,6 +1275,7 @@ export default function Exames() {
             </Button>
           )}
         </div>
+        <div className="flex items-center gap-1">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Filtrar exames por status"><SelectValue placeholder="Filtrar" /></SelectTrigger>
           <SelectContent>
@@ -1257,6 +1283,8 @@ export default function Exames() {
             {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
+        <FieldHelp term="status_exame" />
+        </div>
         {tiposDisponiveis.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar exames por tipo">
             {(['todos', ...tiposDisponiveis]).map(tipo => {
@@ -1391,7 +1419,7 @@ export default function Exames() {
                                 i > step && 'bg-muted text-muted-foreground/40',
                                 step === -1 && 'bg-muted text-muted-foreground line-through',
                               )}>
-                                {i < step ? '✓' : label}
+                                {i < step ? <CheckCircle2 className="h-3 w-3" aria-label={label} /> : label}
                               </div>
                               {i < PIPELINE_STEPS.length - 1 && (
                                 <div className={cn('w-2 h-px', i < step ? 'bg-success' : 'bg-border')} />
@@ -1569,6 +1597,29 @@ export default function Exames() {
               </div>
             </div>
 
+            {preparosAusentes.length > 0 && (
+              <div role="alert" className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-4">
+                <p className="flex items-center gap-1 text-xs font-semibold text-warning-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />A guia não traz o preparo configurado para {preparosAusentes.length === 1 ? 'este exame' : 'estes exames'}
+                </p>
+                <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground">
+                  {preparosAusentes.map(item => <li key={item.exame}><span className="font-medium">{item.exame}:</span> {item.preparo}</li>)}
+                </ul>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-full text-xs"
+                  onClick={() => setFormData(atual => ({
+                    ...atual,
+                    observacoes: [atual.observacoes.trim(), textoPreparosParaGuia(preparosAusentes)].filter(Boolean).join('\n'),
+                  }))}
+                >
+                  Incluir preparo na guia
+                </Button>
+              </div>
+            )}
+
             {/* Urgency justification */}
             {(formData.urgencia === 'urgente' || formData.urgencia === 'emergencia') && (
               <div className="bg-warning/5 border border-warning/20 rounded-lg p-4 space-y-2">
@@ -1600,7 +1651,7 @@ export default function Exames() {
                     <Badge key={ex.nome} variant="secondary" className="gap-1.5 py-1.5 px-3 text-xs">
                       {ex.tuss && <span className="text-[10px] text-muted-foreground font-mono">{ex.tuss}</span>}
                       {ex.nome}
-                      {ex.necessita_contraste && <span className="text-warning">⚠ contraste</span>}
+                      {ex.necessita_contraste && <span className="inline-flex items-center gap-0.5 text-warning"><AlertTriangle className="h-3 w-3" aria-hidden="true" />contraste</span>}
                       <button onClick={() => removeExame(ex.nome)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
                     </Badge>
                   ))}
@@ -1776,7 +1827,7 @@ export default function Exames() {
               {Number(formData.preco_custo) > 0 && formData.preco_venda !== undefined && (
                 <div className="mt-3 p-3 bg-success/5 border border-success/20 rounded-lg">
                   <p className="text-sm text-success">
-                    💰 Margem: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
+                    Margem: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
                   </p>
                 </div>
               )}

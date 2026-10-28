@@ -10,7 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Bot, Plus, Settings, Trash2, RefreshCw } from 'lucide-react';
+import { Bot, Clock, Plus, Settings, Trash2, RefreshCw } from 'lucide-react';
+import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { KnowledgeBaseEditor } from './KnowledgeBaseEditor';
 import {
   WhatsAppAgent,
@@ -40,6 +41,7 @@ export function AgentsTab({
   const [selectedAgent, setSelectedAgent] = useState<WhatsAppAgent | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [newAgentForm, setNewAgentForm] = useState<NewAgentForm>(defaultAgentForm);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const handleCreate = async () => {
     try {
@@ -58,10 +60,8 @@ export function AgentsTab({
 
   const handleDelete = () => {
     if (!selectedAgent) return;
-    if (confirm('Deseja realmente excluir este agente?')) {
-      onDeleteAgent(selectedAgent.id);
-      setSelectedAgent(null);
-    }
+    onDeleteAgent(selectedAgent.id);
+    setSelectedAgent(null);
   };
 
   return (
@@ -130,11 +130,12 @@ export function AgentsTab({
                       <div className="flex gap-2 flex-wrap">
                         <Badge variant="outline">{agent.habilidades?.length ?? 0} funções ativas</Badge>
                         <Badge variant="outline" className="text-[10px]">
-                          {agent.humor === 'profissional' ? '🏢 Formal' : agent.humor === 'amigavel' ? '😊 Amigável' : '🎯 Objetivo'}
+                          {agent.humor === 'profissional' ? 'Formal' : agent.humor === 'amigavel' ? 'Amigável' : 'Objetivo'}
                         </Badge>
                       </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        🕐 {agent.horario_atendimento_inicio} - {agent.horario_atendimento_fim}
+                      <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Clock className="h-3 w-3" aria-hidden="true" />
+                        {agent.horario_atendimento_inicio} - {agent.horario_atendimento_fim}
                         {agent.atende_fora_horario && ' • 24h'}
                       </p>
                     </div>
@@ -371,7 +372,7 @@ export function AgentsTab({
                   <Button className="flex-1" onClick={handleUpdate}>
                     Salvar Alterações
                   </Button>
-                  <Button variant="destructive" onClick={handleDelete}>
+                  <Button variant="destructive" onClick={() => setConfirmDeleteOpen(true)} aria-label="Excluir agente">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -391,6 +392,12 @@ export function AgentsTab({
           )}
         </div>
       </div>
+      <DeleteConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        itemName={selectedAgent?.nome ?? ''}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

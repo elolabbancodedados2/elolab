@@ -1,0 +1,6 @@
+{
+  "comum": "Worktree: C:\\Users\\lopes\\orca\\workspaces\\elolab\\time-estabilizacao. Sem deploy, sem migration aplicada, sem commit, sem acesso à VPS. Seja rápido e objetivo. TAREFA: ",
+  "tarefas": {
+    "tech-lead": "Leia só docs/time/rodada-5/*.md. Trate os P0/P1 reais do docs/time/rodada-5/codex-revisor.md (corrija com teste; descarte com justificativa). Depois faça a verificação RÁPIDA: npx tsc --noEmit -p tsconfig.app.json; npx vitest related --run <arquivos alterados nesta rodada, pegue de git status>; npx eslint <arquivos alterados>. A suíte completa só roda na rodada final. Grave docs/time/rodada-5/tech-lead-final.md com os números reais (curto)."
+  }
+}

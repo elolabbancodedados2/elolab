@@ -1,9 +1,17 @@
 import { useMemo, useState } from 'react';
 import { formatDateInTimeZone } from '@/lib/datePreference';
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CreditCard, RefreshCw, Search, Webhook } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, CheckCircle2, CircleSlash, CreditCard, History, Hourglass, RefreshCw, Search, Wallet, Webhook } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { descreverEventoCobranca, type EventoCobrancaAssinatura } from '@/lib/subscriptionBillingHistory';
 
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
+import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,7 +37,17 @@ type Subscription = {
   mp_preapproval_id: string | null;
   vencida: boolean;
 };
-type WebhookLog = { id: string; event_id: string | null; event_type: string; data_id: string | null; processado: boolean | null; tentativas: number | null; erro_mensagem: string | null; created_at: string };
+type WebhookLog = {
+  id: string; event_id: string | null; event_type: string; data_id: string | null; processado: boolean | null; tentativas: number | null;
+  erro_mensagem: string | null; created_at: string; repeticoes?: number | null; sinal_ordem?: 'repetido' | 'fora_de_ordem' | null;
+};
+type CheckoutAttempt = EventoCobrancaAssinatura & { clinica_nome: string | null; dono_email: string | null; divergente: boolean };
+type Reconciliacao = { id: string; record_id: string; origem: string; resolucao: string; justificativa: string; status_anterior: string | null; status_novo: string | null; autor_email: string | null; criado_em: string | null };
+
+const RESOLUCOES: Record<string, Array<{ valor: string; rotulo: string }>> = {
+  pix_periodo: [{ valor: 'confirmar_pagamento', rotulo: 'Confirmar pagamento' }, { valor: 'cancelar', rotulo: 'Cancelar pedido' }],
+  cartao_assinatura: [{ valor: 'encerrar_tentativa', rotulo: 'Encerrar tentativa' }],
+};
 type PlatformInvoice = {
   id: string;
   clinic_name: string;
@@ -49,7 +67,7 @@ type PlatformInvoice = {
 };
 type Overview = {
   generated_at: string;
-  metrics: { mrr: number; ativas: number; trials: number; vencidas: number; sem_assinatura: number; webhooks_pendentes: number; webhooks_falha_24h: number };
+  metrics: { mrr: number; ativas: number; trials: number; vencidas: number; sem_assinatura: number; webhooks_pendentes: number; webhooks_falha_24h: number; webhooks_sinalizados_24h?: number };
   subscriptions: Subscription[];
   webhooks: WebhookLog[];
 };
@@ -82,6 +100,45 @@ export default function PlatformCobrancas() {
     },
     refetchInterval: 30_000,
   });
+  const attempts = useQuery({
+    queryKey: ['platform-checkout-attempts'],
+    queryFn: async (): Promise<CheckoutAttempt[]> => {
+      const { data, error } = await (supabase as any).rpc('platform_checkout_attempts', { p_limit: 50 });
+      if (error) throw error;
+      return (data || []) as CheckoutAttempt[];
+    },
+    refetchInterval: 30_000,
+  });
+  const reconciliacoes = useQuery({
+    queryKey: ['platform-billing-reconciliations'],
+    queryFn: async (): Promise<Reconciliacao[]> => {
+      const { data, error } = await (supabase as any).rpc('platform_reconciliacoes_cobranca', { p_limit: 20 });
+      if (error) throw error;
+      return (data || []) as Reconciliacao[];
+    },
+  });
+  const queryClient = useQueryClient();
+  const [reconciliando, setReconciliando] = useState<CheckoutAttempt | null>(null);
+  const [justificativa, setJustificativa] = useState('');
+  const reconciliar = useMutation({
+    mutationFn: async (resolucao: string) => {
+      const { data, error } = await (supabase as any).rpc('platform_reconciliar_cobranca', {
+        p_origem: reconciliando!.origem, p_id: reconciliando!.id, p_resolucao: resolucao, p_justificativa: justificativa.trim(),
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Reconciliação registrada na trilha de auditoria.');
+      setReconciliando(null);
+      setJustificativa('');
+      void queryClient.invalidateQueries({ queryKey: ['platform-checkout-attempts'] });
+      void queryClient.invalidateQueries({ queryKey: ['platform-billing-reconciliations'] });
+      void queryClient.invalidateQueries({ queryKey: ['platform-billing-overview'] });
+    },
+    onError: (error: Error) => toast.error(error.message || 'Não foi possível reconciliar a cobrança.'),
+  });
+  const justificativaValida = justificativa.trim().length >= 10 && justificativa.trim().length <= 500;
 
   const lista = useMemo(() => {
     const term = busca.trim().toLocaleLowerCase('pt-BR');
@@ -101,60 +158,90 @@ export default function PlatformCobrancas() {
   const updating = overview.isFetching;
 
   return (
-    <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#EBFBFD] p-5 sm:p-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><CreditCard className="h-6 w-6 text-primary" /> Cobranças da plataforma</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Assinaturas, vencimentos e processamento do Mercado Pago.</p>
-          {overview.data?.generated_at && <p className="mt-1 text-xs text-muted-foreground">Dados consolidados em {dataHora(overview.data.generated_at)}</p>}
-        </div>
-        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => void overview.refetch()} disabled={updating}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${updating ? 'animate-spin' : ''}`} /> Atualizar
-        </Button>
-      </header>
+    <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <PageHeader
+        title="Cobranças da plataforma"
+        icon={<CreditCard />}
+        description={metrics
+          ? `${metrics.ativas} assinaturas pagas ativas · ${metrics.vencidas} vencidas · ${metrics.sem_assinatura} sem assinatura${overview.data?.generated_at ? ` · dados de ${dataHora(overview.data.generated_at)}` : ''}`
+          : 'Assinaturas, vencimentos e processamento do Mercado Pago.'}
+        actions={<>
+          <Button asChild variant="outline" className="rounded-full gap-2">
+            <Link to="/admin/historico-financeiro"><History className="h-4 w-4" />Histórico financeiro</Link>
+          </Button>
+          <Button variant="outline" size="icon" className="rounded-full" onClick={() => void overview.refetch()} disabled={updating} aria-label="Atualizar">
+            <RefreshCw className={cn('h-4 w-4', updating && 'animate-spin')} />
+          </Button>
+        </>}
+      />
 
       {overview.isError ? <ErrorState error={overview.error} onRetry={() => { void overview.refetch(); }} /> : overview.isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[1, 2, 3, 4, 5].map((item) => <Skeleton key={item} className="h-24" />)}</div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[1, 2, 3, 4, 5].map((item) => <Skeleton key={item} className="h-24 rounded-2xl" />)}</div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {[
-            ['MRR estimado', moeda(metrics?.mrr || 0)],
-            ['Assinaturas pagas ativas', metrics?.ativas || 0],
-            ['Em período de teste', metrics?.trials || 0],
-            ['Vencidas', metrics?.vencidas || 0],
-            ['Sem assinatura', metrics?.sem_assinatura || 0],
-          ].map(([label, value], index) => {
-            const accents = ['border-l-[#4F2FED] bg-[#F6F4FF]', 'border-l-[#16A77A] bg-[#F2FBF7]', 'border-l-[#45BBD1] bg-[#F1FBFD]', 'border-l-[#E6A12A] bg-[#FFFAF0]', 'border-l-[#9992BB] bg-[#F8F7FC]'];
-            return <Card key={label} className={`rounded-xl border border-[#E9E6F5] border-l-4 shadow-sm ${accents[index]}`}><CardContent className="py-4"><p className="text-xs font-medium text-[#41396B]">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight text-[#111111]">{value}</p></CardContent></Card>;
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Indicadores de cobrança">
+          {([
+            { key: null, label: 'MRR estimado', value: moeda(metrics?.mrr || 0), detail: 'assinaturas pagas e válidas', icon: Wallet, tone: '' },
+            { key: 'ativa', label: 'Assinaturas pagas ativas', value: metrics?.ativas || 0, detail: 'ver ativas válidas', icon: CheckCircle2, tone: 'bg-success/10 text-success' },
+            { key: 'trial', label: 'Em período de teste', value: metrics?.trials || 0, detail: 'ver trials válidos', icon: Hourglass, tone: 'bg-info/10 text-info' },
+            { key: 'vencida', label: 'Vencidas', value: metrics?.vencidas || 0, detail: 'ver vencidas', icon: AlertTriangle, tone: 'bg-warning/10 text-warning' },
+            { key: 'sem_assinatura', label: 'Sem assinatura', value: metrics?.sem_assinatura || 0, detail: 'ver sem assinatura', icon: CircleSlash, tone: 'bg-muted text-muted-foreground' },
+          ] as const).map(({ key, label, value, detail, icon: Icon, tone }) => {
+            const conteudo = (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={cn('text-sm', key === null ? 'text-white/80' : 'text-muted-foreground')}>{label}</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+                  <p className={cn('mt-0.5 text-[11px]', key === null ? 'text-white/70' : 'text-muted-foreground')}>{detail}</p>
+                </div>
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', key === null ? 'bg-white/20 text-white' : tone)}><Icon className="h-5 w-5" /></span>
+              </div>
+            );
+            return key === null ? (
+              <div key={label} className="col-span-2 rounded-2xl border border-transparent bg-gradient-primary p-4 text-white shadow-xs lg:col-span-1">{conteudo}</div>
+            ) : (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={status === key}
+                onClick={() => setStatus(status === key ? 'all' : key)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  status === key && 'border-[#1080CA] ring-1 ring-[#1080CA]/40',
+                )}
+              >
+                {conteudo}
+              </button>
+            );
           })}
-        </div>
+        </section>
       )}
 
       {!overview.isError && (metrics?.webhooks_pendentes || metrics?.webhooks_falha_24h) ? (
-        <Card className="border-destructive/40"><CardContent className="flex items-center gap-3 pt-6"><AlertTriangle className="h-6 w-6 shrink-0 text-destructive" /><div><p className="font-medium">Processamento financeiro requer atenção</p><p className="text-sm text-muted-foreground">{metrics.webhooks_pendentes} pendente(s) · {metrics.webhooks_falha_24h} falha(s) nas últimas 24h</p></div></CardContent></Card>
+        <Card className="rounded-2xl border-destructive/40 bg-destructive/5 shadow-xs"><CardContent className="flex items-center gap-3 p-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><AlertTriangle className="h-5 w-5" /></span><div><p className="font-medium">Processamento financeiro requer atenção</p><p className="text-sm text-muted-foreground">{metrics.webhooks_pendentes} pendente(s) · {metrics.webhooks_falha_24h} falha(s) nas últimas 24h</p></div></CardContent></Card>
       ) : null}
 
-      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader><CardTitle>Carteira de clientes</CardTitle><CardDescription>{lista.length} de {overview.data?.subscriptions.length ?? 0} clínicas. Estado local da assinatura e vínculo com o Mercado Pago; expiradas não entram no total ativo nem no MRR.</CardDescription></CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <div className="relative min-w-56 flex-1"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar clínicas por nome, responsável ou plano" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar clínica, responsável ou plano" className="pl-9" /></div>
-            <Select value={status} onValueChange={setStatus}><SelectTrigger className="w-48" aria-label="Filtrar assinatura"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="ativa">Ativas válidas</SelectItem><SelectItem value="trial">Trials válidos</SelectItem><SelectItem value="cancelada">Canceladas</SelectItem><SelectItem value="vencida">Vencidas</SelectItem><SelectItem value="sem_assinatura">Sem assinatura</SelectItem></SelectContent></Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full min-w-56 flex-1 sm:w-auto"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar clínicas por nome, responsável ou plano" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar clínica, responsável ou plano" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" /></div>
+            {(busca.trim() || status !== 'all') && <Button variant="outline" className="h-10 rounded-full" onClick={() => { setBusca(''); setStatus('all'); }}>Limpar filtros</Button>}
+            <Select value={status} onValueChange={setStatus}><SelectTrigger className="h-10 w-full rounded-full sm:w-48" aria-label="Filtrar assinatura"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="ativa">Ativas válidas</SelectItem><SelectItem value="trial">Trials válidos</SelectItem><SelectItem value="cancelada">Canceladas</SelectItem><SelectItem value="vencida">Vencidas</SelectItem><SelectItem value="sem_assinatura">Sem assinatura</SelectItem></SelectContent></Select>
           </div>
           {overview.isLoading ? <div className="space-y-2">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-20 w-full" />)}</div> : overview.isError ? null : lista.map((subscription) => (
-            <div key={subscription.clinica_id} className="grid gap-3 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3 transition-colors hover:border-[#CFC8F2] md:grid-cols-6 md:items-center">
+            <div key={subscription.clinica_id} className="grid gap-3 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC] md:grid-cols-6 md:items-center">
               <div className="md:col-span-2"><p className="font-medium">{subscription.clinica_nome}</p><p className="text-xs text-muted-foreground">{subscription.dono_email || 'Sem e-mail do responsável'}</p></div>
               <span className="text-sm">{subscription.plano_nome || 'Sem plano'}<small className="block text-muted-foreground">{moeda(subscription.plano_valor || 0)}/mês</small></span>
-              <Badge variant={subscription.vencida ? 'destructive' : 'outline'}>{subscription.vencida ? 'Vencida' : subscription.assinatura_status || 'Sem assinatura'}</Badge>
+              <Badge variant={subscription.vencida ? 'destructive' : 'outline'} className="w-fit rounded-full">{subscription.vencida ? 'Vencida' : subscription.assinatura_status || 'Sem assinatura'}</Badge>
               <span className="text-xs">Mercado Pago: {subscription.mp_status || 'não vinculado'}</span>
               <span className="text-xs text-muted-foreground">Próximo pagamento: {subscription.proximo_pagamento ? formatDateInTimeZone(subscription.proximo_pagamento) : '—'}</span>
             </div>
           ))}
-          {!overview.isLoading && !overview.isError && !lista.length && <div className="flex flex-col items-center gap-2 py-6 text-center"><p className="text-sm text-muted-foreground">Nenhuma clínica corresponde à busca e ao status selecionado.</p>{(busca.trim() || status !== 'all') && <Button variant="ghost" size="sm" onClick={() => { setBusca(''); setStatus('all'); }}>Limpar filtros</Button>}</div>}
+          {!overview.isLoading && !overview.isError && !lista.length && <div className="flex flex-col items-center gap-3 py-8 text-center"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Search className="h-6 w-6" /></span><p className="text-sm text-foreground">Nenhuma clínica corresponde à busca e ao status selecionado.</p>{(busca.trim() || status !== 'all') ? <Button variant="outline" className="rounded-full" onClick={() => { setBusca(''); setStatus('all'); }}>Limpar filtros</Button> : <Button asChild variant="outline" className="rounded-full"><Link to="/admin/clinicas">Ver clínicas</Link></Button>}</div>}
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle>Faturas recorrentes recentes</CardTitle>
           <CardDescription>Histórico das faturas do Mercado Pago, com status da fatura e do pagamento separados.</CardDescription>
@@ -163,15 +250,15 @@ export default function PlatformCobrancas() {
           {invoices.isLoading ? [1, 2, 3].map((item) => <Skeleton key={item} className="h-16 w-full" />) : invoices.isError ? (
             <ErrorState error={invoices.error} onRetry={() => { void invoices.refetch(); }} />
           ) : (invoices.data || []).map((invoice) => (
-            <div key={invoice.id} className="grid gap-2 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+            <div key={invoice.id} className="grid gap-2 rounded-xl border border-border/60 bg-card p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{invoice.clinic_name}</p>
                 <p className="truncate text-xs text-muted-foreground">{invoice.owner_email || 'Sem e-mail'} · Fatura {invoice.mp_authorized_payment_id}</p>
                 <p className="text-xs text-muted-foreground">{invoice.date_created || invoice.debit_date ? dataHora(invoice.date_created || invoice.debit_date!) : 'Data indisponível'}{invoice.retry_attempt ? ` · tentativa ${invoice.retry_attempt}` : ''}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">Fatura: {invoice.invoice_status}</Badge>
-                <Badge variant={invoice.payment_status === 'approved' ? 'outline' : invoice.payment_status ? 'destructive' : 'secondary'}>
+                <Badge variant="secondary" className="rounded-full">Fatura: {invoice.invoice_status}</Badge>
+                <Badge variant={invoice.payment_status === 'approved' ? 'outline' : invoice.payment_status ? 'destructive' : 'secondary'} className="rounded-full">
                   Pagamento: {invoice.payment_status || 'sem pagamento vinculado'}
                 </Badge>
               </div>
@@ -187,18 +274,90 @@ export default function PlatformCobrancas() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
-        <CardHeader><CardTitle className="flex items-center gap-2"><Webhook className="h-5 w-5" /> Webhooks recentes</CardTitle><CardDescription>Metadados operacionais; os payloads financeiros não são expostos. A lista mostra até 30 dos 100 eventos carregados.</CardDescription></CardHeader>
+      <Card role="region" aria-labelledby="titulo-tentativas" className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader>
+          <CardTitle id="titulo-tentativas">Tentativas de checkout</CardTitle>
+          <CardDescription>Cada tentativa no cartão e pedido Pix da assinatura, com o estado final. Não há dados de cartão nem do provedor.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {attempts.isLoading ? [1, 2].map((item) => <Skeleton key={item} className="h-14 w-full" />) : attempts.isError ? (
+            <ErrorState error={attempts.error} onRetry={() => { void attempts.refetch(); }} />
+          ) : (attempts.data || []).map((attempt) => {
+            const evento = descreverEventoCobranca(attempt);
+            return (
+              <div key={`${attempt.origem}-${attempt.id}`} className="grid gap-2 rounded-xl border border-border/60 bg-card p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{attempt.clinica_nome || attempt.dono_email || 'Conta sem clínica'}</p>
+                  <p className="text-xs text-muted-foreground">{evento.tipo} · {attempt.criado_em ? dataHora(attempt.criado_em) : 'Data indisponível'}</p>
+                  {evento.detalhe && <p className="text-xs text-muted-foreground">{evento.detalhe}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={evento.final ? 'outline' : 'secondary'} className="rounded-full">{evento.estado}</Badge>
+                  {attempt.divergente && <Badge variant="destructive" className="rounded-full">Divergente</Badge>}
+                </div>
+                <div className="flex items-center gap-2 sm:justify-end">
+                  <span className="text-sm font-semibold">{attempt.valor === null ? '—' : moeda(Number(attempt.valor))}</span>
+                  {attempt.divergente && (
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setReconciliando(attempt); setJustificativa(''); }}>Reconciliar</Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {!attempts.isLoading && !attempts.isError && !attempts.data?.length && <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma tentativa de checkout registrada.</p>}
+          {!!reconciliacoes.data?.length && (
+            <div className="space-y-1 border-t pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reconciliações registradas</p>
+              {reconciliacoes.data.map((item) => (
+                <p key={item.id} className="text-xs text-muted-foreground">
+                  {item.criado_em ? dataHora(item.criado_em) : '—'} · {item.autor_email || 'administrador'} · {item.status_anterior} → {item.status_novo} · {item.justificativa}
+                </p>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!reconciliando} onOpenChange={(open) => { if (!open && !reconciliar.isPending) setReconciliando(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reconciliar cobrança divergente</DialogTitle>
+            <DialogDescription>
+              Ajusta somente o registro da EloLab, sem chamar o Mercado Pago. A decisão, a justificativa e o estado anterior ficam na trilha de auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="justificativa-reconciliacao">Justificativa (mínimo de 10 caracteres)</Label>
+            <Textarea id="justificativa-reconciliacao" value={justificativa} maxLength={500} rows={3} onChange={(event) => setJustificativa(event.target.value)} placeholder="Ex.: comprovante conferido no extrato do Mercado Pago" />
+          </div>
+          <DialogFooter className="gap-2">
+            {(RESOLUCOES[reconciliando?.origem ?? ''] || []).map((resolucao) => (
+              <Button key={resolucao.valor} variant={resolucao.valor === 'confirmar_pagamento' ? 'default' : 'outline'} disabled={!justificativaValida || reconciliar.isPending} onClick={() => reconciliar.mutate(resolucao.valor)}>
+                {resolucao.rotulo}
+              </Button>
+            ))}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader><CardTitle className="flex items-center gap-2"><Webhook className="h-5 w-5 text-[#1080CA]" /> Webhooks recentes</CardTitle><CardDescription>Metadados operacionais; os payloads financeiros não são expostos. A lista mostra até 30 dos 100 eventos carregados.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
           {overview.isLoading ? <Skeleton className="h-32 w-full" /> : overview.isError ? null : (overview.data?.webhooks || []).slice(0, 30).map((webhook) => (
-            <div key={webhook.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E8E5F5] bg-[#FCFBFF] p-3">
+            <div key={webhook.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-card p-3">
               <div><p className="text-sm font-medium">{webhook.event_type}</p><p className="text-xs text-muted-foreground">Evento {webhook.event_id || webhook.data_id || 'sem identificador'} · {dataHora(webhook.created_at)}</p>{webhook.erro_mensagem && <p className="break-words text-xs text-destructive">{webhook.erro_mensagem}</p>}</div>
-              <div className="flex gap-2"><Badge variant="secondary">{webhook.tentativas || 0} tentativa(s)</Badge><Badge variant={webhook.processado ? 'outline' : 'destructive'}>{webhook.processado ? 'Processado' : 'Pendente'}</Badge></div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary" className="rounded-full">{webhook.tentativas || 0} tentativa(s)</Badge>
+                {webhook.repeticoes ? <Badge variant="secondary" className="rounded-full">Repetido {webhook.repeticoes}×</Badge> : null}
+                {webhook.sinal_ordem === 'fora_de_ordem' && <Badge variant="secondary" className="rounded-full" title="O evento anunciava um status diferente do atual; foi aplicado o estado atual do Mercado Pago.">Fora de ordem</Badge>}
+                {webhook.sinal_ordem === 'repetido' && <Badge variant="secondary" className="rounded-full" title="O pedido já estava encerrado; nada mudou.">Sem efeito</Badge>}
+                <Badge variant={webhook.processado ? 'outline' : 'destructive'} className="rounded-full">{webhook.processado ? 'Processado' : 'Pendente'}</Badge>
+              </div>
             </div>
           ))}
           {!overview.isLoading && !overview.isError && !overview.data?.webhooks.length && <p className="py-4 text-center text-sm text-muted-foreground">Nenhum webhook registrado.</p>}
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 }

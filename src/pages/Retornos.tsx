@@ -78,7 +78,7 @@ const PILL_ATIVA = 'border-transparent bg-gradient-primary text-white shadow-sm'
 const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
 
 function mensagemWhatsApp(primeiroNome: string, medico: string, data: string) {
-  return `Olá, ${primeiroNome}! Seu retorno com ${medico} está previsto para ${data}. Podemos confirmar o horário?`;
+  return `Olá, ${primeiroNome}. Seu retorno com ${medico} está previsto para ${data}. Podemos confirmar o horário?`;
 }
 
 export default function RetornosControl() {
@@ -600,7 +600,7 @@ export default function RetornosControl() {
               aria-pressed={ativo}
               onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',

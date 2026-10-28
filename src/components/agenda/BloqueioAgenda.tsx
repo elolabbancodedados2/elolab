@@ -32,6 +32,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient } from '@tanstack/react-query';
+import { prefixoTabela } from '@/lib/queryKeys';
 import { cn } from '@/lib/utils';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -127,7 +128,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
 
       if (error) throw error;
       toast.success('Horário bloqueado com sucesso');
-      void queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });
+      void queryClient.invalidateQueries({ queryKey: prefixoTabela('bloqueios_agenda') });
       setDialogOpen(false);
       setForm({ medico_id: medicoIdFilter || '', data_inicio: '', data_fim: '', hora_inicio: '', hora_fim: '', dia_inteiro: true, motivo: '', tipo: 'bloqueio' });
     } catch (error) {
@@ -160,7 +161,7 @@ export function BloqueioAgenda({ medicoIdFilter }: BloqueioAgendaProps) {
         return;
       }
       toast.success('Bloqueio removido. Novos agendamentos podem ocupar esse período.');
-      void queryClient.invalidateQueries({ queryKey: ['bloqueios_agenda'] });
+      void queryClient.invalidateQueries({ queryKey: prefixoTabela('bloqueios_agenda') });
       setBloqueioParaRemover(null);
     } catch (error) {
       toast.error('Erro ao remover bloqueio', { description: mensagemDeErro(error) });

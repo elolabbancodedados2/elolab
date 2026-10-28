@@ -80,7 +80,8 @@ function sinaisDoProntuario(valor: unknown): Pick<VitalSignData, VitalKey> {
   const resultado = Object.fromEntries(
     (Object.keys(mapaSinaisProntuario) as Array<keyof typeof mapaSinaisProntuario>)
       .map((chave) => [mapaSinaisProntuario[chave], parseNumero(sinais[chave])])
-      .filter(([chave]) => Boolean(chave)),
+      // Aliases (saturacao/oxigenacao, dor/dor_escala) share a key: an absent alias must not erase a recorded value.
+      .filter(([chave, numero]) => Boolean(chave) && numero != null),
   ) as Partial<Record<VitalKey, number | null>>;
 
   return {

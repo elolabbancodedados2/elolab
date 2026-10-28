@@ -9,6 +9,7 @@ import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 const ETAPAS = [
   { titulo: 'Selecione o paciente', texto: 'Busque por nome, CPF ou telefone.' },
@@ -38,7 +39,7 @@ export default function PortalPacientesClinica() {
       toast.success('Link de acesso gerado para este paciente.');
     } catch (error) {
       toast.error('Não foi possível gerar o link do portal.', {
-        description: error instanceof Error ? error.message : 'Tente novamente.',
+        description: friendlyErrorMessage(error, 'Tente novamente.'),
       });
     } finally {
       setGerando(false);
@@ -61,7 +62,7 @@ export default function PortalPacientesClinica() {
 
   const nomePaciente = paciente ? paciente.nome_social || paciente.nome : '';
   const whatsapp = link && paciente?.telefone
-    ? linkWhatsApp(paciente.telefone, `Olá, ${nomePaciente}! A clínica está compartilhando seu link de acesso ao Portal do Paciente: ${link}`)
+    ? linkWhatsApp(paciente.telefone, `Olá, ${nomePaciente}. A clínica está compartilhando seu link de acesso ao Portal do Paciente: ${link}`)
     : null;
 
   return (

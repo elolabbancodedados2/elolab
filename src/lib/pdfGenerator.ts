@@ -8,6 +8,7 @@ import QRCode from 'qrcode';
 
 import { supabase } from '@/integrations/supabase/client';
 import { formatDateTimeSaoPaulo, parseDateOnly } from '@/lib/dateOnly';
+import { formatarReferenciaLaudo, procedenciaResultadoLaudo } from '@/lib/laudoWorkflow';
 
 /**
  * Carrega jsPDF e jspdf-autotable só quando alguém vai realmente gerar um PDF.
@@ -829,7 +830,7 @@ export async function gerarProntuarioPDF(
     doc.setFontSize(8);
     doc.setTextColor(185, 28, 28);
     doc.setFont('helvetica', 'bold');
-    doc.text(`⚠ ALERGIAS: ${paciente.alergias.join(', ')}`, margin + 4, yPos + 34);
+    doc.text(`ALERGIAS: ${paciente.alergias.join(', ')}`, margin + 4, yPos + 34);
     yPos += 40;
   } else {
     yPos += 32;
@@ -1076,6 +1077,9 @@ export interface LaudoData {
     valorReferenciaMax?: number;
     valorReferenciaTexto?: string;
     metodo?: string;
+    equipamento?: string;
+    /** Laboratório executor; ausente quando o exame foi feito na própria clínica. */
+    laboratorio?: string;
     material?: string;
     tipoExame?: string;
     liberado: boolean;
@@ -1221,12 +1225,11 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     doc.setTextColor(0, 0, 0);
     y += 5;
 
-    // Material e Método
+    // Material do grupo; método/equipamento/laboratório saem por parâmetro.
     const firstR = resultados[0];
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
     if (firstR.material) doc.text(`Material: ${firstR.material}`, margin, y);
-    if (firstR.metodo) doc.text(`Método: ${firstR.metodo}`, margin + 60, y);
     y += 4;
 
     // Cabeçalho da subtabela
@@ -1235,7 +1238,7 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
     doc.setTextColor(80, 80, 80);
     const colResult = margin;
     const colRef = rightX - 48;
-    doc.text('Resultado', colResult, y);
+    doc.text('Resultado observado', colResult, y);
     doc.text('Valor de Referência', colRef, y);
     y += 1;
     doc.setLineWidth(0.2);
@@ -1268,11 +1271,20 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
       // Valor de referência
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
-      const referencia = r.valorReferenciaTexto ||
-        (r.valorReferenciaMin != null && r.valorReferenciaMax != null
-          ? `${r.valorReferenciaMin} a ${r.valorReferenciaMax} ${r.unidade || ''}`
-          : '—');
-      doc.text(referencia, colRef, y);
+      doc.text(doc.splitTextToSize(formatarReferenciaLaudo(r), rightX - colRef), colRef, y);
+
+      const procedencia = procedenciaResultadoLaudo({
+        metodo: r.metodo, equipamento: r.equipamento, laboratorio: r.laboratorio || clinica.nome,
+      });
+      if (procedencia) {
+        y += 3.5;
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 100, 100);
+        const linhasProcedencia = doc.splitTextToSize(procedencia, colRef - margin - 4);
+        doc.text(linhasProcedencia, colResult, y);
+        y += (linhasProcedencia.length - 1) * 3;
+        doc.setTextColor(0, 0, 0);
+      }
 
       y += 5;
     }
@@ -1415,7 +1427,7 @@ export function sharePDFWhatsApp(doc: jsPDF, filename: string, telefone?: string
 
   // Build WhatsApp message
   const msg = encodeURIComponent(
-    `📋 *Prontuário Digital${_cachedClinica?.nome ? ` - ${_cachedClinica.nome}` : ''}*\n\nOlá! Segue em anexo o prontuário do atendimento.\n\n_Documento gerado digitalmente pelo sistema EloLab._`
+    `*Prontuário Digital${_cachedClinica?.nome ? ` - ${_cachedClinica.nome}` : ''}*\n\nOlá. Segue em anexo o prontuário do atendimento.\n\n_Documento gerado digitalmente pelo sistema EloLab._`
   );
 
   const phone = telefone?.replace(/\D/g, '') || '';

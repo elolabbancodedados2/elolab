@@ -108,7 +108,7 @@ export function filtrarEventosAuditoria(
   });
 }
 
-function csvCell(value: unknown): string {
+export function csvCell(value: unknown): string {
   const text = String(value ?? '').replace(/[\r\n]+/g, ' ').trim();
   const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
   return `"${safe.replace(/"/g, '""')}"`;

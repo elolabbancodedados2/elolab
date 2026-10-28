@@ -1,0 +1,54 @@
+{
+  "_leia": "Skips aceitos no job security-e2e. Cada item exige motivo, dono e data de revisão; vencida a data, o gate falha. Título = describe › teste, igual ao relatório do Playwright. Revisão de mudanças neste arquivo: devops-sre + qa-engineer + security-engineer.",
+  "permitidos": [
+    {
+      "arquivo": "rls.spec.ts",
+      "titulo": "Edge functions — autorização própria › whatsapp-evolution recusa quem não está autenticado",
+      "motivo": "Fase 2 (B7 em docs/operations/ci-banco-efemero.md): falta env de stub das integrações para servir edge functions sem alcançar a Evolution API.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    },
+    {
+      "arquivo": "rls.spec.ts",
+      "titulo": "Edge functions — autorização própria › whatsapp-evolution não envia mensagem para anônimo",
+      "motivo": "Fase 2 (B7): stub da Evolution API.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    },
+    {
+      "arquivo": "rls.spec.ts",
+      "titulo": "Edge functions — autorização própria › ai-medical-assistant não aceita dado clínico de anônimo",
+      "motivo": "Fase 2 (B7): stub do provedor de IA, sem chave real no CI.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    },
+    {
+      "arquivo": "isolamento-entre-clinicas.spec.ts",
+      "titulo": "Isolamento entre clínicas › A não obtém o QR Code do WhatsApp de B",
+      "motivo": "Fase 2 (B7): exige QA_WHATSAPP_STUB_CONFIRMED com whatsapp-evolution servido contra stub.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    },
+    {
+      "arquivo": "isolamento-entre-clinicas.spec.ts",
+      "titulo": "Isolamento entre clínicas › A não envia mensagem pela instância de B",
+      "motivo": "Fase 2 (B7): stub da Evolution API.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    },
+    {
+      "arquivo": "isolamento-entre-clinicas.spec.ts",
+      "titulo": "Isolamento entre clínicas › A não apaga a instância de B",
+      "motivo": "Fase 2 (B7): stub da Evolution API.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    },
+    {
+      "arquivo": "isolamento-entre-clinicas.spec.ts",
+      "titulo": "Isolamento entre clínicas › list_instances devolve só o que é da clínica de quem chamou",
+      "motivo": "Fase 2 (B7): stub da Evolution API.",
+      "dono": "backend-developer",
+      "revisar_ate": "2026-11-30"
+    }
+  ]
+}

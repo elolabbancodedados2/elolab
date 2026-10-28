@@ -1,0 +1,27 @@
+[
+  { "aguardar": [
+    "docs/time/rodada-1/frontend-developer.md",
+    "docs/time/rodada-1/product-designer.md",
+    "docs/time/rodada-1/business-analyst.md",
+    "docs/time/rodada-1/especialista-dominio-saude.md",
+    "docs/time/rodada-1/growth-marketing.md"
+  ] },
+  { "tarefas": "docs/time/rodada-2/TAREFAS.json", "saidas": [
+    "docs/time/rodada-2/security-engineer.md",
+    "docs/time/rodada-2/database-engineer.md",
+    "docs/time/rodada-2/backend-developer.md",
+    "docs/time/rodada-2/qa-engineer.md",
+    "docs/time/rodada-2/devops-sre.md",
+    "docs/time/rodada-2/tech-lead.md"
+  ] },
+  { "tarefas": "docs/time/rodada-2/TAREFAS-B.json", "saidas": [
+    "docs/time/rodada-2/frontend-developer.md",
+    "docs/time/rodada-2/product-owner.md"
+  ] },
+  { "tarefas": "docs/time/rodada-2/TAREFAS-C.json", "saidas": [
+    "docs/time/rodada-2/tech-lead-final.md"
+  ] },
+  { "tarefas": "docs/time/rodada-2/TAREFAS-D.json", "saidas": [
+    "docs/time/rodada-2/CONSOLIDADO.md"
+  ] }
+]

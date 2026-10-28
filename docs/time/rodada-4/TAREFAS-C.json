@@ -1,0 +1,6 @@
+{
+  "comum": "Worktree: C:\\Users\\lopes\\orca\\workspaces\\elolab\\time-estabilizacao (base nova = main local + visual sóbrio, com o trabalho do time portado na rodada 4). Leia docs/time/GATES.md, docs/time/rodada-3/ e docs/time/rodada-4/. Não edite código. Grave apenas o arquivo pedido, em docs/, usando o Bash (heredoc) se não tiver ferramenta de escrita; se gravar em partes, a linha PROXIMA-RODADA vai só no último pedaço. TAREFA: ",
+  "tarefas": {
+    "clinical-quality-director": "Consolide o estado do time na base nova em docs/time/rodada-4/CONSOLIDADO.md: estado de cada P0 e P1 (pronto localmente / aguardando aplicação / aberto / bloqueado por decisão), o que foi portado e o que se perdeu, achados do revisor do Codex (rodadas 3 e 4) e o destino deles, resultados reais da verificação completa, veredito GO/GO CONDICIONAL/NO-GO e a seção final 'O que só o responsável pode destravar' com passos exatos. A penúltima linha lista o trabalho local restante executável pelo time sem decisão do responsável; a última linha é exatamente 'PROXIMA-RODADA: SIM' ou 'PROXIMA-RODADA: NAO'."
+  }
+}

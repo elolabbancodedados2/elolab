@@ -12,7 +12,7 @@ import {
   ShieldCheck, BookOpen, FileCheck, Brain, Bone, Eye as EyeIcon,
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
   Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
-  FileSpreadsheet, MessageCircle,
+  FileSpreadsheet, MessageCircle, GitMerge,
 } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { addDays, subYears } from 'date-fns';
@@ -42,11 +42,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
 import { PatientStats, PatientListTable } from '@/components/patients';
+import { RevisaoDuplicidadesDialog } from '@/components/patients/RevisaoDuplicidadesDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
 import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import { Paciente } from '@/types';
 import { cn, sanitizeText } from '@/lib/utils';
@@ -188,6 +189,7 @@ export default function Pacientes() {
   const [selectedPacienteUpdatedAt, setSelectedPacienteUpdatedAt] = useState<string | null>(null);
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
+  const [isDuplicidadesOpen, setIsDuplicidadesOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
 
   // Deep-link: /pacientes?paciente=<id>&tab=<financeiro|...>
@@ -689,7 +691,7 @@ export default function Pacientes() {
       });
 
       if (trilhaOk) {
-        toast.success('Prontuário salvo com sucesso!');
+        toast.success('Prontuário salvo com sucesso');
       } else {
         toast.warning('Prontuário salvo, mas não registrado na auditoria.', {
           description: 'O registro ficou na fila de reenvio. Se persistir, avise o suporte.',
@@ -1160,7 +1162,7 @@ export default function Pacientes() {
         toast.success(`Paciente ${acao} com sucesso`);
       } catch (erroComorbidades: any) {
         toast.warning(`Paciente ${acao}, mas as comorbidades não foram salvas`, {
-          description: erroComorbidades?.message || 'Edite a ficha para tentar de novo.',
+          description: friendlyErrorMessage(erroComorbidades, 'Edite a ficha para tentar de novo.'),
         });
       }
 
@@ -1177,10 +1179,10 @@ export default function Pacientes() {
         atualizarListasPacientes();
         return;
       }
-      // A mensagem do banco costuma dizer exatamente o que faltou (campo
-      // obrigatório, CPF duplicado, permissão). Esconder isso obriga a adivinhar.
+      // O código do banco vira frase que diz o que faltou (campo obrigatório,
+      // duplicidade, permissão), sem expor o texto cru do Postgres.
       toast.error('Erro ao salvar paciente', {
-        description: error?.message || error?.details || 'Verifique os dados e tente novamente.',
+        description: friendlyErrorMessage(error, 'Verifique os dados e tente novamente.'),
       });
     } finally {
       pacienteSaveLockRef.current = false;
@@ -1199,7 +1201,7 @@ export default function Pacientes() {
       try {
         if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
         await navigator.clipboard.writeText(url);
-        toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
+        toast.success('Link copiado', { description: `Link do portal de ${pacienteNome} copiado.` });
       } catch {
         setLinkPortalGerado({ nome: pacienteNome, url });
         toast.info('O link foi gerado', { description: 'A cópia automática não funcionou. Copie o link na janela aberta.' });
@@ -1254,7 +1256,7 @@ export default function Pacientes() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
       await navigator.clipboard.writeText(linkPortalGerado.url);
-      toast.success('Link copiado!');
+      toast.success('Link copiado');
     } catch {
       const campo = document.getElementById('link-portal-paciente') as HTMLInputElement | null;
       campo?.focus();
@@ -1305,7 +1307,7 @@ export default function Pacientes() {
           title="Pacientes"
           description="Gestão completa do cadastro de pacientes"
           actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
-          <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+          <motion.div>
             <Button
               variant="outline"
               size="lg"
@@ -1316,7 +1318,18 @@ export default function Pacientes() {
               Etiquetas da página
             </Button>
           </motion.div>
-          <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+          {isAdmin() && (
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setIsDuplicidadesOpen(true)}
+              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs hover:border-[#1080CA]/40 sm:w-auto sm:px-5"
+            >
+              <GitMerge className="h-4 w-4" />
+              Revisar duplicidades
+            </Button>
+          )}
+          <motion.div>
             <Button
               size="lg"
               onClick={handleNew}
@@ -1930,7 +1943,7 @@ export default function Pacientes() {
                         ? `${calcularIdade(selectedPaciente.data_nascimento)}a`
                         : 'Nascimento inválido'
                       : 'Idade N/I'}</span>
-                    {selectedPaciente.sexo && <span>• {selectedPaciente.sexo === 'M' ? '♂' : selectedPaciente.sexo === 'F' ? '♀' : '⚧'}</span>}
+                    {selectedPaciente.sexo && <span>• {selectedPaciente.sexo === 'M' ? 'Masculino' : selectedPaciente.sexo === 'F' ? 'Feminino' : 'Outro'}</span>}
                     {selectedPaciente.cpf && <span>• {selectedPaciente.cpf}</span>}
                     <span>• {getConvenioNome(selectedPaciente.convenio_id)}</span>
                   </div>
@@ -2209,7 +2222,7 @@ export default function Pacientes() {
                                 clinica_id: authProfile?.clinica_id || null,
                               });
                               if (error) throw error;
-                              toast.info('Consulta agendada!');
+                              toast.info('Consulta agendada');
                               setShowAgendamentoForm(false);
                               loadAgendamentos(selectedPacienteId!);
                             } catch (err: any) {
@@ -2348,7 +2361,7 @@ export default function Pacientes() {
                                 clinica_id: authProfile.clinica_id,
                               });
                               if (error) throw error;
-                              toast.success('Exame solicitado!');
+                              toast.success('Exame solicitado');
                               setShowExameForm(false);
                               loadExames(selectedPacienteId!);
                             } catch (err: any) {
@@ -2776,6 +2789,7 @@ export default function Pacientes() {
 
       {/* Etiquetas */}
       <EtiquetaPaciente pacientes={pacientesForEtiqueta} open={isEtiquetaOpen} onOpenChange={setIsEtiquetaOpen} />
+      {isAdmin() && <RevisaoDuplicidadesDialog open={isDuplicidadesOpen} onOpenChange={setIsDuplicidadesOpen} onMesclado={atualizarListasPacientes} />}
 
       <Dialog open={!!linkPortalGerado} onOpenChange={(open) => { if (!open) setLinkPortalGerado(null); }}>
         <DialogContent className="sm:max-w-lg">

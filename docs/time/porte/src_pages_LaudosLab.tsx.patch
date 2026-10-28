@@ -1,0 +1,94 @@
+diff --git a/src/pages/LaudosLab.tsx b/src/pages/LaudosLab.tsx
+index 31489a9a..54ac8479 100644
+--- a/src/pages/LaudosLab.tsx
++++ b/src/pages/LaudosLab.tsx
+@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
+ import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
+ import { canalUnico } from '@/lib/realtimeCanal';
+ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+-import { ErrorState } from '@/components/ErrorState';
++import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+ import { Skeleton } from '@/components/ui/skeleton';
+ import { pacienteCorresponde } from '@/lib/buscaPaciente';
+ import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
+@@ -239,7 +239,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
+ 
+       const notificacao = await notificarResultadoLiberado(resultadoId);
+       if (notificacao === 'enviada') {
+-        toast.success('Resultado liberado e paciente notificado!');
++        toast.success('Resultado liberado e paciente notificado');
+       } else if (notificacao === 'enfileirada') {
+         toast.warning('Resultado liberado; notificação entrou na fila de reenvio.');
+       } else {
+@@ -249,7 +249,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
+       onUpdate();
+     } catch (err: any) {
+       console.error('handleLiberarResultado error:', err);
+-      toast.error('Erro ao liberar: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao liberar', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     } finally {
+       setReleasingIds(current => { const next = new Set(current); next.delete(resultadoId); return next; });
+     }
+@@ -304,7 +304,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
+       onUpdate();
+     } catch (err: any) {
+       console.error('handleLiberarTodos error:', err);
+-      toast.error('Erro ao liberar em lote: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao liberar em lote', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     } finally {
+       setIsReleasingAll(false);
+     }
+@@ -326,7 +326,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
+         p_coleta_id: coletaId,
+       });
+       if (error) throw error;
+-      toast.success('Coleta validada e conferência registrada!');
++      toast.success('Coleta validada e conferência registrada');
+       await fetchData();
+       onUpdate();
+     } catch (e) {
+@@ -379,7 +379,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
+       if (!laudoData) return;
+       await gerarLaudoPDF(laudoData);
+     } catch (err: any) {
+-      toast.error('Erro ao imprimir laudo: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao imprimir laudo', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     }
+   };
+ 
+@@ -389,7 +389,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
+       if (!laudoData) return;
+       await downloadLaudoPDF(laudoData);
+     } catch (err: any) {
+-      toast.error('Erro ao baixar laudo: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao baixar laudo', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     }
+   };
+ 
+@@ -814,7 +814,7 @@ export default function LaudosLab() {
+   return (
+     <div className="space-y-6 pb-8">
+       {/* Header */}
+-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
++      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-card p-4 sm:p-5">
+         <div>
+           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
+             <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FileText className="h-5 w-5" /></span>
+@@ -832,7 +832,7 @@ export default function LaudosLab() {
+       {/* KPIs */}
+       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+         {[
+-          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-[#1766b3]', card: 'border-[#d8e8fb] bg-gradient-to-br from-white to-[#f1f7ff]', filter: 'todos' },
++          { label: 'Total', value: coletas.length, icon: FileText, color: 'text-[#1766b3]', card: 'border-[#d8e8fb] bg-card', filter: 'todos' },
+           { label: 'Pendentes', value: totalPendentes, icon: Clock, color: 'text-[#8a5b00]', card: 'border-[#f1dfb8] bg-[#fffaf0]', filter: 'pendente' },
+           { label: 'Parciais', value: totalParciais, icon: AlertCircle, color: 'text-[#9a5710]', card: 'border-[#f2d9bb] bg-[#fff8ef]', filter: 'parcial' },
+           { label: 'Liberados', value: totalLiberados, icon: CheckCircle2, color: 'text-[#16734d]', card: 'border-[#ccebdd] bg-[#f3fbf6]', filter: 'liberado' },
+@@ -955,7 +955,7 @@ export default function LaudosLab() {
+                         {todoLiberado ? (
+                           <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">Liberado</Badge>
+                         ) : parcial ? (
+-                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-[10px]">Parcial</Badge>
++                          <Badge className="bg-warning/10 text-warning border-warning/20 text-[10px]">Parcial</Badge>
+                         ) : (
+                           <Badge variant="secondary" className="text-[10px]">Pendente</Badge>
+                         )}

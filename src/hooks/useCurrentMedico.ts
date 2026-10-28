@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -10,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 export function useCurrentMedico() {
   const { user, profile, hasRole, isAdmin } = useSupabaseAuth();
   const currentMedicoQuery = useQuery({
-    queryKey: ['medico-atual', user?.id ?? null, profile?.clinica_id ?? null],
+    queryKey: queryKeys.medicoAtual(profile?.clinica_id, user?.id),
     enabled: !!user && !!profile?.clinica_id,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('buscar_medico_atual');

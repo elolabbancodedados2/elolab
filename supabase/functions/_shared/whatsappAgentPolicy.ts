@@ -50,11 +50,23 @@ export function findUniquePatientIdByPhone(
   return matches.length === 1 ? matches[0].id : null;
 }
 
+const CAPACIDADES_COM_PACIENTE = new Set<unknown>([
+  'criar_agendamento',
+  'consultar_agendamentos_paciente',
+  'cancelar_agendamento',
+  'reagendar_agendamento',
+]);
+
 export function isWhatsAppToolAllowed(
   toolName: string,
   capabilities: unknown,
 ): boolean {
   if (toolName === 'transferir_humano') return true;
+  // A identificação por CPF + nascimento só serve às habilidades que agem
+  // sobre o cadastro do paciente; sem nenhuma delas, a ferramenta não aparece.
+  if (toolName === 'identificar_paciente') {
+    return Array.isArray(capabilities) && capabilities.some((c) => CAPACIDADES_COM_PACIENTE.has(c));
+  }
   const requiredCapability = toolCapabilities[toolName];
   return Boolean(
     requiredCapability &&

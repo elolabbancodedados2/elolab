@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { validatePassword } from '@/lib/passwordPolicy';
+import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 import clinicBackground from '@/assets/clinic-background.jpg';
+import Logo from '@/components/landing-v2/Logo';
 
 interface InvitationData {
   id?: string;
@@ -299,17 +300,18 @@ export default function AceitarConvite() {
   if (loading) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
+        className="min-h-screen flex flex-col items-center justify-center p-4"
         style={{
           backgroundImage: `url(${clinicBackground})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       >
-        <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
-        <Card className="relative z-10 w-full max-w-md bg-card/95 backdrop-blur-sm">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#F3F8FC]/95 to-white/90 backdrop-blur-[2px]" />
+        <Logo className="relative z-10 mb-6" />
+        <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
           <CardContent className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#1080CA]" aria-label="Verificando convite" />
           </CardContent>
         </Card>
       </div>
@@ -319,20 +321,23 @@ export default function AceitarConvite() {
   if (error) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center p-4"
+        className="min-h-screen flex flex-col items-center justify-center p-4"
         style={{
           backgroundImage: `url(${clinicBackground})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       >
-        <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
-        <Card className="relative z-10 w-full max-w-md bg-card/95 backdrop-blur-sm">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#F3F8FC]/95 to-white/90 backdrop-blur-[2px]" />
+        <Logo className="relative z-10 mb-6" />
+        <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <XCircle className="h-16 w-16 text-destructive mb-4" />
+            <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+              <XCircle className="h-8 w-8" aria-hidden="true" />
+            </span>
             <h2 className="text-xl font-semibold mb-2">Não foi possível abrir o convite</h2>
             <p className="text-muted-foreground mb-6">{error}</p>
-            <Button onClick={() => navigate('/auth')}>Ir para o login</Button>
+            <Button className="h-11 rounded-full bg-gradient-primary px-6 text-white shadow-md hover:brightness-110" onClick={() => navigate('/auth')}>Ir para o login</Button>
           </CardContent>
         </Card>
       </div>
@@ -341,20 +346,21 @@ export default function AceitarConvite() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4"
+      className="min-h-screen flex flex-col items-center justify-center p-4"
       style={{
         backgroundImage: `url(${clinicBackground})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}
     >
-      <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
-      <Card className="relative z-10 w-full max-w-md bg-card/95 backdrop-blur-sm">
+      <div className="absolute inset-0 bg-gradient-to-b from-[#F3F8FC]/95 to-white/90 backdrop-blur-[2px]" />
+      <Logo className="relative z-10 mb-6" />
+      <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <CheckCircle className="h-7 w-7" aria-hidden="true" />
           </div>
-          <CardTitle>Bem-vindo(a) à Equipe!</CardTitle>
+          <CardTitle>Bem-vindo(a) à equipe</CardTitle>
           <CardDescription>
             {invitation?.funcionario?.nome && (
               <span className="block text-foreground font-medium mt-1">
@@ -382,7 +388,7 @@ export default function AceitarConvite() {
                 <Input
                   value={invitation?.email || ''}
                   disabled
-                  className="pl-10 bg-muted"
+                  className="h-11 rounded-xl bg-[#F3F8FC] pl-10"
                 />
               </div>
             </div>
@@ -394,7 +400,7 @@ export default function AceitarConvite() {
                   {invitation.roles.map(role => (
                     <span
                       key={role}
-                      className="px-3 py-1 bg-primary/10 text-primary text-sm rounded-full"
+                      className="rounded-full border border-[#BFD8EE] bg-[#F3F8FC] px-3 py-1 text-sm text-[#1080CA]"
                     >
                       {roleLabels[role] || role}
                     </span>
@@ -407,19 +413,22 @@ export default function AceitarConvite() {
               <Label htmlFor="password">{existingAccount ? 'Senha atual' : 'Senha'}</Label>
               <Input
                 id="password"
+                className="h-11 rounded-xl"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={existingAccount ? 'Digite a senha da sua conta' : invitation?.source === 'new' ? 'Mínimo 8 caracteres' : 'Mínimo 6 caracteres'}
+                placeholder={existingAccount ? 'Digite a senha da sua conta' : `Mínimo ${PASSWORD_MIN_LENGTH} caracteres`}
                 required
                 minLength={existingAccount ? undefined : invitation?.source === 'new' ? 8 : 6}
               />
+              {!existingAccount && (<p className="text-xs text-muted-foreground">Mínimo {PASSWORD_MIN_LENGTH} caracteres, com maiúscula, minúscula e número.</p>)}
             </div>}
 
             {!existingAccount && <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar Senha</Label>
               <Input
                 id="confirmPassword"
+                className="h-11 rounded-xl"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -433,6 +442,7 @@ export default function AceitarConvite() {
                 <Label htmlFor="telefone">Telefone (opcional)</Label>
                 <Input
                   id="telefone"
+                  className="h-11 rounded-xl"
                   type="tel"
                   value={telefone}
                   onChange={(e) => setTelefone(e.target.value)}
@@ -441,7 +451,7 @@ export default function AceitarConvite() {
               </div>
             )}
 
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" className="h-11 w-full rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={submitting}>
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

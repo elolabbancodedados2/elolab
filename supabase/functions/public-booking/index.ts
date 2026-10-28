@@ -6,16 +6,33 @@
  * com `ativo: true`). Ações:
  *   info  → nome da clínica e médicos que atendem online
  *   slots → horários livres de um médico numa data
- *   book  → cria (ou reaproveita, pelo CPF) o paciente e marca a consulta
+ *   book  → cria o paciente, ou reaproveita quando CPF e data de nascimento
+ *           conferem, e marca a consulta
  *
- * A consulta entra como "agendado" e a recepção confirma. Nada do cadastro do
- * paciente é devolvido: a resposta é igual exista ou não o CPF, para o link não
- * servir de consulta a quem é paciente da clínica.
+ * A consulta entra como "agendado" e a recepção confirma. Quando o CPF já
+ * existe e o nascimento não confere, ou o CPF está duplicado, nada é vinculado
+ * nem agendado: vira uma tarefa para a recepção resolver (CLIN-QA-003), com
+ * só o mínimo para retornar o contato, e a reserva do horário é liberada
+ * (ver pendencia.ts).
+ *
+ * Nada do cadastro do paciente é devolvido: a resposta é a mesma nos três
+ * casos, para o link não servir de consulta a quem é paciente da clínica nem
+ * de teste de data de nascimento.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { checarRateLimit, clientIp } from '../_shared/rateLimit.ts';
 import { corsPadrao } from '../_shared/cors.ts';
 import { horariosLivres, validarHorario, agoraEmBrasilia, dataValida } from '../_shared/horarios.ts';
+import {
+  buscarCandidatosPorCpf,
+  cpfValido,
+  decidirVinculoPaciente,
+  mascararCpf,
+  normalizarDataNascimento,
+  type MotivoPendencia,
+} from '../_shared/identificacaoPaciente.ts';
+import { liberarReserva, registrarPendenciaELiberar } from './pendencia.ts';
+import { MARCADOR_AGENDAMENTO_ONLINE, OBSERVACAO_AGENDAMENTO_ONLINE } from './observacoes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -64,28 +81,7 @@ function horarioPublico(valor: unknown) {
   };
 }
 
-function cpfValido(cpf: string): boolean {
-  const d = cpf.replace(/\D/g, '');
-  if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
-  const dv = (n: number) => {
-    let soma = 0;
-    for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
-    const r = (soma * 10) % 11;
-    return r === 10 ? 0 : r;
-  };
-  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
-}
-
-const mascararCpf = (d: string) => `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-
-async function buscarPacientePorCpf(db: any, clinicaId: string, cpf: string): Promise<string | null> {
-  const { data, error } = await db.rpc('find_patient_id_by_normalized_cpf', {
-    p_clinica_id: clinicaId,
-    p_cpf: cpf,
-  });
-  if (error) throw error;
-  return typeof data === 'string' ? data : null;
-}
+const MENSAGEM_PEDIDO_RECEBIDO = 'Pedido de agendamento recebido. A clínica vai entrar em contato para confirmar o horário.';
 
 Deno.serve(async (req) => {
   const corsHeaders = { ...corsPadrao(req), 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
@@ -200,8 +196,7 @@ Deno.serve(async (req) => {
     if (action === 'release') {
       const token = String(body.hold_token || '');
       if (!UUID.test(token)) return json({ success: true });
-      const { error: erroRelease } = await db.from('public_booking_holds').delete()
-        .eq('clinica_id', clinicaId).eq('token_hash', await hashHoldToken(token));
+      const erroRelease = await liberarReserva(db, clinicaId, await hashHoldToken(token));
       if (erroRelease) throw erroRelease;
       return json({ success: true });
     }
@@ -218,14 +213,15 @@ Deno.serve(async (req) => {
       const cpfDigitos = String(body.cpf || '').replace(/\D/g, '');
       const telefone = String(body.telefone || '').trim().slice(0, 30);
       const email = String(body.email || '').trim().toLowerCase().slice(0, 160);
-      const nascimento = String(body.data_nascimento || '');
+      const nascimento = normalizarDataNascimento(body.data_nascimento, agoraEmBrasilia().data);
 
       if (!body.aceite_lgpd) return json({ error: 'É preciso aceitar o uso dos dados para o agendamento.' }, 400);
       if (nome.split(' ').length < 2) return json({ error: 'Informe nome e sobrenome.' }, 400);
       if (!cpfValido(cpfDigitos)) return json({ error: 'CPF inválido.' }, 400);
       if (telefone.replace(/\D/g, '').length < 10) return json({ error: 'Informe um telefone com DDD.' }, 400);
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: 'E-mail inválido.' }, 400);
-      if (nascimento && (!dataValida(nascimento) || nascimento > agoraEmBrasilia().data)) return json({ error: 'Data de nascimento inválida.' }, 400);
+      if (!body.data_nascimento) return json({ error: 'Informe a data de nascimento.' }, 400);
+      if (!nascimento) return json({ error: 'Data de nascimento inválida.' }, 400);
       if (!medicoLiberado(medicoId)) return json({ error: 'Profissional indisponível para agendamento online.' }, 404);
       if (!dataValida(data)) return json({ error: 'Informe uma data válida.' }, 400);
       if (data > limiteData) return json({ error: 'Data além do período liberado para agendamento online.' }, 400);
@@ -240,24 +236,45 @@ Deno.serve(async (req) => {
         return json({ error: 'Limite de agendamentos atingido. Entre em contato com a clínica.' }, 429);
       }
 
-      // Paciente: reaproveita pelo CPF (com ou sem máscara) dentro da clínica.
+      // Paciente: só reaproveita quando há um único cadastro com o CPF e o
+      // nascimento confere. O resto é ambíguo e vai para a recepção.
       const cpfMascarado = mascararCpf(cpfDigitos);
-      let pacienteId = await buscarPacientePorCpf(db, clinicaId, cpfDigitos);
+      const registrarPendencia = async (motivo: MotivoPendencia) => {
+        await registrarPendenciaELiberar(db, {
+          clinicaId,
+          motivo,
+          data,
+          hora,
+          medicoNome: medicos.find((m) => m.id === medicoId)?.nome || 'profissional',
+          nome,
+          telefone,
+          hoje: agoraEmBrasilia().data,
+        }, await hashHoldToken(holdToken));
+        return json({ success: true, message: MENSAGEM_PEDIDO_RECEBIDO });
+      };
 
-      if (!pacienteId) {
+      let decisao = decidirVinculoPaciente(await buscarCandidatosPorCpf(db, clinicaId, cpfDigitos), nascimento);
+      if (decisao.tipo === 'pendente') return await registrarPendencia(decisao.motivo);
+
+      let pacienteId: string;
+      if (decisao.tipo === 'vinculado') {
+        pacienteId = decisao.pacienteId;
+      } else {
         const { data: novo, error: erroPaciente } = await db.from('pacientes').insert({
           clinica_id: clinicaId,
           nome,
           cpf: cpfMascarado,
           telefone,
           email: email || null,
-          data_nascimento: nascimento || null,
+          data_nascimento: nascimento,
         }).select('id').single();
         if (erroPaciente?.code === '23505') {
-          // Outra aba pode ter criado o mesmo CPF após a consulta inicial.
-          const concorrente = await buscarPacientePorCpf(db, clinicaId, cpfDigitos);
-          if (!concorrente) throw erroPaciente;
-          pacienteId = concorrente;
+          // Outra aba pode ter criado o mesmo CPF após a consulta inicial. A
+          // mesma regra de CPF + nascimento vale para o cadastro concorrente.
+          decisao = decidirVinculoPaciente(await buscarCandidatosPorCpf(db, clinicaId, cpfDigitos), nascimento);
+          if (decisao.tipo === 'pendente') return await registrarPendencia(decisao.motivo);
+          if (decisao.tipo !== 'vinculado') throw erroPaciente;
+          pacienteId = decisao.pacienteId;
         } else if (erroPaciente) {
           throw erroPaciente;
         } else {
@@ -268,7 +285,7 @@ Deno.serve(async (req) => {
       // Um paciente não acumula vários pedidos pendentes pelo link.
       const { count: pendentes } = await db.from('agendamentos').select('id', { count: 'exact', head: true })
         .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId).eq('status', 'agendado')
-        .gte('data', agoraEmBrasilia().data).ilike('observacoes', '%[agendamento online]%');
+        .gte('data', agoraEmBrasilia().data).ilike('observacoes', `%${MARCADOR_AGENDAMENTO_ONLINE}%`);
       if ((pendentes ?? 0) >= 2) {
         return json({
           error: 'Não foi possível concluir este pedido online. Entre em contato com a clínica para continuar.',
@@ -283,7 +300,7 @@ Deno.serve(async (req) => {
         p_data: data,
         p_hora_inicio: hora,
         p_duracao_minutos: slot.duration,
-        p_observacoes: `[agendamento online] Marcado pelo paciente no link público. Confirmar com o paciente.\nNome informado: ${nome}\nTelefone informado: ${telefone}${email ? `\nE-mail informado: ${email}` : ''}`,
+        p_observacoes: OBSERVACAO_AGENDAMENTO_ONLINE,
         p_hold_token_hash: await hashHoldToken(holdToken),
       });
       if (erroAgendamento) {
@@ -298,7 +315,7 @@ Deno.serve(async (req) => {
         return json({ error, code }, 409);
       }
 
-      return json({ success: true, message: 'Pedido de agendamento enviado! A clínica vai entrar em contato para confirmar.' });
+      return json({ success: true, message: MENSAGEM_PEDIDO_RECEBIDO });
     }
 
     return json({ error: 'Ação inválida.' }, 400);

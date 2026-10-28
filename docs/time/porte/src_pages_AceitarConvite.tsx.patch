@@ -1,0 +1,31 @@
+diff --git a/src/pages/AceitarConvite.tsx b/src/pages/AceitarConvite.tsx
+index d2c53180..a78e5c80 100644
+--- a/src/pages/AceitarConvite.tsx
++++ b/src/pages/AceitarConvite.tsx
+@@ -171,7 +171,7 @@ export default function AceitarConvite() {
+           if (error) throw error;
+           if (!data?.success) throw new Error(data?.error || 'Não foi possível aceitar o convite.');
+ 
+-          toast.success('Convite aceito! Redirecionando...');
++          toast.success('Convite aceito. Redirecionando...');
+           navigate('/dashboard');
+           return;
+         }
+@@ -195,7 +195,7 @@ export default function AceitarConvite() {
+           password,
+         });
+         if (signInError) throw signInError;
+-        toast.success('Conta criada! Redirecionando...');
++        toast.success('Conta criada. Redirecionando...');
+         navigate('/dashboard');
+         return;
+       }
+@@ -258,7 +258,7 @@ export default function AceitarConvite() {
+         throw new Error(result.error || 'Erro ao processar convite');
+       }
+ 
+-      toast.success('Convite aceito! Entre com seu e-mail e senha.');
++      toast.success('Convite aceito. Entre com seu e-mail e senha.');
+       navigate('/auth');
+     } catch (err: any) {
+       if (import.meta.env.DEV) console.error('Error creating account:', err);

@@ -30,19 +30,15 @@ interface PresetParams extends PresetColors {
   offset: number;
   shape: PatternShape;
   shapeSize: number;
-  lightColors?: PresetColors;
 }
 
+// Cores do design system lidas em tempo de execução (src/index.css).
+// Um valor iniciado por "--" é o nome de um token HSL; o resto segue como cor CSS.
 const presets: Record<PresetName, PresetParams> = {
   Prism: {
-    color1: "#F2F9FD",
-    color2: "#2F6BFF",
-    color3: "#2FE0C9",
-    lightColors: {
-      color1: "#F2F9FD",
-      color2: "#2F6BFF",
-      color3: "#2FE0C9",
-    },
+    color1: "--background",
+    color2: "--primary",
+    color3: "--card",
     rotation: -50,
     proportion: 1,
     scale: 0.01,
@@ -55,114 +51,9 @@ const presets: Record<PresetName, PresetParams> = {
     shape: "Checks",
     shapeSize: 45,
   },
-  Lava: {
-    color1: "#FF9F21",
-    color2: "#FF0303",
-    color3: "#000000",
-    lightColors: {
-      color1: "#FF9F21",
-      color2: "#FF0303",
-      color3: "#FAFAFA",
-    },
-    rotation: 114,
-    proportion: 100,
-    scale: 0.52,
-    speed: 30,
-    distortion: 7,
-    swirl: 18,
-    swirlIterations: 20,
-    softness: 100,
-    offset: 717,
-    shape: "Edge",
-    shapeSize: 12,
-  },
-  Plasma: {
-    color1: "#B566FF",
-    color2: "#000000",
-    color3: "#000000",
-    lightColors: {
-      color1: "#B566FF",
-      color2: "#FAFAFA",
-      color3: "#FAFAFA",
-    },
-    rotation: 0,
-    proportion: 63,
-    scale: 0.75,
-    speed: 30,
-    distortion: 5,
-    swirl: 61,
-    swirlIterations: 5,
-    softness: 100,
-    offset: -168,
-    shape: "Checks",
-    shapeSize: 28,
-  },
-  Pulse: {
-    color1: "#66FF85",
-    color2: "#000000",
-    color3: "#000000",
-    lightColors: {
-      color1: "#66FF85",
-      color2: "#FAFAFA",
-      color3: "#FAFAFA",
-    },
-    rotation: -167,
-    proportion: 92,
-    scale: 0,
-    speed: 20,
-    distortion: 54,
-    swirl: 75,
-    swirlIterations: 3,
-    softness: 28,
-    offset: -813,
-    shape: "Checks",
-    shapeSize: 79,
-  },
-  Vortex: {
-    color1: "#000000",
-    color2: "#FFFFFF",
-    color3: "#000000",
-    lightColors: {
-      color1: "#FAFAFA",
-      color2: "#000000",
-      color3: "#FAFAFA",
-    },
-    rotation: 50,
-    proportion: 41,
-    scale: 0.4,
-    speed: 20,
-    distortion: 0,
-    swirl: 100,
-    swirlIterations: 3,
-    softness: 5,
-    offset: -744,
-    shape: "Stripes",
-    shapeSize: 80,
-  },
-  Mist: {
-    color1: "#050505",
-    color2: "#FF66B8",
-    color3: "#050505",
-    lightColors: {
-      color1: "#FAFAFA",
-      color2: "#FF66B8",
-      color3: "#FAFAFA",
-    },
-    rotation: 0,
-    proportion: 33,
-    scale: 0.48,
-    speed: 39,
-    distortion: 4,
-    swirl: 65,
-    swirlIterations: 5,
-    softness: 100,
-    offset: -235,
-    shape: "Edge",
-    shapeSize: 48,
-  },
 };
 
-type PresetName = "Prism" | "Lava" | "Plasma" | "Pulse" | "Vortex" | "Mist";
+type PresetName = "Prism";
 
 interface CustomConfig {
   preset: "custom";
@@ -337,9 +228,9 @@ export default function AnimatedGradient({
       gl.uniform1f(uniforms.u_scale, params.scale);
       gl.uniform1f(uniforms.u_rotation, (params.rotation * Math.PI) / 180);
 
-      const c1 = hexToRgba(params.color1);
-      const c2 = hexToRgba(params.color2);
-      const c3 = hexToRgba(params.color3);
+      const c1 = resolveColor(params.color1, container);
+      const c2 = resolveColor(params.color2, container);
+      const c3 = resolveColor(params.color3, container);
       gl.uniform4f(uniforms.u_color1, c1[0], c1[1], c1[2], c1[3]);
       gl.uniform4f(uniforms.u_color2, c2[0], c2[1], c2[2], c2[3]);
       gl.uniform4f(uniforms.u_color3, c3[0], c3[1], c3[2], c3[3]);
@@ -409,6 +300,15 @@ export default function AnimatedGradient({
       )}
     </div>
   );
+}
+
+function resolveColor(value: string, element: Element): [number, number, number, number] {
+  if (!value.startsWith("--")) return hexToRgba(value);
+  const token = getComputedStyle(element).getPropertyValue(value).trim();
+  const [h, s, l] = token.split(/\s+/).map((part) => parseFloat(part));
+  if ([h, s, l].some((n) => Number.isNaN(n))) return [0, 0, 0, 0];
+  const [r, g, b] = hslToRgb(h / 360, s / 100, l / 100);
+  return [r, g, b, 1];
 }
 
 function hexToRgba(hex: string): [number, number, number, number] {

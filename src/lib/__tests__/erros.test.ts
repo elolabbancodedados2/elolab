@@ -24,6 +24,14 @@ describe('mensagemDeErro', () => {
     expect(msg).not.toContain('has_any_role');
   });
 
+  it('traduz o HINT mfa_necessario como pedido de verificação em duas etapas', () => {
+    const msg = mensagemDeErro({ code: '42501', message: 'mfa_necessario', hint: 'mfa_necessario' });
+    expect(msg).toBe(
+      'Esta ação exige a verificação em duas etapas. Confirme o código do aplicativo autenticador e tente novamente.'
+    );
+    expect(msg).not.toContain('não tem permissão');
+  });
+
   it('reconhece falta de permissão mesmo sem código', () => {
     expect(mensagemDeErro({ message: 'new row violates row-level security policy' }))
       .toContain('não tem permissão');

@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { addDays, format, parseISO } from 'date-fns';
@@ -12,6 +13,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { formatCPF, formatPhone, validateCPF } from '@/lib/formatters';
+import Logo from '@/components/landing-v2/Logo';
+
+const CARD = 'rounded-2xl border-[#DCE6F2] shadow-[0_4px_16px_rgba(16,128,202,0.06)]';
+const INPUT = 'h-11 rounded-xl focus-visible:ring-[#1080CA]';
+const BTN_PRIMARY = 'rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110';
 
 interface Medico { id: string; nome: string; especialidade: string | null }
 interface Info {
@@ -108,7 +114,7 @@ export default function AgendamentoOnline() {
     } catch (error) {
       if (requestId !== holdRequestRef.current) return;
       void chamar({ action: 'release', clinica_id: clinicaId, hold_token: token }).catch(() => undefined);
-      setErro(error instanceof Error ? error.message : 'Não foi possível reservar este horário.');
+      setErro(friendlyErrorMessage(error, 'Não foi possível reservar este horário.'));
       setRecarregar((n) => n + 1);
     } finally {
       if (requestId === holdRequestRef.current) setReservandoHora(false);
@@ -139,7 +145,7 @@ export default function AgendamentoOnline() {
     setConcluido('');
     chamar<Info>({ action: 'info', clinica_id: clinicaId })
       .then((resultado) => { if (ativo) setInfo(resultado); })
-      .catch((e) => { if (ativo) setErroInfo(e.message); });
+      .catch((e) => { if (ativo) setErroInfo(friendlyErrorMessage(e, 'Não foi possível carregar as informações da clínica.')); });
     return () => { ativo = false; };
   }, [clinicaId, recarregarInfo]);
 
@@ -174,7 +180,7 @@ export default function AgendamentoOnline() {
     setCarregandoSlots(true); setSlots(null); setHora(''); setErroSlots('');
     chamar<{ slots: string[] }>({ action: 'slots', clinica_id: clinicaId, medico_id: medico.id, data })
       .then((r) => { if (ativo) setSlots(r.slots); })
-      .catch((e) => { if (ativo) setErroSlots(e.message); })
+      .catch((e) => { if (ativo) setErroSlots(friendlyErrorMessage(e, 'Não foi possível carregar os horários disponíveis.')); })
       .finally(() => { if (ativo) setCarregandoSlots(false); });
     return () => { ativo = false; };
   }, [medico, data, clinicaId, recarregar]);
@@ -192,6 +198,13 @@ export default function AgendamentoOnline() {
     if (!validateCPF(form.cpf)) {
       setErro('CPF inválido. Confira os números digitados.');
       document.getElementById('ag-cpf')?.focus();
+      return;
+    }
+    // CPF + data de nascimento identificam o paciente; um só dado vinculava a
+    // consulta ao cadastro de outra pessoa (CLIN-QA-003).
+    if (!form.data_nascimento || (info && form.data_nascimento > info.hoje)) {
+      setErro(form.data_nascimento ? 'Data de nascimento inválida.' : 'Informe a data de nascimento.');
+      document.getElementById('ag-nasc')?.focus();
       return;
     }
     if (form.telefone.replace(/\D/g, '').length < 10) {
@@ -214,7 +227,7 @@ export default function AgendamentoOnline() {
     } catch (err) {
       if (requestId !== bookingRequestRef.current) return;
       const erro = err instanceof Error ? err : new Error('Não foi possível concluir agora. Tente novamente.');
-      setErro(erro.message);
+      setErro(friendlyErrorMessage(erro, 'Não foi possível concluir agora. Tente novamente.'));
       if (erro instanceof ErroAgendamentoPublico && ['slot_unavailable', 'booking_unavailable', 'hold_expired'].includes(erro.code || '')) {
         holdRef.current = null;
         setHoldToken('');
@@ -229,16 +242,16 @@ export default function AgendamentoOnline() {
   if (erroInfo) {
     return (
       <Shell>
-        <Card><CardContent className="py-12 text-center">
-          <CalendarCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+        <Card className={CARD}><CardContent className="py-12 text-center">
+          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF4FA] text-[#1080CA]"><CalendarCheck className="h-7 w-7" aria-hidden="true" /></span>
           <p role="alert" className="font-medium">{erroInfo}</p>
           <p className="mt-1 text-sm text-muted-foreground">Entre em contato com a clínica por telefone ou WhatsApp.</p>
-          <Button className="mt-4" onClick={() => { setErroInfo(''); setRecarregarInfo((n) => n + 1); }}>Tentar novamente</Button>
+          <Button className={cn('mt-4 h-11 px-6', BTN_PRIMARY)} onClick={() => { setErroInfo(''); setRecarregarInfo((n) => n + 1); }}>Tentar novamente</Button>
         </CardContent></Card>
       </Shell>
     );
   }
-  if (!info) return <Shell><div role="status" aria-live="polite" aria-label="Carregando informações da clínica"><Skeleton className="h-10 w-2/3" /><Skeleton className="mt-4 h-64 w-full" /></div></Shell>;
+  if (!info) return <Shell><div role="status" aria-live="polite" aria-label="Carregando informações da clínica"><Skeleton className="h-10 w-2/3 rounded-xl" /><Skeleton className="mt-4 h-64 w-full rounded-2xl" /></div></Shell>;
   const contatoTelefone = info.clinica.celular || info.clinica.telefone;
   const contatoDigitos = contatoTelefone?.replace(/\D/g, '') || '';
   const numeroWhatsApp = contatoDigitos.length === 10 || contatoDigitos.length === 11
@@ -248,13 +261,28 @@ export default function AgendamentoOnline() {
   if (concluido) {
     return (
       <Shell titulo={info.clinica.nome}>
-        <Card><CardContent ref={sucessoRef} tabIndex={-1} role="status" aria-live="polite" className="py-12 text-center">
-          <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-success" />
+        <Card className={CARD}><CardContent ref={sucessoRef} tabIndex={-1} role="status" aria-live="polite" className="py-12 text-center">
+          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><CheckCircle2 className="h-8 w-8" aria-hidden="true" /></span>
           <p className="text-lg font-semibold">{concluido}</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
+            Horário solicitado: {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
           </p>
         </CardContent></Card>
+        {contatoDigitos.length >= 10 && (
+          <Card className={CARD}>
+            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">Precisa remarcar ou tirar uma dúvida? Fale com a clínica.</p>
+              <div className="flex gap-2">
+                <Button asChild variant="outline" className="h-10 flex-1 gap-2 rounded-full sm:flex-none">
+                  <a href={`https://wa.me/${numeroWhatsApp}`} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>
+                </Button>
+                <Button asChild variant="outline" className="h-10 flex-1 gap-2 rounded-full sm:flex-none">
+                  <a href={`tel:${contatoDigitos}`}><Phone className="h-4 w-4" />Ligar</a>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </Shell>
     );
   }
@@ -263,9 +291,9 @@ export default function AgendamentoOnline() {
     <Shell titulo={info.clinica.nome} subtitulo={info.mensagem || 'Escolha o profissional, o dia e o horário.'}>
       <fieldset disabled={enviando} aria-busy={enviando} className="block space-y-4 border-0 p-0 m-0 min-w-0">
       {info.horarios_funcionamento && (
-        <Card>
+        <Card className={CARD}>
           <CardContent className="flex items-start gap-3 py-4">
-            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EEF4FA] text-[#1080CA]"><Clock className="h-4 w-4" aria-hidden="true" /></span>
             <div className="space-y-1 text-sm">
               <p className="font-medium">Funcionamento geral da clínica</p>
               {info.horarios_funcionamento.dias.length > 0 && <p className="text-muted-foreground">
@@ -281,15 +309,17 @@ export default function AgendamentoOnline() {
         </Card>
       )}
       {/* 1. Profissional */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">1. Profissional</CardTitle></CardHeader>
+      <Card className={CARD}>
+        <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">1. Profissional</CardTitle></CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2">
           {info.medicos.length === 0 && <p className="text-sm text-muted-foreground">Nenhum profissional com agenda online no momento.</p>}
           {info.medicos.map((m) => (
             <button key={m.id} type="button" aria-pressed={medico?.id === m.id} onClick={() => { liberarReserva(); setMedico(m); setData(''); setSlots(null); setHora(''); setErro(''); }}
-              className={cn('flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50',
-                medico?.id === m.id && 'border-primary bg-primary/5 ring-1 ring-primary')}>
-              <Stethoscope className="h-5 w-5 shrink-0 text-primary" />
+              className={cn('flex min-h-14 items-center gap-3 rounded-xl border border-[#DCE6F2] p-3 text-left transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]',
+                medico?.id === m.id && 'border-[#1080CA] bg-[#F3F8FC] ring-1 ring-[#1080CA]')}>
+              <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF4FA] text-[#1080CA]', medico?.id === m.id && 'bg-gradient-primary text-white')}>
+                <Stethoscope className="h-5 w-5" aria-hidden="true" />
+              </span>
               <span className="min-w-0"><span className="block truncate font-medium">{m.nome}</span>
                 {m.especialidade && <span className="block truncate text-xs text-muted-foreground">{m.especialidade}</span>}</span>
             </button>
@@ -297,7 +327,7 @@ export default function AgendamentoOnline() {
         </CardContent>
       </Card>
       {info.medicos.length === 0 && (contatoDigitos.length >= 10 || info.clinica.email) && (
-        <Card>
+        <Card className={CARD}>
           <CardContent className="space-y-3 py-4">
             <div>
               <p className="font-medium">Precisa agendar uma consulta?</p>
@@ -305,17 +335,17 @@ export default function AgendamentoOnline() {
             </div>
             <div className="flex flex-wrap gap-2">
               {contatoDigitos.length >= 10 && (
-                <Button asChild variant="outline" className="gap-2">
+                <Button asChild variant="outline" className="h-10 gap-2 rounded-full">
                   <a href={`tel:${contatoDigitos}`}><Phone className="h-4 w-4" />Ligar</a>
                 </Button>
               )}
               {contatoDigitos.length >= 10 && (
-                <Button asChild variant="outline" className="gap-2">
+                <Button asChild variant="outline" className="h-10 gap-2 rounded-full">
                   <a href={`https://wa.me/${numeroWhatsApp}`} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>
                 </Button>
               )}
               {info.clinica.email && (
-                <Button asChild variant="outline" className="gap-2">
+                <Button asChild variant="outline" className="h-10 gap-2 rounded-full">
                   <a href={`mailto:${info.clinica.email}`}><Mail className="h-4 w-4" />E-mail</a>
                 </Button>
               )}
@@ -326,18 +356,18 @@ export default function AgendamentoOnline() {
 
       {/* 2. Dia e horário */}
       {medico && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">2. Dia e horário</CardTitle></CardHeader>
+        <Card className={CARD}>
+          <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">2. Dia e horário</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <Button type="button" variant="ghost" size="icon" aria-label="Dias anteriores"
+              <Button type="button" variant="outline" size="icon" className="rounded-full" aria-label="Dias anteriores"
                 disabled={inicioDias === 0} onClick={() => mudarPaginaDias(Math.max(0, inicioDias - 14))}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span aria-live="polite" className="text-sm text-muted-foreground">
                 Dias {inicioDias + 1}–{Math.min(inicioDias + 14, totalDias)} de {totalDias}
               </span>
-              <Button type="button" variant="ghost" size="icon" aria-label="Próximos dias"
+              <Button type="button" variant="outline" size="icon" className="rounded-full" aria-label="Próximos dias"
                 disabled={inicioDias + 14 >= totalDias} onClick={() => mudarPaginaDias(Math.min(totalDias - 1, inicioDias + 14))}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -351,8 +381,8 @@ export default function AgendamentoOnline() {
                   <button key={d} type="button" data-testid="online-booking-day"
                     aria-label={format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}
                     aria-pressed={data === d} onClick={() => { liberarReserva(); setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
-                    className={cn('flex min-w-0 flex-col items-center rounded-lg border px-0.5 py-2 text-[10px] transition-colors hover:bg-accent/50 sm:text-xs',
-                      data === d && 'border-primary bg-primary text-primary-foreground hover:bg-primary')}>
+                    className={cn('flex min-w-0 flex-col items-center rounded-xl border border-[#DCE6F2] px-0.5 py-2 text-[10px] transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC] sm:text-xs',
+                      data === d && 'border-transparent bg-gradient-primary text-white shadow-sm hover:bg-transparent')}>
                     <span className="uppercase">{diaCurto}</span>
                     <span className="text-base font-semibold leading-tight sm:text-lg">{format(dt, 'd')}</span>
                     <span>{format(dt, 'MMM', { locale: ptBR })}</span>
@@ -364,56 +394,56 @@ export default function AgendamentoOnline() {
             {data && (carregandoSlots ? (
               <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Buscando horários...</div>
             ) : erroSlots ? (
-              <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm">
                 <p>{erroSlots}</p>
-                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setRecarregar((n) => n + 1)}>Tentar buscar horários novamente</Button>
+                <Button type="button" variant="outline" size="sm" className="mt-2 rounded-full" onClick={() => setRecarregar((n) => n + 1)}>Tentar buscar horários novamente</Button>
               </div>
             ) : slots && slots.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sem horários livres neste dia. Tente outro.</p>
             ) : (
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
                 {slots?.map((h) => (
-                  <Button key={h} type="button" aria-pressed={hora === h} variant={hora === h ? 'default' : 'outline'} size="sm" disabled={reservandoHora} onClick={() => { void selecionarHorario(h); }}>
+                  <Button key={h} type="button" aria-pressed={hora === h} variant={hora === h ? 'default' : 'outline'} size="sm" className={cn('h-10 rounded-full px-2 tabular-nums', hora === h && 'border-transparent bg-gradient-primary text-white shadow-sm hover:brightness-110')} disabled={reservandoHora} onClick={() => { void selecionarHorario(h); }}>
                     <Clock className="mr-1 h-3.5 w-3.5" />{h}
                   </Button>
                 ))}
               </div>
             ))}
             {reservandoHora && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Reservando este horário por até cinco minutos…</p>}
-            {!!holdToken && <p role="status" className="text-sm text-muted-foreground">Horário reservado por até cinco minutos enquanto você preenche seus dados.</p>}
+            {!!holdToken && <p role="status" className="rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] px-3 py-2 text-sm text-[#1080CA]">Horário reservado por até cinco minutos enquanto você preenche seus dados.</p>}
           </CardContent>
         </Card>
       )}
 
       {/* 3. Seus dados */}
       {hora && (
-        <Card>
+        <Card className={CARD}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">3. Seus dados</CardTitle>
+            <CardTitle className="text-base font-semibold">3. Seus dados</CardTitle>
             <CardDescription>{medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={enviar} className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="ag-nome">Nome completo *</Label>
-                <Input id="ag-nome" required autoComplete="name" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+                <Input id="ag-nome" className={INPUT} required autoComplete="name" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
               <div className="space-y-1.5"><Label htmlFor="ag-cpf">CPF *</Label>
-                <Input id="ag-cpf" required inputMode="numeric" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })} placeholder="000.000.000-00" /></div>
-              <div className="space-y-1.5"><Label htmlFor="ag-nasc">Data de nascimento</Label>
-                <Input id="ag-nasc" type="date" max={info.hoje} value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} /></div>
+                <Input id="ag-cpf" className={INPUT} required inputMode="numeric" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })} placeholder="000.000.000-00" /></div>
+              <div className="space-y-1.5"><Label htmlFor="ag-nasc">Data de nascimento *</Label>
+                <Input id="ag-nasc" className={INPUT} type="date" required max={info.hoje} value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} /></div>
               <div className="space-y-1.5"><Label htmlFor="ag-tel">Celular / WhatsApp *</Label>
-                <Input id="ag-tel" required inputMode="tel" autoComplete="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" /></div>
+                <Input id="ag-tel" className={INPUT} required inputMode="tel" autoComplete="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" /></div>
               <div className="space-y-1.5"><Label htmlFor="ag-email">E-mail</Label>
-                <Input id="ag-email" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+                <Input id="ag-email" className={INPUT} type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
               {/* Honeypot anti-robô: invisível para pessoas. */}
               <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden"
                 value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
               <label className="flex items-start gap-2 text-sm sm:col-span-2">
                 <Checkbox checked={aceite} onCheckedChange={(v) => setAceite(v === true)} className="mt-0.5" />
                 <span>Autorizo a clínica a usar estes dados para o agendamento e contato, conforme a{' '}
-                  <Link to="/politica-privacidade" target="_blank" className="text-primary underline">política de privacidade</Link>.</span>
+                  <Link to="/politica-privacidade" target="_blank" className="text-[#1080CA] underline">política de privacidade</Link>.</span>
               </label>
               {erro && <p className="text-sm text-destructive sm:col-span-2" role="alert">{erro}</p>}
-              <Button type="submit" className="sm:col-span-2" disabled={enviando || !aceite || !holdToken}>
+              <Button type="submit" className={cn('h-12 sm:col-span-2', BTN_PRIMARY)} disabled={enviando || !aceite || !holdToken}>
                 {enviando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarCheck className="mr-2 h-4 w-4" />}
                 Solicitar agendamento
               </Button>
@@ -429,17 +459,21 @@ export default function AgendamentoOnline() {
 
 function Shell({ titulo, subtitulo, children }: { titulo?: string; subtitulo?: string; children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-muted/30">
-      <div className="mx-auto max-w-2xl space-y-4 px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-b from-[#F3F8FC] to-white">
+      <div className="mx-auto max-w-2xl space-y-4 px-4 py-6 sm:py-10">
         {titulo && (
-          <header className="mb-2">
-            <p className="text-xs text-muted-foreground">Agendamento online</p>
-            <h1 className="text-2xl font-bold">{titulo}</h1>
-            {subtitulo && <p className="text-sm text-muted-foreground">{subtitulo}</p>}
+          <header className="mb-2 rounded-2xl bg-gradient-primary p-5 text-white shadow-md sm:p-6">
+            <p className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-medium tracking-wide">
+              <CalendarCheck className="h-3.5 w-3.5" aria-hidden="true" />Agendamento online
+            </p>
+            <h1 className="mt-2 text-2xl font-bold">{titulo}</h1>
+            {subtitulo && <p className="mt-1 text-sm text-white/90">{subtitulo}</p>}
           </header>
         )}
         {children}
-        <p className="pt-4 text-center text-xs text-muted-foreground">Agendamento por EloLab</p>
+        <Link to="/" className="flex min-h-10 items-center justify-center gap-1 pt-4 text-xs text-muted-foreground hover:text-foreground">
+          Agendamento por <Logo className="origin-left scale-75" />
+        </Link>
       </div>
     </div>
   );

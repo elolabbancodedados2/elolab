@@ -1,0 +1,73 @@
+diff --git a/src/pages/AgendamentoOnline.tsx b/src/pages/AgendamentoOnline.tsx
+index 0de3e337..4939e9fe 100644
+--- a/src/pages/AgendamentoOnline.tsx
++++ b/src/pages/AgendamentoOnline.tsx
+@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
+ import { Skeleton } from '@/components/ui/skeleton';
+ import { cn } from '@/lib/utils';
+ import { formatCPF, formatPhone, validateCPF } from '@/lib/formatters';
++import { friendlyErrorMessage } from '@/components/ErrorState';
+ 
+ interface Medico { id: string; nome: string; especialidade: string | null }
+ interface Info {
+@@ -92,7 +93,7 @@ export default function AgendamentoOnline() {
+     setConcluido('');
+     chamar<Info>({ action: 'info', clinica_id: clinicaId })
+       .then((resultado) => { if (ativo) setInfo(resultado); })
+-      .catch((e) => { if (ativo) setErroInfo(e.message); });
++      .catch((e) => { if (ativo) setErroInfo(friendlyErrorMessage(e, 'Não foi possível carregar os dados da clínica. Tente novamente.')); });
+     return () => { ativo = false; };
+   }, [clinicaId, recarregarInfo]);
+ 
+@@ -126,7 +127,7 @@ export default function AgendamentoOnline() {
+     setCarregandoSlots(true); setSlots(null); setHora(''); setErroSlots('');
+     chamar<{ slots: string[] }>({ action: 'slots', clinica_id: clinicaId, medico_id: medico.id, data })
+       .then((r) => { if (ativo) setSlots(r.slots); })
+-      .catch((e) => { if (ativo) setErroSlots(e.message); })
++      .catch((e) => { if (ativo) setErroSlots(friendlyErrorMessage(e, 'Não foi possível carregar os horários. Tente novamente.')); })
+       .finally(() => { if (ativo) setCarregandoSlots(false); });
+     return () => { ativo = false; };
+   }, [medico, data, clinicaId, recarregar]);
+@@ -146,6 +147,13 @@ export default function AgendamentoOnline() {
+       document.getElementById('ag-cpf')?.focus();
+       return;
+     }
++    // CPF + data de nascimento identificam o paciente; um só dado vinculava a
++    // consulta ao cadastro de outra pessoa (CLIN-QA-003).
++    if (!form.data_nascimento || (info && form.data_nascimento > info.hoje)) {
++      setErro(form.data_nascimento ? 'Data de nascimento inválida.' : 'Informe a data de nascimento.');
++      document.getElementById('ag-nasc')?.focus();
++      return;
++    }
+     if (form.telefone.replace(/\D/g, '').length < 10) {
+       setErro('Informe um telefone com DDD.');
+       document.getElementById('ag-tel')?.focus();
+@@ -164,7 +172,7 @@ export default function AgendamentoOnline() {
+     } catch (err) {
+       if (requestId !== bookingRequestRef.current) return;
+       const erro = err instanceof Error ? err : new Error('Não foi possível concluir agora. Tente novamente.');
+-      setErro(erro.message);
++      setErro(friendlyErrorMessage(erro, 'Não foi possível concluir agora. Tente novamente.'));
+       if (erro instanceof ErroAgendamentoPublico && ['slot_unavailable', 'booking_unavailable'].includes(erro.code || '')) {
+         setHora('');
+         if (erro.code === 'slot_unavailable') setRecarregar((n) => n + 1);
+@@ -200,7 +208,7 @@ export default function AgendamentoOnline() {
+           <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-success" />
+           <p className="text-lg font-semibold">{concluido}</p>
+           <p className="mt-2 text-sm text-muted-foreground">
+-            {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
++            Horário solicitado: {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
+           </p>
+         </CardContent></Card>
+       </Shell>
+@@ -342,8 +350,8 @@ export default function AgendamentoOnline() {
+                 <Input id="ag-nome" required autoComplete="name" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+               <div className="space-y-1.5"><Label htmlFor="ag-cpf">CPF *</Label>
+                 <Input id="ag-cpf" required inputMode="numeric" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })} placeholder="000.000.000-00" /></div>
+-              <div className="space-y-1.5"><Label htmlFor="ag-nasc">Data de nascimento</Label>
+-                <Input id="ag-nasc" type="date" max={info.hoje} value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} /></div>
++              <div className="space-y-1.5"><Label htmlFor="ag-nasc">Data de nascimento *</Label>
++                <Input id="ag-nasc" type="date" required max={info.hoje} value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} /></div>
+               <div className="space-y-1.5"><Label htmlFor="ag-tel">Celular / WhatsApp *</Label>
+                 <Input id="ag-tel" required inputMode="tel" autoComplete="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" /></div>
+               <div className="space-y-1.5"><Label htmlFor="ag-email">E-mail</Label>

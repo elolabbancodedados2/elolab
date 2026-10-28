@@ -61,6 +61,12 @@ export function mensagemDeErro(erro: unknown): string {
   const coluna = colunaCitada(msg);
   const campo = coluna ? nomeAmigavel(coluna) : 'um campo obrigatório';
 
+  // exigir_mfa() no banco levanta 42501 com este HINT: a sessão precisa da
+  // verificação em duas etapas, não falta permissão ao perfil.
+  if (e.hint === 'mfa_necessario') {
+    return 'Esta ação exige a verificação em duas etapas. Confirme o código do aplicativo autenticador e tente novamente.';
+  }
+
   switch (e.code) {
     case '23505': // unique_violation
       return coluna

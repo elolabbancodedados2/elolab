@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 /**
  * Os pagamentos de uma cobrança, com estorno.
@@ -95,7 +96,7 @@ export function PagamentosDaCobranca({ lancamentoId, pacienteId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['extrato-paciente'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
     } catch (e: any) {
-      toast.error('Não foi possível estornar', { description: e?.message });
+      toast.error('Não foi possível estornar', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       setEstornando(false);
     }

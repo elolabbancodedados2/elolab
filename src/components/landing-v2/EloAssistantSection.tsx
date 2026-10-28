@@ -45,8 +45,8 @@ export default function EloAssistantSection() {
       <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
         <div>
           <FadeIn>
-            <span className="inline-flex items-center gap-2 rounded-full border border-elolab-blue/20 bg-white/80 px-3 py-1.5 font-inter text-xs font-medium text-elolab-blue shadow-sm">
-              <span className="size-1.5 rounded-full bg-elolab-cyan" />
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1.5 font-inter text-xs font-medium text-primary shadow-sm">
+              <span className="size-1.5 rounded-full bg-primary" />
               Elo, assistente de IA
             </span>
           </FadeIn>
@@ -60,14 +60,14 @@ export default function EloAssistantSection() {
               once={false}
               repeat
               speed={0.75}
-              className="mt-6 max-w-xl font-inter text-4xl font-semibold leading-[1.02] tracking-[-0.055em] text-elolab-ink sm:text-5xl lg:text-6xl"
+              className="mt-6 max-w-xl font-inter text-4xl font-semibold leading-[1.02] tracking-[-0.055em] text-foreground sm:text-5xl lg:text-6xl"
             >
               Mais cuidado no atendimento.<br />Menos tarefas para sua equipe.
             </GradientWaveText>
           </FadeIn>
 
           <FadeIn delay={0.2}>
-            <p className="mt-5 max-w-xl font-inter text-base leading-relaxed text-elolab-ink/70 sm:text-lg">
+            <p className="mt-5 max-w-xl font-inter text-base leading-relaxed text-muted-foreground sm:text-lg">
               A Elo conversa com os pacientes e cuida das solicitações do dia a dia,
               enquanto sua equipe acompanha tudo em uma só plataforma.
             </p>
@@ -76,8 +76,8 @@ export default function EloAssistantSection() {
           <div className="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-4">
             {FEATURES.map(({ title, detail, Icon }, index) => (
               <FadeIn key={title} delay={0.25 + index * 0.08}>
-                <div className="flex h-full gap-3 rounded-2xl border border-elolab-blue/10 bg-white/80 p-4 shadow-[0_8px_28px_rgba(10,34,55,0.04)]">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-elolab-blue/10 text-elolab-blue">
+                <div className="flex h-full gap-3 rounded-2xl border border-border bg-card/80 p-4 shadow-sm">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
                     <Icon aria-hidden="true" className="size-5" />
                   </span>
                   <span>
@@ -88,11 +88,11 @@ export default function EloAssistantSection() {
                       once={false}
                       repeat
                       speed={0.7}
-                      className="font-inter text-sm font-semibold text-elolab-ink"
+                      className="font-inter text-sm font-semibold text-foreground"
                     >
                       {title}
                     </GradientWaveText>
-                    <span className="mt-1 block font-inter text-xs leading-relaxed text-elolab-ink/60 sm:text-sm">
+                    <span className="mt-1 block font-inter text-xs leading-relaxed text-muted-foreground sm:text-sm">
                       {detail}
                     </span>
                   </span>
@@ -109,8 +109,8 @@ export default function EloAssistantSection() {
               <GradientWaveText
                 as="span"
                 align="left"
-                baseColor="rgb(10,34,55)"
-                customColors={["#ffffff", "#dbeafe", "#ffffff"]}
+                baseColor="hsl(var(--primary-foreground))"
+                customColors={["hsl(var(--primary-foreground))", "hsl(var(--muted))", "hsl(var(--primary-foreground))"]}
                 inView
                 once={false}
                 className="w-auto"
@@ -132,10 +132,10 @@ export default function EloAssistantSection() {
             width={1212}
             height={1297}
             sizes="(min-width: 1024px) 560px, (min-width: 640px) 80vw, 100vw"
-            className="block h-auto w-full select-none drop-shadow-[0_24px_50px_rgba(10,34,55,0.15)]"
+            className="block h-auto w-full select-none drop-shadow-xl"
             style={{
-              maskImage: "linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%)",
+              maskImage: "linear-gradient(to bottom, black 0%, black 84%, transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 84%, transparent 100%)",
             }}
           />
         </FadeIn>

@@ -1,3 +1,4 @@
+import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText, Image as ImageIcon, Loader2, Search } from 'lucide-react';
@@ -123,7 +124,7 @@ export function BuscaAnexosClinicos() {
           <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               {item.tipo_arquivo.startsWith('image/') ? <ImageIcon className="mt-1 h-5 w-5 shrink-0" aria-hidden="true" /> : <FileText className="mt-1 h-5 w-5 shrink-0" aria-hidden="true" />}
-              <div className="min-w-0"><p className="truncate font-medium">{item.nome_arquivo}</p><p className="text-sm text-muted-foreground">{item.patient_name} · {item.author_name}</p><p className="text-xs text-muted-foreground">{item.tipo_arquivo}{item.categoria ? ` · ${item.categoria}` : ''}{item.created_at ? ` · ${new Date(item.created_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : ''}</p>{item.descricao && <p className="mt-1 line-clamp-2 text-sm">{item.descricao}</p>}</div>
+              <div className="min-w-0"><p className="truncate font-medium">{item.nome_arquivo}</p><p className="text-sm text-muted-foreground">{item.patient_name} · {item.author_name}</p><p className="text-xs text-muted-foreground">{item.tipo_arquivo}{item.categoria ? ` · ${item.categoria}` : ''}{item.created_at ? ` · ${formatDateInTimeZone(item.created_at)}` : ''}</p>{item.descricao && <p className="mt-1 line-clamp-2 text-sm">{item.descricao}</p>}</div>
             </div>
             <Button variant="outline" onClick={() => void openFile(item)} disabled={openingId !== null} aria-label={`Abrir ${item.nome_arquivo}`}>
               {openingId === item.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Abrir

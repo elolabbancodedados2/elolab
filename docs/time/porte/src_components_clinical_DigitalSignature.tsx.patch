@@ -1,0 +1,22 @@
+diff --git a/src/components/clinical/DigitalSignature.tsx b/src/components/clinical/DigitalSignature.tsx
+index aab2ca6d..b38c3722 100644
+--- a/src/components/clinical/DigitalSignature.tsx
++++ b/src/components/clinical/DigitalSignature.tsx
+@@ -204,12 +204,12 @@ export function DigitalSignature({
+               </Button>
+             </div>
+ 
+-            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-500/10 rounded p-2.5">
+-              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
++            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2.5">
++              <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+               <span>
+-                Esta assinatura eletrônica simples não usa certificado ICP-Brasil e não substitui
+-                uma assinatura digital qualificada. A verificação confirma a integridade do
+-                conteúdo registrado no momento da assinatura.
++                Assinatura eletrônica com registro de autor, data e integridade do conteúdo,
++                verificável pelo código. Documentos que exigem certificado ICP-Brasil, como
++                receitas de controle especial, devem ser assinados pela prescrição Memed.
+               </span>
+             </div>
+           </div>

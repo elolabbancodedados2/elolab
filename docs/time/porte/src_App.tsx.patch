@@ -1,0 +1,20 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 5bfda2ee..af9d01fe 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -26,6 +26,7 @@ const Agenda = lazy(() => import("@/pages/Agenda"));
+ const Pacientes = lazy(() => import("@/pages/Pacientes"));
+ const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
+ const Prontuarios = lazy(() => import("@/pages/Prontuarios"));
++const MeuPerfilMedico = lazy(() => import("@/pages/MeuPerfilMedico"));
+ const Financeiro = lazy(() => import("@/pages/Financeiro"));
+ const Medicos = lazy(() => import("@/pages/Medicos"));
+ const Estoque = lazy(() => import("@/pages/Estoque"));
+@@ -256,6 +257,7 @@ function App() {
+                           <Route path="/treinamento" element={<Treinamento />} />
+                           <Route path="/agenda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Agenda /></SupabaseProtectedRoute>} />
+                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
++                          <Route path="/meu-perfil" element={<SupabaseProtectedRoute allowedRoles={['medico']}><MeuPerfilMedico /></SupabaseProtectedRoute>} />
+                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
+                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
+                           <Route path="/atestados" element={<Navigate to="/documentos-clinicos?tab=atestados" replace />} />

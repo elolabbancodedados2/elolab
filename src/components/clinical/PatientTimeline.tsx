@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDateTimePreference, nomeMedico } from '@/lib/formatters';
 import { useMemo, useState } from 'react';
@@ -25,6 +26,7 @@ import type jsPDF from 'jspdf';
 
 import { parseDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { timelineEventAction, type TimelineEventType } from '@/lib/patientTimelineActions';
 
 interface PatientTimelineProps {
   pacienteId: string;
@@ -32,9 +34,7 @@ interface PatientTimelineProps {
   maxItems?: number;
 }
 
-type EventType =
-  | 'prontuario' | 'prescricao' | 'exame' | 'atestado' | 'encaminhamento'
-  | 'agendamento' | 'pagamento' | 'triagem' | 'anexo' | 'retorno' | 'comorbidade';
+type EventType = TimelineEventType;
 
 interface TimelineEvent {
   id: string;
@@ -45,6 +45,7 @@ interface TimelineEvent {
   status?: string;
   medicoNome?: string;
   valor?: number;
+  financeTipo?: string;
 }
 
 const TYPE_META: Record<EventType, { label: string; color: string; icon: JSX.Element }> = {
@@ -223,6 +224,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           description: `${l.descricao || l.categoria || '-'}${l.forma_pagamento ? ` • ${l.forma_pagamento}` : ''}`,
           status: statusLabel,
           valor: Number(l.valor || 0),
+          financeTipo: l.tipo,
         });
       });
 
@@ -393,7 +395,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       doc.save(`prontuario-${pac?.nome?.replace(/\s+/g, '_') || pacienteId}.pdf`);
       toast.success('PDF gerado com sucesso');
     } catch (err: any) {
-      toast.error('Falha ao gerar PDF: ' + err.message);
+      toast.error('Falha ao gerar PDF', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     } finally {
       setPdfLoading(false);
     }
@@ -411,7 +413,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       if (data?.error) throw new Error(data.error);
       setAiSummary(data?.summary || 'Sem resumo gerado.');
     } catch (err: any) {
-      toast.error('Falha ao gerar resumo: ' + err.message);
+      toast.error('Falha ao gerar resumo', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
       setAiSummary('Erro ao gerar resumo clínico.');
     } finally {
       setAiLoading(false);
@@ -535,16 +537,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
               <div className="space-y-6">
                 {filtered.map((event) => {
                   const meta = TYPE_META[event.type];
-                  const roles = profile?.roles ?? [];
-                  const canOpenClinical = roles.includes('admin') || roles.includes('medico');
-                  const canOpenExams = canOpenClinical || roles.includes('enfermagem');
-                  const action = event.type === 'agendamento' && canOpenClinical
-                    ? { label: 'Abrir atendimento', href: `/prontuarios?${new URLSearchParams({ paciente: pacienteId, agendamento: event.id.replace(/^ag-/, '') })}` }
-                    : event.type === 'exame' && canOpenExams
-                      ? { label: 'Ver exames deste paciente', href: `/exames?${new URLSearchParams({ paciente: pacienteId })}` }
-                      : event.type === 'triagem' && (canOpenClinical || roles.includes('enfermagem'))
-                        ? { label: 'Abrir triagem do paciente', href: `/triagem?${new URLSearchParams({ buscarPaciente: pacienteId })}` }
-                        : null;
+                  const action = timelineEventAction(event, profile?.roles ?? [], pacienteId);
                   return (
                     <div key={`${event.type}-${event.id}`} className="relative flex gap-4">
                       <div

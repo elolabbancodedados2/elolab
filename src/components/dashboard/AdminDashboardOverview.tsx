@@ -75,7 +75,7 @@ const actionTones = [
   'border border-border/60 bg-card text-foreground hover:border-[#1080CA]/40',
 ];
 
-const cardBase = 'rounded-[22px] border border-border/60 bg-card text-card-foreground shadow-xs';
+const cardBase = 'rounded-xl border border-border/60 bg-card text-card-foreground shadow-xs';
 const sectionTitle = 'text-base font-bold text-foreground';
 const linkAzul = 'inline-flex shrink-0 items-center gap-1 text-xs font-bold text-[#1080CA] hover:underline';
 
@@ -132,18 +132,17 @@ export function AdminDashboardOverview({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto]">
         <section
           aria-labelledby="dashboard-timeline-title"
-          className="relative overflow-hidden rounded-[24px] bg-gradient-primary p-6 text-white shadow-lg lg:row-span-2"
+          className="relative overflow-hidden rounded-xl bg-gradient-primary p-6 text-white shadow-lg lg:row-span-2"
         >
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-gradient-primary opacity-40 blur-3xl" />
           <div aria-hidden="true" className="pointer-events-none absolute -left-10 -top-16 h-40 w-40 rounded-full bg-white/5" />
           <div className="relative flex h-full flex-col">
             <div className="flex items-center justify-between gap-3">
               <h2 id="dashboard-timeline-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/70">Sua agenda de hoje</h2>
-              <span className="rounded-full bg-gradient-primary px-3 py-1 text-[11px] font-bold">{agenda.length} no dia</span>
+              <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold">{agenda.length} no dia</span>
             </div>
             {proxima ? (
               <>
-                <p className="mt-4 bg-gradient-primary bg-clip-text text-[52px] font-semibold leading-none tracking-[-0.04em] text-transparent tabular-nums">{proxima.horario}</p>
+                <p className="mt-4 text-[52px] font-semibold leading-none tracking-[-0.04em] text-white tabular-nums">{proxima.horario}</p>
                 <p className="mt-2 text-xs text-white/60">próximo atendimento</p>
                 <div className="mt-4 flex items-center gap-3">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-sm font-extrabold text-white">
@@ -186,7 +185,7 @@ export function AdminDashboardOverview({
           <Link
             key={label}
             to={href}
-            className={cn('group relative min-w-0 overflow-hidden rounded-[22px] p-5 shadow-xs transition hover:-translate-y-0.5 hover:shadow-md', tone)}
+            className={cn('group relative min-w-0 overflow-hidden rounded-xl p-5 shadow-xs transition hover:shadow-md', tone)}
           >
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs font-semibold opacity-75">{label}</p>
@@ -474,7 +473,7 @@ export function AdminDashboardOverview({
                   key={acao.label}
                   to={acao.href}
                   className={cn(
-                    'group flex min-h-[84px] flex-col justify-between gap-2 rounded-2xl p-3 transition hover:-translate-y-0.5 hover:shadow-md',
+                    'group flex min-h-[84px] flex-col justify-between gap-2 rounded-2xl p-3 transition hover:shadow-md',
                     actionTones[index % actionTones.length],
                   )}
                 >
@@ -508,5 +507,6 @@ function iniciais(nome: string) {
 }
 
 function primeiroNome(nome: string) {
-  return nome.split(' ')[0] || nome;
+  const primeiro = nome.split(' ')[0] || nome;
+  return primeiro.charAt(0).toLocaleUpperCase('pt-BR') + primeiro.slice(1);
 }

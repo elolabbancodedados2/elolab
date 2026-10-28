@@ -259,7 +259,7 @@ export default function MapaColeta() {
     }
   };
 
-  const handleColetar = (id: string) => transitionStatus(id, ['pendente', 'recoleta'], 'coletado', 'Coleta registrada!');
+  const handleColetar = (id: string) => transitionStatus(id, ['pendente', 'recoleta'], 'coletado', 'Coleta registrada');
 
   const handleBulkColetar = async () => {
     if (selected.size === 0 || bulkProcessingRef.current || !profile?.clinica_id) return;
@@ -506,7 +506,7 @@ export default function MapaColeta() {
   const mensagemWhatsApp = (item: any) => {
     const primeiroNome = String(nomePaciente(item.pacientes)).split(' ')[0];
     const jejum = item.jejum_necessario ? ` Lembre-se do jejum de ${item.jejum_horas ?? '?'}h.` : '';
-    return `Olá, ${primeiroNome}! Aqui é da clínica. Sua coleta de exame${item.exames?.tipo_exame ? ` (${item.exames.tipo_exame})` : ''} está pendente.${jejum} Podemos confirmar sua vinda?`;
+    return `Olá, ${primeiroNome}. Aqui é da clínica. Sua coleta de exame${item.exames?.tipo_exame ? ` (${item.exames.tipo_exame})` : ''} está pendente.${jejum} Podemos confirmar sua vinda?`;
   };
 
   // ─── Detail Modal ───────────────────────────────────────
@@ -738,7 +738,7 @@ export default function MapaColeta() {
                 aria-pressed={ativo}
                 onClick={() => setFiltroRapido(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -850,7 +850,7 @@ export default function MapaColeta() {
           {selected.size > 0 && (
             <Badge variant="outline" className="h-8 gap-1 rounded-full border-[#BFD8EE] text-xs text-[#1080CA]">
               {selected.size} selecionado(s)
-              <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}>✕</button>
+              <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}><X className="h-3 w-3" /></button>
             </Badge>
           )}
           {temFiltro && (

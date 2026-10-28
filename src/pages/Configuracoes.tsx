@@ -38,18 +38,22 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
+import { UsoDoPlano } from '@/components/UsoDoPlano';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { abrirUrlSegura, checkoutUrlSeguro } from '@/lib/safeUrl';
+import { descreverEventoCobranca, type EventoCobrancaAssinatura } from '@/lib/subscriptionBillingHistory';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
 import { AccountSessionsPanel } from '@/components/security/AccountSessionsPanel';
 import { CONFIG_SEGURANCA_ATUALIZADA_EVENT, chaveDaClinica, lerConfigsClinicaComVersoes } from '@/lib/configClinica';
 import { compararConfiguracoes, formatarValorConfiguracao } from '@/lib/configHistory';
+import { ReauthDialog } from '@/components/ReauthDialog';
+import { exigeReautenticacao } from '@/lib/reautenticacao';
 
 interface ConfiguracaoClinicaVersao {
   id: string;
@@ -124,14 +128,6 @@ const DEFAULT_SEGURANCA: ConfiguracaoSeguranca = {
 
 const DEFAULT_IMPRESSAO: ConfiguracaoImpressao = {
   rodapeReceita: '', mostrarLogo: true, mostrarCRM: true, mostrarCNES: false,
-};
-
-const FATURA_STATUS_LABEL: Record<string, string> = {
-  approved: 'Pago', aprovado: 'Pago',
-  pending: 'Pendente', pendente: 'Pendente',
-  rejected: 'Recusado', recusado: 'Recusado',
-  cancelled: 'Cancelado', cancelado: 'Cancelado', cancelada: 'Cancelado',
-  refunded: 'Estornado', estornado: 'Estornado',
 };
 
 /* ─── Setting Row ─── */
@@ -231,18 +227,18 @@ function SalasManager() {
           .eq('id', editId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
         if (error) throw error;
         if (!data) throw new Error('Sala não encontrada ou sem permissão para alterar.');
-        toast.success('Sala atualizada!');
+        toast.success('Sala atualizada');
       } else {
         const { error } = await supabase.from('salas').insert([{
           ...payload,
           clinica_id: profile.clinica_id,
         }]);
         if (error) throw error;
-        toast.success('Sala criada!');
+        toast.success('Sala criada');
       }
       queryClient.invalidateQueries({ queryKey: ['salas-config'] });
       setShowForm(false); setEditId(null);
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: any) { toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a sala.')); }
     finally {
       saveLock.current = false;
       setSaving(false);
@@ -261,9 +257,9 @@ function SalasManager() {
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir esta sala.');
       await queryClient.invalidateQueries({ queryKey: ['salas-config'] });
       setSalaParaExcluir(null);
-      toast.success('Sala removida!');
+      toast.success('Sala removida');
     } catch (error) {
-      toast.error('Não foi possível excluir a sala', { description: (error as Error)?.message || 'Tente novamente.' });
+      toast.error('Não foi possível excluir a sala', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally {
       deleteLock.current = false;
       setDeleting(false);
@@ -391,17 +387,13 @@ export default function Configuracoes() {
   const cancelPlanLock = useRef(false);
 
   const { data: faturas, isLoading: loadingFaturas, error: erroFaturas, refetch: recarregarFaturas } = useQuery({
-    queryKey: ['minhas_faturas_saas', profile?.clinica_id],
-    enabled: !!profile?.clinica_id && showFaturas,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('pagamentos_mercadopago')
-        .select('id, valor, valor_pago, status, tipo, descricao, data_criacao, data_aprovacao, checkout_url, metodo_pagamento')
-        .eq('clinica_id', profile!.clinica_id)
-        .order('data_criacao', { ascending: false })
-        .limit(50);
+    queryKey: ['historico_cobranca_assinatura', user?.id],
+    enabled: !!user?.id && showFaturas,
+    // Só a cobrança da assinatura EloLab; o financeiro de pacientes fica no módulo Financeiro.
+    queryFn: async (): Promise<EventoCobrancaAssinatura[]> => {
+      const { data, error } = await supabase.rpc('historico_cobranca_assinatura', { p_limit: 50 });
       if (error) throw error;
-      return data || [];
+      return (data || []) as EventoCobrancaAssinatura[];
     },
   });
 
@@ -423,7 +415,7 @@ export default function Configuracoes() {
       setShowCancelPlan(false);
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
     },
-    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
+    onError: (err: any) => toast.error(friendlyErrorMessage(err, 'Não foi possível cancelar a assinatura.')),
     onSettled: () => { cancelPlanLock.current = false; },
   });
 
@@ -438,6 +430,8 @@ export default function Configuracoes() {
   const [configSeguranca, setConfigSeguranca] = useState<ConfiguracaoSeguranca>(DEFAULT_SEGURANCA);
   const [configImpressao, setConfigImpressao] = useState<ConfiguracaoImpressao>(DEFAULT_IMPRESSAO);
   const [configVersions, setConfigVersions] = useState<Record<string, string | null>>({});
+  // Ação recusada pelo banco por reduzir segurança sem prova recente; refeita após reautenticar.
+  const [reauthAcao, setReauthAcao] = useState<(() => Promise<void>) | null>(null);
   const [historyKey, setHistoryKey] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyRows, setHistoryRows] = useState<ConfiguracaoClinicaVersao[]>([]);
@@ -586,11 +580,13 @@ export default function Configuracoes() {
       if (chave === 'config_seguranca') window.dispatchEvent(new Event(CONFIG_SEGURANCA_ATUALIZADA_EVENT));
       if (generation === configLoadGeneration.current) {
         setIsCloudSynced(true);
-        toast.success(`${label} salvas na nuvem!`);
+        toast.success(`${label} salvas na nuvem`);
       }
     } catch (error: any) {
-      if (generation === configLoadGeneration.current) {
-        toast.error('Erro ao salvar: ' + (error.message || 'Tente novamente.'));
+      if (exigeReautenticacao(error)) {
+        setReauthAcao(() => () => saveConfig(chave, valor, label));
+      } else if (generation === configLoadGeneration.current) {
+        toast.error('Não foi possível salvar.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
       }
     } finally {
       saveLocks.current.delete(saveLockKey);
@@ -619,7 +615,7 @@ export default function Configuracoes() {
       setHistoryCurrent((current?.valor as Record<string, unknown> | null) ?? null);
       setSelectedHistoryVersion(rows.find((row) => JSON.stringify(row.valor) !== JSON.stringify(current?.valor))?.id ?? rows[0]?.id ?? null);
     } catch (error: unknown) {
-      toast.error('Não foi possível carregar o histórico', { description: error instanceof Error ? error.message : 'Tente novamente.' });
+      toast.error('Não foi possível carregar o histórico', { description: friendlyErrorMessage(error, 'Tente novamente.') });
       setHistoryOpen(false);
     } finally {
       setHistoryLoading(false);
@@ -639,7 +635,8 @@ export default function Configuracoes() {
       setHistoryOpen(false);
       toast.success('Versão restaurada e registrada no histórico.');
     } catch (error: unknown) {
-      toast.error('Não foi possível restaurar esta versão', { description: error instanceof Error ? error.message : 'Recarregue e compare novamente.' });
+      if (exigeReautenticacao(error)) { setReauthAcao(() => restoreConfigHistory); return; }
+      toast.error('Não foi possível restaurar esta versão', { description: friendlyErrorMessage(error, 'Recarregue e compare novamente.') });
     } finally {
       setHistoryRestoring(false);
     }
@@ -885,7 +882,7 @@ export default function Configuracoes() {
                           </>
                         ) : (
                           <>
-                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">✓ Ativo</Badge>
+                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">Ativo</Badge>
                             <p className="text-xs text-white/70">{resumoPeriodo}</p>
                           </>
                         )}
@@ -901,7 +898,7 @@ export default function Configuracoes() {
                             <p className="text-sm text-white/70">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
                           </div>
                           <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
-                            ✕ Cancelar teste grátis
+                            Cancelar teste grátis
                           </Button>
                         </div>
                       </>
@@ -933,7 +930,7 @@ export default function Configuracoes() {
                                       ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(planos.find(p => p.slug === planSlug)!.valor)
                                       : 'Plano não encontrado'}
                               </p>
-                              {erroAoCarregarPlanos && <p className="text-xs text-warning" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
+                              {erroAoCarregarPlanos && <p className="text-xs text-warning" title={friendlyErrorMessage(erroListaPlanos, 'Não foi possível carregar os planos.')}>Atualize os planos para consultar o valor.</p>}
                             </div>
                             <div className="rounded-lg bg-white/5 p-3">
                               <p className="text-xs text-white/70">Modalidade de cobrança</p>
@@ -959,7 +956,7 @@ export default function Configuracoes() {
                       </Button>
                       {!isTrial && assinaturaAtual?.cobranca_modalidade !== 'pre_pago' && (
                         <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
-                          ✕ Cancelar Plano
+                          Cancelar plano
                         </Button>
                       )}
                     </div>
@@ -968,6 +965,8 @@ export default function Configuracoes() {
               </CardContent>
             </Card>
 
+            {!isPlanExempt && profile?.clinica_id && <UsoDoPlano />}
+
             {/* Dialog: Faturas */}
             <Dialog open={showFaturas} onOpenChange={setShowFaturas}>
               <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
@@ -975,7 +974,7 @@ export default function Configuracoes() {
                   <DialogTitle className="flex items-center gap-2">
                     <Receipt className="h-5 w-5 text-[#1080CA]" /> Histórico de Faturas
                   </DialogTitle>
-                  <DialogDescription>Pagamentos da sua assinatura EloLab</DialogDescription>
+                  <DialogDescription>Tentativas e cobranças da assinatura EloLab, com o estado final de cada uma. Recebimentos de pacientes ficam no Financeiro.</DialogDescription>
                 </DialogHeader>
                 {loadingFaturas ? (
                   <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-[#1080CA]" /></div>
@@ -988,32 +987,29 @@ export default function Configuracoes() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Data</TableHead>
-                        <TableHead>Descrição</TableHead>
+                        <TableHead>Tipo</TableHead>
                         <TableHead>Valor</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Ação</TableHead>
+                        <TableHead>Estado</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {faturas.map((f: any) => (
-                        <TableRow key={f.id}>
-                          <TableCell className="text-xs">{f.data_criacao ? formatDate(f.data_criacao, 'short') : '—'}</TableCell>
-                          <TableCell className="text-xs">{f.descricao || f.tipo || 'Assinatura'}</TableCell>
-                          <TableCell className="text-xs font-semibold">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(f.valor_pago || f.valor || 0)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={f.status === 'approved' || f.status === 'aprovado' ? 'default' : f.status === 'pending' || f.status === 'pendente' ? 'secondary' : 'outline'} className="rounded-full">
-                              {FATURA_STATUS_LABEL[String(f.status || '').toLowerCase()] || f.status || '—'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {f.checkout_url && (
-                              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => abrirUrlSegura(f.checkout_url, checkoutUrlSeguro)}>Abrir</Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {faturas.map((f) => {
+                        const evento = descreverEventoCobranca(f);
+                        return (
+                          <TableRow key={`${f.origem}-${f.id}`}>
+                            <TableCell className="text-xs">{f.criado_em ? formatDate(f.criado_em, 'short') : '—'}</TableCell>
+                            <TableCell className="text-xs">{evento.tipo}{evento.detalhe && <span className="block text-muted-foreground">{evento.detalhe}</span>}</TableCell>
+                            <TableCell className="text-xs font-semibold">
+                              {f.valor === null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(f.valor))}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={evento.final ? 'outline' : 'secondary'} className="rounded-full">
+                                {evento.estado}{evento.final ? '' : ' · em andamento'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 )}
@@ -1027,8 +1023,8 @@ export default function Configuracoes() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>{isTrial ? 'Cancelar teste grátis?' : 'Cancelar assinatura?'}</DialogTitle>
-                  <DialogDescription>
-                    O Mercado Pago cancelará a cobrança recorrente agora. Ao confirmar, o acesso ao plano será encerrado e nenhuma cobrança futura será feita.
+                  <DialogDescription asChild>
+                    <div><CancelamentoPlanoResumo isTrial={isTrial} trialEnd={trialEnd} /></div>
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
@@ -1304,6 +1300,14 @@ export default function Configuracoes() {
           </div>
         </TabsContent>
       </Tabs>
+      <ReauthDialog
+        open={reauthAcao !== null}
+        email={user?.email ?? ''}
+        onOpenChange={(open) => { if (!open) setReauthAcao(null); }}
+        title="Confirme sua identidade"
+        description="Esta mudança reduz os controles de segurança da clínica (por exemplo, aumenta o tempo de sessão). Confirme sua identidade para continuar."
+        onConfirmed={async () => { await reauthAcao?.(); }}
+      />
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
           <DialogHeader>

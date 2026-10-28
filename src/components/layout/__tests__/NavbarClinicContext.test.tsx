@@ -15,6 +15,8 @@ vi.mock('@/hooks/useRealtimeNotifications', () => ({ useRealtimeNotifications: (
 vi.mock('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({ data: queryKey[0] === 'navbar-clinic-context' ? { nome: 'EloLab Centro' } : [] }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useMutation: () => ({ mutate: vi.fn() }),
 }));
 vi.mock('@/components/GlobalSearch', () => ({ GlobalSearch: () => <div /> }));
 vi.mock('@/components/KeyboardShortcutsDialog', () => ({ KeyboardShortcutsDialog: () => null }));

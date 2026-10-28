@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { prefixoTabela, queryKeys } from '@/lib/queryKeys';
 
 import { MAX_LINHAS_AUTO, useAgendamentosPeriodo, useMedicos, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useAgendaColorScheme } from './hooks/useAgendaColorScheme';
@@ -23,10 +24,10 @@ import { ColorSchemeDialog } from './ColorSchemeDialog';
 import { BloqueioAgenda } from './BloqueioAgenda';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
-import { normalizeAgendaDate } from '@/lib/agendaDate';
+import { isValidAgendaDate, normalizeAgendaDate } from '@/lib/agendaDate';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
@@ -132,9 +133,15 @@ export function AgendaPage() {
   const esperaIdDaRota = searchParams.get('espera');
   const pacienteIdDaRota = searchParams.get('paciente');
   const reagendarIdDaRota = searchParams.get('reagendar');
+  // Links da central de notificações: ?data=AAAA-MM-DD&agendamento=<id>
+  const dataDaRota = searchParams.get('data');
+  const agendamentoIdDaRota = searchParams.get('agendamento');
   const reagendarAplicadoRef = useRef<string | null>(null);
   const { medicoId: myMedicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
-  const [date, setDate] = useState(() => normalizeAgendaDate(lerPreferenciaAgenda('agenda:date')));
+  const [date, setDate] = useState(() => normalizeAgendaDate(isValidAgendaDate(dataDaRota) ? dataDaRota : lerPreferenciaAgenda('agenda:date')));
+  useEffect(() => {
+    if (isValidAgendaDate(dataDaRota)) setDate(dataDaRota);
+  }, [dataDaRota]);
   const [view, setView] = useState<AgendaView>(() => {
     const preferencia = lerPreferenciaAgenda('agenda:view');
     return VIEWS_AGENDA.includes(preferencia as AgendaView) ? preferencia as AgendaView : 'daily';
@@ -235,11 +242,11 @@ export function AgendaPage() {
   const { data: tipos = [] } = tiposQuery;
   const { data: salas = [] } = salasQuery;
   const reagendamentoQuery = useQuery({
-    queryKey: ['agenda-reagendar', profile?.clinica_id, reagendarIdDaRota],
+    queryKey: queryKeys.agenda.reagendar(profile?.clinica_id, reagendarIdDaRota),
     enabled: !!profile?.clinica_id && !!reagendarIdDaRota,
     queryFn: async () => {
       const { data, error } = await supabase.from('agendamentos')
-        .select('id, paciente_id, medico_id, sala_id, hora_inicio, hora_fim, tipo, observacoes')
+        .select('id, paciente_id, medico_id, sala_id, hora_inicio, hora_fim, tipo, tipo_consulta_id, observacoes')
         .eq('id', reagendarIdDaRota)
         .eq('clinica_id', profile!.clinica_id!)
         .maybeSingle();
@@ -307,6 +314,18 @@ export function AgendaPage() {
     setSearchParams(params, { replace: true });
   }, [reagendarIdDaRota, profile?.clinica_id, reagendamentoLoading, reagendamentoError, reagendamentoData, refetchReagendamento, searchParams, setSearchParams]);
 
+  // Abre a consulta indicada pela notificação quando ela aparece no período carregado.
+  useEffect(() => {
+    if (!agendamentoIdDaRota || isLoading || (isValidAgendaDate(dataDaRota) && date !== dataDaRota)) return;
+    const alvo = (allAppts as any[]).find((a) => a.id === agendamentoIdDaRota);
+    if (alvo) setDialogState({ open: true, initial: alvo });
+    else toast.info('A consulta da notificação não está mais nesta data.', { description: 'Ela pode ter sido remarcada ou cancelada.' });
+    const params = new URLSearchParams(searchParams);
+    params.delete('agendamento');
+    params.delete('data');
+    setSearchParams(params, { replace: true });
+  }, [agendamentoIdDaRota, dataDaRota, date, isLoading, allAppts, searchParams, setSearchParams]);
+
   // A lista de espera abre esta rota para criar a consulta. Valide o vínculo e
   // o estado no servidor antes de carregar o paciente no formulário.
   useEffect(() => {
@@ -327,7 +346,7 @@ export function AgendaPage() {
 
       if (error || !data || data.paciente_id !== pacienteIdDaRota || data.status !== 'confirmado') {
         toast.error('Não foi possível iniciar o agendamento', {
-          description: error?.message || 'Confirme se o paciente ainda está na lista de espera.',
+          description: friendlyErrorMessage(error, 'Confirme se o paciente ainda está na lista de espera.'),
         });
         return;
       }
@@ -448,7 +467,7 @@ export function AgendaPage() {
   const diaSemana = new Date(`${date}T12:00:00Z`).getUTCDay();
   const idsMedicosVisiveis = useMemo(() => visibleMedicos.map((m: any) => m.id).sort(), [visibleMedicos]);
   const expedienteQuery = useQuery({
-    queryKey: ['agenda-expediente', profile?.clinica_id, diaSemana, idsMedicosVisiveis],
+    queryKey: queryKeys.agenda.expediente(profile?.clinica_id, diaSemana, idsMedicosVisiveis),
     enabled: !!profile?.clinica_id && idsMedicosVisiveis.length > 0 && view === 'daily',
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -604,7 +623,7 @@ export function AgendaPage() {
         .eq('ativo', true) as any);
       if (erroJornada) {
         toast.error('Não foi possível conferir o expediente do médico.', {
-          description: `${erroJornada.message}. Tente novamente antes de mover a consulta.`,
+          description: `${friendlyErrorMessage(erroJornada, 'Não foi possível consultar o expediente.')} Tente novamente antes de mover a consulta.`,
         });
         return;
       }
@@ -665,18 +684,18 @@ export function AgendaPage() {
           toast.error('Paciente ou sala acabaram de ser ocupados', {
             description: 'Outro usuário marcou neste período enquanto você movia a consulta. Atualize a agenda e escolha outro horário.',
           });
-          void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+          void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
         } else if (overlap) {
           toast.error('Horário indisponível', { description: 'Outra consulta deste médico se sobrepõe a este período.' });
-          void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+          void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
         } else {
-          toast.error('Erro ao mover consulta', { description: error.message });
+          toast.error('Erro ao mover consulta', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
         }
       } else if (!data) {
         toast.error('A consulta não foi remarcada.', { description: 'Ela pode ter sido alterada ou removida por outro usuário. Atualize a agenda.' });
-        void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
       } else {
-        void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+        void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
         if (opcoes.desfazendo) {
           toast.success('Remarcação desfeita');
         } else {
@@ -690,7 +709,7 @@ export function AgendaPage() {
         }
       }
     } catch (error) {
-      toast.error('Não foi possível remarcar a consulta.', { description: error instanceof Error ? error.message : 'Verifique sua conexão e tente novamente.' });
+      toast.error('Não foi possível remarcar a consulta.', { description: friendlyErrorMessage(error, 'Verifique sua conexão e tente novamente.') });
     }
   };
 
@@ -861,10 +880,10 @@ export function AgendaPage() {
               }
             } catch (error) {
               toast.error('Consulta salva, mas não foi possível atualizar a lista de espera.', {
-                description: error instanceof Error ? error.message : 'Tente atualizar a lista de espera.',
+                description: friendlyErrorMessage(error, 'Tente atualizar a lista de espera.'),
               });
             } finally {
-              void queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
+              void queryClient.invalidateQueries({ queryKey: prefixoTabela('lista_espera') });
             }
           }
         }}

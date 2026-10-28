@@ -7,7 +7,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import type { TablesUpdate } from '@/integrations/supabase/types';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,7 @@ export default function MinhaFilaTarefas() {
 
   const tarefasQuery = useQuery({
     queryKey: ['minha-fila-tarefas', clinicaId, userId],
+    refetchInterval: 60_000,
     queryFn: async () => {
       if (!clinicaId || !userId) return [];
       return withSafeRetry(() => buscarEmBlocos<PersonalTask>(() => supabase
@@ -114,7 +115,7 @@ export default function MinhaFilaTarefas() {
         queryClient.invalidateQueries({ queryKey: ['tarefas'] }),
       ]);
     },
-    onError: (error: Error) => toast.error(error.message || 'Não foi possível atualizar a tarefa'),
+    onError: (error: Error) => toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar a tarefa.')),
   });
 
   const concluir = (task: PersonalTask) => atualizar.mutate({
@@ -169,7 +170,7 @@ export default function MinhaFilaTarefas() {
           {[1, 2, 3, 4].map((index) => <Skeleton key={index} className="h-24 rounded-2xl" />)}
         </div>
       ) : groups.total === 0 ? (
-        <Card className="rounded-[22px]">
+        <Card className="rounded-xl">
           <CardContent className="py-5">
             <ActionableEmptyState
               title="Sua fila está vazia"
@@ -183,8 +184,7 @@ export default function MinhaFilaTarefas() {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
-            <section aria-labelledby="fila-proxima-title" className="relative overflow-hidden rounded-[24px] bg-gradient-primary p-6 text-white shadow-lg">
-              <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-gradient-primary opacity-40 blur-3xl" />
+            <section aria-labelledby="fila-proxima-title" className="relative overflow-hidden rounded-xl bg-gradient-primary p-6 text-white shadow-lg">
               <div className="relative">
                 <div className="flex items-center justify-between gap-3">
                   <h2 id="fila-proxima-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/70">Próxima tarefa</h2>
@@ -227,7 +227,7 @@ export default function MinhaFilaTarefas() {
               </div>
             </section>
 
-            <section aria-labelledby="fila-progresso-title" className="rounded-[22px] border border-border/60 bg-card p-5 shadow-xs">
+            <section aria-labelledby="fila-progresso-title" className="rounded-xl border border-border/60 bg-card p-5 shadow-xs">
               <h2 id="fila-progresso-title" className="text-base font-bold text-foreground">Progresso do dia</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">{concluidasHoje} de {metaDoDia} tarefas do dia concluídas</p>
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Progresso do dia" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progresso}>
@@ -256,7 +256,7 @@ export default function MinhaFilaTarefas() {
                   type="button"
                   onClick={() => irParaSecao(key)}
                   className={cn(
-                    'flex min-h-[92px] items-center gap-3 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md',
+                    'flex min-h-[92px] items-center gap-3 rounded-2xl border p-4 text-left transition hover:shadow-md',
                     destaque ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
                   )}
                 >

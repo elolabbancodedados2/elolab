@@ -28,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
 import { Database } from '@/integrations/supabase/types';
 
 import {
@@ -36,7 +37,7 @@ import {
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { podeExportarContasCompletas, valorRecebidoDaConta } from '@/lib/contasReceber';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { mensagemDeErro } from '@/lib/erros';
 import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
@@ -422,11 +423,11 @@ export default function ContasReceber() {
         clinica_id: profile.clinica_id,
       });
       if (error) throw error;
-      toast.success('Receita cadastrada com sucesso!');
+      toast.success('Receita cadastrada com sucesso');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       setIsFormOpen(false);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível salvar a conta.'));
     } finally {
       submissionLock.current = false;
       setIsSubmitting(false);
@@ -528,7 +529,7 @@ export default function ContasReceber() {
         return next;
       });
     } catch (e: any) {
-      const message = e.message || 'Erro ao confirmar';
+      const message = friendlyErrorMessage(e, 'Não foi possível confirmar o recebimento.');
       if (!chamadaRpcIniciada || respostaServidorRecebida) {
         // O servidor confirmou a rejeição e a transação foi revertida; esta
         // mesma chave pode ser usada após corrigir os dados ou abrir o caixa.
@@ -675,7 +676,7 @@ export default function ContasReceber() {
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       setContaParaCancelar(null);
     } catch (e: any) {
-      toast.error(e.message || 'Erro');
+      toast.error(friendlyErrorMessage(e, 'Não foi possível cancelar a conta.'));
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
     } finally {
       cancelamentoSubmissionLock.current = false;
@@ -705,7 +706,7 @@ export default function ContasReceber() {
     // Substituição do `xlsx@0.18.5` — SEC-001 (prototype pollution / ReDoS).
     const { exportToExcel } = await import('@/lib/excelExporter');
     await exportToExcel(rows, 'contas_receber', 'Contas a Receber');
-    toast.success('Exportado com sucesso!');
+    toast.success('Exportado com sucesso');
   };
 
   if (isLoading) return (
@@ -771,7 +772,7 @@ export default function ContasReceber() {
               aria-pressed={ativo}
               onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 kpi.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
@@ -1042,7 +1043,7 @@ export default function ContasReceber() {
                 const diasVenc = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
                 return (
                   <div key={conta.id}>
-                    <Card className={cn('group rounded-2xl border shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', status?.border || 'border-border/60')}>
+                    <Card className={cn('group rounded-2xl border shadow-xs transition-all hover:shadow-md', status?.border || 'border-border/60')}>
                       <CardContent className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           {/* Category icon */}
@@ -1536,6 +1537,10 @@ export default function ContasReceber() {
                   </div>
                 )}
                 <Separator />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">Histórico de vencimento, valor e classificação</span>
+                  <HistoricoLancamentoButton lancamentoId={selectedConta.id} descricao={selectedConta.descricao} rotulos={Object.fromEntries(CATEGORIAS_RECEITA.map(c => [c.value, c.label]))} />
+                </div>
                 <p className="text-[10px] text-muted-foreground">
                   Criado em: {selectedConta.created_at ? format(new Date(selectedConta.created_at), "dd/MM/yyyy 'às' HH:mm") : '—'}
                 </p>

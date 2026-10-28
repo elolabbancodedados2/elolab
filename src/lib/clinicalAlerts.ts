@@ -280,8 +280,8 @@ export function checkAllergyAlerts(
     alerts.push({
       id: 'allergy-direct',
       severity: 'critical',
-      title: '⚠️ ALERGIA CONFIRMADA',
-      message: `Paciente tem alergia registrada para ${medicationName}. NÃO prescrever!`,
+      title: 'ALERGIA CONFIRMADA',
+      message: `Paciente tem alergia registrada para ${medicationName}. NÃO prescrever.`,
       canIgnore: false,
     });
     return alerts;
@@ -305,8 +305,8 @@ export function checkAllergyAlerts(
       alerts.push({
         id: `allergy-class-${chaveAlergia}`,
         severity: 'critical',
-        title: `⚠️ POTENCIAL REAÇÃO CRUZADA (${classeAlergia.rotulo})`,
-        message: `Paciente tem alergia a ${classeAlergia.rotulo}. ${medicationName} é da mesma classe. Cuidado!`,
+        title: `POTENCIAL REAÇÃO CRUZADA (${classeAlergia.rotulo})`,
+        message: `Paciente tem alergia a ${classeAlergia.rotulo}. ${medicationName} é da mesma classe. Avalie o risco antes de prescrever.`,
         action: 'Considerar alternativa terapêutica',
         canIgnore: true,
       });
@@ -320,7 +320,7 @@ export function checkAllergyAlerts(
         alerts.push({
           id: `allergy-cross-${chaveAlergia}-${chaveVizinha}`,
           severity: 'warning',
-          title: `⚠️ RISCO CRUZADO (${classeAlergia.rotulo} → ${vizinha.rotulo})`,
+          title: `RISCO CRUZADO (${classeAlergia.rotulo} → ${vizinha.rotulo})`,
           message: `Paciente tem alergia a ${classeAlergia.rotulo}. ${medicationName} é ${vizinha.rotulo} e há risco de reação cruzada.`,
           action: 'Avaliar alternativa de outra classe ou prescrever com observação',
           canIgnore: true,
@@ -354,7 +354,7 @@ export function checkAgeAndReproductiveAlerts(
     alerts.push({
       id: 'age-too-young',
       severity: 'critical',
-      title: '👶 NÃO RECOMENDADO PARA IDADE',
+      title: 'NÃO RECOMENDADO PARA A IDADE',
       message: `${medicationName} é recomendado apenas acima de ${descreverIdade(drug.idadeMinimaMeses)}. Paciente tem ${descreverIdade(meses)}.`,
       action: `Dose pediátrica: ${drug.dosePediatrica || 'Consultar literatura'}`,
       canIgnore: false,
@@ -367,7 +367,7 @@ export function checkAgeAndReproductiveAlerts(
       alerts.push({
         id: 'pregnancy-absolute',
         severity: 'critical',
-        title: '🤰 CONTRAINDICADO EM GRAVIDEZ',
+        title: 'CONTRAINDICADO NA GRAVIDEZ',
         message: `${medicationName} é CONTRAINDICADO em gravidez. Escolher alternativa segura.`,
         canIgnore: false,
       });
@@ -375,7 +375,7 @@ export function checkAgeAndReproductiveAlerts(
       alerts.push({
         id: 'pregnancy-trimester3',
         severity: 'warning',
-        title: '🤰 EVITAR NO 3º TRIMESTRE',
+        title: 'EVITAR NO 3º TRIMESTRE',
         message: `${medicationName} deve ser evitado no 3º trimestre de gravidez. Confirmar trimestre.`,
         action: 'Considerar alternativa ou interrupção antes do parto',
         canIgnore: true,
@@ -384,7 +384,7 @@ export function checkAgeAndReproductiveAlerts(
       alerts.push({
         id: 'pregnancy-trimester1',
         severity: 'warning',
-        title: '🤰 EVITAR NO 1º TRIMESTRE',
+        title: 'EVITAR NO 1º TRIMESTRE',
         message: `${medicationName} deve ser evitado no 1º trimestre (teratogênese). Confirmar trimestre.`,
         canIgnore: true,
       });
@@ -396,7 +396,7 @@ export function checkAgeAndReproductiveAlerts(
     alerts.push({
       id: 'lactation-contraindicated',
       severity: 'warning',
-      title: '🤱 EVITAR DURANTE AMAMENTAÇÃO',
+      title: 'EVITAR DURANTE A AMAMENTAÇÃO',
       message: `${medicationName} passa para leite materno e pode afetar bebê.`,
       action: 'Considerar interrupção temporária da amamentação ou usar alternativa',
       canIgnore: true,
@@ -440,7 +440,7 @@ export function checkComorbidityAlerts(
       alerts.push({
         id: `comorbidity-${normalizar(comorbidade).replace(/ /g, '-')}`,
         severity: 'warning',
-        title: `⚠️ CONTRAINDICADO EM ${comorbidade.toUpperCase()}`,
+        title: `CONTRAINDICADO EM ${comorbidade.toUpperCase()}`,
         message: `${medicationName} é contraindicado em pacientes com ${comorbidade}. Considerar alternativa.`,
         canIgnore: true,
       });

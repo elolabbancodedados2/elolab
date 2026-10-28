@@ -10,10 +10,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
 import { autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
+import { primeiraFalhaCheckin, validarCheckin } from '@/lib/checkinValidacao';
+import { chamarPacienteNaFila } from '@/lib/filaChamada';
+import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
 import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
@@ -24,6 +27,8 @@ import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
+import { IdentificacaoPaciente } from '@/components/clinical/IdentificacaoPaciente';
+import { paraIdentificacao } from '@/lib/pacienteDoRegistro';
 import { cn, sanitizeText } from '@/lib/utils';
 import {
   UserCheck, Clock, Play, Check, Banknote, QrCode, CreditCard,
@@ -108,22 +113,6 @@ function readCaixaEstadoLocal(userId?: string, clinicaId?: string, today = today
   }
 
   return null;
-}
-
-function calcEspera(ts: string | null): string {
-  if (!ts) return '—';
-  const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
-  if (mins < 1) return 'agora';
-  if (mins < 60) return `${mins}min`;
-  return `${Math.floor(mins / 60)}h${mins % 60}min`;
-}
-
-function corEspera(ts: string | null): string {
-  if (!ts) return 'text-muted-foreground';
-  const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
-  if (mins < 15) return 'text-success';
-  if (mins < 30) return 'text-warning-foreground';
-  return 'text-destructive';
 }
 
 function horaDaClinica(instant: Date): string {
@@ -355,7 +344,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       return false;
     }
     if (!resultado.data) {
-      toast.error('Caixa fechado!', {
+      toast.error('Caixa fechado', {
         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
         action: {
           label: 'Abrir Caixa',
@@ -528,6 +517,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         // ainda não passou pelo cache da lista.
         const item = itemForcado ?? enriched.find(e => e.ag.id === agId);
         if (!item) throw new Error('Agendamento não encontrado');
+        const falhaCheckin = primeiraFalhaCheckin(validarCheckin({
+          agendamento: item.ag,
+          paciente: item.pac,
+          clinicaId: profile?.clinica_id,
+          hoje: today,
+        }));
+        if (falhaCheckin) throw new Error(falhaCheckin);
         const result = await checkinComCobranca({
           agendamentoId: agId,
           pacienteId: item.ag.paciente_id,
@@ -551,11 +547,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
              : 'A situação da cobrança foi conferida no financeiro.',
          });
        } else if (result.billingOutcome === 'free') {
-         toast.success('Check-in realizado!', {
+         toast.success('Check-in realizado', {
            description: 'Atendimento sem cobrança. Paciente pronto para ser chamado.',
          });
        } else {
-         toast.success('Check-in realizado!', {
+         toast.success('Check-in realizado', {
            description: result.billingOutcome === 'already_exists'
              ? 'Cobrança existente conferida no financeiro.'
              : 'Paciente encaminhado ao balcão para pagamento.',
@@ -576,23 +572,19 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     try {
       // O erro era ignorado: a tela dizia "Paciente chamado!" enquanto a fila
       // continuava parada e o Painel TV não exibia nada.
-      const { data, error } = await supabase
-        .from('fila_atendimento').update({ status: 'chamado' }).eq('id', filaId)
-        .eq('clinica_id', profile.clinica_id)
-        .in('status', ['aguardando', 'chamado']).select('id').maybeSingle();
-      if (error) throw error;
-      if (!data) {
+      const versao = (filaItems as any[]).find(f => f.id === filaId)?.updated_at;
+      const chamada = await chamarPacienteNaFila({ filaId, clinicaId: profile.clinica_id, versao });
+      if (chamada === 'mudou') {
         queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-        toast.warning('A fila mudou antes da chamada.', { description: 'Atualize a tela e tente novamente.' });
+        toast.warning('A fila mudou antes da chamada.', { description: 'Outra pessoa pode ter chamado este paciente. A lista foi atualizada.' });
         return;
       }
 
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      toast.success('Paciente chamado!');
+      toast.success('Paciente chamado');
     } catch (err: any) {
-      const msg = err?.message || 'Erro desconhecido';
       console.error('handleChamar error:', err);
-      toast.error('Erro ao chamar: ' + msg);
+      toast.error('Não foi possível chamar o paciente.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     } finally {
       setIsProcessing(false);
     }
@@ -606,10 +598,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       if (!result.success) throw new Error(result.message);
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      toast.success('Atendimento iniciado!', { description: result.actions.join(' • ') });
+      toast.success('Atendimento iniciado', { description: result.actions.join(' • ') });
     } catch (err: any) {
       console.error('handleIniciarAtendimento error:', err);
-      toast.error('Erro ao iniciar atendimento: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível iniciar o atendimento.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -642,12 +634,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
 
-      toast.success('Atendimento finalizado!', {
+      toast.success('Atendimento finalizado', {
         description: result.actions.join(' • '),
       });
     } catch (err: any) {
       console.error('Erro ao finalizar:', err);
-      toast.error('Erro ao finalizar: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível finalizar.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -689,7 +681,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
          queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
        } catch (error: any) {
          toast.error('Não foi possível abrir a cobrança do exame', {
-           description: error?.message || 'Cadastre o preço do exame e tente novamente.',
+           description: friendlyErrorMessage(error, 'Cadastre o preço do exame e tente novamente.'),
          });
          return;
        }
@@ -741,18 +733,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             toast.warning('O paciente não está na fila de atendimento.', { description: 'Atualize a recepção antes de chamá-lo ao balcão.' });
             return;
           }
-          const { data: chamada, error: filaErr } = await supabase
-            .from('fila_atendimento')
-            .update({ status: 'chamado' })
-            .eq('id', fila.id)
-            .eq('clinica_id', profile.clinica_id)
-            .in('status', ['aguardando', 'chamado'])
-            .select('id')
-            .maybeSingle();
-          if (filaErr) throw filaErr;
-          if (!chamada) {
+          const chamada = await chamarPacienteNaFila({ filaId: fila.id, clinicaId: profile.clinica_id, versao: fila.updated_at });
+          if (chamada === 'mudou') {
             queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-            toast.warning('A fila mudou antes da chamada.', { description: 'Atualize a tela e tente novamente.' });
+            toast.warning('A fila mudou antes da chamada.', { description: 'Outra pessoa pode ter chamado este paciente. A lista foi atualizada.' });
             return;
           }
           queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
@@ -783,7 +767,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           window.speechSynthesis.speak(utter);
         }
 
-        toast.success(`${pac?.nome} chamado ao balcão!`, {
+        toast.success(`${pac?.nome} chamado ao balcão`, {
           description: agId ? 'Chamado no painel da sala de espera' : 'Aviso sonoro reproduzido na recepção',
           action: {
             label: 'Receber agora',
@@ -933,7 +917,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             falhaNoRecibo = 'O pagamento foi confirmado, mas não foi possível enviar o recibo por e-mail.';
             if (import.meta.env.DEV) console.warn('Comprovante não enviado:', receiptError.message);
           } else if (['failed', 'not_configured'].includes(recibo?.emailStatus)) {
-            falhaNoRecibo = recibo?.message || 'O pagamento foi confirmado, mas o recibo não foi enviado por e-mail.';
+            falhaNoRecibo = friendlyErrorMessage(recibo?.message, 'O pagamento foi confirmado, mas o recibo não foi enviado por e-mail.');
           }
         } catch (erroRecibo) {
           falhaNoRecibo = 'O pagamento foi confirmado, mas não foi possível confirmar o envio do recibo por e-mail.';
@@ -951,7 +935,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       setShowPagamento(false);
       setSelectedLancamento(null);
       setSelectedPacienteBalcao(null);
-      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado!`);
+      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado`);
       if (falhaNoRecibo) {
         toast.warning('Pagamento confirmado; recibo não enviado', {
           description: falhaNoRecibo,
@@ -966,7 +950,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
       }
     } catch (err: any) {
-      toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível confirmar o pagamento.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -990,12 +974,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.success('Atendimento concluído com sucesso!');
+      toast.success('Atendimento concluído com sucesso');
       setConfirmDialogOpen(false);
       setPendingAction(null);
     } catch (err: any) {
       console.error('Erro ao concluir:', err);
-      toast.error('Erro ao concluir: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível concluir.', { description: friendlyErrorMessage(err, 'Tente novamente em instantes.') });
     }
     setIsProcessing(false);
   }
@@ -1020,7 +1004,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         navigate(`/triagem?${new URLSearchParams({ buscarPaciente: pacienteId }).toString()}`);
         return;
       }
-      toast.success('Paciente encaminhado para triagem!', {
+      toast.success('Paciente encaminhado para triagem', {
         description: 'A ficha será aberta com o paciente e o agendamento selecionados.',
       });
       navigate(`/triagem?${new URLSearchParams({ paciente: pacienteId, agendamento: agId }).toString()}`);
@@ -1140,7 +1124,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           status: 'agendado',
           clinica_id: profile?.clinica_id,
         })
-        .select('id, paciente_id, medico_id, tipo')
+        .select('id, paciente_id, medico_id, tipo, clinica_id, data, status')
         .single();
       if (error) throw error;
 
@@ -1380,6 +1364,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                   )}
                                   {atrasado && (
                                     <Badge variant="outline" className="border-destructive/40 text-[10px] text-destructive">
+                                      <AlertTriangle aria-hidden="true" className="mr-0.5 h-2.5 w-2.5" />
                                       Atrasado {minutosAgora - (horaMin ?? 0)} min
                                     </Badge>
                                   )}
@@ -1436,10 +1421,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
                               {/* Wait time */}
                               {fila?.horario_chegada && step < 3 && (
-                                <div className={cn('flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold', corEspera(fila.horario_chegada), 'border-current/30')}>
-                                  <Timer className="h-3.5 w-3.5" />
-                                  <span>{calcEspera(fila.horario_chegada)}</span>
-                                </div>
+                                <EsperaIndicador desde={fila.horario_chegada} className="rounded-full border border-current/30 px-2 py-0.5 text-xs font-semibold" />
                               )}
 
                               {/* Action buttons */}
@@ -1693,6 +1675,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             </DialogTitle>
             <DialogDescription>Registre o pagamento do paciente.</DialogDescription>
           </DialogHeader>
+
+          {/* Confirme o paciente antes de cobrar (CLIN-QA-402). */}
+          {selectedLancamento && (
+            <IdentificacaoPaciente
+              variante="dialogo"
+              contexto="cobranca"
+              paciente={selectedPacienteBalcao ? paraIdentificacao(selectedPacienteBalcao) : null}
+            />
+          )}
 
           {selectedLancamento && (
             <div className="space-y-4">

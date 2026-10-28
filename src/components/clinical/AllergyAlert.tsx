@@ -35,7 +35,7 @@ export function AllergyAlert({ alergias, className, compact = false }: AllergyAl
     <Alert variant="destructive" className={cn("border-2", className)}>
       <AlertTriangle className="h-5 w-5 animate-pulse" />
       <AlertTitle className="font-bold flex items-center gap-2">
-        ⚠️ ALERTA DE ALERGIAS
+        ALERTA DE ALERGIAS
       </AlertTitle>
       <AlertDescription>
         <div className="flex flex-wrap gap-2 mt-2">

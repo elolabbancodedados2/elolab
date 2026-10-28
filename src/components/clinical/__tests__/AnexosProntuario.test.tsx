@@ -91,22 +91,21 @@ describe('AnexosProntuario', () => {
 
   it('mantém o registro do anexo se o Storage falhar ao excluí-lo', async () => {
     const removido = vi.fn();
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     mocks.remove.mockResolvedValue({ error: new Error('Storage indisponível') });
     render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={removido} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' }));
+    expect(mocks.remove).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir' }));
 
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Erro',
       description: 'Não foi possível excluir o anexo.',
       variant: 'destructive',
     })));
-    expect(confirm).toHaveBeenCalledOnce();
     expect(mocks.from).not.toHaveBeenCalled();
     expect(removido).not.toHaveBeenCalled();
     expect(screen.getByText('resultado.pdf')).toBeVisible();
-    confirm.mockRestore();
   });
 
   it('abre a nova aba no clique antes de aguardar o link assinado', async () => {

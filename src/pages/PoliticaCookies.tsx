@@ -1,7 +1,9 @@
+import { formatDate } from '@/lib/formatters';
 import { Link } from 'react-router-dom';
 import { NavegacaoLegal } from '@/components/NavegacaoLegal';
 import { ArrowLeft, Cookie } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Logo from '@/components/landing-v2/Logo';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { COOKIE_CATALOG } from '@/lib/cookies';
@@ -16,21 +18,28 @@ export default function PoliticaCookies() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-3xl px-4 py-8 sm:py-12">
-        <Button asChild variant="ghost" size="sm" className="mb-6">
-          <Link to="/">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
+    <div className="min-h-screen bg-gradient-to-b from-[#F3F8FC] to-white">
+      <div className="container mx-auto max-w-3xl px-4 py-6 sm:py-10">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <Link to="/" aria-label="EloLab, página inicial" className="inline-flex min-h-10 items-center">
+            <Logo />
           </Link>
-        </Button>
+          <Button asChild variant="outline" size="sm" className="h-10 gap-2 rounded-full">
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Link>
+          </Button>
+        </div>
 
-        <div className="flex items-center gap-3 mb-8">
-          <Cookie className="h-8 w-8 text-primary" />
+        <div className="mb-6 flex items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <Cookie className="h-6 w-6" aria-hidden="true" />
+          </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Política de Cookies</h1>
         </div>
 
-        <div className="prose prose-sm max-w-none space-y-6 text-muted-foreground">
-          <p className="text-xs">Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
+        <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-[#1080CA]">
+          <p className="text-xs">Última atualização: {formatDate(new Date(), 'short')}</p>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. O que são Cookies?</h2>
@@ -49,12 +58,13 @@ export default function PoliticaCookies() {
               <div key={category.category} className="mb-6">
                 <h3 className="text-base font-medium text-foreground flex items-center gap-2">
                   {category.name}
-                  {category.required && <Badge variant="secondary" className="text-[10px]">Obrigatório</Badge>}
+                  {category.required && <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[10px] text-[#1080CA]">Obrigatório</Badge>}
                 </h3>
                 <p className="text-sm mb-2">{category.description}</p>
                 
-                <Table>
-                  <TableHeader>
+                <div className="not-prose overflow-x-auto rounded-xl border border-border/60">
+                <Table className="min-w-[520px]">
+                  <TableHeader className="bg-[#F3F8FC]">
                     <TableRow>
                       <TableHead className="text-xs">Cookie</TableHead>
                       <TableHead className="text-xs">Finalidade</TableHead>
@@ -73,6 +83,7 @@ export default function PoliticaCookies() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             ))}
           </section>
@@ -84,7 +95,7 @@ export default function PoliticaCookies() {
               <li><strong>No navegador:</strong> Você pode bloquear ou excluir cookies nas configurações do seu navegador.</li>
               <li><strong>Revogar consentimento:</strong> Clique no botão abaixo para revogar seu consentimento a qualquer momento.</li>
             </ul>
-            <Button variant="outline" size="sm" onClick={handleRevokeConsent} className="mt-2">
+            <Button variant="outline" size="sm" onClick={handleRevokeConsent} className="mt-2 h-10 rounded-full">
               Revogar Consentimento de Cookies
             </Button>
           </section>
@@ -97,7 +108,7 @@ export default function PoliticaCookies() {
           <section>
             <h2 className="text-lg font-semibold text-foreground">6. Contato</h2>
             <p>Dúvidas sobre cookies: <strong>privacidade@elolab.com.br</strong></p>
-            <p>Consulte também nossa <Link to="/politica-privacidade" className="text-primary hover:underline">Política de Privacidade</Link>.</p>
+            <p>Consulte também nossa <Link to="/politica-privacidade" className="text-[#1080CA] hover:underline">Política de Privacidade</Link>.</p>
           </section>
           <NavegacaoLegal atual="/politica-cookies" />
         </div>

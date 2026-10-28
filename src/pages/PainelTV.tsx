@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { chaveChamada, lerChamadasAnunciadas, salvarChamadasAnunciadas } from '@/lib/painelChamadas';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 interface FilaItem {
   id: string;
@@ -155,7 +157,9 @@ export default function PainelTV() {
   const [somAtivo, setSomAtivo] = useState(true);
   
   // Track which calls we've already announced
+  // persisted per clinic so a reload of the TV does not re-announce old calls
   const announcedCallsRef = useRef<Set<string>>(new Set());
+  const announcedClinicaRef = useRef<string | null>(null);
   const enfileirarChamadaRef = useRef<((pacienteNome: string, salaNome: string) => Promise<void>) | null>(null);
   if (!enfileirarChamadaRef.current) enfileirarChamadaRef.current = criarFilaDeChamadas();
 
@@ -259,14 +263,20 @@ export default function PainelTV() {
 
   // Announce new calls via TTS
   useEffect(() => {
-    if (!somAtivo) return;
-    
+    const clinicaId = profile?.clinica_id;
+    // Sem a fila confirmada, a limpeza abaixo apagaria a memória da recarga.
+    if (!somAtivo || !clinicaId || !filaCarregadaUmaVez.current) return;
+    if (announcedClinicaRef.current !== clinicaId) {
+      announcedClinicaRef.current = clinicaId;
+      announcedCallsRef.current = lerChamadasAnunciadas(clinicaId);
+    }
+
     const chamados = fila.filter((f) => f.status === 'chamado');
-    
+
     for (const chamado of chamados) {
-      const chaveChamada = `${chamado.id}:${chamado.updated_at || chamado.horario_chegada}`;
-      if (!announcedCallsRef.current.has(chaveChamada)) {
-        announcedCallsRef.current.add(chaveChamada);
+      const chave = chaveChamada(chamado);
+      if (!announcedCallsRef.current.has(chave)) {
+        announcedCallsRef.current.add(chave);
         setChamadoAtual(chamado.id);
         
         // Nome reduzido igual ao telão: o som alcança a sala inteira.
@@ -278,11 +288,12 @@ export default function PainelTV() {
     }
     
     // Clean up old announced calls
-    const currentIds = new Set(chamados.map(f => `${f.id}:${f.updated_at || f.horario_chegada}`));
+    const currentIds = new Set(chamados.map(chaveChamada));
     announcedCallsRef.current.forEach(id => {
       if (!currentIds.has(id)) announcedCallsRef.current.delete(id);
     });
-  }, [fila, getPacienteNome, salas, somAtivo]);
+    salvarChamadasAnunciadas(clinicaId, announcedCallsRef.current);
+  }, [fila, getPacienteNome, salas, somAtivo, profile?.clinica_id]);
 
   const loadFila = async () => {
     const clinicaId = profile?.clinica_id;
@@ -441,7 +452,7 @@ export default function PainelTV() {
       });
       if (dbError) throw dbError;
       arquivoEnviado = null;
-      toast.success('Mídia adicionada com sucesso!');
+      toast.success('Mídia adicionada com sucesso');
       loadMedia();
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro no upload:', error);
@@ -451,11 +462,11 @@ export default function PainelTV() {
           if (cleanupError) throw cleanupError;
         } catch (cleanupError: any) {
           toast.warning('O cadastro da mídia falhou e o arquivo temporário não pôde ser removido.', {
-            description: cleanupError?.message || 'Verifique o armazenamento do painel.',
+            description: friendlyErrorMessage(cleanupError, 'Verifique o armazenamento do painel.'),
           });
         }
       }
-      toast.error(error.message || 'Erro ao fazer upload');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível enviar a mídia.'));
     } finally {
       setUploading(false);
       event.target.value = '';
@@ -482,7 +493,7 @@ export default function PainelTV() {
           if (storageError) throw storageError;
         } catch (storageError: any) {
           toast.warning('A mídia saiu do painel, mas o arquivo não foi removido do Storage.', {
-            description: storageError?.message || 'Verifique o armazenamento do painel.',
+            description: friendlyErrorMessage(storageError, 'Verifique o armazenamento do painel.'),
           });
           loadMedia();
           return;
@@ -491,7 +502,7 @@ export default function PainelTV() {
       toast.success('Mídia removida');
       loadMedia();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao remover mídia');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível remover a mídia.'));
     }
   };
 
@@ -504,7 +515,7 @@ export default function PainelTV() {
       if (!data) throw new Error('A mídia não pertence à clínica atual ou já foi removida.');
       void loadMedia();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao atualizar mídia');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar a mídia.'));
     }
   };
 
@@ -528,7 +539,7 @@ export default function PainelTV() {
   const currentMedia = mediaItems[currentMediaIndex];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white relative overflow-hidden">
+    <div className="min-h-screen bg-slate-900 text-white relative overflow-hidden">
       {/* Background Media Carousel */}
       {mediaItems.length > 0 && currentMedia && (
         <div className="absolute inset-0 z-0">
@@ -537,7 +548,7 @@ export default function PainelTV() {
           ) : (
             <video key={currentMedia.id} src={currentMedia.url} autoPlay muted onEnded={handleVideoEnded} className="w-full h-full object-cover" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/70 to-slate-900/50" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#04182B]/95 via-[#0A3558]/75 to-[#062540]/55" />
         </div>
       )}
 
@@ -547,7 +558,7 @@ export default function PainelTV() {
         <header className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-4xl md:text-5xl font-bold font-display tracking-tight">
-              <span className="text-primary">Elo</span>Lab
+              <span className="text-[#5BB4EE]">Elo</span>Lab
             </h1>
             <p className="text-lg md:text-xl text-white/60 mt-1">Painel de Atendimento</p>
           </div>
@@ -562,19 +573,19 @@ export default function PainelTV() {
         </header>
 
         {filaCarregando && !filaErro && (
-          <div role="status" className="mb-4 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-center text-white/80">
+          <div role="status" className="mb-4 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center text-white/80">
             <Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />
             Carregando a fila de atendimento…
           </div>
         )}
         {filaErro && (
-          <div role="alert" className="mb-4 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-amber-300/40 bg-amber-950/80 px-4 py-3 text-center text-amber-50">
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-warning/50 bg-[#04182B]/90 px-4 py-3 text-center text-white">
             <span>{filaErro}</span>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="border-white/30 bg-white/10 text-white hover:bg-white/20"
+              className="rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
               disabled={filaCarregando}
               onClick={() => { setFilaCarregando(true); void loadFila(); }}
             >
@@ -593,7 +604,7 @@ export default function PainelTV() {
               size="icon"
               onClick={() => setSomAtivo(!somAtivo)}
               className={cn(
-                'bg-white/10 border-white/20 text-white hover:bg-white/20',
+                'rounded-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white',
                 !somAtivo && 'opacity-50'
               )}
               title={somAtivo ? 'Som ativado' : 'Som desativado'}
@@ -605,14 +616,14 @@ export default function PainelTV() {
             {/* Settings */}
             <Dialog open={showSettings} onOpenChange={setShowSettings}>
               <DialogTrigger asChild>
-                <Button aria-label="Configurar mídias do painel" variant="outline" size="icon" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+                <Button aria-label="Configurar mídias do painel" variant="outline" size="icon" className="rounded-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white">
                   <Settings className="h-5 w-5" />
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    <Monitor className="h-5 w-5" />
+                    <Monitor className="h-5 w-5 text-[#1080CA]" />
                     Configurar Mídia do Painel
                   </DialogTitle>
                   <DialogDescription>Adicione imagens ou vídeos para exibir no painel da TV</DialogDescription>
@@ -621,37 +632,37 @@ export default function PainelTV() {
                   <div className="space-y-2">
                     <Label>Adicionar Nova Mídia</Label>
                     <div className="flex gap-2">
-                      <Input type="file" accept="image/*,video/*" onChange={handleFileUpload} disabled={uploading} className="flex-1" />
-                      {uploading && <Loader2 className="h-5 w-5 animate-spin" />}
+                      <Input type="file" accept="image/*,video/*" onChange={handleFileUpload} disabled={uploading} className="flex-1 rounded-xl" />
+                      {uploading && <Loader2 className="h-5 w-5 animate-spin text-[#1080CA]" />}
                     </div>
                     <p className="text-xs text-muted-foreground">Formatos aceitos: JPG, PNG, GIF, MP4, WEBM</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Mídias Cadastradas ({allMediaItems.length})</Label>
                     {allMediaItems.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground border rounded-lg border-dashed">
-                        <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                        <p>Nenhuma mídia cadastrada</p>
+                      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-[#BFD8EE] bg-[#F3F8FC] py-8 text-center text-muted-foreground">
+                        <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ImageIcon className="h-7 w-7" /></span>
+                        <p className="font-medium text-foreground">Nenhuma mídia cadastrada</p>
                         <p className="text-sm">Faça upload de imagens ou vídeos acima</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
                         {allMediaItems.map((media) => (
-                          <Card key={media.id} className="overflow-hidden">
+                          <Card key={media.id} className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
                             <CardContent className="p-3 flex items-center gap-3">
-                              <div className="h-16 w-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                              <div className="h-16 w-24 rounded-xl overflow-hidden bg-[#EEF4FA] flex-shrink-0">
                                 {media.tipo === 'imagem' ? (
                                   <img src={media.url} alt={media.nome} className="w-full h-full object-cover" />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center bg-slate-800">
-                                    <Video className="h-6 w-6 text-white/60" />
+                                  <div className="w-full h-full flex items-center justify-center bg-gradient-primary">
+                                    <Video className="h-6 w-6 text-white/80" />
                                   </div>
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium truncate">{media.nome}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant={media.tipo === 'video' ? 'secondary' : 'outline'}>
+                                  <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]">
                                     {media.tipo === 'video' ? <Video className="h-3 w-3 mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
                                     {media.tipo}
                                   </Badge>
@@ -661,8 +672,8 @@ export default function PainelTV() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <Switch checked={media.ativo} onCheckedChange={() => toggleMediaActive(media)} />
-                                <Button aria-label={`Excluir mídia ${media.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteMedia(media)} className="text-destructive hover:text-destructive">
+                                <Switch checked={media.ativo} onCheckedChange={() => toggleMediaActive(media)} aria-label={`Exibir ${media.nome} no painel`} />
+                                <Button aria-label={`Excluir mídia ${media.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteMedia(media)} className="rounded-full text-destructive hover:text-destructive">
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -680,7 +691,7 @@ export default function PainelTV() {
 
         {/* Media Controls */}
         {isAdmin() && mediaItems.length > 1 && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-3 py-2">
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#04182B]/70 backdrop-blur-sm rounded-full border border-white/10 px-3 py-2">
             <Button aria-label="Mídia anterior" variant="ghost" size="icon" onClick={() => setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length)} className="h-8 w-8 text-white hover:bg-white/20">
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -708,8 +719,11 @@ export default function PainelTV() {
                   key={chamado.id}
                   animate={{ scale: [1, 1.01, 1] }}
                   transition={{ repeat: Infinity, duration: 2 }}
-                  className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl p-6 md:p-8 shadow-2xl shadow-primary/20 cursor-pointer mb-4"
+                  className="bg-primary rounded-xl p-6 md:p-8 shadow-2xl shadow-primary/20 cursor-pointer mb-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
                   onClick={() => rechamarPaciente(chamado)}
+                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); rechamarPaciente(chamado); } }}
+                  role="button"
+                  tabIndex={0}
                   title="Clique para chamar novamente"
                 >
                   <div className="flex items-center gap-3 mb-3">
@@ -726,7 +740,7 @@ export default function PainelTV() {
                       </p>
                     </div>
                     <div className="text-left md:text-right">
-                      <p className="text-2xl md:text-3xl font-bold bg-white/20 px-6 py-3 rounded-xl inline-block">
+                      <p className="text-2xl md:text-3xl font-bold bg-white text-[#0B4F7D] px-6 py-3 rounded-2xl inline-block shadow-lg">
                         {getSalaNome(chamado.sala_id)}
                       </p>
                     </div>
@@ -740,8 +754,9 @@ export default function PainelTV() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
           {/* Em Atendimento */}
           <div className="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
-            <div className="bg-purple-600/80 px-6 py-4">
+            <div className="flex items-center justify-between gap-3 bg-white/10 px-6 py-4">
               <h2 className="text-xl md:text-2xl font-bold font-display">Em Atendimento</h2>
+              <span className="rounded-full bg-white/20 px-3 py-1 text-base font-bold tabular-nums">{emAtendimento.length}</span>
             </div>
             <div className="p-4 md:p-6">
               {emAtendimento.length === 0 ? (
@@ -749,13 +764,13 @@ export default function PainelTV() {
               ) : (
                 <div className="space-y-3">
                   {emAtendimento.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center p-4 bg-purple-500/20 rounded-xl border border-purple-500/30">
+                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/10">
                       <div>
                         <p className="text-lg md:text-xl font-semibold">{getPacienteNome(item.agendamento_id)}</p>
                         <p className="text-white/60">{getMedicoNome(item.agendamento_id)}</p>
                       </div>
                       <div className="text-right">
-                        <span className="bg-purple-600 px-4 py-2 rounded-full text-sm md:text-base font-medium">
+                        <span className="bg-white/15 px-4 py-2 rounded-full text-sm md:text-base font-medium">
                           {getSalaNome(item.sala_id)}
                         </span>
                       </div>
@@ -767,13 +782,14 @@ export default function PainelTV() {
           </div>
 
           {/* Aguardando */}
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
-            <div className="bg-white/10 px-6 py-4">
+          <div className="bg-white/[0.07] backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
+            <div className="flex items-center justify-between gap-3 bg-white/10 px-6 py-4">
               <h2 className="text-xl md:text-2xl font-bold font-display">Aguardando</h2>
+              <span className="rounded-full bg-white/15 px-3 py-1 text-base font-bold tabular-nums">{filaAguardando.length}</span>
             </div>
             <div className="p-4 md:p-6">
               {fila.length === 0 && filaErro ? (
-                <p className="text-center text-amber-100/80 py-8 text-lg">A lista de espera está indisponível.</p>
+                <p className="text-center text-white/70 py-8 text-lg">A lista de espera está indisponível.</p>
               ) : fila.length === 0 && filaCarregando ? (
                 <p className="text-center text-white/50 py-8 text-lg">Carregando a lista de espera…</p>
               ) : filaAguardando.length === 0 ? (
@@ -786,14 +802,14 @@ export default function PainelTV() {
                       className={cn(
                         'flex justify-between items-center p-3 md:p-4 rounded-xl transition-colors',
                         index === 0
-                          ? 'bg-yellow-500/20 border border-yellow-500/30'
+                          ? 'bg-[#1080CA]/25 border border-[#5BB4EE]/50'
                           : 'bg-white/5 border border-white/5'
                       )}
                     >
                       <div className="flex items-center gap-3 md:gap-4">
                         <span className={cn(
                           'w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold text-sm md:text-base',
-                          index === 0 ? 'bg-yellow-500 text-slate-900' : 'bg-white/10'
+                          index === 0 ? 'bg-white text-[#0B4F7D]' : 'bg-white/10'
                         )}>
                           {index + 1}
                         </span>
@@ -802,7 +818,7 @@ export default function PainelTV() {
                           <p className="text-sm text-white/50">{getMedicoNome(item.agendamento_id)}</p>
                         </div>
                       </div>
-                      <span className="text-white/40 text-sm">
+                      <span className="text-white/60 text-sm tabular-nums">
                         {format(new Date(item.horario_chegada), 'HH:mm')}
                       </span>
                     </div>
@@ -816,7 +832,7 @@ export default function PainelTV() {
           </div>
         </div>
 
-        <footer className="mt-8 text-center text-white/40">
+        <footer className="mt-8 text-center text-lg text-white/60">
           <p>Por favor, aguarde seu nome ser chamado e dirija-se ao local indicado.</p>
         </footer>
       </div>

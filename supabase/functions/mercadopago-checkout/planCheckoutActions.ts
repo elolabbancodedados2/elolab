@@ -35,7 +35,12 @@ export interface PlanCheckoutContext {
 }
 
 type GatewayRequest = (preapprovalId: string) => Promise<unknown>;
-type CreateCardGatewayRequest = (payload: Record<string, unknown>, deviceId: string | null) => Promise<Record<string, unknown>>;
+type CreateCardGatewayRequest = (
+  payload: Record<string, unknown>,
+  deviceId: string | null,
+  idempotencyKey: string,
+) => Promise<Record<string, unknown>>;
+type SearchPreapprovals = (payerEmail: string) => Promise<Array<Record<string, unknown>>>;
 
 const APP_URL = 'https://app.elolab.com.br';
 const ORDER_CLIENT_FIELDS =
@@ -227,10 +232,101 @@ export async function billingStatus(body: Record<string, unknown>, ctx: PlanChec
 
 // ─── Cartão: assinatura recorrente ──────────────────────────────────────────
 
+function searchPreapprovalsByPayer(mpToken: string): SearchPreapprovals {
+  return async (payerEmail) => {
+    const result = await createMercadoPagoClient({ accessToken: mpToken, maxAttempts: 2 })
+      .request<{ results?: unknown }>({ method: 'GET', path: `/preapproval/search?payer_email=${encodeURIComponent(payerEmail)}&limit=50` });
+    return Array.isArray(result?.results) ? result.results as Array<Record<string, unknown>> : [];
+  };
+}
+
+/**
+ * Uma tentativa de cartão interrompida por timeout/5xx pode ter criado a
+ * assinatura no Mercado Pago sem a resposta chegar. A chave idempotente da
+ * tentativa (checkout_reference, enviada como external_reference e
+ * X-Idempotency-Key) localiza essa assinatura antes de qualquer nova criação.
+ */
+async function resumeInterruptedCardCheckout(
+  ctx: PlanCheckoutContext,
+  plano: Record<string, unknown>,
+  payerEmail: string,
+  search: SearchPreapprovals,
+): Promise<Response | null> {
+  const { supabase, user, headers } = ctx;
+  const { data: rows, error } = await supabase
+    .from('assinaturas_mercadopago')
+    .select('id, mp_preapproval_id, detalhes')
+    .eq('status', 'pendente')
+    .is('mp_preapproval_id', null)
+    .filter('detalhes->>user_id', 'eq', user.id);
+  if (error) throw error;
+  const attempts = ((rows || []) as Array<{ id: string; mp_preapproval_id: string | null; detalhes: Record<string, unknown> | null }>)
+    .filter((row) => !row.mp_preapproval_id && typeof row.detalhes?.checkout_reference === 'string');
+  if (!attempts.length) return null;
+
+  let found: Array<Record<string, unknown>>;
+  try {
+    found = await search(payerEmail);
+  } catch (searchError) {
+    console.warn('Não foi possível consultar a tentativa anterior no Mercado Pago:', searchError instanceof MercadoPagoApiError ? searchError.status : 'falha de comunicação');
+    return reply({
+      error: 'Não foi possível confirmar no Mercado Pago o resultado da tentativa anterior. Nenhuma nova cobrança foi criada; tente novamente em instantes.',
+      code: 'falha_comunicacao',
+    }, 503, headers);
+  }
+
+  for (const row of attempts) {
+    const detalhes = row.detalhes || {};
+    const gateway = found.find((item) => String(item.external_reference ?? '') === detalhes.checkout_reference);
+    // shortcut: não encontrado conta como não criado; se a busca do gateway atrasar a indexação, o webhook ainda reconcilia pelo external_reference.
+    if (!gateway?.id) continue;
+    const gatewayStatus = String(gateway.status || 'pending');
+    const adopt = gatewayStatus === 'authorized' && detalhes.plano_slug === plano.slug;
+    const { error: linkError } = await supabase
+      .from('assinaturas_mercadopago')
+      .update({
+        mp_preapproval_id: String(gateway.id),
+        // Assinatura de outro plano ou não autorizada fica vinculada e é cancelada abaixo.
+        status: adopt ? 'ativa' : 'pendente',
+        detalhes: { ...detalhes, preapproval_id: String(gateway.id), preapproval_status: gatewayStatus, retomado_em: new Date().toISOString() },
+      })
+      .eq('id', row.id);
+    if (linkError) throw linkError;
+    if (!adopt) continue;
+
+    const trialEnd = typeof detalhes.trial_end === 'string' ? detalhes.trial_end : null;
+    if (trialEnd) {
+      const { error: claimError } = await supabase
+        .from('platform_plan_trial_claims')
+        .update({ status: 'started', gateway_subscription_id: String(gateway.id) })
+        .eq('user_id', user.id);
+      if (claimError) throw claimError;
+    }
+    await syncPlatformPlan(supabase, {
+      assinaturaId: row.id,
+      userId: user.id,
+      planoId: String(detalhes.plano_id ?? plano.id),
+      planoSlug: String(plano.slug),
+      gatewayStatus,
+      trialEnd,
+    }, ctx.mpToken);
+    await provisionAfterEntitlement(supabase, user.id);
+    return reply({
+      status: 'aprovado',
+      assinatura_id: row.id,
+      proxima_cobranca: gateway.next_payment_date ?? null,
+      em_trial: Boolean(trialEnd && new Date(trialEnd).getTime() > Date.now()),
+      retomado: true,
+    }, 200, headers);
+  }
+  return null;
+}
+
 export async function createCardSubscription(
   body: Record<string, unknown>,
   ctx: PlanCheckoutContext,
   gatewayRequest?: CreateCardGatewayRequest,
+  searchPreapprovals?: SearchPreapprovals,
 ) {
   const { supabase, user, headers } = ctx;
   const plano = await loadActivePlan(supabase, body.plano_slug);
@@ -262,6 +358,10 @@ export async function createCardSubscription(
 
   const payerEmail = payerEmailFor(user);
   if (!payerEmail) return reply({ error: 'A conta precisa ter um e-mail válido' }, 400, headers);
+
+  // Antes das regras de teste: a tentativa interrompida já reservou o teste.
+  const resumed = await resumeInterruptedCardCheckout(ctx, plano, payerEmail, searchPreapprovals ?? searchPreapprovalsByPayer(ctx.mpToken));
+  if (resumed) return resumed;
 
   const current = await loadCurrentPlan(supabase, user.id);
   if (hasActiveRecurring(current) && current?.plano_slug === plano.slug) {
@@ -360,13 +460,14 @@ export async function createCardSubscription(
 
   let preapproval: Record<string, unknown>;
   try {
-    // Uma tentativa só: repetir um POST de assinatura sem idempotência poderia
-    // criar duas assinaturas no cartão do cliente.
+    // Uma tentativa só; a chave idempotente da tentativa vai como
+    // external_reference e X-Idempotency-Key para a retomada localizar a
+    // assinatura se a resposta se perder.
     const deviceId = normalizeDeviceId(body.device_id);
     preapproval = gatewayRequest
-      ? await gatewayRequest(payload, deviceId)
+      ? await gatewayRequest(payload, deviceId, externalReference)
       : await createMercadoPagoClient({ accessToken: ctx.mpToken, maxAttempts: 1, timeoutMs: 30000 })
-        .request({ method: 'POST', path: '/preapproval', body: payload, deviceId });
+        .request({ method: 'POST', path: '/preapproval', body: payload, deviceId, idempotencyKey: externalReference });
   } catch (error) {
     const apiError = error instanceof MercadoPagoApiError ? error : null;
     const described = describeCardSubscriptionError(apiError?.status ?? null, apiError?.body ?? null);
@@ -509,13 +610,15 @@ export async function cancelPlanSubscription(
   if (!updatedPlan) throw new Error('Mercado Pago cancelou a assinatura, mas o plano ativo correspondente não foi atualizado.');
 
   const motivo = typeof body.motivo === 'string' ? body.motivo.slice(0, 500) : null;
-  await supabase.from('audit_log').insert({
+  // audit_log guarda o detalhe em "changes"; a coluna "details" não existe e a gravação falhava em silêncio.
+  const { error: auditError } = await supabase.from('audit_log').insert({
     action: 'SUBSCRIPTION_CANCELLED',
     collection: 'assinaturas_mercadopago',
     record_id: assinatura.id,
     user_id: user.id,
-    details: { mp_preapproval_id: assinatura.mp_preapproval_id, cancelled_at: cancelledAt, motivo },
+    changes: { mp_preapproval_id: assinatura.mp_preapproval_id, cancelled_at: cancelledAt, motivo },
   });
+  if (auditError) console.error('Cancelamento concluído, mas a trilha de auditoria não foi gravada:', auditError.message);
   return reply({ success: true, cancelled_at: cancelledAt }, 200, headers);
 }
 

@@ -1,0 +1,6 @@
+{
+  "comum": "Leia docs/time/REGRAS_DO_TIME.md e todos os resumos em docs/time/rodada-3/. Os outros agentes da rodada 3 já terminaram; você é o único rodando agora. Sem deploy, sem migration aplicada, sem commit, sem acesso à VPS. Ao terminar, grave docs/time/rodada-3/{agente}-final.md com os resultados reais. TAREFA: ",
+  "tarefas": {
+    "tech-lead": "Trate os achados P0 e P1 do revisor do Codex (docs/time/rodada-3/codex-revisor.md) que forem bugs reais causados pelas rodadas 1-3, corrigindo com teste; descarte com justificativa os que não se sustentarem. Depois faça a verificação completa uma única vez: npx tsc --noEmit -p tsconfig.app.json, npm run test:run, npm run lint e os npm run check:*. Separe falhas preexistentes da outra frente."
+  }
+}

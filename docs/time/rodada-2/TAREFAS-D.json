@@ -1,0 +1,6 @@
+{
+  "comum": "Leia docs/time/GATES.md e todos os arquivos em docs/time/rodada-1/ e docs/time/rodada-2/. Não edite código. Grave apenas os arquivos pedidos, em docs/, usando o Bash (heredoc) se não tiver ferramenta de escrita. TAREFA: ",
+  "tarefas": {
+    "clinical-quality-director": "Consolide as rodadas 1 e 2 em docs/time/rodada-2/CONSOLIDADO.md: estado de cada P0 e P1 (pronto localmente / aguardando aplicação / aberto / bloqueado por decisão), conferência por amostragem de pelo menos 6 evidências, conflitos entre agentes, resultados reais da verificação completa do tech-lead, veredito GO/GO CONDICIONAL/NO-GO e uma seção final 'O que só o responsável pode destravar' com passos exatos. Na última linha do arquivo escreva exatamente 'PROXIMA-RODADA: SIM' se ainda houver trabalho local executável pelo time sem decisão do responsável, ou 'PROXIMA-RODADA: NAO' caso contrário."
+  }
+}

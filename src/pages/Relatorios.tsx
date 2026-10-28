@@ -44,7 +44,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
 import { valorRealizado } from '@/lib/lancamentos';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { podeAcessarRelatorioCompletoDePacientes, podeExportarFontesCompletas } from '@/lib/reportAccess';
@@ -65,7 +65,7 @@ import {
   Legend,
 } from 'recharts';
 
-const CHART_COLORS = ['#1080CA', '#2ED5E7', '#111111', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
+const CHART_COLORS = ['#1080CA', '#2ED5E7', '#0B4F7D', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
 const GRID_COLOR = '#DCE6F2';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 const dateOnlyFromValue = (value: string) => value.includes('T') || value.includes(' ')
@@ -543,7 +543,7 @@ export default function Relatorios() {
       toast.success(`${nome} exportado com sucesso.`);
     } catch (error) {
       toast.error(`Não foi possível exportar ${nome.toLowerCase()}.`, {
-        description: error instanceof Error ? error.message : 'Tente novamente.',
+        description: friendlyErrorMessage(error, 'Tente novamente.'),
       });
     } finally {
       setExportando(null);
@@ -715,7 +715,7 @@ export default function Relatorios() {
       <div className={cn('grid gap-3 md:grid-cols-2', podeVerAgenda ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
         {podeVerAgenda && (
           <button type="button" aria-pressed={activeTab === 'atendimentos'} onClick={() => setActiveTab('atendimentos')}
-            className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+            className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:shadow-md">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-info/10">
                 <Calendar className="h-5 w-5 text-info" />
@@ -730,7 +730,7 @@ export default function Relatorios() {
         )}
 
         <button type="button" aria-pressed={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}
-          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:shadow-md">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10">
               <TrendingUp className="h-5 w-5 text-success" />
@@ -743,7 +743,7 @@ export default function Relatorios() {
         </button>
 
         <button type="button" aria-pressed={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}
-          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:shadow-md">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
               <TrendingDown className="h-5 w-5 text-destructive" />
@@ -756,7 +756,7 @@ export default function Relatorios() {
         </button>
 
         <button type="button" aria-pressed={activeTab === 'dre'} onClick={() => setActiveTab('dre')}
-          className="rounded-2xl border border-transparent bg-gradient-primary p-4 text-left text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+          className="rounded-2xl border border-transparent bg-gradient-primary p-4 text-left text-white shadow-xs transition-all hover:shadow-md">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
               <DollarSign className="h-5 w-5 text-white" />
@@ -804,7 +804,7 @@ export default function Relatorios() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="flex-wrap">
-          <TabsTrigger value="customizado">⚡ Customizado</TabsTrigger>
+          <TabsTrigger value="customizado">Customizado</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           <TabsTrigger value="dre">DRE</TabsTrigger>
           {podeVerAgenda && <TabsTrigger value="atendimentos">Atendimentos</TabsTrigger>}

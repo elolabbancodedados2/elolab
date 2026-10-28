@@ -1,0 +1,233 @@
+diff --git a/src/pages/LandingPage.tsx b/src/pages/LandingPage.tsx
+index b0081172..82c0edf0 100644
+--- a/src/pages/LandingPage.tsx
++++ b/src/pages/LandingPage.tsx
+@@ -51,11 +51,11 @@ import modFinanc6 from '@/assets/mod-financ6.webp';
+ 
+ /* ─── Colors ─── */
+ const C = {
+-  coral: 'hsl(12,76%,61%)',
+-  grad: 'linear-gradient(135deg, hsl(12,76%,61%), hsl(30,80%,55%))',
+-  dark: 'hsl(20,25%,18%)',
+-  text: 'hsl(20,15%,30%)',
+-  textL: 'hsl(20,10%,50%)',
++  coral: 'hsl(212,100%,40%)',
++  grad: 'linear-gradient(hsl(212,100%,40%), hsl(212,100%,40%))',
++  dark: 'hsl(215,28%,17%)',
++  text: 'hsl(215,16%,30%)',
++  textL: 'hsl(215,12%,47%)',
+ };
+ 
+ /* ─── Grouped modules ─── */
+@@ -143,7 +143,7 @@ const featureSections = [
+   {
+     title: 'Prontuário organizado,', highlight: 'no padrão da sua equipe',
+     desc: 'Monte seus modelos de anamnese e registre a consulta em minutos, com histórico, anexos, receitas, atestados e CID-10 sempre à mão.',
+-    desc2: 'Registre autoria e mantenha o histórico das alterações. A assinatura eletrônica do prontuário não equivale a certificado ICP-Brasil nem à integração Memed.',
++    desc2: 'Registre autoria e mantenha o histórico das alterações. Receitas com certificado ICP-Brasil pela integração com a Memed.',
+     cta: 'Conhecer o prontuário', img: landingEhr, alt: 'Prontuário eletrônico', rev: true,
+   },
+   {
+@@ -206,7 +206,7 @@ const faqItems = [
+   },
+   {
+     q: 'O EloLab atende laboratórios também?',
+-    a: 'Sim. Há um módulo completo de laboratório: organização das coletas, laudos digitais padronizados, mapa de coleta, rastreabilidade de amostras por código de barras e faturamento integrado.',
++    a: 'Sim. O módulo de laboratório organiza as coletas no mapa de coleta, identifica cada amostra por um código impresso em etiqueta de texto, acompanha a situação da amostra da coleta à análise, incluindo recoleta e rejeição, e emite laudos em PDF após validação e liberação do resultado.',
+   },
+   {
+     q: 'Existe limite de usuários por clínica?',
+@@ -222,7 +222,7 @@ const faqItems = [
+ function FaqItem({ q, a }: { q: string; a: string }) {
+   const [open, setOpen] = useState(false);
+   return (
+-    <div className="border-b border-[hsl(20,20%,90%)] last:border-0">
++    <div className="border-b border-[hsl(214,25%,90%)] last:border-0">
+       <button
+         onClick={() => setOpen(!open)}
+         className="w-full flex items-center justify-between py-5 text-left group"
+@@ -329,7 +329,7 @@ export default function LandingPage() {
+     <>
+       {/* Fixed gradient bg */}
+       <div className="fixed inset-0 -z-10" style={{
+-        background: 'linear-gradient(160deg, hsl(35,70%,95%) 0%, hsl(20,80%,93%) 25%, hsl(12,60%,90%) 50%, hsl(30,50%,92%) 75%, hsl(160,30%,93%) 100%)',
++        background: 'hsl(210,25%,97%)',
+       }} />
+ 
+       <div className="min-h-screen overflow-x-hidden font-sans">
+@@ -345,7 +345,7 @@ export default function LandingPage() {
+                 <button
+                   key={n.id}
+                   onClick={() => scrollTo(n.id)}
+-                  className="min-h-11 min-w-11 text-[13px] font-bold tracking-wide hover:text-[hsl(12,76%,61%)] transition-colors relative pb-1 group"
++                  className="min-h-11 min-w-11 text-[13px] font-bold tracking-wide hover:text-[hsl(212,100%,40%)] transition-colors relative pb-1 group"
+                   style={{ color: C.dark }}
+                 >
+                   {n.l}
+@@ -408,7 +408,7 @@ export default function LandingPage() {
+         <section className="relative pt-[72px] overflow-hidden" id="inicio">
+           {/* Blue curved background */}
+           <div className="absolute inset-0 z-0" style={{
+-            background: 'linear-gradient(135deg, hsl(210,70%,35%) 0%, hsl(215,75%,30%) 50%, hsl(220,65%,25%) 100%)',
++            background: 'hsl(215,75%,30%)',
+             clipPath: 'ellipse(85% 100% at 30% 0%)',
+           }} />
+           {/* Subtle pattern overlay */}
+@@ -458,12 +458,12 @@ export default function LandingPage() {
+ 
+               {/* Imagem ilustrativa da clínica */}
+               <div className="relative mx-auto w-full max-w-xl animate-fade-in lg:justify-self-end" style={{ animationDelay: '0.3s' }}>
+-                <div className="absolute -inset-3 rounded-[2rem] border border-white/15" aria-hidden="true" />
+-                <div className="relative overflow-hidden rounded-3xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-sm">
++                <div className="absolute -inset-3 rounded-2xl border border-white/15" aria-hidden="true" />
++                <div className="relative overflow-hidden rounded-xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-sm">
+                   <img
+                     src={clinicHero}
+                     alt="Recep&#231;&#227;o de uma cl&#237;nica"
+-                    className="aspect-[4/3] w-full rounded-[1.35rem] object-cover object-center sm:aspect-[16/10] lg:aspect-[4/3]"
++                    className="aspect-[4/3] w-full rounded-lg object-cover object-center sm:aspect-[16/10] lg:aspect-[4/3]"
+                     loading="eager"
+                   />
+                 </div>
+@@ -486,7 +486,7 @@ export default function LandingPage() {
+                 { icon: Receipt, title: 'Gestão financeira', text: 'Caixa, contas e relatórios da clínica.' },
+                 { icon: Users, title: 'Equipe e operação', text: 'Papéis, tarefas e processos do dia a dia.' },
+               ].map(({ icon: Icon, title, text }) => (
+-                <div key={title} className="rounded-2xl bg-white/75 border border-[hsl(20,30%,90%)] p-5">
++                <div key={title} className="rounded-2xl bg-white/75 border border-[hsl(214,25%,90%)] p-5">
+                   <Icon className="w-6 h-6 mb-3" style={{ color: C.coral }} />
+                   <h3 className="font-bold" style={{ color: C.dark }}>{title}</h3>
+                   <p className="text-sm mt-1" style={{ color: C.textL }}>{text}</p>
+@@ -504,10 +504,10 @@ export default function LandingPage() {
+                 <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+                   <div className={`flex justify-center ${f.rev ? 'lg:order-2' : 'lg:order-1'}`}>
+                     <div className="relative group">
+-                      <img src={f.img} alt={f.alt} className="w-full max-w-[440px] rounded-3xl shadow-lg transition-transform duration-500 group-hover:scale-[1.02]" loading="lazy" />
++                      <img src={f.img} alt={f.alt} className="w-full max-w-[440px] rounded-xl shadow-lg transition-transform duration-500 group-hover:scale-[1.02]" loading="lazy" />
+                       {/* Decorative glow behind image */}
+-                      <div className="absolute -inset-4 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"
+-                        style={{ background: 'radial-gradient(circle, hsl(12,76%,61%,0.08), transparent 70%)' }} />
++                      <div className="absolute -inset-4 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"
++                        style={{ background: 'radial-gradient(circle, hsl(212,100%,40%,0.08), transparent 70%)' }} />
+                     </div>
+                   </div>
+                   <div className={f.rev ? 'lg:order-1' : 'lg:order-2'}>
+@@ -556,7 +556,7 @@ export default function LandingPage() {
+             <React.Fragment key={gi}>
+               <div className="relative h-[180px] md:h-[220px] overflow-hidden">
+                 <img src={group.strip} alt={group.stripText} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+-                <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, hsl(20,25%,18%,0.75), hsl(12,76%,61%,0.45))' }} />
++                <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, hsl(215,28%,17%,0.75), hsl(212,100%,40%,0.45))' }} />
+                 <div className="relative z-10 flex flex-col items-center justify-center h-full px-4 text-center">
+                   <h3 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight drop-shadow-lg">
+                     {group.stripText}
+@@ -568,7 +568,7 @@ export default function LandingPage() {
+               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 md:py-20">
+                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                   {group.modules.map((m, mi) => (
+-                    <div key={mi} className="relative group rounded-2xl bg-white/70 border border-[hsl(20,30%,90%)] hover:shadow-xl transition-all duration-300 overflow-hidden hover:-translate-y-1">
++                    <div key={mi} className="relative group rounded-2xl bg-white/70 border border-[hsl(214,25%,90%)] hover:shadow-xl transition-all duration-300 overflow-hidden">
+                       <GlowingEffect spread={40} glow disabled={false} proximity={64} inactiveZone={0.01} borderWidth={2} />
+                       <div className="h-36 overflow-hidden">
+                         <img src={m.img} alt={m.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+@@ -576,7 +576,7 @@ export default function LandingPage() {
+                       <div className="p-5">
+                         <div className="flex items-center gap-2.5 mb-2">
+                           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+-                            style={{ background: 'hsl(12,76%,61%,0.1)' }}>
++                            style={{ background: 'hsl(212,100%,40%,0.1)' }}>
+                             <m.icon className="w-4 h-4" style={{ color: C.coral }} />
+                           </div>
+                           <h3 className="text-sm font-bold" style={{ color: C.dark }}>{m.title}</h3>
+@@ -606,7 +606,7 @@ export default function LandingPage() {
+             {plansLoading ? (
+               <p className="text-center text-sm" style={{ color: C.textL }}>Carregando valores atuais…</p>
+             ) : plansError || plans.length === 0 ? (
+-              <div className="max-w-xl mx-auto text-center rounded-2xl bg-white/80 border border-[hsl(20,30%,90%)] p-6">
++              <div className="max-w-xl mx-auto text-center rounded-2xl bg-white/80 border border-[hsl(214,25%,90%)] p-6">
+                 <p style={{ color: C.text }}>Não foi possível carregar os planos agora. Fale com a equipe para receber os valores vigentes.</p>
+                 <a className="inline-flex min-h-11 items-center mt-3 font-semibold" style={{ color: C.coral }} href="https://wa.me/5511937687369" target="_blank" rel="noopener noreferrer">Consultar planos pelo WhatsApp</a>
+               </div>
+@@ -614,13 +614,13 @@ export default function LandingPage() {
+               {plans.map((plan) => (
+                 <div
+                   key={plan.slug}
+-                  className={`relative rounded-3xl p-8 border-2 transition-all duration-300 hover:-translate-y-1 ${
++                  className={`relative rounded-xl p-8 border-2 transition-all duration-300 ${
+                     plan.popular
+-                      ? 'border-[hsl(12,76%,61%)] shadow-xl scale-[1.02]'
+-                      : 'border-[hsl(20,30%,90%)] bg-white/70 hover:shadow-lg'
++                      ? 'border-[hsl(212,100%,40%)] shadow-xl scale-[1.02]'
++                      : 'border-[hsl(214,25%,90%)] bg-white/70 hover:shadow-lg'
+                   }`}
+                   style={plan.popular ? {
+-                    background: 'linear-gradient(160deg, hsl(40,60%,97%), hsl(38,80%,95%), hsl(30,70%,96%))',
++                    background: 'hsl(0,0%,100%)',
+                     animation: 'pulseGlow 3s ease-in-out infinite',
+                   } : undefined}
+                 >
+@@ -644,7 +644,7 @@ export default function LandingPage() {
+                     {plan.features.map((f, j) => (
+                       <li key={j} className="flex items-center gap-2.5 text-sm" style={{ color: C.text }}>
+                         <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+-                          style={{ background: plan.popular ? C.grad : 'hsl(12,76%,61%,0.12)' }}>
++                          style={{ background: plan.popular ? C.grad : 'hsl(212,100%,40%,0.12)' }}>
+                           <Check className="w-3 h-3" style={{ color: plan.popular ? '#fff' : C.coral }} />
+                         </div>
+                         {f}
+@@ -655,7 +655,7 @@ export default function LandingPage() {
+                     <Button
+                       onClick={() => openCheckout(plan, 'trial')}
+                       className="w-full rounded-full py-3 font-bold text-white border-0 transition-all hover:scale-[1.02] hover:shadow-lg"
+-                      style={{ background: C.grad, boxShadow: plan.popular ? '0 8px 24px -4px hsl(12,76%,61%,0.4)' : undefined }}
++                      style={{ background: C.grad, boxShadow: plan.popular ? '0 8px 24px -4px hsl(212,100%,40%,0.4)' : undefined }}
+                     >
+                       <Clock className="w-4 h-4 mr-2" /> Testar {plan.trialDays} dias grátis
+                     </Button>
+@@ -679,7 +679,7 @@ export default function LandingPage() {
+           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setCheckoutOpen(false)}>
+             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+             <div
+-              className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl animate-fade-in"
++              className="relative w-full max-w-md bg-white rounded-xl p-8 shadow-2xl animate-fade-in"
+               onClick={(e) => e.stopPropagation()}
+             >
+               <button
+@@ -692,7 +692,7 @@ export default function LandingPage() {
+ 
+               <div className="text-center mb-6">
+                 <div className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center mb-3"
+-                  style={{ background: 'hsl(12,76%,61%,0.12)' }}>
++                  style={{ background: 'hsl(212,100%,40%,0.12)' }}>
+                   {checkoutMode === 'trial' ? (
+                     <Clock className="w-6 h-6" style={{ color: C.coral }} />
+                   ) : (
+@@ -750,7 +750,7 @@ export default function LandingPage() {
+                 { icon: FileText, title: 'Registre o cuidado', text: 'Mantenha prontuários e documentos clínicos ligados à rotina do paciente.' },
+                 { icon: Receipt, title: 'Acompanhe a operação', text: 'Consulte contas, caixa e relatórios da clínica.' },
+               ].map(({ icon: Icon, title, text }) => (
+-                <article key={title} className="rounded-2xl bg-white/80 border border-[hsl(20,30%,90%)] p-6">
++                <article key={title} className="rounded-2xl bg-white/80 border border-[hsl(214,25%,90%)] p-6">
+                   <Icon className="w-7 h-7 mb-4" style={{ color: C.coral }} />
+                   <h3 className="font-bold text-lg" style={{ color: C.dark }}>{title}</h3>
+                   <p className="mt-2 text-sm leading-relaxed" style={{ color: C.textL }}>{text}</p>
+@@ -776,7 +776,7 @@ export default function LandingPage() {
+                 Respostas diretas para decidir com tranquilidade
+               </p>
+             </div>
+-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-[hsl(20,30%,90%)] p-6 md:p-8 shadow-sm">
++            <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-[hsl(214,25%,90%)] p-6 md:p-8 shadow-sm">
+               {faqItems.map((item, i) => (
+                 <FaqItem key={i} q={item.q} a={item.a} />
+               ))}
+@@ -796,8 +796,8 @@ export default function LandingPage() {
+         {/* ══ FINAL CTA ══ */}
+         <section className="py-20 md:py-28">
+           <div className="max-w-4xl mx-auto px-4">
+-            <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12 md:p-16 text-center"
+-              style={{ background: 'linear-gradient(135deg, hsl(210,70%,35%), hsl(215,75%,30%), hsl(220,65%,25%))' }}>
++            <div className="relative rounded-xl overflow-hidden p-8 sm:p-12 md:p-16 text-center"
++              style={{ background: 'hsl(215,75%,30%)' }}>
+               {/* Pattern overlay */}
+               <div className="absolute inset-0 opacity-[0.04]" style={{
+                 backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',

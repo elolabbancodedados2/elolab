@@ -1,0 +1,21 @@
+diff --git a/src/lib/cookies.ts b/src/lib/cookies.ts
+index 4466224f..aa8cf08b 100644
+--- a/src/lib/cookies.ts
++++ b/src/lib/cookies.ts
+@@ -13,6 +13,8 @@ export interface CookieConsent {
+ 
+ const CONSENT_KEY = 'elolab_cookie_consent';
+ const CONSENT_VERSION = '1.0.0';
++/** Disparado quando a pessoa escolhe os cookies, para outros avisos aguardarem o banner. */
++export const COOKIE_CONSENT_EVENT = 'elolab:cookie-consent';
+ 
+ export function getCookieConsent(): CookieConsent | null {
+   try {
+@@ -35,6 +37,7 @@ export function setCookieConsent(consent: Omit<CookieConsent, 'consentedAt' | 'v
+   };
+   localStorage.setItem(CONSENT_KEY, JSON.stringify(full));
+   applyCookiePreferences(full);
++  window.dispatchEvent(new Event(COOKIE_CONSENT_EVENT));
+   return full;
+ }
+ 

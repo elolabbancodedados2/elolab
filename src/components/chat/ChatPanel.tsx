@@ -150,7 +150,7 @@ function ListaConversas({
                             'text-[11px] truncate',
                             c.nao_lidas > 0 ? 'text-foreground font-medium' : 'text-muted-foreground',
                           )}>
-                            {c.urgente_nao_lida && '🔴 '}
+                            {c.urgente_nao_lida && <span className="mr-1 font-semibold text-destructive">Urgente ·</span>}
                             {c.preview || 'Sem mensagens'}
                           </p>
                           {c.nao_lidas > 0 && (

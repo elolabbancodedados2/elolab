@@ -131,7 +131,7 @@ export default function AgenteIA() {
                 aria-pressed={isActive}
                 onClick={() => setActiveTab(indicator.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
                   indicator.escuro && 'border-transparent bg-gradient-primary text-white',
                   !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
                   indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',

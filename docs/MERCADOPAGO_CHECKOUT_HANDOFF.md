@@ -158,3 +158,16 @@ Esta seção atualiza os estados anteriores que diziam que as alterações ainda
 - **Produção financeira:** o checkout continua usando a configuração sandbox documentada. A mudança para credenciais reais exige autorização específica e não foi feita nesta publicação.
 
 A URL da PR será registrada após sua criação e o resultado do CI.
+
+## Checkout e assinatura — itens 61–70 do roadmap (24/10/2026, local, não publicado)
+
+- **Resumo antes do gateway:** o resumo do checkout mostra periodicidade e a data/valor da primeira cobrança (hoje, fim do teste ou fim do período pré-pago), com valores de `billing_status`.
+- **Retomada do cartão:** cada tentativa grava `checkout_reference`, enviado como `external_reference` e `X-Idempotency-Key` do `POST /preapproval`. Antes de criar outra assinatura, `create_card_subscription` procura tentativas pendentes sem ID do gateway em `GET /preapproval/search?payer_email=…` e casa pelo `external_reference`: autorizada para o mesmo plano é adotada (`retomado: true`), outra é vinculada e cancelada; sem resposta do gateway a função responde 503 sem criar nada. Limite: se a busca ainda não indexou a assinatura, ela conta como não criada; o webhook continua reconciliando pelo `external_reference`. O filtro `payer_email` e a indexação da busca não foram validados no sandbox.
+- **Recursos contratados no servidor:** `clinica_recurso_plano_liberado(clinica, recurso)` (service role) exige assinatura ativa/teste vigente do dono, sem fatura recorrente vencida há 72 h, com o recurso no plano. O agente de IA do WhatsApp (`whatsapp-webhook`) e `whatsapp-agent-knowledge` exigem `agente_ia`.
+- **Uso do plano:** `uso_plano_clinica()` devolve limites, uso e `verificado_em`; Configurações → Plano mostra a cota restante; o convite de equipe usa a mesma resposta.
+- **Histórico separado:** o diálogo de faturas lia `pagamentos_mercadopago` (pacientes). Agora usa `historico_cobranca_assinatura()` (tentativas no cartão, pedidos Pix e faturas recorrentes), sem dados de cartão nem payload do provedor. O financeiro de pacientes não foi alterado.
+- **Webhook:** o claim conta `repeticoes` de eventos já processados; orders recebem `sinal_ordem` `repetido`/`fora_de_ordem` depois de aplicar o estado atual do gateway. `platform_billing_overview` expõe os sinais.
+- **Reconciliação:** `platform_checkout_attempts()` e `platform_reconciliar_cobranca()` no painel Cobranças, com justificativa obrigatória e `audit_log`. Só ajusta o registro local, sem chamar o Mercado Pago. O registro de cancelamento passou a gravar em `audit_log.changes` (antes usava `details`, coluna inexistente).
+- **Aviso de alteração:** trigger em `planos` registra preço/limite alterados, enfileira e-mail para assinantes ativos e `/planos` mostra o efeito. Limites passam a valer no momento da alteração.
+- **Cancelamento:** os diálogos mostram a data do cancelamento, o fim antecipado do teste e que os dados não são apagados.
+- **Migrations locais, não aplicadas:** `20261024140000` a `20261024144000`. Validadas em PGlite com esquema sintético mínimo (aplicação dupla e cenários). Isso não substitui RLS/runtime do Supabase.

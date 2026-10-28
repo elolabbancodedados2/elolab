@@ -23,7 +23,7 @@ import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
 import { useRealtimeNotifications, type AppNotification } from '@/hooks/useRealtimeNotifications';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ContextualHelp } from '@/components/ContextualHelp';
 import { toast } from 'sonner';
@@ -45,6 +45,7 @@ interface NavbarProps {
 export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   const { user, profile, signOut, isAdmin } = useSupabaseAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
   const operationalSeenRef = useRef<{ owner: string; initialized: boolean; ids: Set<string> }>({ owner: '', initialized: false, ids: new Set() });
 
@@ -129,7 +130,31 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   }, [operationalNotifications, user?.id, profile?.clinica_id, navigate]);
 
   const queueUnread = queueNotifications.filter((n: any) => n.status !== 'lida').length;
-  const totalUnread = systemUnread + queueUnread;
+  // A aba Alertas mostra a mesma central operacional da tela de notificações.
+  const operationalUnread = operationalNotifications.filter((item) => !item.is_read).length;
+  const alertasUnread = operationalUnread + systemUnread;
+  const totalUnread = alertasUnread + queueUnread;
+  type OperationalItem = (typeof operationalNotifications)[number];
+  const markOperationalRead = useMutation({
+    mutationFn: async (item: OperationalItem) => {
+      if (!user || !profile?.clinica_id || item.is_read) return;
+      const { error } = await (supabase as any).from('user_notification_state').upsert({
+        clinica_id: profile.clinica_id,
+        user_id: user.id,
+        source_type: item.source_type,
+        source_id: item.source_id,
+        read_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['central-notificacoes'] }),
+  });
+  const openOperational = (item: OperationalItem) => {
+    markOperationalRead.mutate(item);
+    if (item.href) navigate(item.href);
+  };
+  const operationalColor = (severity: OperationalItem['severity']) =>
+    severity === 'error' ? 'bg-destructive' : severity === 'warning' ? 'bg-warning' : 'bg-info';
 
   const handleLogout = async () => {
     await signOut();
@@ -250,8 +275,8 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                   <Bell className="h-[17px] w-[17px]" />
                   {totalUnread > 0 && (
                     <span className="absolute top-2 right-2.5 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-highlight opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-highlight ring-2 ring-card" />
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-brand ring-2 ring-card" />
                     </span>
                   )}
                 </Button>
@@ -268,8 +293,8 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                   <TabsTrigger value="alertas" className="text-xs gap-1.5">
                     <Bell className="h-3.5 w-3.5" />
                     Alertas
-                    {systemUnread > 0 && (
-                      <Badge variant="secondary" className="text-[9px] rounded-full px-1.5 h-4 min-w-4">{systemUnread}</Badge>
+                    {alertasUnread > 0 && (
+                      <Badge variant="secondary" className="text-[9px] rounded-full px-1.5 h-4 min-w-4">{alertasUnread > 99 ? '99+' : alertasUnread}</Badge>
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="enviados" className="text-xs gap-1.5">
@@ -284,6 +309,23 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
 
               <TabsContent value="alertas" className="mt-0 p-1.5">
                 <ScrollArea className="h-[280px]">
+                  {operationalNotifications.slice(0, 30).map((item) => (
+                    <DropdownMenuItem
+                      key={`${item.source_type}:${item.source_id}`}
+                      onSelect={() => openOperational(item)}
+                      className={cn(
+                        'flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg mb-0.5 focus:bg-accent/50',
+                        !item.is_read && 'bg-accent/30'
+                      )}
+                    >
+                      <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', operationalColor(item.severity))} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{item.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{item.message}</p>
+                      </div>
+                      {!item.is_read && <span className="sr-only">Não lida</span>}
+                    </DropdownMenuItem>
+                  ))}
                   {systemNotifications.length > 0 ? systemNotifications.map((notification) => (
                     <div
                       key={notification.id}
@@ -299,7 +341,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                         <p className="text-[10px] text-muted-foreground/40 mt-1">{notification.time}</p>
                       </div>
                     </div>
-                  )) : (
+                  )) : operationalNotifications.length === 0 && (
                     <div className="py-10 text-center text-sm text-muted-foreground/40">
                       <Bell className="h-7 w-7 mx-auto mb-2 opacity-10" />
                       Sem alertas
@@ -326,7 +368,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge variant="outline" className="text-[9px] h-4 px-1.5">
-                            {notif.status === 'enviado' ? '✓ Enviado' : notif.status === 'erro' ? '✕ Erro' : notif.status}
+                            {notif.status === 'enviado' ? 'Enviado' : notif.status === 'erro' ? 'Erro' : notif.status}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground/40">
                             {formatDate(notif.created_at, 'short')}

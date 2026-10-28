@@ -104,6 +104,14 @@ describe('histórico longitudinal de sinais vitais', () => {
     expect(historicoVitaisLimitado(600, 600, 600, 1000)).toBe(false);
   });
 
+  it('mantém saturação e dor gravadas com o nome antigo no prontuário', () => {
+    const [registro] = consolidarHistoricoVitais([], [{
+      id: 'prontuario-2', paciente_id: 'paciente-1', agendamento_id: null, data: '2026-10-11',
+      created_at: '2026-10-11T12:00:00Z', sinais_vitais: { saturacao: '97', dor: '3' },
+    }] as ProntuarioVitalsRow[]);
+    expect(registro).toMatchObject({ oxigenacao: 97, dor_escala: 3 });
+  });
+
   it('avisa quando a linha do tempo consolidada ultrapassa o limite', () => {
     expect(historicoVitaisLimitado(600, 600, 1200, 1000)).toBe(true);
   });

@@ -61,7 +61,7 @@ describe('Equipe: privacidade de dados pessoais', () => {
     expect(funcionariosPage).toContain("rpc('listar_funcionarios_equipe_admin')");
     expect(chatPage).toContain("rpc('listar_funcionarios_chat_equipe')");
     expect(repassesPage).toContain("rpc('listar_medicos_repasse_equipe')");
-    expect(planLimits).toContain("rpc('contar_equipe_ativa')");
+    expect(planLimits).toContain("rpc('uso_plano_clinica')");
   });
 
   it('associa os rótulos dos formulários de equipe aos controles', () => {

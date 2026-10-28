@@ -19,7 +19,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { registrarAdendoProntuario } from '@/lib/prontuarioAudit';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 
 interface Adendo {
   id: string;
@@ -87,7 +87,7 @@ export function ProntuarioAdendos({ prontuarioId, medicoNome, crm, disabled }: P
       setOpen(false);
       load();
     } catch (err: any) {
-      toast.error('Erro ao registrar adendo', { description: err.message || 'Tente novamente.' });
+      toast.error('Erro ao registrar adendo', { description: friendlyErrorMessage(err, 'Tente novamente.') });
     } finally {
       setSaving(false);
     }

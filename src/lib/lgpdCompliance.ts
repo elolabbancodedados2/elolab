@@ -4,9 +4,15 @@
   * Direitos: acesso, portabilidade, exclusão, correção
   */
 
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { buscarTodasAsPaginas } from '@/lib/prontuarioAuditExport';
+import {
+  anonimizarPaciente,
+  type EntradaAnonimizacao,
+  type ResultadoAnonimizacao,
+} from '@/lib/lgpdAnonimizacao';
 
 /**
  * As tabelas lgpd_* ainda não constam no types.ts gerado. Usamos este alias em
@@ -73,6 +79,40 @@ export interface PatientDataExport {
   fila_atendimento: Array<Record<string, unknown>>;
 }
 
+/** Categorias que o titular pode pedir; precisam coincidir com o CHECK da migration. */
+export const ESCOPOS_EXPORTACAO_LGPD = [
+  { id: 'cadastro', rotulo: 'Cadastro e consentimentos', chaves: ['paciente', 'consentimentos_lgpd', 'consent_log', 'lgpd_access_request_log', 'paciente_portal_tokens'] },
+  { id: 'agenda', rotulo: 'Agenda, fila e retornos', chaves: ['agendamentos', 'retornos', 'retornos_agendados', 'lista_espera', 'fila_atendimento', 'notificacoes_agendadas', 'tarefas', 'avaliacoes_atendimento', 'feedbacks_nps', 'predicoes_no_show'] },
+  { id: 'clinico', rotulo: 'Prontuário, documentos e exames', chaves: ['prontuarios', 'prontuario_adendos', 'prontuario_diagnosticos', 'prontuario_acessos', 'prontuario_assinaturas', 'prescricoes', 'memed_prescricoes', 'exames', 'triagens', 'atestados', 'encaminhamentos', 'paciente_comorbidades', 'vitais_historico', 'pedidos_laboratorio', 'coletas_laboratorio', 'resultados_laboratorio', 'guias_externas', 'movimentacoes_estoque', 'interoperability_exports'] },
+  { id: 'anexos', rotulo: 'Arquivos anexos do prontuário', chaves: ['attachments'] },
+  { id: 'financeiro', rotulo: 'Financeiro e convênio', chaves: ['lancamentos', 'lancamento_itens', 'pagamentos', 'pagamentos_mercadopago', 'assinaturas_mercadopago', 'notas_fiscais', 'autorizacoes_convenio'] },
+  { id: 'comunicacao', rotulo: 'Conversas de WhatsApp', chaves: ['whatsapp_conversations', 'whatsapp_messages', 'whatsapp_agent_actions'] },
+  { id: 'auditoria', rotulo: 'Trilha de auditoria', chaves: ['audit_log'] },
+] as const;
+
+export type EscopoExportacaoLgpd = typeof ESCOPOS_EXPORTACAO_LGPD[number]['id'];
+
+/** Mantém só categorias conhecidas, em ordem fixa; cadastro é sempre incluído. Sem escolha = tudo. */
+export function normalizarEscopoExportacao(escopo?: readonly string[]): EscopoExportacaoLgpd[] {
+  if (!escopo) return ESCOPOS_EXPORTACAO_LGPD.map(e => e.id);
+  return ESCOPOS_EXPORTACAO_LGPD.map(e => e.id).filter(id => id === 'cadastro' || escopo.includes(id));
+}
+
+export function filtrarEscopoExportacao<T extends Record<string, unknown>>(pacote: T, escopo?: readonly string[]): Partial<T> {
+  const permitidas = new Set<string>(ESCOPOS_EXPORTACAO_LGPD
+    .filter(e => normalizarEscopoExportacao(escopo).includes(e.id))
+    .flatMap(e => [...e.chaves]));
+  return Object.fromEntries(Object.entries(pacote).filter(([chave]) => permitidas.has(chave))) as Partial<T>;
+}
+
+export async function concluirExportacaoLgpd(pedidoId: string, evidencia: string): Promise<{ protocolo: string }> {
+  const { data, error } = await supabase.rpc('concluir_exportacao_lgpd_paciente', { p_id: pedidoId, p_evidencia: evidencia.trim() });
+  if (error) throw error;
+  const resultado = data as { protocolo?: string; status?: string } | null;
+  if (resultado?.status !== 'fulfilled' || !resultado.protocolo) throw new Error('O servidor não confirmou a conclusão do pedido.');
+  return { protocolo: resultado.protocolo };
+}
+
 const MAX_ATTACHMENT_EXPORT_BYTES = 30 * 1024 * 1024;
 
 function storagePathForPatientAttachment(stored: string): string {
@@ -99,7 +139,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 /**
  * Exportar todos os dados de um paciente (direito à portabilidade)
  */
-export async function exportPatientData(pacienteId: string): Promise<PatientDataExport> {
+export async function exportPatientData(pacienteId: string, escopo?: readonly string[]): Promise<PatientDataExport> {
+  const escopoFinal = normalizarEscopoExportacao(escopo);
   try {
     const { data: paciente, error: pacienteError } = await supabase
       .from('pacientes')
@@ -110,12 +151,12 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
 
     const { data: pedidoExportacao, error: erroPedidoExportacao } = await db
       .from('lgpd_access_request_log')
-      .insert({ paciente_id: pacienteId, request_type: 'export', status: 'pending' })
-      .select('id,requested_at')
+      .insert({ paciente_id: pacienteId, request_type: 'export', status: 'pending', escopo: escopoFinal })
+      .select('id,requested_at,protocolo')
       .single();
     if (erroPedidoExportacao || !pedidoExportacao?.id) {
       throw new Error(
-        `Não foi possível registrar o pedido de exportação; o arquivo não foi gerado${erroPedidoExportacao?.message ? `: ${erroPedidoExportacao.message}` : '.'}`
+        `Não foi possível registrar o pedido de exportação; o arquivo não foi gerado${erroPedidoExportacao ? `: ${friendlyErrorMessage(erroPedidoExportacao, 'erro do servidor')}` : '.'}`
       );
     }
 
@@ -278,7 +319,8 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
     }
     const anexosComConteudo: Array<Record<string, unknown>> = [];
     let totalAttachmentBytes = 0;
-    for (const anexo of (anexos || []) as Array<Record<string, unknown>>) {
+    // Sem a categoria de anexos, nenhum arquivo é baixado do Storage.
+    for (const anexo of (escopoFinal.includes('anexos') ? anexos || [] : []) as Array<Record<string, unknown>>) {
       const storedPath = String(anexo.url_arquivo || '');
       if (!storedPath) throw new Error(`O anexo ${String(anexo.nome_arquivo || anexo.id)} não possui caminho de arquivo.`);
       const path = storagePathForPatientAttachment(storedPath);
@@ -387,7 +429,7 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
       .maybeSingle();
     if (erroPreparacao || !pedidoPreparado) {
       throw new Error(
-        `Os dados foram reunidos, mas a auditoria não confirmou a preparação; o arquivo não foi gerado${erroPreparacao?.message ? `: ${erroPreparacao.message}` : '.'}`
+        `Os dados foram reunidos, mas a auditoria não confirmou a preparação; o arquivo não foi gerado${erroPreparacao ? `: ${friendlyErrorMessage(erroPreparacao, 'erro do servidor')}` : '.'}`
       );
     }
 
@@ -403,11 +445,126 @@ export async function exportPatientData(pacienteId: string): Promise<PatientData
     if (existingRequestIndex >= 0) requestLog[existingRequestIndex] = pendingRequest;
     else requestLog.push(pendingRequest);
 
-    return data as PatientDataExport;
+    return {
+      ...filtrarEscopoExportacao(data, escopoFinal),
+      exportacao: { protocolo: pedidoExportacao.protocolo ?? null, escopo: escopoFinal, gerado_em: preparadoEm },
+    } as PatientDataExport;
   } catch (error) {
     console.error('Error exporting patient data:', error);
     throw error;
   }
+}
+
+/**
+ * Exclusão automática suspensa (CLIN-QA-004).
+ *
+ * A antiga exclusão apagava prontuário, prescrições, exames e anexos tabela
+ * por tabela, no cliente e sem transação: uma falha no meio deixava o
+ * paciente pela metade, e apagar prontuário conflita com a guarda legal (Lei
+ * 13.787/2018 — requer avaliação jurídica). O laço destrutivo foi removido; a
+ * função continua exportada só para recusar antes de tocar no banco, caso
+ * algum código volte a chamá-la. Não reative trocando esta constante: o
+ * caminho previsto é a anonimização transacional abaixo.
+ */
+export const EXCLUSAO_LGPD_DESTRUTIVA_HABILITADA = false;
+
+export class ExclusaoLgpdBloqueadaError extends Error {
+  constructor() {
+    super(
+      'A exclusão automática de dados do paciente está suspensa. Registre a solicitação para tratamento manual pelo encarregado de dados.'
+    );
+    this.name = 'ExclusaoLgpdBloqueadaError';
+  }
+}
+
+/**
+ * Direito ao esquecimento — SUSPENSO. Sempre recusa, sem acessar o banco.
+ */
+export async function deletePatientData(
+  _pacienteId: string,
+  _reason?: string
+): Promise<{ deletedRecords: number; success: boolean }> {
+  throw new ExclusaoLgpdBloqueadaError();
+}
+
+/**
+ * Anonimização transacional (substituta da exclusão destrutiva).
+ *
+ * A regra fica na RPC lgpd_anonimizar_paciente
+ * (supabase/migrations/20261028100000_lgpd_anonimizacao_transacional.sql),
+ * chamada por lgpdAnonimizacao.ts. Ela preserva prontuário, exames,
+ * prescrições e financeiro e só troca os dados cadastrais.
+ *
+ * Fica desligada enquanto: (1) a migration não foi aplicada; (2) falta o
+ * parecer do encarregado de dados sobre a redação de audit_log — requer
+ * avaliação especializada; (3) a aprovação dupla não existe. Ligar exige
+ * pedido do responsável. Com a trava desligada, a tela só registra o pedido.
+ */
+export const ANONIMIZACAO_LGPD_HABILITADA = false;
+
+export class AnonimizacaoLgpdIndisponivelError extends Error {
+  constructor() {
+    super(
+      'A anonimização de pacientes ainda não está liberada. Registre a solicitação para tratamento manual pelo encarregado de dados.'
+    );
+    this.name = 'AnonimizacaoLgpdIndisponivelError';
+  }
+}
+
+/**
+ * Único ponto de entrada da tela para anonimizar. Recusa antes de chamar o
+ * banco enquanto ANONIMIZACAO_LGPD_HABILITADA for false.
+ */
+export async function anonimizarPacienteLgpd(
+  entrada: EntradaAnonimizacao,
+  habilitada: boolean = ANONIMIZACAO_LGPD_HABILITADA
+): Promise<ResultadoAnonimizacao> {
+  if (!habilitada) throw new AnonimizacaoLgpdIndisponivelError();
+  return anonimizarPaciente(entrada);
+}
+
+/**
+ * Registra o pedido de exclusão do titular para tratamento manual, sem apagar
+ * nada. Vira uma tarefa urgente da clínica, vinculada ao paciente.
+ *
+ * Não usa `lgpd_access_request_log` porque o CHECK de `request_type` ainda não
+ * aceita exclusão (20260729140000_tabelas_lgpd_de_verdade.sql:64).
+ */
+export async function registrarSolicitacaoExclusaoLgpd(params: {
+  pacienteId: string;
+  pacienteNome: string;
+  clinicaId: string;
+  motivo: string;
+}): Promise<{ tarefaId: string }> {
+  const motivo = params.motivo.trim();
+  if (!motivo) throw new Error('Informe o motivo da solicitação.');
+
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id;
+  if (!userId) throw new Error('Sessão expirada. Entre novamente para registrar a solicitação.');
+
+  const { data, error } = await supabase
+    .from('tarefas')
+    .insert({
+      clinica_id: params.clinicaId,
+      paciente_id: params.pacienteId,
+      criado_por: userId,
+      titulo: `Solicitação LGPD de exclusão: ${params.pacienteNome}`,
+      descricao: [
+        'O titular pediu a exclusão dos dados (art. 18 da LGPD).',
+        'A exclusão automática está suspensa. Encaminhe ao encarregado de dados (DPO) para análise e tratamento manual; o prontuário tem guarda legal e não deve ser apagado sem avaliação jurídica.',
+        '',
+        `Motivo informado: ${motivo}`,
+      ].join('\n'),
+      categoria: 'Administrativo',
+      prioridade: 'urgente',
+      status: 'pendente',
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return { tarefaId: data.id };
 }
 
 /**

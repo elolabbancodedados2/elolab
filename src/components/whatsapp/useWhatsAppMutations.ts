@@ -1,4 +1,5 @@
- import { useMutation, useQueryClient } from '@tanstack/react-query';
+ import { friendlyErrorMessage } from '@/components/ErrorState';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
  import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -23,10 +24,10 @@ export function useWhatsAppMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-agents'] });
-      toast.success('Agente criado com sucesso!');
+      toast.success('Agente criado com sucesso');
     },
     onError: (error) => {
-      toast.error('Erro ao criar agente: ' + error.message);
+      toast.error('Erro ao criar agente', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
     },
   });
 
@@ -46,9 +47,9 @@ export function useWhatsAppMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-agents'] });
-      toast.success('Agente atualizado!');
+      toast.success('Agente atualizado');
     },
-    onError: (error) => toast.error('Erro ao atualizar agente: ' + error.message),
+    onError: (error) => toast.error('Erro ao atualizar agente', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const deleteAgent = useMutation({
@@ -66,9 +67,9 @@ export function useWhatsAppMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-agents'] });
-      toast.success('Agente excluído!');
+      toast.success('Agente excluído');
     },
-    onError: (error) => toast.error('Erro ao excluir agente: ' + error.message),
+    onError: (error) => toast.error('Erro ao excluir agente', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const createSession = useMutation({
@@ -85,7 +86,7 @@ export function useWhatsAppMutations() {
       toast.success('Sessão criada! Escaneie o QR Code.');
     },
     onError: (error) => {
-      toast.error('Erro ao criar sessão: ' + error.message);
+      toast.error('Erro ao criar sessão', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') });
     },
   });
 
@@ -100,9 +101,9 @@ export function useWhatsAppMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
-      toast.success('QR Code atualizado!');
+      toast.success('QR Code atualizado');
     },
-    onError: (error) => toast.error('Não foi possível atualizar o QR Code: ' + error.message),
+    onError: (error) => toast.error('Não foi possível atualizar o QR Code', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const checkStatus = useMutation({
@@ -124,7 +125,7 @@ export function useWhatsAppMutations() {
         });
       }
     },
-    onError: (error) => toast.error('Não foi possível verificar a sessão: ' + error.message),
+    onError: (error) => toast.error('Não foi possível verificar a sessão', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const deleteSession = useMutation({
@@ -137,9 +138,9 @@ export function useWhatsAppMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
-      toast.success('Sessão removida!');
+      toast.success('Sessão removida');
     },
-    onError: (error) => toast.error('Não foi possível remover a sessão: ' + error.message),
+    onError: (error) => toast.error('Não foi possível remover a sessão', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const linkAgentToSession = useMutation({
@@ -157,9 +158,9 @@ export function useWhatsAppMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-sessions'] });
-      toast.success('Agente vinculado!');
+      toast.success('Agente vinculado');
     },
-    onError: (error) => toast.error('Não foi possível vincular o agente: ' + error.message),
+    onError: (error) => toast.error('Não foi possível vincular o agente', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const updateConversationStatus = useMutation({
@@ -184,7 +185,7 @@ export function useWhatsAppMutations() {
             : 'Conversa encerrada.',
       );
     },
-    onError: (error) => toast.error('Não foi possível atualizar a conversa: ' + error.message),
+    onError: (error) => toast.error('Não foi possível atualizar a conversa', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const markConversationRead = useMutation({
@@ -212,7 +213,7 @@ export function useWhatsAppMutations() {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-internal-notes'], exact: false });
       toast.success('Nota interna adicionada.');
     },
-    onError: (error) => toast.error('Não foi possível salvar a nota: ' + error.message),
+    onError: (error) => toast.error('Não foi possível salvar a nota', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const updateConversationPriority = useMutation({
@@ -228,7 +229,7 @@ export function useWhatsAppMutations() {
       if (!data) throw new Error('Conversa não encontrada nesta clínica.');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false }),
-    onError: (error) => toast.error('Não foi possível alterar a prioridade: ' + error.message),
+    onError: (error) => toast.error('Não foi possível alterar a prioridade', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const generateConversationSummary = useMutation({
@@ -244,7 +245,7 @@ export function useWhatsAppMutations() {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-conversations'], exact: false });
       toast.success('Resumo atualizado.');
     },
-    onError: (error) => toast.error('Falha ao resumir a conversa: ' + error.message),
+    onError: (error) => toast.error('Falha ao resumir a conversa', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const sendHumanMedia = useMutation({
@@ -277,7 +278,7 @@ export function useWhatsAppMutations() {
         });
       }
     },
-    onError: (error) => toast.error('Não foi possível enviar o anexo: ' + error.message),
+    onError: (error) => toast.error('Não foi possível enviar o anexo', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const requestSatisfaction = useMutation({
@@ -301,7 +302,7 @@ export function useWhatsAppMutations() {
         });
       }
     },
-    onError: (error) => toast.error('Não foi possível encerrar: ' + error.message),
+    onError: (error) => toast.error('Não foi possível encerrar', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   const sendHumanMessage = useMutation({
@@ -328,7 +329,7 @@ export function useWhatsAppMutations() {
         });
       }
     },
-    onError: (error) => toast.error('Não foi possível enviar: ' + error.message),
+    onError: (error) => toast.error('Não foi possível enviar', { description: friendlyErrorMessage(error, 'Tente novamente em instantes.') }),
   });
 
   return {

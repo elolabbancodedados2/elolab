@@ -153,7 +153,7 @@ export function ReturnScheduler({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
-      toast.success('Retorno agendado com sucesso!');
+      toast.success('Retorno agendado com sucesso');
       resetForm();
       setIsOpen(false);
     },
@@ -180,7 +180,7 @@ export function ReturnScheduler({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
-      toast.success('Status atualizado!');
+      toast.success('Status atualizado');
     },
     onError: (e) => {
       toast.error('Erro ao atualizar status', { description: mensagemDeErro(e) });

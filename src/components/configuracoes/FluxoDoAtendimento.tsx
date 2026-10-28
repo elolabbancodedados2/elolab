@@ -22,7 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 
 interface Regra {
   coluna: 'exigir_pagamento_previo' | 'exigir_triagem';
@@ -107,7 +107,7 @@ export function FluxoDoAtendimento() {
       toast.error('Não foi possível mudar a regra', {
         description: e?.message?.includes('row-level security')
           ? 'Seu perfil não tem permissão para alterar a configuração da clínica.'
-          : e?.message || 'Tente novamente.',
+          : friendlyErrorMessage(e, 'Tente novamente.'),
       });
     } finally {
       setSalvando(null);

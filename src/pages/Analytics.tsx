@@ -34,7 +34,7 @@ import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloD
 import { calculateAttendanceRate } from '@/lib/analyticsKpis';
 import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
-const COLORS = ['#1080CA', '#2ED5E7', '#111111', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
+const COLORS = ['#1080CA', '#2ED5E7', '#0B4F7D', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
 const GRID_COLOR = '#DCE6F2';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 
@@ -148,10 +148,10 @@ function KPIDefinition({ title, definition, source, period }: Pick<KPICardProps,
 }
 
 const KPI_TONES = {
-  primary: 'border-[#1080CA]/20 from-[#1080CA]/5 to-card',
-  success: 'border-success/20 from-success/5 to-card',
-  accent: 'border-border/60 from-accent to-card',
-  warning: 'border-warning/20 from-warning/5 to-card',
+  primary: 'border-brand/20 bg-card',
+  success: 'border-success/20 bg-card',
+  accent: 'border-border/60 bg-card',
+  warning: 'border-warning/20 bg-card',
   dark: 'border-transparent bg-gradient-primary text-white',
 } as const;
 
@@ -169,9 +169,9 @@ function KPICard({ title, value, change, icon, description, definition, source, 
     <div data-testid="analytics-kpi" className="h-full">
       <Card
         className={cn(
-          'h-full border bg-gradient-to-br shadow-xs transition-all',
+          'h-full border shadow-xs transition-all',
           KPI_TONES[tone],
-          onClick && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
+          onClick && 'cursor-pointer hover:shadow-md',
         )}
         {...(onClick ? {
           role: 'button' as const,

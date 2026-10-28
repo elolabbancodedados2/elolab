@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { PageHeader } from '@/components/PageHeader';
+import { cn } from '@/lib/utils';
 
 type BackupFile = { name: string; created_at: string; updated_at: string; size_bytes: number };
 type BackupLog = { id: string; tipo: string; nome: string; status: string; registros_processados: number | null; registros_sucesso: number | null; registros_erro: number | null; erro_mensagem: string | null; duracao_ms: number | null; created_at: string };
@@ -58,6 +60,7 @@ export default function PlatformBackups() {
   const [restoreDecision, setRestoreDecision] = useState<{ id: string; name: string; reason: string; approve: boolean } | null>(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [verificando, setVerificando] = useState(false);
+  const [somenteErros, setSomenteErros] = useState(false);
   const restoreLock = useRef(false);
   const verifyLock = useRef(false);
   const overview = useQuery({
@@ -167,56 +170,84 @@ export default function PlatformBackups() {
   const verificacaoOk = ultimaVerificacao?.status === 'sucesso' && Number.isFinite(verificationTimestamp) && verificationTimestamp >= backupTimestamp;
   const pronto = Boolean(arquivos.length && backupRecente && verificacaoOk);
 
+  const restauracoesPendentes = (restores.data || []).filter((r) => r.status === 'requested').length;
+  const logsComErro = logs.filter((log) => log.status === 'erro').length;
+  const logsVisiveis = (somenteErros ? logs.filter((log) => log.status === 'erro') : logs).slice(0, 30);
+  const descricao = overview.data
+    ? `${arquivos.length} arquivos · último backup ${ultimoBackup ? dataHora(ultimoBackup.created_at) : 'nunca executado'} · ${restauracoesPendentes} restaurações aguardando aprovação`
+    : 'Integridade, retenção e prontidão para recuperação de desastre.';
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="flex items-center gap-2 text-2xl font-bold"><DatabaseBackup /> Backups e Recuperação</h1><p className="text-muted-foreground">Integridade, retenção e prontidão para recuperação de desastre.</p>{overview.data?.generated_at && <p className="mt-1 text-xs text-muted-foreground">Estado consultado em {dataHora(overview.data.generated_at)}</p>}</div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={atualizar} disabled={overview.isFetching || restores.isFetching}><RefreshCw className={`mr-2 h-4 w-4 ${overview.isFetching || restores.isFetching ? 'animate-spin' : ''}`} />Atualizar</Button>
-          <Button onClick={() => void verificar()} disabled={verificando}><CheckCircle2 className="mr-2 h-4 w-4" />{verificando ? 'Verificando…' : 'Verificar agora'}</Button>
-        </div>
-      </div>
+    <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <PageHeader
+        title="Backups e Recuperação"
+        icon={<DatabaseBackup />}
+        description={descricao}
+        actions={
+          <>
+            <Button type="button" variant="outline" size="icon" className="rounded-full" aria-label="Atualizar dados" onClick={atualizar} disabled={overview.isFetching || restores.isFetching}><RefreshCw className={cn('h-4 w-4', (overview.isFetching || restores.isFetching) && 'animate-spin')} /></Button>
+            <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => void verificar()} disabled={verificando}><CheckCircle2 className="mr-2 h-4 w-4" />{verificando ? 'Verificando…' : 'Verificar agora'}</Button>
+          </>
+        }
+      />
 
       {overview.isError && (
-        <Card className="border-destructive/30">
+        <Card className="rounded-2xl border-destructive/30 shadow-xs">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-destructive">Não foi possível consultar o estado dos backups; a prontidão é desconhecida.</p>
-            <Button variant="outline" onClick={() => void overview.refetch()} disabled={overview.isFetching}>Tentar novamente</Button>
+            <Button variant="outline" className="rounded-full" onClick={() => void overview.refetch()} disabled={overview.isFetching}>Tentar novamente</Button>
           </CardContent>
         </Card>
       )}
 
-      {overview.isLoading && <Card><CardContent className="flex items-center gap-4 pt-6"><Skeleton className="h-10 w-10 rounded-full" /><div className="flex-1 space-y-2"><Skeleton className="h-5 w-48" /><Skeleton className="h-4 w-full max-w-lg" /></div></CardContent></Card>}
-      {!overview.isLoading && !overview.isError && <Card className={pronto ? 'border-success/40' : 'border-destructive/40'}>
+      {overview.isLoading && <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="flex items-center gap-4 pt-6"><Skeleton className="h-10 w-10 rounded-xl" /><div className="flex-1 space-y-2"><Skeleton className="h-5 w-48" /><Skeleton className="h-4 w-full max-w-lg" /></div></CardContent></Card>}
+      {!overview.isLoading && !overview.isError && <Card className={cn('rounded-2xl shadow-xs', pronto ? 'border-success/40' : 'border-destructive/40')}>
         <CardContent className="flex flex-wrap items-center gap-4 pt-6">
-          {pronto ? <CheckCircle2 className="h-10 w-10 text-success" /> : <ShieldAlert className="h-10 w-10 text-destructive" />}
-          <div className="flex-1"><p className="font-semibold">{pronto ? 'Backup recente conferido' : 'Atenção necessária'}</p><p className="text-sm text-muted-foreground">{pronto ? 'Há um arquivo recente e uma conferência estrutural aprovada depois dele. Isso não substitui um teste real de restauração.' : 'Confira se o backup mais recente foi concluído e verificado depois da execução.'}</p></div>
-          <Badge variant={pronto ? 'outline' : 'destructive'}>{pronto ? 'Conferido' : 'Risco'}</Badge>
+          <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl', pronto ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')}>{pronto ? <CheckCircle2 className="h-6 w-6" /> : <ShieldAlert className="h-6 w-6" />}</span>
+          <div className="min-w-0 flex-1"><p className="font-semibold">{pronto ? 'Backup recente conferido' : 'Atenção necessária'}</p><p className="text-sm text-muted-foreground">{pronto ? 'Há um arquivo recente e uma conferência estrutural aprovada depois dele. Isso não substitui um teste real de restauração.' : 'Confira se o backup mais recente foi concluído e verificado depois da execução.'}</p></div>
+          <Badge variant={pronto ? 'outline' : 'destructive'} className="rounded-full">{pronto ? 'Conferido' : 'Risco'}</Badge>
         </CardContent>
       </Card>}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Arquivos listados</p><p className="text-2xl font-bold">{overview.isLoading ? '…' : overview.isError ? '—' : arquivos.length}</p><p className="text-xs text-muted-foreground">{overview.isError ? 'indisponível' : `até 90 mais recentes · retenção configurada: ${overview.data?.retention_days ?? 90} dias`}</p></CardContent></Card>
-        <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Backup automático</p><p className="font-semibold">{overview.isLoading ? 'Carregando…' : overview.isError ? 'Indisponível' : overview.data?.backup_schedule || 'Não informado'}</p><p className="text-xs text-muted-foreground">{overview.isLoading ? 'Consultando histórico' : overview.isError ? 'indisponível' : ultimoBackup ? dataHora(ultimoBackup.created_at) : 'Nunca executado'}</p></CardContent></Card>
-        <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Verificação automática</p><p className="font-semibold">{overview.isLoading ? 'Carregando…' : overview.isError ? 'Indisponível' : overview.data?.verification_schedule || 'Não informado'}</p><p className="text-xs text-muted-foreground">{overview.isLoading ? 'Consultando histórico' : overview.isError ? 'indisponível' : ultimaVerificacao ? dataHora(ultimaVerificacao.created_at) : 'Nunca executada'}</p></CardContent></Card>
-      </div>
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Indicadores de backup">
+        <Card className="rounded-2xl border-transparent bg-gradient-primary text-white shadow-xs"><CardContent className="space-y-2 p-4"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20"><FileJson className="h-5 w-5" /></span><p className="text-2xl font-bold tabular-nums">{overview.isLoading ? '…' : overview.isError ? '—' : arquivos.length}</p><p className="text-[11px] text-white/75">Arquivos listados · {overview.isError ? 'indisponível' : `até 90 mais recentes · retenção configurada: ${overview.data?.retention_days ?? 90} dias`}</p></CardContent></Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="space-y-2 p-4"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1080CA]/10 text-[#1080CA]"><DatabaseBackup className="h-5 w-5" /></span><p className="font-semibold">{overview.isLoading ? 'Carregando…' : overview.isError ? 'Indisponível' : overview.data?.backup_schedule || 'Não informado'}</p><p className="text-[11px] text-muted-foreground">Backup automático · {overview.isLoading ? 'Consultando histórico' : overview.isError ? 'indisponível' : ultimoBackup ? dataHora(ultimoBackup.created_at) : 'Nunca executado'}</p></CardContent></Card>
+        <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="space-y-2 p-4"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1080CA]/10 text-[#1080CA]"><CheckCircle2 className="h-5 w-5" /></span><p className="font-semibold">{overview.isLoading ? 'Carregando…' : overview.isError ? 'Indisponível' : overview.data?.verification_schedule || 'Não informado'}</p><p className="text-[11px] text-muted-foreground">Verificação automática · {overview.isLoading ? 'Consultando histórico' : overview.isError ? 'indisponível' : ultimaVerificacao ? dataHora(ultimaVerificacao.created_at) : 'Nunca executada'}</p></CardContent></Card>
+        <Card className={cn('rounded-2xl border-border/60 shadow-xs', restauracoesPendentes > 0 && 'border-warning/40')}><CardContent className="space-y-2 p-4"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10 text-warning"><ArchiveRestore className="h-5 w-5" /></span><p className="text-2xl font-bold tabular-nums">{restores.isLoading ? '…' : restores.isError ? '—' : restauracoesPendentes}</p><p className="text-[11px] text-muted-foreground">Restaurações aguardando aprovação</p></CardContent></Card>
+      </section>
 
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader><CardTitle>Arquivos privados recentes</CardTitle><CardDescription>Somente metadados operacionais; o conteúdo clínico nunca é exposto ao navegador.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
-          {overview.isLoading ? <Skeleton className="h-24 w-full" /> : arquivos.slice(0, 15).map((arquivo) => <div key={arquivo.name} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="flex items-center gap-2 text-sm font-medium"><FileJson className="h-4 w-4" />{arquivo.name}</p><p className="text-xs text-muted-foreground">{dataHora(arquivo.created_at)}</p></div><div className="flex gap-2"><Badge variant="secondary">{tamanho(Number(arquivo.size_bytes))}</Badge><Button size="sm" variant="outline" disabled={restoreBusy} onClick={()=>{setRestoreTarget(arquivo.name);setRestoreReason('')}}>Solicitar restauração</Button></div></div>)}
-          {!overview.isLoading && !overview.isError && !arquivos.length && <p className="py-4 text-center text-sm text-muted-foreground">Nenhum arquivo de backup encontrado.</p>}
+          {overview.isLoading ? <Skeleton className="h-24 w-full rounded-xl" /> : arquivos.slice(0, 15).map((arquivo) => <div key={arquivo.name} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 p-3"><div className="min-w-0"><p className="flex items-center gap-2 break-all text-sm font-medium"><FileJson className="h-4 w-4 shrink-0 text-[#1080CA]" />{arquivo.name}</p><p className="text-xs text-muted-foreground">{dataHora(arquivo.created_at)}</p></div><div className="flex flex-wrap gap-2"><Badge variant="secondary" className="rounded-full">{tamanho(Number(arquivo.size_bytes))}</Badge><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={restoreBusy} onClick={()=>{setRestoreTarget(arquivo.name);setRestoreReason('')}}>Solicitar restauração</Button></div></div>)}
+          {!overview.isLoading && !overview.isError && !arquivos.length && (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><DatabaseBackup className="h-6 w-6" /></span>
+              <p className="font-medium text-foreground">Nenhum arquivo de backup encontrado.</p>
+              <p className="text-sm text-muted-foreground">Confira o agendamento do backup automático e use “Verificar agora” após a próxima execução.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
-      <Card><CardHeader><CardTitle>Restaurações controladas</CardTitle><CardDescription>Exigem justificativa e aprovação por um segundo administrador. A aprovação registra a autorização; a restauração ainda precisa ser executada operacionalmente.</CardDescription></CardHeader><CardContent className="space-y-2">{restores.isError&&<div className="flex items-center justify-between gap-2 text-sm text-destructive"><span>Não foi possível carregar as solicitações.</span><Button variant="link" className="h-auto p-0" onClick={()=>void restores.refetch()}>Tentar novamente</Button></div>}{restores.isLoading&&<p className="py-4 text-center text-sm text-muted-foreground">Carregando solicitações…</p>}{(restores.data||[]).map(r=><div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="text-sm font-medium">{r.backup_name}</p><p className="text-xs text-muted-foreground">{r.reason} · {dataHora(r.requested_at)}</p></div><div className="flex items-center gap-2"><Badge variant={varianteRestauracao(r.status)}>{statusRestauracao(r.status)}</Badge>{r.status==='requested'&&r.requested_by===user?.id&&<span className="text-xs text-muted-foreground">Aguardando outro administrador</span>}{r.status==='requested'&&r.requested_by!==user?.id&&<><Button size="sm" variant="outline" disabled={restoreBusy} onClick={()=>setRestoreDecision({id:r.id,name:r.backup_name,reason:r.reason,approve:false})}>Rejeitar</Button><Button size="sm" disabled={restoreBusy} onClick={()=>setRestoreDecision({id:r.id,name:r.backup_name,reason:r.reason,approve:true})}>Aprovar</Button></>}</div></div>)}{restores.data?.length===30&&<p role="status" className="text-xs text-muted-foreground">Mostrando as 30 solicitações mais recentes.</p>}{!restores.isLoading&&!restores.isError&&!restores.data?.length&&<p className="py-4 text-center text-sm text-muted-foreground">Nenhuma restauração solicitada.</p>}</CardContent></Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle>Restaurações controladas</CardTitle><CardDescription>Exigem justificativa e aprovação por um segundo administrador. A aprovação registra a autorização; a restauração ainda precisa ser executada operacionalmente.</CardDescription></CardHeader><CardContent className="space-y-2">{restores.isError&&<div className="flex items-center justify-between gap-2 text-sm text-destructive"><span>Não foi possível carregar as solicitações.</span><Button variant="link" className="h-auto p-0" onClick={()=>void restores.refetch()}>Tentar novamente</Button></div>}{restores.isLoading&&<p className="py-4 text-center text-sm text-muted-foreground">Carregando solicitações…</p>}{(restores.data||[]).map(r=><div key={r.id} className={cn('flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 p-3', r.status==='requested'&&'border-[#1080CA]/30 bg-[#F3F8FC]')}><div className="min-w-0"><p className="break-all text-sm font-medium">{r.backup_name}</p><p className="text-xs text-muted-foreground">{r.reason} · {dataHora(r.requested_at)}</p></div><div className="flex flex-wrap items-center gap-2"><Badge variant={varianteRestauracao(r.status)} className="rounded-full">{statusRestauracao(r.status)}</Badge>{r.status==='requested'&&r.requested_by===user?.id&&<span className="text-xs text-muted-foreground">Aguardando outro administrador</span>}{r.status==='requested'&&r.requested_by!==user?.id&&<><Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:text-destructive" disabled={restoreBusy} onClick={()=>setRestoreDecision({id:r.id,name:r.backup_name,reason:r.reason,approve:false})}>Rejeitar</Button><Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={restoreBusy} onClick={()=>setRestoreDecision({id:r.id,name:r.backup_name,reason:r.reason,approve:true})}>Aprovar</Button></>}</div></div>)}{restores.data?.length===30&&<p role="status" className="text-xs text-muted-foreground">Mostrando as 30 solicitações mais recentes.</p>}{!restores.isLoading&&!restores.isError&&!restores.data?.length&&<p className="py-4 text-center text-sm text-muted-foreground">Nenhuma restauração solicitada.</p>}</CardContent></Card>
 
-      <Card>
-        <CardHeader><CardTitle>Histórico operacional</CardTitle></CardHeader>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+          <CardTitle>Histórico operacional</CardTitle>
+          <div className="flex items-center gap-2">
+            {[['Todos', false], [`Com erro (${logsComErro})`, true]].map(([label, value]) => (
+              <button key={String(value)} type="button" aria-pressed={somenteErros === value} onClick={() => setSomenteErros(value as boolean)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', somenteErros === value ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card hover:border-[#9CC7EC]')}>{label}</button>
+            ))}
+          </div>
+        </CardHeader>
         <CardContent className="space-y-2">
-          {overview.isLoading ? <Skeleton className="h-32 w-full" /> : logs.slice(0, 30).map((log) => <div key={log.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="flex items-center gap-2 text-sm font-medium"><ArchiveRestore className="h-4 w-4" />{log.nome}</p><p className="text-xs text-muted-foreground">{log.erro_mensagem || `${log.registros_sucesso || log.registros_processados || 0} registros processados`} · {dataHora(log.created_at)}{log.duracao_ms ? ` · ${(log.duracao_ms / 1000).toFixed(1)}s` : ''}</p></div><Badge variant={log.status === 'erro' ? 'destructive' : 'outline'}>{log.status}</Badge></div>)}
+          {overview.isLoading ? <Skeleton className="h-32 w-full rounded-xl" /> : logsVisiveis.map((log) => <div key={log.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 p-3"><div className="min-w-0"><p className="flex items-center gap-2 text-sm font-medium"><ArchiveRestore className="h-4 w-4 shrink-0 text-[#1080CA]" />{log.nome}</p><p className="break-words text-xs text-muted-foreground">{log.erro_mensagem || `${log.registros_sucesso || log.registros_processados || 0} registros processados`} · {dataHora(log.created_at)}{log.duracao_ms ? ` · ${(log.duracao_ms / 1000).toFixed(1)}s` : ''}</p></div><Badge variant={log.status === 'erro' ? 'destructive' : 'outline'} className="rounded-full">{log.status}</Badge></div>)}
           {!overview.isLoading && !overview.isError && !logs.length && <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma execução registrada.</p>}
+          {!overview.isLoading && somenteErros && logs.length > 0 && !logsComErro && <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma execução com erro entre as registradas.</p>}
         </CardContent>
       </Card>
+
+      {overview.data?.generated_at && <p className="text-right text-xs text-muted-foreground">Estado consultado em {dataHora(overview.data.generated_at)}</p>}
 
       <Dialog open={!!restoreTarget} onOpenChange={open => { if (!open && !restoreBusy) setRestoreTarget(null); }}>
         <DialogContent>
@@ -230,8 +261,8 @@ export default function PlatformBackups() {
             <p className="text-xs text-muted-foreground">{restoreReason.trim().length}/1.000 caracteres</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRestoreTarget(null)} disabled={restoreBusy}>Cancelar</Button>
-            <Button onClick={() => void solicitar()} disabled={restoreBusy || restoreReason.trim().length < 20 || restoreReason.trim().length > 1000}>{restoreBusy ? 'Enviando…' : 'Enviar para aprovação'}</Button>
+            <Button variant="outline" className="rounded-full" onClick={() => setRestoreTarget(null)} disabled={restoreBusy}>Cancelar</Button>
+            <Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => void solicitar()} disabled={restoreBusy || restoreReason.trim().length < 20 || restoreReason.trim().length > 1000}>{restoreBusy ? 'Enviando…' : 'Enviar para aprovação'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -253,6 +284,6 @@ export default function PlatformBackups() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </main>
   );
 }

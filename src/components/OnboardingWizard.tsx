@@ -13,7 +13,7 @@ import {
 const steps = [
   {
     icon: Sparkles,
-    title: 'Bem-vindo ao EloLab!',
+    title: 'Bem-vindo ao EloLab',
     description: 'Seu novo sistema de gestão clínica está pronto. Vamos fazer um tour rápido pelas principais funcionalidades.',
     color: 'hsl(168, 76%, 36%)',
   },
@@ -43,8 +43,8 @@ const steps = [
   },
   {
     icon: Rocket,
-    title: 'Tudo pronto!',
-    description: 'Explore os módulos no menu lateral. Use Ctrl+K para busca rápida e Alt+H, Alt+P, Alt+A e outros atalhos documentados para navegar. Bom trabalho!',
+    title: 'Configuração concluída',
+    description: 'Explore os módulos no menu lateral. Use Ctrl+K para busca rápida e Alt+H, Alt+P, Alt+A e outros atalhos documentados para navegar.',
     color: 'hsl(168, 76%, 36%)',
   },
 ];

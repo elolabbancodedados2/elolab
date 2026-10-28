@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/formatters';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,7 +55,7 @@ const ORDER_BADGE: Record<Order['status'], string> = {
 };
 const PRIORIDADES: Record<string, string> = { low: 'Baixa', normal: 'Normal', high: 'Alta', urgent: 'Urgente' };
 const INDICADOR_LABEL: Record<Indicador, string> = { vencida: 'manutenção vencida', em30: 'vencimento em 30 dias', manutencao: 'em manutenção', operacional: 'operacionais' };
-const fmt = (date: string | null) => date ? new Date(`${date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
+const fmt = (date: string | null) => date ? formatDate(date.slice(0, 10), 'short') : '—';
 const diasEntre = (hoje: string, date: string) => Math.round((Date.parse(`${date.slice(0, 10)}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) / 86_400_000);
 const plural = (n: number, singular: string, pluralForm: string) => `${n} ${n === 1 ? singular : pluralForm}`;
 
@@ -173,19 +174,19 @@ export default function PatrimonioEquipamentos() {
     return result;
   };
   const refresh = () => client.invalidateQueries({ queryKey: ['clinic-equipment', profile?.clinica_id] });
-  const operation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error(error.message || 'Operação não concluída') });
+  const operation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error(friendlyErrorMessage(error, 'Operação não concluída. Tente novamente.')) });
   const createAsset = useMutation({
     mutationFn: () => invoke({ action: 'create_asset', asset: { ...assetForm, room_id: assetForm.room_id || null,
       maintenance_interval_days: assetForm.maintenance_interval_days ? Number(assetForm.maintenance_interval_days) : null,
       acquired_on: assetForm.acquired_on || null, warranty_until: assetForm.warranty_until || null,
       calibration_due: assetForm.calibration_due || null, responsible_user_id: assetForm.responsible_user_id || null } }),
     onSuccess: () => { toast.success('Equipamento cadastrado'); setAssetForm((form) => ({ ...form, name: '', serial_number: '', asset_tag: '' })); void refresh(); },
-    onError: (error) => toast.error(error.message || 'Não foi possível cadastrar o equipamento'),
+    onError: (error) => toast.error(friendlyErrorMessage(error, 'Não foi possível cadastrar o equipamento.')),
   });
   const createOrder = useMutation({
     mutationFn: () => invoke({ action: 'create_order', order: { ...orderForm, due_on: orderForm.due_on || null, assigned_to: orderForm.assigned_to || null } }),
     onSuccess: () => { toast.success('Ordem de serviço aberta'); setOrderForm((form) => ({ ...form, title: '', description: '', due_on: '' })); void refresh(); },
-    onError: (error) => toast.error(error.message || 'Não foi possível abrir a ordem'),
+    onError: (error) => toast.error(friendlyErrorMessage(error, 'Não foi possível abrir a ordem.')),
   });
 
   const uploadDocument = async (asset: Asset, file: File) => {
@@ -201,12 +202,12 @@ export default function PatrimonioEquipamentos() {
       toast.success('Documento anexado'); await refresh();
     } catch (error) {
       await invoke({ action: 'cleanup_upload', storage_path: path }).catch(() => undefined);
-      toast.error(error instanceof Error ? error.message : 'Não foi possível registrar o documento.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível registrar o documento.'));
     }
   };
   const openDocument = async (id: string) => {
     try { const result = await invoke({ action: 'document_url', document_id: id }); window.open(result.url, '_blank', 'noopener,noreferrer'); }
-    catch (error) { toast.error(error instanceof Error ? error.message : 'Documento indisponível.'); }
+    catch (error) { toast.error(friendlyErrorMessage(error, 'Documento indisponível.')); }
   };
 
   const abrirCadastro = () => {
@@ -273,7 +274,7 @@ export default function PatrimonioEquipamentos() {
           const Icon = item.icon;
           const ativo = indicador === item.key;
           return <button key={item.key} type="button" aria-pressed={ativo} onClick={() => setIndicador(ativo ? 'todos' : item.key)}
-            className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+            className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
               item.escuro && 'border-transparent bg-gradient-primary text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#1080CA]/60')}>
             <div className="flex min-h-[96px] items-center gap-3 p-3">
               <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', item.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', item.color)} /></div>

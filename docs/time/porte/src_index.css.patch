@@ -1,0 +1,126 @@
+diff --git a/src/index.css b/src/index.css
+index 271a234b..abd13a16 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -166,7 +166,7 @@
+     --input: 203 25% 87%;
+     --ring: 215 100% 40%;
+ 
+-    --radius: 0.625rem;
++    --radius: 0.5rem;
+ 
+     /* Shadows */
+     --shadow-xs: 0 1px 2px 0 hsl(224 40% 18% / 0.04);
+@@ -174,15 +174,15 @@
+     --shadow-md: 0 4px 8px -2px hsl(224 40% 18% / 0.08), 0 2px 4px -2px hsl(224 40% 18% / 0.04);
+     --shadow-lg: 0 12px 24px -4px hsl(224 40% 18% / 0.1), 0 4px 8px -4px hsl(224 40% 18% / 0.04);
+     --shadow-xl: 0 24px 48px -8px hsl(224 40% 18% / 0.12), 0 8px 16px -4px hsl(224 40% 18% / 0.05);
+-    --shadow-glow: 0 0 40px -10px hsl(var(--brand) / 0.3);
+-    --shadow-glow-success: 0 0 40px -10px hsl(var(--success) / 0.3);
++    --shadow-glow: none;
++    --shadow-glow-success: none;
+ 
+     /* Gradients */
+-    --gradient-primary: linear-gradient(135deg, #005ecc, #0f7bfd);
+-    --gradient-hero: linear-gradient(135deg, #0c1f54 0%, #005ecc 100%);
+-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(203 41% 98%) 100%);
+-    --gradient-sidebar: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
+-    --gradient-surface: linear-gradient(135deg, #f7fafc 0%, #e0ebf2 100%);
++    --gradient-primary: #005ecc;
++    --gradient-hero: #0c1f54;
++    --gradient-card: hsl(0 0% 100%);
++    --gradient-sidebar: #ffffff;
++    --gradient-surface: #f7fafc;
+ 
+     /* Sidebar — darker text for legibility */
+     --sidebar-background: 203 41% 98%;
+@@ -278,6 +278,7 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+   }
+   .glass-card::before {
+     content: '';
++    display: none;
+     @apply absolute inset-0 bg-gradient-to-br from-white/[0.07] to-transparent pointer-events-none;
+   }
+ 
+@@ -288,8 +289,7 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+     transition: box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s;
+   }
+   .card-elevated:hover {
+-    box-shadow: var(--shadow-lg);
+-    transform: translateY(-3px);
++    box-shadow: var(--shadow-md);
+     @apply border-primary/15;
+   }
+ 
+@@ -310,12 +310,12 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+     transition: box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s;
+   }
+   .stat-card:hover {
+-    box-shadow: var(--shadow-lg);
+-    transform: translateY(-3px);
++    box-shadow: var(--shadow-md);
+     @apply border-primary/20;
+   }
+   .stat-card::after {
+     content: '';
++    display: none;
+     @apply absolute -right-6 -top-6 h-20 w-20 rounded-full;
+     background: radial-gradient(circle, hsl(var(--primary) / 0.06) 0%, transparent 70%);
+   }
+@@ -323,7 +323,7 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+   /* ─── Premium Badge ─── */
+   .badge-premium {
+     @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+-    background: linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--primary) / 0.04));
++    background: hsl(var(--primary) / 0.1);
+     border: 1px solid hsl(var(--primary) / 0.18);
+     color: hsl(var(--primary));
+   }
+@@ -356,7 +356,7 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+   .input-focus-ring::after {
+     content: '';
+     @apply absolute -inset-[3px] rounded-xl opacity-0 transition-opacity duration-200;
+-    background: linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.03));
++    background: hsl(var(--primary) / 0.1);
+   }
+   .input-focus-ring:focus-within::after {
+     @apply opacity-100;
+@@ -369,7 +369,7 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+   .btn-shimmer::before {
+     content: '';
+     @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent;
+-    animation: shimmer 2.5s infinite;
++    display: none;
+   }
+   @keyframes shimmer {
+     100% { transform: translateX(100%); }
+@@ -378,25 +378,21 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+   /* ─── Icon containers ─── */
+   .icon-container {
+     @apply flex items-center justify-center rounded-xl;
+-    background: linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--primary) / 0.04));
++    background: hsl(var(--primary) / 0.1);
+   }
+   .icon-container-success {
+-    background: linear-gradient(135deg, hsl(var(--success) / 0.12), hsl(var(--success) / 0.04));
++    background: hsl(var(--success) / 0.1);
+   }
+   .icon-container-warning {
+-    background: linear-gradient(135deg, hsl(var(--warning) / 0.12), hsl(var(--warning) / 0.04));
++    background: hsl(var(--warning) / 0.1);
+   }
+   .icon-container-destructive {
+-    background: linear-gradient(135deg, hsl(var(--destructive) / 0.12), hsl(var(--destructive) / 0.04));
++    background: hsl(var(--destructive) / 0.1);
+   }
+ 
+   /* ─── Page title ─── */
+   .page-title {
+     @apply text-3xl font-bold tracking-tight;
+-    background: linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--foreground) / 0.65));
+-    -webkit-background-clip: text;
+-    -webkit-text-fill-color: transparent;
+-    background-clip: text;
+   }
+ 
+   /* ─── FAB ─── */

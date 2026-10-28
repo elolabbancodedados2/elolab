@@ -1,0 +1,40 @@
+diff --git a/src/pages/Prescricoes.tsx b/src/pages/Prescricoes.tsx
+index be04266e..5ea42e31 100644
+--- a/src/pages/Prescricoes.tsx
++++ b/src/pages/Prescricoes.tsx
+@@ -444,7 +444,7 @@ export default function Prescricoes() {
+       return;
+     }
+ 
+-    // ✅ CHECK CLINICAL ALERTS antes de salvar
++    // CHECK CLINICAL ALERTS antes de salvar
+     // Helper: aceita array de strings ou CSV (campo no banco pode vir como ambos)
+     const toList = (val: unknown): string[] => {
+       if (!val) return [];
+@@ -501,7 +501,7 @@ export default function Prescricoes() {
+       setClinicalAlerts(alerts);
+       setShowAlertsDialog(true);
+       if (hasCriticalAlerts) {
+-        toast.error('⚠️ Alertas de segurança críticos! Resolva antes de prescrever.');
++        toast.error('Alertas de segurança críticos. Resolva antes de prescrever.');
+       }
+       setGerando(false);
+       return;
+@@ -1003,7 +1003,7 @@ export default function Prescricoes() {
+                 value={form.medicamentos_texto}
+                 onChange={e => setForm(f => ({ ...f, medicamentos_texto: e.target.value }))}
+                 rows={8}
+-                className="font-mono text-sm"
++                className="font-mono text-base md:text-sm"
+               />
+             </div>
+           </fieldset>
+@@ -1046,7 +1046,7 @@ export default function Prescricoes() {
+         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+           <DialogHeader>
+             <DialogTitle className="flex items-center gap-2 text-lg">
+-              ⚠️ Alertas de Segurança Clínica
++              Alertas de Segurança Clínica
+             </DialogTitle>
+             <DialogDescription>
+               Revisão antes de prescrever. Alertas com tag "Não ignorável" devem ser resolvidos

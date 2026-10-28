@@ -1,0 +1,28 @@
+diff --git a/src/integrations/supabase/types.ts b/src/integrations/supabase/types.ts
+index 0d8de73a..9e35ccc4 100644
+--- a/src/integrations/supabase/types.ts
++++ b/src/integrations/supabase/types.ts
+@@ -109,6 +109,7 @@ export type Database = {
+           sala_id: string | null
+           status: Database["public"]["Enums"]["status_agendamento"] | null
+           tipo: string | null
++          tipo_consulta_id: string | null
+           updated_at: string | null
+         }
+         Insert: {
+@@ -135,6 +136,7 @@ export type Database = {
+           sala_id?: string | null
+           status?: Database["public"]["Enums"]["status_agendamento"] | null
+           tipo?: string | null
++          tipo_consulta_id?: string | null
+           updated_at?: string | null
+         }
+         Update: {
+@@ -161,6 +163,7 @@ export type Database = {
+           sala_id?: string | null
+           status?: Database["public"]["Enums"]["status_agendamento"] | null
+           tipo?: string | null
++          tipo_consulta_id?: string | null
+           updated_at?: string | null
+         }
+         Relationships: [

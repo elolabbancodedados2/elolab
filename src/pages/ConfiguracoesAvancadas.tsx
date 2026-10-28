@@ -10,8 +10,7 @@
   */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Server, Zap, Database, Shield, Key, Code, GitBranch, Activity,
@@ -37,7 +36,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 
 /* ─── Types ─── */
@@ -135,24 +134,24 @@ export function HealthCheckTab() {
 
   const StatusBadge = ({ status }: { status: 'ok' | 'warning' | 'error' }) => {
     const variants: Record<string, { bg: string; text: string; icon: any }> = {
-      ok: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle2 },
-      warning: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: AlertTriangle },
-      error: { bg: 'bg-red-100', text: 'text-red-800', icon: AlertCircle },
+      ok: { bg: 'bg-success/10 border-success/30', text: 'text-success', icon: CheckCircle2 },
+      warning: { bg: 'bg-warning/10 border-warning/30', text: 'text-warning', icon: AlertTriangle },
+      error: { bg: 'bg-destructive/10 border-destructive/30', text: 'text-destructive', icon: AlertCircle },
     };
     const v = variants[status];
     const Icon = v.icon;
-    return <Badge className={`${v.bg} ${v.text} gap-1`}><Icon className="h-3 w-3" /> {status.toUpperCase()}</Badge>;
+    return <Badge variant="outline" className={`${v.bg} ${v.text} gap-1 rounded-full hover:bg-transparent`}><Icon className="h-3 w-3" /> {status.toUpperCase()}</Badge>;
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2"><Server className="h-5 w-5" />Status do Sistema</CardTitle>
             <CardDescription>Verificação em tempo real dos serviços</CardDescription>
           </div>
-          <Button onClick={checkHealth} disabled={checking} size="sm" variant="outline">
+          <Button onClick={checkHealth} disabled={checking} size="sm" variant="outline" className="gap-2 rounded-full">
             <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
             {checking ? 'Verificando...' : 'Verificar Agora'}
           </Button>
@@ -162,11 +161,11 @@ export function HealthCheckTab() {
             <>
               <div className="grid gap-4 md:grid-cols-2">
                 {/* Database */}
-                <Card className="border-l-4 border-l-blue-500">
+                <Card className="rounded-2xl border-border/60 shadow-xs">
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <Database className="h-5 w-5 text-blue-600" />
+                        <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1080CA]/10"><Database className="h-5 w-5 text-[#1080CA]" /></span>
                         <span className="font-semibold">API de Dados</span>
                       </div>
                       <StatusBadge status={health.database.status} />
@@ -178,11 +177,11 @@ export function HealthCheckTab() {
                 </Card>
 
                 {/* Auth */}
-                <Card className="border-l-4 border-l-green-500">
+                <Card className="rounded-2xl border-border/60 shadow-xs">
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <Shield className="h-5 w-5 text-green-600" />
+                        <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10"><Shield className="h-5 w-5 text-success" /></span>
                         <span className="font-semibold">Autenticação</span>
                       </div>
                       <StatusBadge status={health.auth.status} />
@@ -194,11 +193,11 @@ export function HealthCheckTab() {
                 </Card>
 
                 {/* Storage */}
-                <Card className="border-l-4 border-l-purple-500">
+                <Card className="rounded-2xl border-border/60 shadow-xs">
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <Zap className="h-5 w-5 text-purple-600" />
+                        <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-info/10"><Zap className="h-5 w-5 text-info" /></span>
                         <span className="font-semibold">Acesso aos anexos</span>
                       </div>
                       <StatusBadge status={health.storage.status} />
@@ -232,7 +231,7 @@ export function HealthCheckTab() {
           )}
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -253,44 +252,44 @@ export function IntegracoesTab() {
   const integracoes = data?.checks ?? [];
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2"><Code className="h-5 w-5" />Integrações</CardTitle>
             <CardDescription>APIs e webhooks conectados</CardDescription>
           </div>
-          <Button onClick={() => refetch()} disabled={isFetching} size="sm" variant="outline">
-            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
+          <Button onClick={() => refetch()} disabled={isFetching} size="sm" variant="outline" className="gap-2 rounded-full">
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             Verificar agora
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{mensagemDeErro(error)}</AlertDescription></Alert>}
           {integracoes.map(integracao => (
-            <div key={integracao.id} className="flex items-start justify-between p-4 border rounded-lg">
+            <div key={integracao.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/60 p-4 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
               <div className="flex-1">
                 <h3 className="font-semibold flex items-center gap-2">
-                  <Zap className="h-4 w-4" />
+                  <Zap aria-hidden="true" className="h-4 w-4 text-[#1080CA]" />
                   {integracao.nome}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">{integracao.detalhe}</p>
                 {integracao.latencia_ms !== undefined && <p className="text-xs text-muted-foreground mt-1">Latência: {integracao.latencia_ms} ms</p>}
               </div>
-              <Badge className={integracao.status === 'ok' ? 'bg-green-100 text-green-800' : integracao.status === 'warning' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>{integracao.status === 'ok' ? 'Operacional' : integracao.status === 'warning' ? 'Atenção' : 'Falha'}</Badge>
+              <Badge variant="outline" className={`shrink-0 rounded-full hover:bg-transparent ${integracao.status === 'ok' ? 'border-success/30 bg-success/10 text-success' : integracao.status === 'warning' ? 'border-warning/30 bg-warning/10 text-warning' : 'border-destructive/30 bg-destructive/10 text-destructive'}`}>{integracao.status === 'ok' ? 'Operacional' : integracao.status === 'warning' ? 'Atenção' : 'Falha'}</Badge>
             </div>
           ))}
 
           {!error && integracoes.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <Code className="h-12 w-12 mx-auto opacity-20 mb-2" />
+            <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground">
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Code className="h-6 w-6" /></span>
               <p>{isLoading ? 'Verificando integrações...' : 'Nenhuma integração encontrada'}</p>
             </div>
           )}
           {data?.checked_at && <p className="text-xs text-muted-foreground">Última verificação: {formatarDataHoraSaoPaulo(data.checked_at, true)}</p>}
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -327,7 +326,7 @@ export function EspecialidadesTab() {
     if (!codigo) return;
     const descricao = window.prompt('Descrição:', '')?.trim() || '';
     const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true, clinica_id: profile.clinica_id });
-    if (error) return toast.error('Erro ao criar especialidade', { description: error.message });
+    if (error) return toast.error('Não foi possível criar a especialidade', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
     toast.success('Especialidade criada');
   };
@@ -340,7 +339,7 @@ export function EspecialidadesTab() {
     const descricao = window.prompt('Descrição:', esp.descricao)?.trim() ?? esp.descricao;
     const { data, error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao })
       .eq('id', esp.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
-    if (error) return toast.error('Erro ao editar', { description: error.message });
+    if (error) return toast.error('Não foi possível salvar a edição', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     if (!data) return toast.error('Especialidade não encontrada ou sem permissão para editar.');
     await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
     toast.success('Especialidade atualizada');
@@ -355,40 +354,40 @@ export function EspecialidadesTab() {
   const removerEspecialidade = async (esp: Especialidade) => {
     const { data, error } = await (supabase as any).from('especialidades_destino').delete()
       .eq('id', esp.id).eq('clinica_id', profile.clinica_id).select('id');
-    if (error) return toast.error('Não foi possível excluir', { description: error.message });
+    if (error) return toast.error('Não foi possível excluir', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     if (!data?.length) return toast.error('Especialidade não encontrada ou sem permissão para excluir.');
     await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
     toast.success('Especialidade excluída');
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2"><Stethoscope className="h-5 w-5" />Especialidades</CardTitle>
             <CardDescription>Gerenciar especialidades disponíveis</CardDescription>
           </div>
-          <Button onClick={() => void criarEspecialidade()} disabled={!profile?.clinica_id || especialidadesQuery.isLoading || especialidadesQuery.isError} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={() => void criarEspecialidade()} disabled={!profile?.clinica_id || especialidadesQuery.isLoading || especialidadesQuery.isError} size="sm" className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Plus className="h-4 w-4" />
             Nova Especialidade
           </Button>
         </CardHeader>
         <CardContent>
-          {especialidadesQuery.isError ? <ErrorState compact title="Não foi possível carregar as especialidades" error={especialidadesQuery.error} onRetry={() => void especialidadesQuery.refetch()} /> : especialidadesQuery.isLoading ? <div className="py-8 text-center text-sm text-muted-foreground">Carregando especialidades…</div> : especialidades.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">Nenhuma especialidade cadastrada.</div> : <div className="space-y-3">
+          {especialidadesQuery.isError ? <ErrorState compact title="Não foi possível carregar as especialidades" error={especialidadesQuery.error} onRetry={() => void especialidadesQuery.refetch()} /> : especialidadesQuery.isLoading ? <div className="py-8 text-center text-sm text-muted-foreground">Carregando especialidades…</div> : especialidades.length === 0 ? <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground"><span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Stethoscope className="h-6 w-6" /></span><p className="font-medium text-foreground">Nenhuma especialidade cadastrada.</p><p>Use "Nova Especialidade" para cadastrar a primeira.</p></div> : <div className="space-y-3">
             {especialidades.map(esp => (
-              <div key={esp.id} className="flex items-center justify-between p-3 border rounded-lg">
+              <div key={esp.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
                 <div>
                   <h3 className="font-semibold">{esp.nome}</h3>
                   <p className="text-sm text-muted-foreground">{esp.descricao}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={esp.ativo ? 'default' : 'secondary'}>
+                  <Badge variant="outline" className={esp.ativo ? 'rounded-full border-success/30 bg-success/10 text-success' : 'rounded-full text-muted-foreground'}>
                     {esp.ativo ? 'Ativo' : 'Inativo'}
                   </Badge>
                   {esp.clinica_id === profile?.clinica_id && <>
-                    <Button size="sm" variant="outline" aria-label={`Editar ${esp.nome}`} onClick={() => void editarEspecialidade(esp)}><Edit className="h-3 w-3" /></Button>
-                    <Button size="sm" variant="outline" className="text-red-600" aria-label={`Excluir ${esp.nome}`} onClick={() => pedirRemocaoEspecialidade(esp)}><Trash2 className="h-3 w-3" /></Button>
+                    <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" aria-label={`Editar ${esp.nome}`} onClick={() => void editarEspecialidade(esp)}><Edit className="h-3 w-3" /></Button>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={`Excluir ${esp.nome}`} onClick={() => pedirRemocaoEspecialidade(esp)}><Trash2 className="h-3 w-3" /></Button>
                   </>}
                 </div>
               </div>
@@ -402,7 +401,7 @@ export function EspecialidadesTab() {
         itemName={toDelete?.nome ?? ''}
         onConfirm={() => { if (toDelete) void removerEspecialidade(toDelete); setToDelete(null); }}
       />
-    </motion.div>
+    </div>
   );
 }
 
@@ -411,21 +410,21 @@ export function DocumentosTemplatesTab() {
   const navigate = useNavigate();
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Templates de Documentos</CardTitle>
             <CardDescription>Prontuários, prescrições, atestados</CardDescription>
           </div>
-          <Button onClick={() => navigate('/todos-templates')} size="sm">
-            <FileText className="h-4 w-4 mr-2" />
+          <Button onClick={() => navigate('/todos-templates')} size="sm" className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <FileText className="h-4 w-4" />
             Abrir gerenciador
           </Button>
         </CardHeader>
-        <CardContent><Alert><FileText className="h-4 w-4" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
+        <CardContent><Alert className="rounded-xl border-[#BFD8EE] bg-[#F3F8FC]"><FileText className="h-4 w-4 !text-[#1080CA]" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -563,15 +562,15 @@ export function LGPDAvancadoTab() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <Alert className="border-blue-200 bg-blue-50">
-        <Shield className="h-4 w-4 text-blue-600" />
-        <AlertDescription className="text-sm text-blue-800">
+    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
+      <Alert className="rounded-2xl border-[#BFD8EE] bg-[#F3F8FC]">
+        <Shield className="h-4 w-4 !text-[#1080CA]" />
+        <AlertDescription className="text-sm text-foreground">
           Esta tela registra informações da clínica e lista solicitações pendentes. Salvar aqui não ativa automaticamente consentimento, retenção, backup, criptografia ou auditoria.
         </AlertDescription>
       </Alert>
 
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Lock className="h-5 w-5" />Política & Consentimento</CardTitle>
         </CardHeader>
@@ -621,7 +620,7 @@ export function LGPDAvancadoTab() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5" />Prazo e preferências registradas</CardTitle>
         </CardHeader>
@@ -665,22 +664,22 @@ export function LGPDAvancadoTab() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Download className="h-5 w-5" />Direitos do Titular</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert className="bg-yellow-50 border-yellow-200">
+          <Alert className="rounded-xl border-warning/30 bg-warning/10">
             <AlertDescription className="text-sm">
               Este resumo não inclui prontuários e não exporta automaticamente os dados de pacientes.
             </AlertDescription>
           </Alert>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <Card className="border-2">
+            <Card className="rounded-xl border-border/60 shadow-none">
               <CardContent className="pt-6">
                 <h3 className="font-semibold flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <CheckCircle2 className="h-4 w-4 text-success" />
                   Resumo exportado por esta tela
                 </h3>
                 <ul className="text-sm space-y-1 text-muted-foreground">
@@ -690,10 +689,10 @@ export function LGPDAvancadoTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-2">
+            <Card className="rounded-xl border-border/60 shadow-none">
               <CardContent className="pt-6">
                 <h3 className="font-semibold flex items-center gap-2 mb-2">
-                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                  <AlertCircle className="h-4 w-4 text-[#1080CA]" />
                   Solicitações pendentes
                 </h3>
                 <ul className="text-sm space-y-1 text-muted-foreground">
@@ -706,25 +705,28 @@ export function LGPDAvancadoTab() {
 
           <Separator />
 
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={exportReport}>
-              <Download className="h-4 w-4 mr-2" />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="flex-1 gap-2 rounded-full" onClick={exportReport}>
+              <Download className="h-4 w-4" />
               Gerar Relatório LGPD
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setShowRequests(v=>!v)}>
-              <FileText className="h-4 w-4 mr-2" />
+            <Button variant="outline" className="flex-1 gap-2 rounded-full" aria-expanded={showRequests} onClick={() => setShowRequests(v=>!v)}>
+              <FileText className="h-4 w-4" />
               Requisições Pendentes ({requests.length})
             </Button>
+            <Button asChild variant="outline" className="flex-1 gap-2 rounded-full">
+              <Link to="/lgpd-pacientes"><Users className="h-4 w-4" /> Atender titular</Link>
+            </Button>
           </div>
-          {showRequests && <div className="space-y-2">{requests.length===0 ? <p className="text-sm text-muted-foreground">Nenhuma requisição pendente.</p> : requests.map((request:any)=><div key={request.id} className="flex justify-between rounded border p-3 text-sm"><span>{request.pacientes?.nome || 'Paciente'} — {request.request_type}</span><span>{formatarDataHoraSaoPaulo(request.requested_at).split(' ')[0]}</span></div>)}</div>}
+          {showRequests && <div className="space-y-2">{requests.length===0 ? <p className="text-sm text-muted-foreground">Nenhuma requisição pendente.</p> : requests.map((request:any)=><div key={request.id} className="flex justify-between gap-3 rounded-xl border border-border/60 p-3 text-sm"><span>{request.pacientes?.nome || 'Paciente'} — {request.request_type}</span><span>{formatarDataHoraSaoPaulo(request.requested_at).split(' ')[0]}</span></div>)}</div>}
         </CardContent>
       </Card>
 
-      <Button className="w-full" onClick={saveLGPD} disabled={saving}>
-        <Save className="h-4 w-4 mr-2" />
+      <Button className="w-full gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={saveLGPD} disabled={saving}>
+        <Save className="h-4 w-4" />
         {saving ? 'Salvando...' : 'Salvar Configurações LGPD'}
       </Button>
-    </motion.div>
+    </div>
   );
 }
 
@@ -741,26 +743,26 @@ export default function ConfiguracoesAvancadas() {
       />
 
       <Tabs defaultValue="status" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 sm:w-auto">
           <TabsTrigger value="status" className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
-            <span className="hidden sm:inline">Status</span>
+            <span>Status</span>
           </TabsTrigger>
           <TabsTrigger value="integracoes" className="flex items-center gap-2">
             <Code className="h-4 w-4" />
-            <span className="hidden sm:inline">APIs</span>
+            <span>APIs</span>
           </TabsTrigger>
           <TabsTrigger value="especialidades" className="flex items-center gap-2">
             <Stethoscope className="h-4 w-4" />
-            <span className="hidden sm:inline">Espec.</span>
+            <span>Espec.</span>
           </TabsTrigger>
           <TabsTrigger value="documentos" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Docs</span>
+            <span>Docs</span>
           </TabsTrigger>
           <TabsTrigger value="lgpd" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">LGPD</span>
+            <span>LGPD</span>
           </TabsTrigger>
         </TabsList>
 

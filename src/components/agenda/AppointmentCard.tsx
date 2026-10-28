@@ -16,6 +16,7 @@ import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
+import { prefixoTabela } from '@/lib/queryKeys';
 import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
@@ -166,11 +167,11 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
 
   const invalidarAgendaEFila = () => {
-    void queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-    void queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+    void queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
+    void queryClient.invalidateQueries({ queryKey: prefixoTabela('fila_atendimento') });
   };
   const invalidarFinanceiro = () => {
-    void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+    void queryClient.invalidateQueries({ queryKey: prefixoTabela('lancamentos') });
   };
 
   const fazerCheckin = () => checkinComCobranca({
@@ -291,8 +292,8 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       if (!r.success) throw new Error(r.message);
 
       toast.success('Atendimento iniciado', { description: r.actions.join(' • ') });
-      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+      queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
+      queryClient.invalidateQueries({ queryKey: prefixoTabela('fila_atendimento') });
     } catch (e: any) {
       toast.error('Não foi possível iniciar', { description: mensagemDeErro(e) });
     } finally {
@@ -335,9 +336,9 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       if (!r.success) throw new Error(r.message);
 
       toast.success('Atendimento finalizado', { description: r.actions.join(' • ') });
-      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      queryClient.invalidateQueries({ queryKey: prefixoTabela('agendamentos') });
+      queryClient.invalidateQueries({ queryKey: prefixoTabela('fila_atendimento') });
+      queryClient.invalidateQueries({ queryKey: prefixoTabela('lancamentos') });
     } catch (e: any) {
       toast.error('Não foi possível finalizar', { description: mensagemDeErro(e) });
     } finally {

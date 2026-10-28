@@ -1,0 +1,13 @@
+diff --git a/src/lib/checkinWithBilling.ts b/src/lib/checkinWithBilling.ts
+index f562ebc6..4c08299c 100644
+--- a/src/lib/checkinWithBilling.ts
++++ b/src/lib/checkinWithBilling.ts
+@@ -123,7 +123,7 @@ export async function checkinComCobranca(
+     return {
+       ...checkin,
+       success: false,
+-      message: `O check-in não foi confirmado porque a cobrança falhou: ${detalhe}.${mensagem}`,
++      message: `O check-in não foi confirmado porque a cobrança falhou: ${detalhe.replace(/\.$/, '')}.${mensagem}`,
+       actions: rollback?.desfeito ? [] : checkin.actions,
+     };
+   }

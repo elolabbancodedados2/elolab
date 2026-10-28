@@ -15,8 +15,8 @@ const NAV_LINKS = [
   { label: "Preços", href: "#pricing" },
 ];
 
-const CTA_COLORS = ["#2FE0C9", "#FFFFFF", "#2F6BFF"];
-const BUTTON_WAVE_COLORS = ["#FFFFFF", "#DBEAFE", "#FFFFFF"];
+const CTA_COLORS = ["hsl(var(--muted))", "hsl(var(--background))", "hsl(var(--muted))"];
+const BUTTON_WAVE_COLORS = ["hsl(var(--primary-foreground))", "hsl(var(--muted))", "hsl(var(--primary-foreground))"];
 const PRISM_CONFIG = { preset: "Prism" } as const;
 
 export default function HeroSection() {
@@ -27,7 +27,7 @@ export default function HeroSection() {
   return (
     <section
       id="top"
-      className="relative isolate flex h-screen min-h-[500px] flex-col overflow-hidden bg-background font-inter text-elolab-ink"
+      className="relative isolate flex h-screen min-h-[500px] flex-col overflow-hidden bg-background font-inter text-foreground"
     >
       <AnimatedGradient
         className="pointer-events-none"
@@ -64,13 +64,13 @@ export default function HeroSection() {
 
           <nav
             aria-label="Navegação principal"
-            className="hidden items-center gap-5 rounded-full border border-elolab-blue/15 bg-white/75 px-5 py-0.5 text-sm shadow-sm backdrop-blur-md lg:flex xl:gap-7"
+            className="hidden items-center gap-5 rounded-full border border-border bg-card/75 px-5 py-0.5 text-sm shadow-sm backdrop-blur-md lg:flex xl:gap-7"
           >
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="inline-flex min-h-10 items-center whitespace-nowrap text-elolab-ink/80 transition-colors duration-200 hover:text-elolab-blue"
+                className="inline-flex min-h-10 items-center whitespace-nowrap text-muted-foreground transition-colors duration-200 hover:text-primary"
               >
                 {link.label}
               </a>
@@ -80,18 +80,18 @@ export default function HeroSection() {
           <div className="hidden shrink-0 items-center gap-5 lg:flex">
             <a
               href={loginUrl}
-              className="inline-flex min-h-10 min-w-10 items-center justify-center text-sm font-medium text-elolab-ink/75 transition-colors hover:text-elolab-blue"
+              className="inline-flex min-h-10 min-w-10 items-center justify-center text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
             >
               Entrar
             </a>
             <a
               href="mailto:contato@elolab.com.br?subject=Agendar%20demonstra%C3%A7%C3%A3o%20EloLab"
-              className="elolab-gradient-button group inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue"
+              className="elolab-gradient-button group inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <GradientWaveText
                 as="span"
                 align="left"
-                baseColor="rgb(10,34,55)"
+                baseColor="hsl(var(--primary-foreground))"
                 customColors={BUTTON_WAVE_COLORS}
                 inView
                 once={false}
@@ -112,7 +112,7 @@ export default function HeroSection() {
             aria-expanded={menuOpen}
             aria-controls="navegacao-mobile"
             onClick={() => setMenuOpen((open) => !open)}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full border border-elolab-blue/20 bg-white/80 text-elolab-ink transition-colors duration-200 hover:bg-elolab-blue/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue lg:hidden"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-card/80 text-foreground transition-colors duration-200 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
           >
             {menuOpen ? (
               <X aria-hidden="true" className="size-5" />
@@ -125,14 +125,14 @@ export default function HeroSection() {
             <nav
             id="navegacao-mobile"
             aria-label="Navegação móvel"
-            className="flex absolute inset-x-0 top-full z-30 mt-3 flex-col gap-1 rounded-2xl border border-elolab-blue/15 bg-white/95 p-3 text-sm text-elolab-ink shadow-xl backdrop-blur-xl lg:hidden"
+            className="flex absolute inset-x-0 top-full z-30 mt-3 flex-col gap-1 rounded-2xl border border-border bg-card/95 p-3 text-sm text-foreground shadow-xl backdrop-blur-xl lg:hidden"
           >
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl px-3 py-3 text-elolab-ink/80 transition-colors duration-200 hover:bg-elolab-blue/5 hover:text-elolab-blue"
+                className="rounded-xl px-3 py-3 text-muted-foreground transition-colors duration-200 hover:bg-primary/5 hover:text-primary"
               >
                 {link.label}
               </a>
@@ -140,7 +140,7 @@ export default function HeroSection() {
             <a
               href={loginUrl}
               onClick={() => setMenuOpen(false)}
-              className="rounded-xl px-3 py-3 text-elolab-ink/80 transition-colors duration-200 hover:bg-elolab-blue/5 hover:text-elolab-blue"
+              className="rounded-xl px-3 py-3 text-muted-foreground transition-colors duration-200 hover:bg-primary/5 hover:text-primary"
             >
               Entrar
             </a>
@@ -152,7 +152,7 @@ export default function HeroSection() {
               <GradientWaveText
                 as="span"
                 align="left"
-                baseColor="rgb(10,34,55)"
+                baseColor="hsl(var(--primary-foreground))"
                 customColors={BUTTON_WAVE_COLORS}
                 inView
                 once={false}
@@ -167,13 +167,13 @@ export default function HeroSection() {
           </header>
 
         <div className="relative z-20 flex flex-1 flex-col items-center justify-start pt-8 text-center sm:pt-10 md:pt-12 lg:items-start lg:pt-16 lg:text-left">
-          <p className="text-xs font-medium uppercase tracking-[0.22em] text-elolab-blue sm:text-sm">
+          <p className="text-xs font-medium uppercase tracking-[0.22em] text-primary sm:text-sm">
             Gestão integrada para clínicas
           </p>
           <GradientWaveText
             as="h1"
             alignClassName="justify-center text-center lg:justify-start lg:text-left"
-            className="mt-6 max-w-3xl text-balance text-4xl font-medium leading-[0.95] tracking-[-0.055em] text-elolab-ink sm:text-5xl md:text-6xl lg:text-7xl"
+            className="mt-6 max-w-3xl text-balance text-4xl font-medium leading-[0.95] tracking-[-0.055em] text-foreground sm:text-5xl md:text-6xl lg:text-7xl"
             speed={0.75}
             inView
             once={false}
@@ -181,14 +181,14 @@ export default function HeroSection() {
           >
             Toda a clínica.<br />Em um só fluxo.
           </GradientWaveText>
-          <p className="mt-6 max-w-xl text-balance text-sm leading-relaxed text-elolab-ink/75 sm:text-base md:text-lg lg:max-w-md xl:max-w-xl">
+          <p className="mt-6 max-w-xl text-balance text-sm leading-relaxed text-muted-foreground sm:text-base md:text-lg lg:max-w-md xl:max-w-xl">
             Agenda, triagem, prontuário, financeiro e operação conectados em
             uma plataforma para sua equipe.
           </p>
 
           <a
               href="mailto:contato@elolab.com.br?subject=Agendar%20demonstra%C3%A7%C3%A3o%20EloLab"
-            className="group mt-9 inline-flex items-center gap-3 rounded-full border border-elolab-blue/25 bg-elolab-navy px-6 py-3.5 text-white shadow-[0_12px_32px_rgba(10,34,55,0.2)] transition-all duration-200 hover:bg-[#102f49] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue focus-visible:ring-offset-2 focus-visible:ring-offset-background md:px-8 md:py-4"
+            className="group mt-9 inline-flex items-center gap-3 rounded-full border border-foreground bg-foreground px-6 py-3.5 text-background shadow-md transition-colors duration-200 hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:px-8 md:py-4"
           >
             <GradientWaveText
               className="h-auto w-auto text-sm font-medium sm:text-base"
@@ -196,7 +196,7 @@ export default function HeroSection() {
               repeat
               inView
               once={false}
-              baseColor="rgb(255,255,255)"
+              baseColor="hsl(var(--background))"
               customColors={CTA_COLORS}
             >
               Agendar demonstração
@@ -209,7 +209,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={() => navigate("/demonstracao")}
-            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-elolab-blue/25 bg-white/80 px-5 text-sm font-semibold text-elolab-navy backdrop-blur transition hover:border-elolab-blue hover:text-elolab-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card/80 px-5 text-sm font-semibold text-foreground backdrop-blur transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Ver demonstração com dados fictícios
           </button>

@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Megaphone, RefreshCw, Send, SquareX } from 'lucide-react';
+import { Archive, CalendarClock, Loader2, Megaphone, Radio, RefreshCw, Send, SquareX } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { isValidDateTimeLocal, toDateTimeLocalValue } from '@/lib/dateTimeLocal';
+import { cn } from '@/lib/utils';
 
 type Destination = 'todos' | 'clinica' | 'plano';
 type AnnouncementType = 'info' | 'sucesso' | 'atencao' | 'critico';
@@ -48,6 +50,14 @@ function dateTime(value: string | null) {
   return Number.isNaN(date.getTime()) ? 'Data inválida' : date.toLocaleString('pt-BR');
 }
 
+type Status = 'Publicado' | 'Programado' | 'Encerrado';
+function statusOf(item: Announcement, now: number) {
+  const isScheduled = item.publicado && new Date(item.inicia_em).getTime() > now;
+  const isActive = item.publicado && !isScheduled && (!item.termina_em || new Date(item.termina_em).getTime() > now);
+  const status: Status = !item.publicado || (!isActive && !isScheduled) ? 'Encerrado' : isScheduled ? 'Programado' : 'Publicado';
+  return { isScheduled, isActive, status };
+}
+
 export default function PlatformComunicacao() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -58,6 +68,7 @@ export default function PlatformComunicacao() {
     inicia_em: toDateTimeLocalValue(), termina_em: '',
   });
   const [announcementToEnd, setAnnouncementToEnd] = useState<Announcement | null>(null);
+  const [statusFilter, setStatusFilter] = useState<Status | 'todos'>('todos');
 
   const clinics = useQuery({
     queryKey: ['platform-announcement-clinics'],
@@ -152,6 +163,16 @@ export default function PlatformComunicacao() {
     if (item.destino === 'clinica') return clinics.data?.find((clinic) => clinic.id === item.destino_id)?.nome || `Clínica (${item.destino_id || 'sem identificação'})`;
     return plans.data?.find((plan) => plan.slug === item.destino_id)?.nome || `Plano (${item.destino_id || 'sem identificação'})`;
   };
+  const now = Date.now();
+  const history = announcements.data ?? [];
+  const counts = history.reduce((acc, item) => ({ ...acc, [statusOf(item, now).status]: acc[statusOf(item, now).status] + 1 }), { Publicado: 0, Programado: 0, Encerrado: 0 } as Record<Status, number>);
+  const visibleHistory = statusFilter === 'todos' ? history : history.filter((item) => statusOf(item, now).status === statusFilter);
+  const kpis = [
+    { value: 'todos' as const, label: 'Comunicados', count: history.length, detail: 'no histórico recente', icon: Megaphone, color: '' },
+    { value: 'Publicado' as const, label: 'Visíveis agora', count: counts.Publicado, detail: 'publicados e no período', icon: Radio, color: 'bg-success/10 text-success' },
+    { value: 'Programado' as const, label: 'Programados', count: counts.Programado, detail: 'começam no futuro', icon: CalendarClock, color: 'bg-info/10 text-info' },
+    { value: 'Encerrado' as const, label: 'Encerrados', count: counts.Encerrado, detail: 'fora do ar', icon: Archive, color: 'bg-muted text-muted-foreground' },
+  ];
   const handlePublish = () => {
     if (publishLock.current || invalid || destinationLoading || destinationError) return;
     publishLock.current = true;
@@ -159,18 +180,48 @@ export default function PlatformComunicacao() {
   };
 
   return (
-    <div className="space-y-6 pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><Megaphone className="h-6 w-6 text-primary" /> Comunicação global</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Envie avisos para todas as clínicas, uma clínica específica ou clientes de um plano.</p>
-        </div>
-        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => { void clinics.refetch(); void plans.refetch(); void announcements.refetch(); }} disabled={updatingOptions}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${updatingOptions ? 'animate-spin' : ''}`} />Atualizar dados
-        </Button>
-      </header>
+    <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <PageHeader
+        title="Comunicação global"
+        icon={<Megaphone />}
+        description={history.length
+          ? `${counts.Publicado} visíveis agora · ${counts.Programado} programados · ${counts.Encerrado} encerrados`
+          : 'Envie avisos para todas as clínicas, uma clínica específica ou clientes de um plano.'}
+        actions={
+          <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={() => { void clinics.refetch(); void plans.refetch(); void announcements.refetch(); }} disabled={updatingOptions} aria-label="Atualizar dados">
+            <RefreshCw className={cn('h-4 w-4', updatingOptions && 'animate-spin')} />
+          </Button>
+        }
+      />
 
-      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
+      {history.length > 0 && (
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Indicadores de comunicados">
+          {kpis.map(({ value, label, count, detail, icon: Icon, color }) => {
+            const highlight = value === 'todos';
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={statusFilter === value}
+                onClick={() => setStatusFilter(value)}
+                className={cn(
+                  'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  highlight && 'border-transparent bg-gradient-primary text-white',
+                  statusFilter === value && !highlight && 'border-[#1080CA] ring-1 ring-[#1080CA]/30',
+                  statusFilter === value && highlight && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                )}
+              >
+                <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : color)}><Icon className="h-5 w-5" /></span>
+                <p className="mt-3 text-2xl font-bold tabular-nums">{count}</p>
+                <p className={cn('text-sm font-medium', highlight ? 'text-white' : 'text-foreground')}>{label}</p>
+                <p className={cn('text-[11px]', highlight ? 'text-white/70' : 'text-muted-foreground')}>{detail}</p>
+              </button>
+            );
+          })}
+        </section>
+      )}
+
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle>Novo comunicado</CardTitle>
           <CardDescription>Defina o público e o período de exibição. Comunicados críticos devem informar impacto e orientação com clareza.</CardDescription>
@@ -228,45 +279,52 @@ export default function PlatformComunicacao() {
             </div>
           </div>
 
-          <Button className="min-h-11" onClick={handlePublish} disabled={invalid || publish.isPending || destinationLoading || destinationError}>
+          <Button className="min-h-11 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handlePublish} disabled={invalid || publish.isPending || destinationLoading || destinationError}>
             {publish.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
             Publicar comunicado
           </Button>
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-[#E9E6F5] shadow-sm">
-        <CardHeader>
-          <CardTitle>Histórico de comunicados</CardTitle>
-          <CardDescription>Até os 100 comunicados mais recentes.</CardDescription>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div>
+            <CardTitle>Histórico de comunicados</CardTitle>
+            <CardDescription>Até os 100 comunicados mais recentes.</CardDescription>
+          </div>
+          {history.length > 0 && (
+            <div className="flex items-center gap-2">
+              {statusFilter !== 'todos' && <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setStatusFilter('todos')}>Limpar filtros</Button>}
+              <span className="text-xs text-muted-foreground" aria-live="polite">{visibleHistory.length} de {history.length}</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           {announcements.isLoading ? (
-            [1, 2, 3].map((item) => <Skeleton key={item} className="h-24 w-full" />)
+            [1, 2, 3].map((item) => <Skeleton key={item} className="h-24 w-full rounded-xl" />)
           ) : announcements.isError ? (
-            <div role="alert" className="rounded-lg border border-destructive/30 p-4">
+            <div role="alert" className="rounded-xl border border-destructive/30 p-4">
               <p className="font-medium">Não foi possível carregar o histórico.</p>
               <p className="mt-1 text-sm text-muted-foreground">{mensagemDeErro(announcements.error)}</p>
-              <Button className="mt-3" variant="outline" onClick={() => void announcements.refetch()}>Tentar novamente</Button>
+              <Button className="mt-3 rounded-full" variant="outline" onClick={() => void announcements.refetch()}>Tentar novamente</Button>
             </div>
-          ) : announcements.data?.length ? (
-            announcements.data.map((item) => {
+          ) : history.length ? (
+            visibleHistory.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-[#BFD8EE] p-6 text-center text-sm text-muted-foreground">Nenhum comunicado com este status.</p>
+            ) : visibleHistory.map((item) => {
               const starts = dateTime(item.inicia_em);
               const ends = dateTime(item.termina_em);
-              const now = Date.now();
-              const isScheduled = item.publicado && new Date(item.inicia_em).getTime() > now;
-              const isActive = item.publicado && !isScheduled && (!item.termina_em || new Date(item.termina_em).getTime() > now);
-              const status = !item.publicado || (!isActive && !isScheduled) ? 'Encerrado' : isScheduled ? 'Programado' : 'Publicado';
+              const { isScheduled, isActive, status } = statusOf(item, now);
               return (
-                <article key={item.id} className="rounded-xl border p-4">
+                <article key={item.id} className={cn('rounded-xl border border-border/60 p-4', isActive && 'border-[#BFD8EE] bg-[#F3F8FC]')}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="font-semibold">{item.titulo}</h2>
                       <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{item.mensagem}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant={item.tipo === 'critico' ? 'destructive' : item.tipo === 'atencao' ? 'secondary' : 'outline'}>{typeLabels[item.tipo] || item.tipo}</Badge>
-                      <Badge variant={!item.publicado ? 'outline' : isScheduled ? 'secondary' : 'default'}>{status}</Badge>
+                      <Badge variant={item.tipo === 'critico' ? 'destructive' : item.tipo === 'atencao' ? 'secondary' : 'outline'} className="rounded-full">{typeLabels[item.tipo] || item.tipo}</Badge>
+                      <Badge variant="outline" className={cn('rounded-full', status === 'Publicado' && 'border-transparent bg-gradient-primary text-white', status === 'Programado' && 'border-[#BFD8EE] text-[#1080CA]')}>{status}</Badge>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -274,7 +332,7 @@ export default function PlatformComunicacao() {
                     <span>Exibição: {starts || 'Data indisponível'}{ends ? ` até ${ends}` : ' · sem data final'}</span>
                     {isActive && <span>{item.termina_em ? 'Visível para o público agora' : 'Visível sem data final'}</span>}
                   </div>
-                  {isActive && <Button className="mt-4 min-h-11" size="sm" variant="outline" onClick={() => setAnnouncementToEnd(item)} disabled={endAnnouncement.isPending}>
+                  {isActive && <Button className="mt-4 h-9 rounded-full text-xs text-destructive hover:text-destructive" size="sm" variant="ghost" onClick={() => setAnnouncementToEnd(item)} disabled={endAnnouncement.isPending}>
                     {endAnnouncement.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SquareX className="mr-2 h-4 w-4" />}
                     Encerrar comunicado
                   </Button>}
@@ -282,10 +340,11 @@ export default function PlatformComunicacao() {
               );
             })
           ) : (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <Megaphone className="mx-auto h-8 w-8 text-muted-foreground" />
-              <p className="mt-2 font-medium">Nenhum comunicado ainda</p>
-              <p className="mt-1 text-sm text-muted-foreground">Os avisos publicados aparecerão nesta lista.</p>
+            <div className="flex flex-col items-center rounded-xl border border-dashed border-[#BFD8EE] p-8 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Megaphone className="h-6 w-6" /></span>
+              <p className="mt-3 font-medium text-foreground">Nenhum comunicado ainda</p>
+              <p className="mt-1 text-sm text-muted-foreground">Os avisos publicados aparecerão nesta lista. Use o formulário acima para enviar o primeiro.</p>
+              <Button type="button" variant="outline" className="mt-4 rounded-full" onClick={() => document.getElementById('announcement-title')?.focus()}>Escrever comunicado</Button>
             </div>
           )}
         </CardContent>
@@ -305,6 +364,6 @@ export default function PlatformComunicacao() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </main>
   );
 }

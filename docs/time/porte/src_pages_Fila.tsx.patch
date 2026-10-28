@@ -1,0 +1,133 @@
+diff --git a/src/pages/Fila.tsx b/src/pages/Fila.tsx
+index d66147d5..d90a1313 100644
+--- a/src/pages/Fila.tsx
++++ b/src/pages/Fila.tsx
+@@ -38,7 +38,7 @@ import { format } from 'date-fns';
+ import { ptBR } from 'date-fns/locale';
+ import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+ import { ListSkeleton } from '@/components/ui/loading-skeleton';
+-import { ErrorState } from '@/components/ErrorState';
++import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+ import { canalUnico } from '@/lib/realtimeCanal';
+ 
+ // ─── Helpers ───────────────────────────────────────────────
+@@ -552,16 +552,16 @@ export default function Fila() {
+       if (result.actions.length === 0) {
+         toast.info('Este agendamento já estava na fila.');
+       } else if (isMedicoOnly) {
+-        toast.success('Paciente adicionado à fila!', {
++        toast.success('Paciente adicionado à fila', {
+           description: 'A recepção deve confirmar a cobrança antes do atendimento.',
+         });
+       } else {
+-        toast.success('Paciente adicionado à fila!', {
++        toast.success('Paciente adicionado à fila', {
+           description: prioridade === 'normal' ? undefined : `Prioridade ${prioridade} aplicada.`,
+         });
+       }
+     } catch (e: any) {
+-      toast.error('Erro: ' + e.message);
++      toast.error(friendlyErrorMessage(e, 'Não foi possível adicionar o paciente à fila. Tente novamente.'));
+     } finally {
+       setIsSaving(false);
+     }
+@@ -610,7 +610,7 @@ export default function Fila() {
+       return;
+     }
+     setFinalizando(null);
+-    toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
++    toast.success(`Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
+       description: result.actions.join(' • '),
+       duration: 8000,
+       action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') },
+@@ -651,7 +651,7 @@ export default function Fila() {
+       // O Painel TV é o único dispositivo que anuncia chamadas; evita duas
+       // vozes simultâneas em recepção e sala de espera.
+       refresh();
+-      toast.success(statusEsperado === 'chamado' ? '📢 Paciente chamado novamente!' : '📢 Paciente chamado!');
++      toast.success(statusEsperado === 'chamado' ? 'Paciente chamado novamente' : 'Paciente chamado');
+       return;
+     }
+ 
+@@ -707,7 +707,7 @@ export default function Fila() {
+ 
+     if (erroFila) {
+       toast.error('Não foi possível mudar o status na fila.', {
+-        description: erroFila.message,
++        description: friendlyErrorMessage(erroFila, 'Tente novamente.'),
+       });
+       refresh();
+       return;
+@@ -873,8 +873,7 @@ export default function Fila() {
+   return (
+     <div className="space-y-6 pb-8">
+       {/* Header */}
+-      <section className="relative overflow-hidden rounded-2xl border border-[#0F7BFD]/15 bg-gradient-to-br from-white via-[#F5FAFF] to-[#EAF4FF] px-5 py-5 shadow-sm sm:px-6">
+-        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-12 h-40 w-40 rounded-full bg-[#50E3FB]/15 blur-2xl" />
++      <section className="relative overflow-hidden rounded-2xl border border-[#0F7BFD]/15 bg-card px-5 py-5 shadow-sm sm:px-6">
+         <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+         <div>
+           <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005ECC]">Atendimento da clínica</p>
+@@ -883,7 +882,7 @@ export default function Fila() {
+             {format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} • Atualiza automaticamente
+           </p>
+         </div>
+-        <div className="flex gap-2">
++        <div className="flex flex-wrap items-center gap-2">
+           {meuMedicoId && (
+             <label className="flex items-center gap-2 text-sm text-muted-foreground">
+               <Switch checked={apenasMeus} onCheckedChange={(v) => setApenasMeus(v)} aria-label="Mostrar só meus pacientes" />
+@@ -1071,9 +1070,9 @@ export default function Fila() {
+           )}
+           <div className="space-y-1.5 pt-1">
+             {filaAguardandoPagamento.map(item => (
+-              <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
+-                <span className="font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+-                <div className="flex items-center gap-3 shrink-0">
++              <div key={item.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm bg-background/60 rounded-lg px-3 py-2">
++                <span className="min-w-0 font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
++                <div className="flex flex-wrap items-center gap-3">
+                   <span className={cn('text-xs tabular-nums', corEspera(item.horario_chegada))}>
+                     <Timer className="h-3 w-3 inline mr-1" />
+                     {calcularEspera(item.horario_chegada)}
+@@ -1095,7 +1094,7 @@ export default function Fila() {
+                   </Badge>
+                   {item.cobranca_estado !== 'pendente' && hasAnyRole(['admin', 'medico']) && (
+                     <Button
+-                      size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
++                      size="sm" variant="outline" className="h-9 gap-1 px-3 text-xs md:h-6 md:px-2 md:text-[10px]"
+                       disabled={salvandoLiberacao}
+                       onClick={() => setLiberando({
+                         tipo: 'pagamento',
+@@ -1130,16 +1129,16 @@ export default function Fila() {
+           </p>
+           <div className="space-y-1.5 pt-1">
+             {filaAguardandoTriagem.map(item => (
+-              <div key={item.id} className="flex items-center justify-between gap-3 text-sm bg-background/60 rounded-lg px-3 py-2">
+-                <span className="font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
+-                <div className="flex items-center gap-2 shrink-0">
++              <div key={item.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm bg-background/60 rounded-lg px-3 py-2">
++                <span className="min-w-0 font-medium truncate">{getPacienteNome(item.agendamento_id)}</span>
++                <div className="flex flex-wrap items-center gap-2">
+                   <span className={cn('text-xs tabular-nums', corEspera(item.horario_chegada))}>
+                     <Timer className="h-3 w-3 inline mr-1" />
+                     {calcularEspera(item.horario_chegada)}
+                   </span>
+                   {hasAnyRole(['admin', 'medico']) && (
+                     <Button
+-                      size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
++                      size="sm" variant="outline" className="h-9 gap-1 px-3 text-xs md:h-6 md:px-2 md:text-[10px]"
+                       disabled={salvandoLiberacao}
+                       onClick={() => setLiberando({
+                         tipo: 'triagem',
+@@ -1167,8 +1166,8 @@ export default function Fila() {
+             {filaFinalizada.map(item => (
+               <div key={item.id} className="flex items-center gap-3 rounded-xl border px-4 py-2.5 opacity-60 bg-card">
+                 <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+-                <p className="text-sm font-medium flex-1">{getPacienteNome(item.agendamento_id)}</p>
+-                <p className="text-xs text-muted-foreground">{getMedicoNome(item.agendamento_id)}</p>
++                <p className="min-w-0 truncate text-sm font-medium flex-1">{getPacienteNome(item.agendamento_id)}</p>
++                <p className="min-w-0 truncate text-xs text-muted-foreground">{getMedicoNome(item.agendamento_id)}</p>
+               </div>
+             ))}
+           </div>

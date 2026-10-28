@@ -28,20 +28,21 @@ import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 
 // ─── Status helpers ────────────────────────────────────────
 const statusConfig: Record<string, { bg: string; label: string }> = {
-  agendado: { bg: 'bg-blue-500/10 text-blue-700 border-blue-200', label: 'Agendado' },
-  confirmado: { bg: 'bg-green-500/10 text-green-700 border-green-200', label: 'Confirmado' },
+  agendado: { bg: 'bg-info/10 text-info border-info/30', label: 'Agendado' },
+  confirmado: { bg: 'bg-success/10 text-success border-success/30', label: 'Confirmado' },
   finalizado: { bg: 'bg-muted text-muted-foreground', label: 'Finalizado' },
   cancelado: { bg: 'bg-destructive/10 text-destructive', label: 'Cancelado' },
   faltou: { bg: 'bg-destructive/10 text-destructive', label: 'Faltou' },
-  aprovado: { bg: 'bg-green-500/10 text-green-700', label: 'Aprovado' },
-  pendente: { bg: 'bg-amber-500/10 text-amber-700', label: 'Pendente' },
-  solicitado: { bg: 'bg-blue-500/10 text-blue-700', label: 'Solicitado' },
-  laudo_disponivel: { bg: 'bg-green-500/10 text-green-700', label: 'Laudo Disponível' },
-  em_andamento: { bg: 'bg-blue-500/10 text-blue-700', label: 'Em Andamento' },
-  pago: { bg: 'bg-green-500/10 text-green-700', label: 'Pago' },
+  aprovado: { bg: 'bg-success/10 text-success', label: 'Aprovado' },
+  pendente: { bg: 'bg-warning/10 text-warning', label: 'Pendente' },
+  solicitado: { bg: 'bg-info/10 text-info', label: 'Solicitado' },
+  laudo_disponivel: { bg: 'bg-success/10 text-success', label: 'Laudo Disponível' },
+  em_andamento: { bg: 'bg-info/10 text-info', label: 'Em Andamento' },
+  pago: { bg: 'bg-success/10 text-success', label: 'Pago' },
 };
 
 /** "2099-10-15" → "15/10/2099", sem passar por Date (evita deslocamento de fuso). */
@@ -84,16 +85,12 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
 }) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background pattern */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10" />
-      <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-primary/5 blur-3xl -translate-y-1/2 translate-x-1/2" />
-      <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-primary/8 blur-3xl translate-y-1/2 -translate-x-1/2" />
 
       <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
         <Card className="backdrop-blur-xl border-border/50 shadow-xl">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto mb-4 relative animate-in zoom-in duration-500 delay-150">
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
+              <div className="p-5 rounded-xl bg-primary/10 border border-primary/20">
                 <HeartHandshake className="h-10 w-10 text-primary" />
               </div>
               <div className="absolute inset-0 rounded-2xl border-2 border-dashed border-primary/20 animate-[spin_20s_linear_infinite]" />
@@ -235,7 +232,7 @@ function NPSSurvey({ token }: { token: string }) {
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Não foi possível enviar');
       setSent(true);
     } catch (e: any) {
-      setSubmitError(e.message);
+      setSubmitError(friendlyErrorMessage(e, 'Não foi possível enviar sua avaliação. Tente novamente.'));
     } finally {
       setSending(false);
     }
@@ -246,7 +243,7 @@ function NPSSurvey({ token }: { token: string }) {
       <div className="animate-in fade-in zoom-in-95 duration-300">
         <Card className="text-center p-8 border-primary/20 bg-primary/5">
           <CheckCircle2 className="h-12 w-12 text-primary mx-auto mb-3" />
-          <h3 className="text-lg font-bold">Obrigado pelo feedback!</h3>
+          <h3 className="text-lg font-bold">Obrigado pelo feedback</h3>
           <p className="text-sm text-muted-foreground mt-1">Sua opinião nos ajuda a melhorar.</p>
         </Card>
       </div>
@@ -570,7 +567,7 @@ export default function PortalPaciente() {
     } catch (err: any) {
       if (lookupId === schedulingLookupRef.current) {
         setAvailableSlots([]);
-        setSchedulingError(err.message || 'Erro ao carregar horários disponíveis');
+        setSchedulingError(friendlyErrorMessage(err, 'Não foi possível carregar os horários disponíveis.'));
       }
     } finally {
       if (lookupId === schedulingLookupRef.current) setSchedulingLoading(false);
@@ -626,10 +623,10 @@ export default function PortalPaciente() {
     } catch (err: any) {
       if (lookupId === rescheduleLookupRef.current) {
         if (err.code === 'appointment_state_changed') {
-          await handleRescheduleStateChanged(err.message || 'Esta consulta foi atualizada.');
+          await handleRescheduleStateChanged(friendlyErrorMessage(err, 'Esta consulta foi atualizada.'));
         } else {
           setRescheduleSlots([]);
-          setRescheduleError(err.message || 'Não foi possível carregar os horários. Tente novamente.');
+          setRescheduleError(friendlyErrorMessage(err, 'Não foi possível carregar os horários. Tente novamente.'));
         }
       }
     } finally {
@@ -679,7 +676,7 @@ export default function PortalPaciente() {
       }
     } catch (err: any) {
       setAvailableSlots([]);
-      setSchedulingError(err.message || 'Erro ao agendar consulta');
+      setSchedulingError(friendlyErrorMessage(err, 'Não foi possível agendar a consulta.'));
     } finally {
       schedulingSubmissionLock.current = false;
       setSchedulingSubmitting(false);
@@ -710,7 +707,7 @@ export default function PortalPaciente() {
       }
       return true;
     } catch (err: any) {
-      const message = err.message || 'Não foi possível cancelar a consulta. Tente novamente.';
+      const message = friendlyErrorMessage(err, 'Não foi possível cancelar a consulta. Tente novamente.');
       if (err.code === 'appointment_state_changed') {
         setCancelStateStale(true);
         try {
@@ -745,7 +742,7 @@ export default function PortalPaciente() {
       setRetornos(await fetchData(token, 'get_retornos'));
       setRetornoRemarcar(null);
     } catch (err: any) {
-      setErroRemarcarRetorno(err.message || 'Não foi possível remarcar o retorno. Tente novamente.');
+      setErroRemarcarRetorno(friendlyErrorMessage(err, 'Não foi possível remarcar o retorno. Tente novamente.'));
     } finally {
       setActionLoading(false);
     }
@@ -759,7 +756,7 @@ export default function PortalPaciente() {
       await fetchData(token, 'confirm_retorno', { retorno_id: retornoId });
       setRetornos(await fetchData(token, 'get_retornos'));
     } catch (err: any) {
-      setErroConfirmarRetorno(err.message || 'Não foi possível confirmar o retorno. Tente novamente.');
+      setErroConfirmarRetorno(friendlyErrorMessage(err, 'Não foi possível confirmar o retorno. Tente novamente.'));
     } finally {
       setActionLoading(false);
       setRetornoConfirmandoId(null);
@@ -779,7 +776,7 @@ export default function PortalPaciente() {
       setAgendamentos(agendamentosAtualizados || []);
       setOfertasEspera(ofertasAtualizadas || []);
     } catch (err: any) {
-      setErroAceitarOferta(err.message || 'Não foi possível aceitar a vaga. Atualize a lista e tente novamente.');
+      setErroAceitarOferta(friendlyErrorMessage(err, 'Não foi possível aceitar a vaga. Atualize a lista e tente novamente.'));
     } finally {
       setActionLoading(false);
       setOfertaAceitandoId(null);
@@ -814,7 +811,7 @@ export default function PortalPaciente() {
       setProfile(response.profile);
       setContactMessage('Dados de contato atualizados.');
     } catch (err: any) {
-      setContactMessage(err.message || 'Não foi possível atualizar seus dados.');
+      setContactMessage(friendlyErrorMessage(err, 'Não foi possível atualizar seus dados.'));
     } finally {
       setContactSaving(false);
     }
@@ -841,7 +838,7 @@ export default function PortalPaciente() {
         setActionError('Consulta confirmada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
       }
     } catch (err: any) {
-      const message = err.message || 'Não foi possível confirmar a consulta. Tente novamente.';
+      const message = friendlyErrorMessage(err, 'Não foi possível confirmar a consulta. Tente novamente.');
       if (err.code === 'appointment_state_changed') {
         try {
           setAgendamentos(await fetchData(token, 'get_agendamentos'));
@@ -893,7 +890,7 @@ export default function PortalPaciente() {
         setActionError('Consulta remarcada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
       }
     } catch (err: any) {
-      const message = err.message || 'Não foi possível remarcar a consulta. Tente novamente.';
+      const message = friendlyErrorMessage(err, 'Não foi possível remarcar a consulta. Tente novamente.');
       const stateChanged = err.code === 'appointment_state_changed';
       if (stateChanged) {
         await handleRescheduleStateChanged(message);
@@ -1051,7 +1048,7 @@ export default function PortalPaciente() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1.5">
               <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                Olá, {profile?.nome?.split(' ')[0]} 👋
+                Olá, {profile?.nome?.split(' ')[0]}
               </h2>
               <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
                 Acompanhe suas consultas, exames e pagamentos.
@@ -1373,7 +1370,7 @@ export default function PortalPaciente() {
                                     disabled={actionLoading}
                                     className="flex-1 text-xs text-destructive hover:text-destructive"
                                   >
-                                    ✕ Cancelar
+                                    Cancelar
                                   </Button>
                                 </div>
                               )}
@@ -1396,19 +1393,19 @@ export default function PortalPaciente() {
                     const isLaudo = e.status === 'laudo_disponivel';
                     return (
                       <div key={e.id} className="animate-in fade-in slide-in-from-left-1 duration-300">
-                        <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${isLaudo ? 'border-green-300' : ''}`}>
+                        <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${isLaudo ? 'border-success/30' : ''}`}>
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                               <div className="flex items-start gap-3">
-                                <div className={`p-2.5 rounded-xl ${isLaudo ? 'bg-green-500/10' : 'bg-muted'}`}>
-                                  <FlaskConical className={`h-4 w-4 ${isLaudo ? 'text-green-600' : 'text-muted-foreground'}`} />
+                                <div className={`p-2.5 rounded-xl ${isLaudo ? 'bg-success/10' : 'bg-muted'}`}>
+                                  <FlaskConical className={`h-4 w-4 ${isLaudo ? 'text-success' : 'text-muted-foreground'}`} />
                                 </div>
                                 <div className="space-y-0.5">
                                   <p className="font-semibold text-sm flex items-center gap-2">
                                     {e.tipo_exame}
                                     {isLaudo && (
-                                      <Badge className="bg-green-500/10 text-green-700 text-[9px] border-green-200">
-                                        ✓ Laudo pronto
+                                      <Badge className="bg-success/10 text-success text-[9px] border-success/30">
+                                        Laudo pronto
                                       </Badge>
                                     )}
                                   </p>
@@ -1560,7 +1557,7 @@ export default function PortalPaciente() {
                         size="sm"
                         className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
                         onClick={() => {
-                          const msg = encodeURIComponent(`Olá! Sou ${profile?.nome}, gostaria de agendar uma consulta.`);
+                          const msg = encodeURIComponent(`Olá. Sou ${profile?.nome}, gostaria de agendar uma consulta.`);
                           window.open(`https://wa.me/?text=${msg}`, '_blank');
                         }}
                       >
@@ -1653,7 +1650,7 @@ export default function PortalPaciente() {
                           .map((a: any) => (
                             <div key={a.id} className="flex items-center justify-between border rounded-lg p-3 text-sm">
                               <div className="flex items-center gap-2">
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                <CheckCircle2 className="h-4 w-4 text-success" />
                                 <div>
                                   <p className="font-medium">{a.tipo || 'Consulta'}</p>
                                   <p className="text-xs text-muted-foreground">
@@ -1688,8 +1685,8 @@ export default function PortalPaciente() {
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-start gap-3">
-                              <div className={`p-2.5 rounded-xl ${p.status === 'pago' || p.status === 'aprovado' ? 'bg-green-500/10' : 'bg-amber-500/10'}`}>
-                                <CreditCard className={`h-4 w-4 ${p.status === 'pago' || p.status === 'aprovado' ? 'text-green-600' : 'text-amber-600'}`} />
+                              <div className={`p-2.5 rounded-xl ${p.status === 'pago' || p.status === 'aprovado' ? 'bg-success/10' : 'bg-warning/10'}`}>
+                                <CreditCard className={`h-4 w-4 ${p.status === 'pago' || p.status === 'aprovado' ? 'text-success' : 'text-warning'}`} />
                               </div>
                               <div className="space-y-0.5">
                                 <p className="font-semibold text-sm">{p.descricao || 'Pagamento'}</p>

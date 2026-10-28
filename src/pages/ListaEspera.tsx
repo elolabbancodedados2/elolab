@@ -44,7 +44,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { nomeMedico } from '@/lib/formatters';
 
@@ -181,7 +181,7 @@ export default function ListaEspera() {
   const limparFiltros = () => { setSearchTerm(''); setStatusFilter('aguardando'); setPrioridadeFilter('todas'); };
 
   const mensagemWhatsApp = (nome: string, especialidade: string | null) =>
-    `Olá, ${nome}! Aqui é da clínica. Surgiu uma vaga${especialidade ? ` em ${especialidade}` : ''} e você está na nossa lista de espera. Podemos agendar?`;
+    `Olá, ${nome}. Aqui é da clínica. Surgiu uma vaga${especialidade ? ` em ${especialidade}` : ''} e você está na nossa lista de espera. Podemos agendar?`;
 
   const handleOpenNew = () => {
     setFormData(initialFormData);
@@ -233,7 +233,7 @@ export default function ListaEspera() {
 
       if (error) throw error;
       
-      toast.success('Paciente adicionado à lista de espera!');
+      toast.success('Paciente adicionado à lista de espera');
       queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
       setIsDialogOpen(false);
     } catch (error: any) {
@@ -247,7 +247,7 @@ export default function ListaEspera() {
           description: 'Outro usuário adicionou o mesmo pedido agora. A lista será atualizada para você localizá-lo.',
         });
       } else {
-        toast.error(error.message || 'Erro ao adicionar à lista');
+        toast.error(friendlyErrorMessage(error, 'Não foi possível adicionar à lista.'));
       }
     } finally {
       setIsSubmitting(false);
@@ -283,11 +283,11 @@ export default function ListaEspera() {
       if (error) throw error;
       if (!atualizado) throw new Error('O status foi alterado por outro fluxo. Atualize a lista antes de tentar novamente.');
       
-      toast.success('Status atualizado!');
+      toast.success('Status atualizado');
       queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro ao atualizar:', error);
-      toast.error(error.message || 'Erro ao atualizar status');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível atualizar o status.'));
     } finally {
       setUpdatingId(null);
     }
@@ -312,12 +312,12 @@ export default function ListaEspera() {
       if (error) throw error;
       if (!removido) throw new Error('Este registro não existe mais ou você não tem permissão para removê-lo.');
       
-      toast.success('Removido da lista de espera!');
+      toast.success('Removido da lista de espera');
       queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
       setRemoveId(null);
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro ao remover:', error);
-      toast.error(error.message || 'Erro ao remover');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível remover da lista.'));
     } finally {
       setIsRemoving(false);
     }
@@ -387,7 +387,7 @@ export default function ListaEspera() {
               aria-pressed={ativo}
               onClick={() => setStatusFilter(ativo ? 'todos' : s.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 s.escuro && 'border-transparent bg-gradient-primary text-white',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',

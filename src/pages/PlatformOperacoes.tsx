@@ -18,7 +18,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { AlertTriangle, Plus, RefreshCw, Settings2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Activity, AlertTriangle, Flag, Lock, Plus, RefreshCw, Settings2 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 
@@ -143,21 +146,26 @@ export default function PlatformOperacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E2F7] bg-gradient-to-r from-[#F4F2FF] via-white to-[#f0edff] p-5 sm:p-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><Settings2 />Controle Operacional</h1>
-          <p className="text-muted-foreground">Controles globais da plataforma. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.</p>
-        </div>
-        <Button variant="outline" className="min-h-11 border-[#DCD7F0] bg-white text-[#111111] hover:bg-[#F9F8FF]" onClick={() => { void estado.refetch(); void flags.refetch(); }} disabled={refreshing}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Atualizar
-        </Button>
-      </div>
+      <PageHeader
+        title="Controle Operacional"
+        icon={<Settings2 />}
+        description={estado.data
+          ? `Somente leitura ${estado.data.somente_leitura ? 'ativado' : 'desativado'} · bloqueio emergencial ${estado.data.bloqueio_emergencial ? 'ativado' : 'desativado'}${flags.data ? ` · ${flags.data.length} feature flags cadastradas` : ''}. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.`
+          : 'Controles globais da plataforma. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.'}
+        actions={<>
+          <Button asChild variant="outline" className="rounded-full gap-2"><Link to="/admin/incidentes"><AlertTriangle className="h-4 w-4" />Incidentes</Link></Button>
+          <Button asChild variant="outline" className="rounded-full gap-2"><Link to="/admin/saude"><Activity className="h-4 w-4" />Saúde da plataforma</Link></Button>
+          <Button type="button" variant="outline" size="icon" className="rounded-full" aria-label="Atualizar" onClick={() => { void estado.refetch(); void flags.refetch(); }} disabled={refreshing}>
+            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+          </Button>
+        </>}
+      />
 
       {estado.isError && (
-        <Card className="border-destructive/30">
+        <Card className="rounded-2xl border-destructive/30 shadow-xs">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-destructive">Não foi possível carregar o estado operacional. Os controles estão desativados.</p>
-            <Button variant="outline" size="sm" onClick={() => void estado.refetch()} disabled={estado.isFetching}>
+            <Button variant="outline" size="sm" className="rounded-full" onClick={() => void estado.refetch()} disabled={estado.isFetching}>
               <RefreshCw className={`mr-2 h-4 w-4 ${estado.isFetching ? 'animate-spin' : ''}`} />Tentar novamente
             </Button>
           </CardContent>
@@ -166,9 +174,13 @@ export default function PlatformOperacoes() {
       {estado.isLoading && <p className="text-sm text-muted-foreground">Consultando os controles globais; os switches ficam desativados até a resposta chegar.</p>}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
+        <Card className={cn('rounded-2xl border-border/60 shadow-xs', estado.data?.somente_leitura && 'border-warning/50 bg-warning/5')}>
           <CardHeader>
-            <CardTitle>Modo somente leitura</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-warning/10 text-warning"><Lock className="h-4 w-4" /></span>
+              Modo somente leitura
+              {estado.data?.somente_leitura && <Badge variant="outline" className="rounded-full border-warning/40 text-warning">Ativo</Badge>}
+            </CardTitle>
             <CardDescription>Suspende gravações clínicas e financeiras em todas as clínicas.</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
@@ -189,9 +201,13 @@ export default function PlatformOperacoes() {
           </CardContent>
         </Card>
 
-        <Card className="border-destructive/30">
+        <Card className={cn('rounded-2xl border-destructive/30 shadow-xs', estado.data?.bloqueio_emergencial && 'border-destructive/60 bg-destructive/5')}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" />Bloqueio emergencial</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><AlertTriangle className="h-4 w-4" /></span>
+              Bloqueio emergencial
+              {estado.data?.bloqueio_emergencial && <Badge variant="destructive" className="rounded-full">Ativo</Badge>}
+            </CardTitle>
             <CardDescription>Bloqueia o acesso de todas as clínicas à plataforma.</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
@@ -213,37 +229,41 @@ export default function PlatformOperacoes() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle>Nova feature flag</CardTitle>
           <CardDescription>As chaves aceitam letras minúsculas, números e sublinhado. O cadastro não altera o app até um módulo consumir essa chave.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Input className="max-w-xs" value={nome} disabled={creatingFlag} onChange={event => setNome(event.target.value)} placeholder="Nome do recurso" />
-          <Input className="max-w-xs" value={chave} disabled={creatingFlag} onChange={event => setChave(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} placeholder="chave_do_recurso" />
-          <Button onClick={() => void criar()} disabled={!nome.trim() || !chave.trim() || creatingFlag}>{creatingFlag ? 'Salvando…' : <><Plus className="mr-2 h-4 w-4" />Cadastrar flag</>}</Button>
+          <Input className="h-10 w-full rounded-full sm:max-w-xs" aria-label="Nome do recurso" value={nome} disabled={creatingFlag} onChange={event => setNome(event.target.value)} placeholder="Nome do recurso" />
+          <Input className="h-10 w-full rounded-full font-mono text-sm sm:max-w-xs" aria-label="Chave do recurso" value={chave} disabled={creatingFlag} onChange={event => setChave(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} placeholder="chave_do_recurso" />
+          <Button className="h-10 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => void criar()} disabled={!nome.trim() || !chave.trim() || creatingFlag}>{creatingFlag ? 'Salvando…' : <><Plus className="mr-2 h-4 w-4" />Cadastrar flag</>}</Button>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
-          <CardTitle>Catálogo de feature flags</CardTitle>
+          <CardTitle className="flex flex-wrap items-center gap-2">Catálogo de feature flags{flags.data && <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{flags.data.length}</Badge>}</CardTitle>
           <CardDescription>Estas chaves ainda não são consumidas por telas ou permissões do app. O estado é apenas informativo e não libera nem oculta funcionalidades.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {flags.isError && <p className="text-sm text-destructive">Não foi possível carregar as flags. <Button variant="link" className="h-auto p-0" onClick={() => void flags.refetch()}>Tentar novamente</Button></p>}
           {flags.isLoading && <p className="text-sm text-muted-foreground">Carregando recursos…</p>}
           {flags.data?.map((flag: any) => (
-              <div key={flag.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+              <div key={flag.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3">
                 <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2"><b>{flag.nome}</b><span className="text-xs text-muted-foreground">Sem consumidor no app</span></div>
                 <p className="break-all text-xs text-muted-foreground">{flag.chave} · {flag.percentual}% · {flag.destino}</p>
               </div>
-              <Badge variant={flag.ativo ? 'secondary' : 'outline'}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
+              <Badge variant="outline" className={cn('rounded-full', flag.ativo && 'border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]')}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
             </div>
           ))}
           {!flags.isLoading && !flags.isError && flags.data?.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhum recurso controlado ainda.</p>
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Flag className="h-6 w-6" /></span>
+              <p className="text-sm text-muted-foreground">Nenhum recurso controlado ainda.</p>
+              <p className="text-xs text-muted-foreground">Cadastre a primeira chave no formulário acima.</p>
+            </div>
           )}
         </CardContent>
       </Card>

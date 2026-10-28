@@ -11,9 +11,15 @@ import InstagramUpdatesSection from "@/components/landing-v2/InstagramUpdatesSec
 import NotebookToAppSection from "@/components/landing-v2/NotebookToAppSection";
 import PricingSection from "@/components/landing-v2/PricingSection";
 import Footer from "@/components/landing-v2/Footer";
+import { capturarUtm, hostDoReferrer, track } from "@/lib/analytics";
 
 export default function LandingPage() {
   const location = useLocation();
+
+  // Visita do funil: só é enviada com consentimento de analytics.
+  useEffect(() => {
+    track("landing_viewed", { ...capturarUtm(), referrer_host: hostDoReferrer(), path: window.location.pathname });
+  }, []);
 
   // Links externos (e a rota /planos) chegam com #planos, #faq etc.
   useEffect(() => {

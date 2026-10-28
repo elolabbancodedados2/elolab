@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, Loader2, Radio, RefreshCw, X } from 'lucide-react';
@@ -202,7 +203,7 @@ export function MercadoPagoPointPayment({
 
       {(createMutation.error || syncMutation.error || cancelMutation.error || terminalsQuery.error || ordersQuery.error) && connected && (
         <p role="alert" className="text-xs text-destructive">
-          {(createMutation.error || syncMutation.error || cancelMutation.error || terminalsQuery.error || ordersQuery.error)?.message}
+          {friendlyErrorMessage(createMutation.error || syncMutation.error || cancelMutation.error || terminalsQuery.error || ordersQuery.error, 'Não foi possível falar com a maquininha. Tente novamente.')}
         </p>
       )}
     </section>

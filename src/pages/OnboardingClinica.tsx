@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, CalendarCheck, Check, Clock3, MessageCircle,
-  PartyPopper, RefreshCw, Stethoscope, UsersRound,
+  ArrowRight, CalendarCheck, Check, Clock3, LayoutDashboard, MessageCircle,
+  PartyPopper, RefreshCw, Rocket, Stethoscope, UsersRound,
 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -95,34 +96,41 @@ export default function OnboardingClinica() {
     />;
   }
 
+  const nextStep = overview.steps.find((step) => !step.complete && step.key !== 'whatsapp');
+
   return <div className="mx-auto max-w-5xl space-y-6 pb-10">
-    <header className="space-y-3">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
-          <Badge variant="secondary" className="mb-2">Primeiros passos</Badge>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Prepare sua clínica para atender</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground sm:text-base">
-            O progresso é atualizado pelos cadastros reais da clínica. Conclua as etapas na ordem que preferir.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
-          Atualizar progresso
-        </Button>
-      </div>
-      <Card>
+    <div className="space-y-4">
+      <PageHeader
+        title="Prepare sua clínica para atender"
+        icon={<Rocket />}
+        description={<>
+          O progresso é atualizado pelos cadastros reais da clínica. Conclua as etapas na ordem que preferir.
+          {nextStep && <> · Próxima etapa: {definitions[nextStep.key].title}</>}
+        </>}
+        actions={<>
+          <Button asChild variant="outline" className="rounded-full gap-2">
+            <Link to="/dashboard"><LayoutDashboard className="h-4 w-4" />Ir ao dashboard</Link>
+          </Button>
+          <Button variant="outline" className="rounded-full gap-2" onClick={() => query.refetch()} disabled={query.isFetching}>
+            <RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
+            Atualizar progresso
+          </Button>
+        </>}
+      />
+      <Card className="rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
         <CardContent className="pt-6">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Primeiros passos</p>
           <div className="mb-2 flex items-center justify-between gap-3 text-sm">
             <span className="font-medium">{overview.completed_steps} de {overview.total_steps} etapas essenciais concluídas</span>
-            <span className="font-semibold text-primary">{overview.progress}%</span>
+            <span className="text-2xl font-bold tabular-nums text-[#1080CA]">{overview.progress}%</span>
           </div>
           <Progress value={overview.progress} aria-label={`${overview.progress}% do onboarding concluído`} />
         </CardContent>
       </Card>
-    </header>
+    </div>
 
-    {overview.completed_at && <Alert className="border-emerald-500/40 bg-emerald-500/5">
-      <PartyPopper className="h-4 w-4 text-emerald-600" />
+    {overview.completed_at && <Alert className="rounded-2xl border-success/40 bg-success/5">
+      <PartyPopper className="h-4 w-4 text-success" />
       <AlertTitle>Clínica pronta para começar</AlertTitle>
           <AlertDescription>As etapas essenciais foram validadas. Você pode voltar aqui quando quiser para revisar a configuração.</AlertDescription>
     </Alert>}
@@ -143,16 +151,16 @@ export default function OnboardingClinica() {
           whatsapp: step.count === 0 ? 'Nenhuma sessão conectada ainda' : step.count === 1 ? '1 sessão conectada' : `${step.count} sessões conectadas`,
           appointment: step.count === 0 ? 'Nenhum agendamento cadastrado ainda' : step.count === 1 ? '1 agendamento cadastrado' : `${step.count} agendamentos cadastrados`,
         }[step.key];
-        return <Card key={step.key} className={step.complete ? 'border-emerald-500/40' : ''}>
+        return <Card key={step.key} className={`rounded-2xl shadow-xs transition hover:-translate-y-0.5 hover:shadow-md ${step.complete ? 'border-success/40' : step.key === nextStep?.key ? 'border-[#1080CA]/40' : 'border-border/60'}`}>
           <CardHeader className="pb-3">
             <div className="flex items-start gap-3">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${step.complete ? 'bg-emerald-500 text-white' : 'bg-primary/10 text-primary'}`}>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${step.complete ? 'bg-success text-white' : step.key === nextStep?.key ? 'bg-gradient-primary text-white' : 'bg-[#1080CA]/10 text-[#1080CA]'}`}>
                 {step.complete ? <Check className="h-5 w-5" aria-hidden="true" /> : <Icon className="h-5 w-5" aria-hidden="true" />}
               </div>
               <div className="min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
                   <CardTitle className="text-base">{step.key === 'whatsapp' ? title : `${overview.steps.slice(0, index + 1).filter((item) => item.key !== 'whatsapp').length}. ${title}`}</CardTitle>
-                  <Badge variant={step.complete ? 'outline' : 'secondary'}>{step.complete ? 'Concluída' : step.key === 'whatsapp' ? 'Opcional' : 'Pendente'}</Badge>
+                  <Badge variant="outline" className={`rounded-full ${step.complete ? 'border-success/40 bg-success/10 text-success' : step.key === 'whatsapp' ? 'border-[#DCE6F2] text-muted-foreground' : 'border-[#BFD8EE] text-[#1080CA]'}`}>{step.complete ? 'Concluída' : step.key === 'whatsapp' ? 'Opcional' : 'Pendente'}</Badge>
                 </div>
                 <CardDescription>{description}</CardDescription>
               </div>
@@ -160,10 +168,10 @@ export default function OnboardingClinica() {
           </CardHeader>
           <CardContent>
             <p className="mb-3 text-sm text-muted-foreground">{countLabel}</p>
-            <Button asChild variant={step.complete ? 'outline' : 'default'} className="w-full sm:w-auto">
+            <Button asChild variant={step.complete ? 'outline' : 'default'} className={`w-full rounded-full sm:w-auto ${step.complete ? '' : 'bg-gradient-primary text-white shadow-md hover:brightness-110'}`}>
               <Link to={upsellAgentIA ? '/planos' : definition.href}>{step.complete && step.key !== 'team' ? 'Revisar' : upsellAgentIA ? 'Ver planos' : definition.action}<ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
-            {step.key === 'schedule' && <Button asChild variant="link" className="ml-0 mt-2 w-full sm:ml-2 sm:mt-0 sm:w-auto">
+            {step.key === 'schedule' && <Button asChild variant="link" className="ml-0 mt-2 w-full text-[#1080CA] sm:ml-2 sm:mt-0 sm:w-auto">
               <Link to="/configuracoes?tab=horarios">Configurar horário de funcionamento<ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>}
             {step.key === 'schedule' && !step.complete && <p className="mt-2 text-xs text-muted-foreground">

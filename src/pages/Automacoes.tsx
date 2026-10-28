@@ -34,7 +34,7 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
 import { resumirErroFilaNotificacao } from '@/lib/notificationQueueErrorSummary';
@@ -293,7 +293,7 @@ export default function Automacoes() {
       toast.success(action === 'retry' ? 'Envio devolvido à fila' : 'Envio cancelado');
       await queueQuery.refetch();
     } catch (error) {
-      toast.error('Não foi possível atualizar o envio', { description: (error as Error)?.message || 'Tente novamente.' });
+      toast.error('Não foi possível atualizar o envio', { description: friendlyErrorMessage(error, 'Tente novamente.') });
     } finally {
       queueLocks.current.delete(id);
       setUpdatingQueue(prev => ({ ...prev, [id]: false }));
@@ -395,7 +395,7 @@ export default function Automacoes() {
       await settingsQuery.refetch();
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error toggling automation:', error);
-      toast.error('Erro', { description: (error as Error)?.message || 'Erro ao alterar status da automação.' });
+      toast.error('Erro', { description: friendlyErrorMessage(error, 'Não foi possível alterar o status da automação.') });
     } finally {
       togglingLocks.current.delete(key);
       setIsToggling(prev => ({ ...prev, [key]: false }));
@@ -436,7 +436,7 @@ export default function Automacoes() {
       await Promise.all([logsQuery.refetch(), queueQuery.refetch()]);
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error running automation:', error);
-      toast.error('Não foi possível executar a automação', { description: (error as Error)?.message || 'Tente novamente e consulte o log.' });
+      toast.error('Não foi possível executar a automação', { description: friendlyErrorMessage(error, 'Tente novamente e consulte o log.') });
     } finally {
       runningLocks.current.delete(key);
       setIsRunning(prev => ({ ...prev, [key]: false }));
@@ -531,7 +531,7 @@ export default function Automacoes() {
                 aria-pressed={isActive}
                 onClick={() => changeTab(indicator.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
                   indicator.escuro && 'border-transparent bg-gradient-primary text-white',
                   !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
                   indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
@@ -741,7 +741,7 @@ export default function Automacoes() {
                   aria-pressed={isActive}
                   onClick={() => setFilaStatusFilter(current => current === status ? 'todos' : String(status))}
                   className={cn(
-                    'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                    'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
                     isActive && 'ring-2 ring-[#1080CA]',
                   )}
                 >

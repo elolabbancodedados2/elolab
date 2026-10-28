@@ -44,9 +44,24 @@ describe('WhatsApp patient-service webhook policy', () => {
     expect(triageTool).not.toMatch(/\.from\(['"](?:prontuarios|prontuario_adendos|prescricoes)['"]\)/);
   });
 
-  it('does not guess a patient from a partial phone match', () => {
-    expect(source).toContain('findUniquePatientIdByPhone(phoneNumber, candidates || [])');
-    expect(source).not.toMatch(/select\('id'\)[\s\S]{0,250}telefone\.ilike/);
+  it('does not link a patient by phone: a new conversation starts unlinked (CLIN-QA-003)', () => {
+    expect(source).not.toContain('findUniquePatientIdByPhone');
+    expect(source).not.toMatch(/telefone\.ilike/);
+    const insert = source.indexOf(".from('whatsapp_conversations')\n            .insert(");
+    const insertCrlf = source.indexOf(".from('whatsapp_conversations')\r\n            .insert(");
+    const start = insert > -1 ? insert : insertCrlf;
+    expect(start).toBeGreaterThan(-1);
+    expect(source.slice(start, start + 400)).toContain('paciente_id: null');
+  });
+
+  it('links a patient only through identificar_paciente with CPF and birth date', () => {
+    const start = source.indexOf('async function identificarPaciente(');
+    const body = source.slice(start, source.indexOf('\nfunction ', start));
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toContain('decidirVinculoPaciente(');
+    expect(body).toContain('normalizarDataNascimento(');
+    expect(body).toContain(".is('paciente_id', null)");
+    expect(body).toContain('failClosed: true');
   });
 
   it('answers plain informational questions directly instead of letting the model pick an agenda action', () => {

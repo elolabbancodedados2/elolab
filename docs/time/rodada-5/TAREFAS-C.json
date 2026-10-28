@@ -1,0 +1,6 @@
+{
+  "comum": "Worktree: C:\\Users\\lopes\\orca\\workspaces\\elolab\\time-estabilizacao. Não edite código. Grave apenas o arquivo pedido (Bash/heredoc se necessário); se gravar em partes, a linha PROXIMA-RODADA vai só no último pedaço. Seja objetivo: no máximo ~1.200 palavras. TAREFA: ",
+  "tarefas": {
+    "clinical-quality-director": "Leia docs/time/rodada-4/CONSOLIDADO.md (se existir), docs/time/rodada-4/tech-lead-final.md e docs/time/rodada-5/*.md. Grave docs/time/rodada-5/CONSOLIDADO.md: tabela de P0/P1/P2 com estado (pronto localmente / aguardando aplicação / aberto / bloqueado por decisão), confira se src/components/layout/MobileBottomNav.tsx (copiado por engano de outra frente) deve sair, veredito, e 'O que só o responsável pode destravar' com passos exatos (roteiro de commits por item e ordem de aplicação em produção). Penúltima linha: trabalho local restante executável sem decisão do responsável. Última linha exatamente 'PROXIMA-RODADA: SIM' ou 'PROXIMA-RODADA: NAO'."
+  }
+}

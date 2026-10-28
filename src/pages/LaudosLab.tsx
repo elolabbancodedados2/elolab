@@ -24,16 +24,16 @@ import { cn } from '@/lib/utils';
 import { gerarLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
-import { deveNotificarRetificacao, perfilPodeRetificarResultado, podeRetificarResultado } from '@/lib/laudoWorkflow';
+import { deveNotificarRetificacao, formatarReferenciaLaudo, perfilPodeRetificarResultado, podeRetificarResultado, procedenciaResultadoLaudo, trilhaDeVersoes } from '@/lib/laudoWorkflow';
 import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
 import { linkWhatsApp } from '@/lib/whatsapp';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 
 /**
@@ -119,9 +119,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
           convenios(nome),
           resultados_laboratorio(id, parametro, resultado, unidade, critico, numero_versao,
             valor_referencia_min, valor_referencia_max, valor_referencia_texto,
-            liberado, data_liberacao, validado_por, data_validacao, liberado_por, metodo,
+            liberado, data_liberacao, validado_por, data_validacao, liberado_por, metodo, equipamento,
             validadores:profiles!resultados_laboratorio_validado_por_fkey(nome),
-            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame),
+            liberadores:profiles!resultados_laboratorio_liberado_por_fkey(nome), exames(tipo_exame, laboratorios(nome)),
             confirmacoes:resultado_critico_confirmacoes(id, numero_versao, conduta, confirmado_em,
               confirmador:profiles!resultado_critico_confirmacoes_confirmado_por_fkey(nome)))
         `)
@@ -192,7 +192,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     setHistoricoResultadoId(resultadoId); setCarregandoHistorico(true); setHistoricoResultado([]);
     try {
       const { data, error } = await (supabase as any).from('resultados_laboratorio_versoes')
-        .select('id, numero_versao, registro_anterior, motivo, alterado_por, alterado_em')
+        .select('id, numero_versao, registro_anterior, motivo, alterado_por, alterado_em, autor:profiles!resultados_laboratorio_versoes_alterado_por_fkey(nome)')
         .eq('clinica_id', profile.clinica_id).eq('resultado_id', resultadoId).order('numero_versao', { ascending: false });
       if (error) throw error;
       setHistoricoResultado(data ?? []);
@@ -244,7 +244,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
 
       const notificacao = await notificarResultadoLiberado(resultadoId);
       if (notificacao === 'enviada') {
-        toast.success('Resultado liberado e paciente notificado!');
+        toast.success('Resultado liberado e paciente notificado');
       } else if (notificacao === 'enfileirada') {
         toast.warning('Resultado liberado; notificação entrou na fila de reenvio.');
       } else {
@@ -254,7 +254,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       onUpdate();
     } catch (err: any) {
       console.error('handleLiberarResultado error:', err);
-      toast.error('Erro ao liberar: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível liberar o laudo.'));
     } finally {
       setReleasingIds(current => { const next = new Set(current); next.delete(resultadoId); return next; });
     }
@@ -332,7 +332,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       onUpdate();
     } catch (err: any) {
       console.error('handleLiberarTodos error:', err);
-      toast.error('Erro ao liberar em lote: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível liberar os laudos em lote.'));
     } finally {
       setIsReleasingAll(false);
     }
@@ -354,7 +354,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         p_coleta_id: coletaId,
       });
       if (error) throw error;
-      toast.success('Coleta validada e conferência registrada!');
+      toast.success('Coleta validada e conferência registrada');
       await fetchData();
       onUpdate();
     } catch (e) {
@@ -390,6 +390,8 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
         valorReferenciaMax: r.valor_referencia_max,
         valorReferenciaTexto: r.valor_referencia_texto,
         metodo: r.metodo,
+        equipamento: r.equipamento,
+        laboratorio: r.exames?.laboratorios?.nome,
         material: (coleta as any).material || coleta.tipo_amostra,
         tipoExame: r.exames?.tipo_exame,
         liberado: r.liberado,
@@ -407,7 +409,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       if (!laudoData) return;
       await gerarLaudoPDF(laudoData);
     } catch (err: any) {
-      toast.error('Erro ao imprimir laudo: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível imprimir o laudo.'));
     }
   };
 
@@ -417,7 +419,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
       if (!laudoData) return;
       await downloadLaudoPDF(laudoData);
     } catch (err: any) {
-      toast.error('Erro ao baixar laudo: ' + (err?.message || 'Erro desconhecido'));
+      toast.error(friendlyErrorMessage(err, 'Não foi possível baixar o laudo.'));
     }
   };
 
@@ -506,8 +508,9 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold text-sm">{res.parametro ?? '—'}</p>
+                        <p className="text-[11px] text-muted-foreground">{res.exames?.tipo_exame ?? '—'}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {res.exames?.tipo_exame ?? '—'}{res.metodo ? ` · ${res.metodo}` : ''}
+                          {procedenciaResultadoLaudo({ metodo: res.metodo, equipamento: res.equipamento, laboratorio: res.exames?.laboratorios?.nome ?? 'própria clínica' })}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -528,15 +531,15 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                     {res.resultado && (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                         <div>
-                          <p className="text-[11px] text-muted-foreground">Resultado</p>
+                          <p className="text-[11px] text-muted-foreground">Resultado observado</p>
                           <p className={cn('font-bold', isAltered ? 'text-destructive' : 'text-primary')}>
                             {res.resultado} {res.unidade ?? ''}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[11px] text-muted-foreground">Referência</p>
+                          <p className="text-[11px] text-muted-foreground">Intervalo de referência</p>
                           <p className="font-medium">
-                            {res.valor_referencia_texto || `${res.valor_referencia_min ?? '—'} - ${res.valor_referencia_max ?? '—'}`}
+                            {formatarReferenciaLaudo({ valorReferenciaMin: res.valor_referencia_min, valorReferenciaMax: res.valor_referencia_max, valorReferenciaTexto: res.valor_referencia_texto, unidade: res.unidade })}
                           </p>
                         </div>
                         {res.data_liberacao && (
@@ -596,7 +599,7 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                       {podeRetificarResultado(coleta.status, res.liberado === true) && podeRetificarLiberado && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => abrirRetificacao(res)}><PencilLine className="h-3.5 w-3.5" />{res.liberado ? 'Retificar laudo' : 'Corrigir resultado'}</Button>}
                     </div>
                     {historicoResultadoId === res.id && <div className="space-y-2 rounded-md bg-muted/40 p-3 text-xs">
-                      {carregandoHistorico ? <p role="status">Carregando versões…</p> : historicoResultado.length === 0 ? <p>Nenhuma versão anterior registrada.</p> : historicoResultado.map((versao) => <div key={versao.id} className="border-b pb-2 last:border-0"><p className="font-medium">Versão {versao.numero_versao} · {formatDateTimeSaoPaulo(versao.alterado_em)}</p><p>Resultado anterior: {versao.registro_anterior?.resultado ?? '—'} {versao.registro_anterior?.unidade ?? ''}</p>{versao.motivo && <p>Motivo: {versao.motivo}</p>}</div>)}
+                      {carregandoHistorico ? <p role="status">Carregando versões…</p> : historicoResultado.length === 0 ? <p>Nenhuma versão anterior registrada.</p> : trilhaDeVersoes(historicoResultado, res).map((versao) => <div key={versao.id} className="border-b pb-2 last:border-0"><p className="font-medium">Versão {versao.numero_versao} → {versao.numero_versao + 1} · {formatDateTimeSaoPaulo(versao.alterado_em)} · {versao.autor?.nome || 'autor não identificado'}</p><p>Resultado anterior: {versao.registro_anterior?.resultado ?? '—'} {versao.registro_anterior?.unidade ?? ''}</p>{versao.alteracoes.length > 0 ? <ul className="list-disc pl-4">{versao.alteracoes.map((alteracao) => <li key={alteracao}>{alteracao}</li>)}</ul> : <p className="text-muted-foreground">Sem mudança nos campos do laudo.</p>}{versao.motivo && <p>Motivo: {versao.motivo}</p>}</div>)}
                     </div>}
                     {retificacao?.id === res.id && <div className="mt-2 space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
                       <p className="text-sm font-semibold">Retificar {retificacao.parametro}</p>
@@ -665,7 +668,16 @@ export default function LaudosLab() {
   const [loadError, setLoadError] = useState<unknown>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
-  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // A central de notificações abre o laudo do resultado crítico por ?coleta=<id>.
+  const [viewingId, setViewingId] = useState<string | null>(() => searchParams.get('coleta'));
+  useEffect(() => {
+    if (!searchParams.has('coleta')) return;
+    setViewingId(searchParams.get('coleta'));
+    const params = new URLSearchParams(searchParams);
+    params.delete('coleta');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [cursorLaudos, setCursorLaudos] = useState<CursorLaudo>(null);
   const [hasOlderLaudos, setHasOlderLaudos] = useState(false);
   const [loadingOlderLaudos, setLoadingOlderLaudos] = useState(false);
@@ -991,7 +1003,7 @@ export default function LaudosLab() {
                 aria-pressed={ativo}
                 onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
                   ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                   ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',

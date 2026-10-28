@@ -1,4 +1,4 @@
-import { nomeMedico } from '@/lib/formatters';
+import { nomeMedico, primeiroNome } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { DoctorDashboard } from '@/components/dashboard/DoctorDashboard';
 import { AdminDashboardOverview } from '@/components/dashboard/AdminDashboardOverview';
@@ -25,10 +25,10 @@ import {
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { Link } from 'react-router-dom';
-import dashboardBanner from '@/assets/dashboard-banner-elolab.png';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatWithDatePreference } from '@/lib/datePreference';
 import { cn } from '@/lib/utils';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -131,7 +131,7 @@ function KPICard({ title, value, subtitle, icon: Icon, color, href, delay = 0, s
 
   const content = (
     <motion.div variants={fadeUp} custom={delay}>
-      <Card className="group relative overflow-hidden border-border/60 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <Card className="group relative overflow-hidden border-border/60 bg-card shadow-sm transition-all duration-200 hover:shadow-md">
         <CardContent className="pt-5 pb-4">
           <div className="flex items-start justify-between mb-2">
             <div className="space-y-1 flex-1 min-w-0">
@@ -248,10 +248,10 @@ function RoleWorkspace({ roles }: { roles: string[] }) {
   const role = dashboardRolePriority.find(item => roles.includes(item));
   if (!role) return null;
   const workspace = roleWorkspaces[role];
-  return <section aria-labelledby="role-workspace-title" className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs md:p-5">
+  return <section aria-labelledby="role-workspace-title" className="rounded-xl border border-border/60 bg-card p-4 shadow-xs md:p-5">
     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div><h2 id="role-workspace-title" className="text-base font-bold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:-translate-y-0.5 hover:brightness-105', workspaceTones[index % workspaceTones.length])}><Icon className="h-4 w-4" />{label}</Link>)}</div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', workspaceTones[index % workspaceTones.length])}><Icon className="h-4 w-4" />{label}</Link>)}</div>
     </div>
   </section>;
 }
@@ -303,7 +303,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
 
   const kpis = [
     { label: 'Consultas hoje', value: agenda.length, note: `${confirmadas} confirmadas`, tone: 'bg-card border border-border/60', href: '/agenda' },
-    { label: 'Na fila agora', value: fila.length, note: esperaMedia !== null ? `espera média de ${esperaMedia} min` : 'ninguém aguardando', tone: 'bg-highlight text-highlight-foreground', href: '/fila' },
+    { label: 'Na fila agora', value: fila.length, note: esperaMedia !== null ? `espera média de ${esperaMedia} min` : 'ninguém aguardando', tone: 'bg-card border border-border/60', href: '/fila' },
     { label: 'Finalizadas', value: finalizadas, note: agenda.length ? `${Math.round(finalizadas / agenda.length * 100)}% do dia` : 'sem atendimentos', tone: 'bg-foreground text-background', href: '/fila' },
   ];
 
@@ -314,8 +314,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
     </header>
 
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
-      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-[24px] bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow">
-        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-highlight/40 blur-3xl" />
+      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-xl bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow">
         <div className="relative">
           <h2 id="turno-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">{workspace?.title ?? 'Seu espaço de trabalho'}</h2>
           {proxima ? <>
@@ -326,7 +325,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
           {workspace && <div className="mt-5 flex flex-wrap gap-2">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', index === 0 ? 'bg-white text-primary' : 'border border-white/30 text-white hover:bg-white/10')}><Icon className="h-4 w-4" />{label}</Link>)}</div>}
         </div>
       </section>
-      {kpis.map(kpi => <Link key={kpi.label} to={kpi.href} className={cn('group relative flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs transition hover:-translate-y-0.5 hover:shadow-md', kpi.tone)}>
+      {kpis.map(kpi => <Link key={kpi.label} to={kpi.href} className={cn('group relative flex min-w-0 flex-col rounded-xl p-5 shadow-xs transition hover:shadow-md', kpi.tone)}>
         <p className="text-xs font-semibold opacity-75">{kpi.label}</p>
         <p className="mt-3 text-[38px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
         <p className="mt-auto pt-3 text-xs opacity-75">{kpi.note}</p>
@@ -335,7 +334,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
     </div>
 
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-      <Card className="rounded-[22px]">
+      <Card className="rounded-xl">
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <div><CardTitle className="text-lg">Agenda de hoje</CardTitle><CardDescription>Horários do dia em ordem</CardDescription></div>
           <Link to="/agenda" className="text-xs font-bold text-primary hover:underline">Abrir agenda</Link>
@@ -353,10 +352,10 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
         </CardContent>
       </Card>
       <div className="space-y-4">
-        <Card className="rounded-[22px]">
+        <Card className="rounded-xl">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-lg">Fila agora</CardTitle>
-            <span className="rounded-full bg-highlight px-2.5 py-0.5 text-xs font-extrabold text-highlight-foreground">{fila.length}</span>
+            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-extrabold text-foreground">{fila.length}</span>
           </CardHeader>
           <CardContent>
             {fila.length === 0 ? <p className="flex items-center gap-2 rounded-2xl bg-success/10 p-4 text-sm font-semibold text-success"><CheckCircle2 className="h-4 w-4" />Ninguém aguardando no momento.</p>
@@ -371,7 +370,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
               })}</ul>}
           </CardContent>
         </Card>
-        {minhasTarefas.length > 0 && <Card className="rounded-[22px]">
+        {minhasTarefas.length > 0 && <Card className="rounded-xl">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-lg">Minhas tarefas</CardTitle>
             <Link to="/tarefas" className="text-xs font-bold text-primary hover:underline">Ver todas</Link>
@@ -382,12 +381,12 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
               <li key={t.id} className="flex items-center gap-3 py-2">
                 <ListChecks className="h-4 w-4 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.titulo}</span>
-                {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
+                {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{formatWithDatePreference(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
               </li>
             ))}</ul>
           </CardContent>
         </Card>}
-        {tips.length > 0 && <Card className="rounded-[22px] border-dashed">
+        {tips.length > 0 && <Card className="rounded-xl border-dashed">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Dicas para o seu turno</CardTitle></CardHeader>
           <CardContent><ul className="space-y-2">{tips.map(tip => <li key={tip} className="flex items-start gap-2 text-sm text-muted-foreground"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />{tip}</li>)}</ul></CardContent>
         </Card>}
@@ -783,7 +782,7 @@ function AdminDashboard() {
   ].filter(fonte => fonte.total >= MAX_LINHAS_AUTO).map(fonte => fonte.nome);
 
   const hasData = totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
-  const firstName = user?.nome?.replace(/^(dr|dra|dr\(a\))\.?\s+/i, '').split(' ')[0] || 'equipe';
+  const firstName = primeiroNome(user?.nome) || 'equipe';
 
   const amanhaDate = parseDateOnly(hoje)!;
   amanhaDate.setDate(amanhaDate.getDate() + 1);
@@ -822,7 +821,7 @@ function AdminDashboard() {
   const tarefasResumo = minhasTarefas.map((t) => ({
     id: t.id,
     titulo: t.titulo,
-    vencimento: t.data_vencimento ? format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR }) : null,
+    vencimento: t.data_vencimento ? formatWithDatePreference(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR }) : null,
     atrasada: !!t.data_vencimento && t.data_vencimento < hoje,
   }));
 
@@ -848,21 +847,14 @@ function AdminDashboard() {
         {/* ─── Welcome Hero ─── */}
         {!hasData && (
         <motion.div variants={fadeUp}>
-          <section className="relative isolate min-h-[250px] overflow-hidden rounded-2xl border border-primary/10 bg-card text-card-foreground shadow-sm sm:min-h-[250px]">
-            <img
-              src={dashboardBanner}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 -z-10 h-full w-full object-cover object-[center_44%]"
-            />
-            <div className="absolute inset-y-0 left-0 w-[78%] bg-gradient-to-r from-white via-white/95 to-transparent" />
+          <section className="relative isolate overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm">
             <img src={logoHorizontal} alt="EloLab" className="absolute right-5 top-5 z-10 hidden w-28 object-contain sm:block" />
 
-            <div className="relative flex min-h-[250px] items-center p-6 sm:p-8 lg:p-10">
+            <div className="relative flex items-center p-6 sm:p-8">
               <div className="max-w-xl pb-1">
-                <p className="mb-2 text-xs font-semibold capitalize tracking-[0.08em] text-primary">{hojeFormatado}<span className="mx-2 text-card-foreground/35">·</span><LiveClock /></p>
+                <p className="mb-2 text-xs font-semibold first-letter:uppercase tracking-[0.08em] text-primary">{hojeFormatado}<span className="mx-2 text-card-foreground/35">·</span><LiveClock /></p>
                 <h1 className="text-2xl font-bold tracking-tight text-card-foreground sm:text-3xl lg:text-[34px]">
-                  {saudacao}, {firstName} <span aria-hidden="true">👋</span>
+                  {saudacao}, {firstName}
                   <br />
                   <span className="text-primary">Sua clínica, mais organizada.</span>
                 </h1>
@@ -909,7 +901,7 @@ function AdminDashboard() {
             {/* ─── Setup Progress Card ─── */}
             <motion.div variants={fadeUp}>
               <Card className="overflow-hidden border-border/40">
-                <div className="bg-gradient-to-r from-primary/5 via-primary/3 to-transparent p-6 md:p-8">
+                <div className="bg-primary/5 p-6 md:p-8">
                   <div className="flex flex-col md:flex-row md:items-center gap-6">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-3">
@@ -925,7 +917,7 @@ function AdminDashboard() {
                       </div>
                     </div>
                     <div className="relative shrink-0 hidden md:block">
-                      <div className="h-28 w-28 rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                      <div className="h-28 w-28 rounded-xl bg-primary/10 flex items-center justify-center">
                         <ProgressRing value={setupProgress} size={90} strokeWidth={6} color="hsl(var(--primary))" />
                         <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-lg font-bold tabular-nums">{setupProgress}%</span>
@@ -944,7 +936,7 @@ function AdminDashboard() {
                             'group flex items-center gap-3.5 p-4 rounded-xl border transition-all duration-200',
                             step.done
                               ? 'bg-success/5 border-success/20'
-                              : 'hover:bg-accent/30 hover:border-border hover:-translate-y-0.5 hover:shadow-md',
+                              : 'hover:bg-accent/30 hover:border-border hover:shadow-md',
                           )}
                         >
                           <div className={cn(
@@ -962,7 +954,7 @@ function AdminDashboard() {
                               {step.label}
                             </p>
                             <p className="text-[11px] text-muted-foreground">
-                              {step.done ? 'Concluído ✓' : 'Clique para começar'}
+                              {step.done ? 'Concluído' : 'Clique para começar'}
                             </p>
                           </div>
                           {!step.done && (

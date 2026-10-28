@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDateInTimeZone } from '@/lib/datePreference';
+import { buscarSlaLaboratorio } from '@/lib/laboratorioSla';
+import { SlaPorSetorCard } from '@/pages/laboratorio/SlaPorSetorCard';
 
 type ColetaIndicador = {
   id: string;
@@ -43,6 +45,11 @@ export function IndicadoresLaboratorioPanel() {
       if (error) throw error;
       return (data ?? []) as ColetaIndicador[];
     },
+  });
+  const slaQuery = useQuery({
+    queryKey: ['lab-sla-etapas', profile?.clinica_id, periodo],
+    enabled: !!profile?.clinica_id,
+    queryFn: () => buscarSlaLaboratorio(inicio),
   });
   const coletas = query.data ?? NENHUMA_COLETA;
   const agora = Date.now();
@@ -91,13 +98,14 @@ export function IndicadoresLaboratorioPanel() {
       {query.isError ? <ErrorState title="Não foi possível calcular os indicadores" error={query.error} onRetry={() => void query.refetch()} /> : query.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Calculando a partir dos dados do laboratório…</p> : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <Card className="border-border/70 bg-gradient-to-br from-primary/[0.07] to-background"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Amostras no período</p><p className="mt-1 text-2xl font-semibold tabular-nums">{coletas.length}</p></div><FlaskConical className="h-5 w-5 text-primary" /></CardContent></Card>
+            <Card className="border-border/70 bg-card"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Amostras no período</p><p className="mt-1 text-2xl font-semibold tabular-nums">{coletas.length}</p></div><FlaskConical className="h-5 w-5 text-primary" /></CardContent></Card>
             <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Tempo médio até liberação</p><p className="mt-1 text-2xl font-semibold tabular-nums">{tempoMedio == null ? '—' : `${fmtNumero.format(tempoMedio)} h`}</p><p className="text-xs text-muted-foreground">{tempos.length} amostra(s) liberada(s) no cálculo</p></div><Clock3 className="h-5 w-5 text-cyan-600" /></CardContent></Card>
             <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Aguardando há mais de</p><Select value={limiteAlerta} onValueChange={setLimiteAlerta}><SelectTrigger className="mt-1 h-auto w-auto border-0 p-0 text-2xl font-semibold shadow-none"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="12">12 horas</SelectItem><SelectItem value="24">24 horas</SelectItem><SelectItem value="48">48 horas</SelectItem></SelectContent></Select></div><AlertTriangle className="h-5 w-5 text-amber-600" /><p className="absolute sr-only">{alertas.length} amostra(s)</p></CardContent></Card>
             <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Recoletas / rejeições</p><p className="mt-1 text-2xl font-semibold tabular-nums">{recoletas}</p></div><RotateCcw className="h-5 w-5 text-destructive" /></CardContent></Card>
             <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Custo registrado</p><p className="mt-1 text-2xl font-semibold tabular-nums">{custoComRegistro ? fmtMoeda.format(custoConhecido) : '—'}</p><p className="text-xs text-muted-foreground">{custoComRegistro} exame(s) com custo preenchido</p></div><TrendingUp className="h-5 w-5 text-emerald-600" /></CardContent></Card>
           </div>
           {alertas.length > 0 && <div role="status" className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 text-sm"><AlertTriangle className="h-4 w-4 text-amber-600" /><span><strong>{alertas.length}</strong> amostra(s) em aberto ultrapassaram o limite de {limiteAlerta} horas selecionado.</span></div>}
+          {slaQuery.isError ? <ErrorState title="Não foi possível calcular o SLA por setor" error={slaQuery.error} onRetry={() => void slaQuery.refetch()} /> : slaQuery.isLoading ? <p role="status" className="py-6 text-center text-sm text-muted-foreground">Calculando SLA por setor…</p> : <SlaPorSetorCard linhas={slaQuery.data ?? []} />}
           <Card className="border-border/70"><CardHeader className="border-b bg-muted/20"><CardTitle className="text-base">Volume diário de trabalho</CardTitle><CardDescription>Amostras recebidas, laudos liberados e amostras com recoleta.</CardDescription></CardHeader><CardContent className="space-y-2 p-5">{dias.length && dias.every((item) => item.amostras === 0) ? <div className="py-12 text-center"><Activity className="mx-auto h-7 w-7 text-muted-foreground/50" /><p className="mt-3 font-medium">Sem movimentação neste período</p><p className="mt-1 text-sm text-muted-foreground">Quando houver coletas registradas, o volume diário aparecerá aqui.</p></div> : <div className="space-y-2">{dias.map((item) => <div key={item.chave} className="grid grid-cols-[52px_1fr_110px] items-center gap-3 text-xs"><span className="tabular-nums text-muted-foreground">{item.dia}</span><div className="flex h-6 min-w-0 items-center gap-1"><span title={`${item.amostras} amostras`} className="h-3 rounded-sm bg-primary/80" style={{ width: `${Math.max(item.amostras ? 3 : 0, item.amostras / maxBar * 100)}%` }} /><span title={`${item.liberadas} liberações`} className="h-3 rounded-sm bg-cyan-500/80" style={{ width: `${Math.max(item.liberadas ? 2 : 0, item.liberadas / maxBar * 100)}%` }} /></div><span className="text-right tabular-nums text-muted-foreground">{item.amostras} · {item.liberadas} · {item.recoletas}</span></div>)}</div>}<div className="flex flex-wrap gap-4 border-t pt-4 text-xs text-muted-foreground"><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-primary/80" />Amostras</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-cyan-500/80" />Laudos</span><span>Última coluna: recoletas</span></div></CardContent></Card>
           <p className="text-xs text-muted-foreground">O prazo selecionado é um alerta operacional configurável nesta tela, não um SLA clínico definido. O custo soma apenas exames com preço de custo preenchido; coletas sem esse dado não entram na soma.</p>
         </>

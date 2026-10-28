@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useEffect, useState } from 'react';
 import { Download, Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { toast } from 'sonner';
@@ -46,7 +47,7 @@ export function ExportacaoClinicaProtegida({ open, onOpenChange, conteudo, nomeA
       onOpenChange(false);
       toast.success('Arquivo clínico criptografado e baixado.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível proteger a exportação.');
+      toast.error(friendlyErrorMessage(error, 'Não foi possível proteger a exportação.'));
     } finally {
       setSalvando(false);
     }

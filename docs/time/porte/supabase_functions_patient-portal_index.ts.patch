@@ -1,0 +1,506 @@
+diff --git a/supabase/functions/patient-portal/index.ts b/supabase/functions/patient-portal/index.ts
+index 18e7832d..7d1a1fef 100644
+--- a/supabase/functions/patient-portal/index.ts
++++ b/supabase/functions/patient-portal/index.ts
+@@ -3,6 +3,16 @@ import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
+ import { corsPadrao } from '../_shared/cors.ts';
+ import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
+ import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
++import { sendBrevoEmail } from '../_shared/brevoEmail.ts';
++import { dadosPublicosClinica, emitirLinkPortal, enviarWhatsappClinica } from '../_shared/portalPaciente.ts';
++import {
++  acaoExigeTitular,
++  buscarTokenPortal,
++  COLUNAS_PERFIL_PORTAL,
++  dependentesDoTitular,
++  ERRO_DEPENDENTE_NAO_AUTORIZADO,
++  resolverPacienteDaSessao,
++} from './acessoPortal.ts';
+ 
+ /** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
+ function todayISO(): string {
+@@ -20,12 +30,6 @@ function addMinutes(time: string, minutes: number): string {
+   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+ }
+ 
+-async function sha256Hex(value: string): Promise<string> {
+-  const bytes = new TextEncoder().encode(value);
+-  const hash = await crypto.subtle.digest('SHA-256', bytes);
+-  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+-}
+-
+ Deno.serve(async (req) => {
+   const corsHeaders = { ...corsPadrao(req), 'Cache-Control': "no-store, no-cache, must-revalidate, private", 'Pragma': "no-cache", 'Referrer-Policy': "no-referrer", 'X-Content-Type-Options': "nosniff" };
+   if (req.method === "OPTIONS") {
+@@ -61,9 +65,13 @@ Deno.serve(async (req) => {
+ 
+     const body = await req.json();
+     const { action, token } = body;
++
++    if (action === "solicitar_acesso") {
++      return await solicitarAcesso(supabase, req, body, corsHeaders);
++    }
+     const offset = body.offset === undefined ? 0 : Number(body.offset);
+     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100_000) {
+-      return new Response(JSON.stringify({ error: "?ndice de p?gina inv?lido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++      return new Response(JSON.stringify({ error: "Índice de página inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+     }
+ 
+     if (!token) {
+@@ -74,48 +82,69 @@ Deno.serve(async (req) => {
+     }
+ 
+     // O segredo bruto nunca fica no banco; comparamos apenas sua impressão.
+-    const tokenHash = await sha256Hex(String(token));
+-    let { data: tokenData, error: tokenError } = await supabase
+-      .from("paciente_portal_tokens")
+-      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
+-      .eq("token", tokenHash)
+-      .eq("ativo", true)
+-      .gte("expires_at", new Date().toISOString())
+-      .single();
+-
+-    // Compatibilidade durante o deploy: a Edge Function entra antes da
+-    // migration. Enquanto a tabela ainda tiver os três tokens legados em
+-    // texto puro, eles continuam aceitos; após o UPDATE, este ramo não acha
+-    // mais nenhuma linha e pode ser removido numa migração futura.
+-    if (!tokenData) {
+-      ({ data: tokenData, error: tokenError } = await supabase
+-        .from("paciente_portal_tokens")
+-        .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id)")
+-        .eq("token", String(token))
+-        .eq("ativo", true)
+-        .gte("expires_at", new Date().toISOString())
+-        .single());
+-    }
++    // Sem fallback pelo valor sem hash (SEC-R1-06, ver acessoPortal.ts).
++    const tokenData = await buscarTokenPortal(supabase, token);
+ 
+-    if (tokenError || !tokenData) {
++    if (!tokenData) {
+       return new Response(JSON.stringify({ error: "Token inválido ou expirado" }), {
+         status: 401,
+         headers: { ...corsHeaders, "Content-Type": "application/json" },
+       });
+     }
+ 
+-    const pacienteId = tokenData.paciente_id;
++    const titularId = tokenData.paciente_id;
+     // Clínica do paciente — usada para impedir que o portal exponha ou agende
+     // com médicos de outras clínicas.
+     const pacienteClinicaId =
+       (tokenData as any).pacientes?.clinica_id ?? (tokenData as any).clinica_id ?? null;
+-    if (!pacienteId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id) {
++    if (!titularId || !pacienteClinicaId || pacienteClinicaId !== (tokenData as any).clinica_id) {
+       return new Response(JSON.stringify({ error: "Token inválido" }), {
+         status: 401,
+         headers: { ...corsHeaders, "Content-Type": "application/json" },
+       });
+     }
+ 
++    // Dependentes (CLIN-QA-512): o titular só age por outro paciente com vínculo
++    // explícito e confirmado pela clínica. Enquanto esse vínculo não existir no
++    // banco, dependentesDoTitular devolve [] e qualquer dependente_id recebe 403
++    // (ver acessoPortal.ts). O texto cpf_responsavel não concede acesso.
++    // Todas as ações abaixo usam pacienteId.
++    const titular = { id: titularId, clinica_id: pacienteClinicaId };
++    let perfilAtual: any = tokenData.pacientes;
++    const pedeDependente = body.dependente_id !== undefined && body.dependente_id !== null && body.dependente_id !== "" && body.dependente_id !== titularId;
++    const sessao = resolverPacienteDaSessao(
++      titularId,
++      body.dependente_id,
++      pedeDependente ? await dependentesDoTitular(supabase, titular, todayISO()) : [],
++    );
++    if (!sessao.ok) {
++      return new Response(JSON.stringify(ERRO_DEPENDENTE_NAO_AUTORIZADO), {
++        status: 403,
++        headers: { ...corsHeaders, "Content-Type": "application/json" },
++      });
++    }
++    const pacienteId: string = sessao.pacienteId;
++    if (sessao.comoDependente) {
++      const { data: perfilDependente, error: perfilError } = await supabase.from("pacientes")
++        .select(COLUNAS_PERFIL_PORTAL)
++        .eq("id", pacienteId).eq("clinica_id", pacienteClinicaId).maybeSingle();
++      if (perfilError || !perfilDependente) {
++        return new Response(JSON.stringify(ERRO_DEPENDENTE_NAO_AUTORIZADO), {
++          status: 403,
++          headers: { ...corsHeaders, "Content-Type": "application/json" },
++        });
++      }
++      perfilAtual = perfilDependente;
++    }
++    // Contato (telefone e e-mail) recebe as notificações da clínica; só o
++    // titular altera o próprio, nunca o de um dependente.
++    if (acaoExigeTitular(action, pacienteId, titularId)) {
++      return new Response(JSON.stringify(ERRO_DEPENDENTE_NAO_AUTORIZADO), {
++        status: 403,
++        headers: { ...corsHeaders, "Content-Type": "application/json" },
++      });
++    }
++
+     // Update last access
+     await supabase
+       .from("paciente_portal_tokens")
+@@ -126,9 +155,150 @@ Deno.serve(async (req) => {
+ 
+     switch (action) {
+       case "get_profile":
+-        result = tokenData.pacientes;
++        result = perfilAtual;
+         break;
+ 
++      case "get_dependentes":
++        result = await dependentesDoTitular(supabase, titular, todayISO());
++        break;
++
++      case "get_clinica":
++        result = await dadosPublicosClinica(supabase, pacienteClinicaId);
++        break;
++
++      case "get_pre_consulta":
++      case "submit_pre_consulta": {
++        const agendamentoId = String(body.agendamento_id ?? "");
++        const { data: consulta, error: consultaError } = await supabase.from("agendamentos")
++          .select("id, data, hora_inicio, status")
++          .eq("id", agendamentoId).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId)
++          .maybeSingle();
++        if (consultaError) throw consultaError;
++        if (!consulta) {
++          return new Response(JSON.stringify({ error: "Consulta não encontrada" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        if (action === "get_pre_consulta") {
++          const { data, error } = await supabase.from("pre_consultas").select("respostas, enviado_em, updated_at")
++            .eq("agendamento_id", consulta.id).maybeSingle();
++          if (error) throw error;
++          result = data ?? null;
++          break;
++        }
++        // Depois que a consulta começa, o médico já está usando as respostas.
++        if (!["agendado", "confirmado"].includes(consulta.status) || horarioConsultaPassou(consulta.data, consulta.hora_inicio)) {
++          return new Response(JSON.stringify({ error: "A pré-consulta só pode ser enviada antes da consulta." }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        const entrada = (body.respostas && typeof body.respostas === "object") ? body.respostas as Record<string, unknown> : {};
++        const respostas: Record<string, string> = {};
++        for (const campo of CAMPOS_PRE_CONSULTA) {
++          const valor = String(entrada[campo] ?? "").trim().slice(0, 2000);
++          if (valor) respostas[campo] = valor;
++        }
++        if (!respostas.queixa) {
++          return new Response(JSON.stringify({ error: "Conte o motivo da consulta." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        const agora = new Date().toISOString();
++        const { error } = await supabase.from("pre_consultas").upsert({
++          agendamento_id: consulta.id,
++          paciente_id: pacienteId,
++          clinica_id: pacienteClinicaId,
++          respostas,
++          updated_at: agora,
++        }, { onConflict: "agendamento_id" });
++        if (error) throw error;
++        result = { ok: true };
++        break;
++      }
++
++      case "get_privacidade": {
++        const [{ data: consentimentos, error: e1 }, { data: pedidos, error: e2 }] = await Promise.all([
++          supabase.from("consentimentos_lgpd")
++            .select("tipo_consentimento, aceito, revogado, data_aceite, data_revogacao, created_at")
++            .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId)
++            .order("created_at", { ascending: false }),
++          supabase.from("lgpd_access_request_log")
++            .select("id, request_type, status, requested_at")
++            .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId)
++            .order("requested_at", { ascending: false }).limit(20),
++        ]);
++        if (e1) throw e1;
++        if (e2) throw e2;
++        // Só o registro mais recente de cada tipo vale.
++        const atual = new Map<string, any>();
++        for (const c of consentimentos ?? []) if (!atual.has(c.tipo_consentimento)) atual.set(c.tipo_consentimento, c);
++        result = {
++          consentimentos: Object.fromEntries(
++            [...atual].map(([tipo, c]) => [tipo, !!c.aceito && !c.revogado]),
++          ),
++          pedidos: pedidos ?? [],
++        };
++        break;
++      }
++
++      case "set_consentimento": {
++        const tipo = String(body.tipo ?? "");
++        const aceito = body.aceito === true;
++        if (!["tratamento_dados", "compartilhamento_convenio", "comunicacao_marketing"].includes(tipo)) {
++          return new Response(JSON.stringify({ error: "Tipo de consentimento inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        if (tipo === "tratamento_dados" && !aceito) {
++          return new Response(JSON.stringify({ error: "O tratamento de dados para o atendimento não pode ser revogado pelo portal. Fale com a clínica." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        const agora = new Date().toISOString();
++        const ip = clientIp(req);
++        // Cada mudança vira uma linha nova: o histórico de aceite/revogação fica preservado.
++        const { error } = await supabase.from("consentimentos_lgpd").insert({
++          paciente_id: pacienteId,
++          clinica_id: pacienteClinicaId,
++          tipo_consentimento: tipo,
++          versao_termo: "1.0",
++          aceito,
++          data_aceite: aceito ? agora : null,
++          revogado: !aceito,
++          data_revogacao: aceito ? null : agora,
++          motivo_revogacao: aceito ? null : "Revogado pelo paciente no portal",
++          ip_aceite: ip,
++        });
++        if (error) throw error;
++        await supabase.from("lgpd_consent_log").insert({
++          paciente_id: pacienteId,
++          clinica_id: pacienteClinicaId,
++          consent_type: tipo,
++          accepted: aceito,
++          ip_address: ip,
++          user_agent: req.headers.get("user-agent")?.slice(0, 300) ?? null,
++        });
++        result = { ok: true };
++        break;
++      }
++
++      case "solicitar_lgpd": {
++        const tipo = String(body.tipo ?? "");
++        const notas = String(body.notas ?? "").trim().slice(0, 2000);
++        if (!["access", "correction", "export"].includes(tipo)) {
++          return new Response(JSON.stringify({ error: "Tipo de pedido inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        if (tipo === "correction" && !notas) {
++          return new Response(JSON.stringify({ error: "Descreva o que precisa ser corrigido." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++        }
++        const { data: pendente } = await supabase.from("lgpd_access_request_log").select("id")
++          .eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId)
++          .eq("request_type", tipo).eq("status", "pending").limit(1).maybeSingle();
++        if (pendente) {
++          result = { ok: true, ja_existia: true };
++          break;
++        }
++        const { error } = await supabase.from("lgpd_access_request_log").insert({
++          paciente_id: pacienteId,
++          clinica_id: pacienteClinicaId,
++          request_type: tipo,
++          notes: notas || null,
++        });
++        if (error) throw error;
++        result = { ok: true };
++        break;
++      }
++
+       case "update_contact": {
+         const telefone = String(body.telefone || "").trim();
+         const email = String(body.email || "").trim().toLowerCase();
+@@ -327,7 +497,38 @@ Deno.serve(async (req) => {
+       case "get_prescricoes": {
+         const { data, error } = await supabase
+           .from("prescricoes")
+-          .select("id, medicamento, dosagem, posologia, quantidade, duracao, observacoes, tipo, data_emissao, medicos:medico_id(nome, especialidade)")
++          .select("id, medicamento, dosagem, posologia, quantidade, duracao, observacoes, tipo, data_emissao, arquivo_pdf, medicos:medico_id(nome, especialidade)")
++          .eq("paciente_id", pacienteId)
++          .eq("clinica_id", pacienteClinicaId)
++          .order("data_emissao", { ascending: false })
++          .order("id", { ascending: true })
++          .range(offset, offset + 49);
++        if (error) throw error;
++        // Receitas Memed guardam um marcador interno em observacoes, que não vai
++        // ao paciente. As excluídas na Memed seguem na lista com `excluida` para
++        // a paginação (que conta linhas) continuar certa; a tela as esconde.
++        const memed = /^(Prescrição excluída na Memed\. )?Memed:[0-9a-f-]+$/i;
++        result = await Promise.all((data || []).map(async ({ arquivo_pdf, ...p }: any) => {
++          const obs = String(p.observacoes ?? "");
++          let pdf_url: string | null = null;
++          if (arquivo_pdf) {
++            const { data: assinada } = await supabase.storage.from("medical-attachments").createSignedUrl(arquivo_pdf, 3600);
++            pdf_url = assinada?.signedUrl ?? null;
++          }
++          return {
++            ...p,
++            observacoes: memed.test(obs) ? null : p.observacoes,
++            excluida: obs.startsWith("Prescrição excluída na Memed"),
++            pdf_url,
++          };
++        }));
++        break;
++      }
++
++      case "get_atestados": {
++        const { data, error } = await supabase
++          .from("atestados")
++          .select("id, tipo, data_emissao, data_inicio, data_fim, dias, cid, motivo, observacoes, medicos:medico_id(nome, crm, especialidade)")
+           .eq("paciente_id", pacienteId)
+           .eq("clinica_id", pacienteClinicaId)
+           .order("data_emissao", { ascending: false })
+@@ -343,14 +544,26 @@ Deno.serve(async (req) => {
+           result = [];
+           break;
+         }
+-        const { data, error } = await supabase
+-          .from("medicos")
+-          .select("id, nome, crm, especialidade, foto_url")
+-          .eq("ativo", true)
+-          .eq("clinica_id", pacienteClinicaId)
+-          .order("nome");
++        const [{ data, error }, liberados] = await Promise.all([
++          supabase
++            .from("medicos")
++            .select("id, nome, crm, especialidade, foto_url")
++            .eq("ativo", true)
++            .eq("clinica_id", pacienteClinicaId)
++            .order("nome"),
++          medicosLiberadosOnline(supabase, pacienteClinicaId),
++        ]);
+         if (error) throw error;
+-        result = data || [];
++        const medicos = (data || []).filter((m: any) => !liberados || liberados.includes(m.id));
++        // Fotos ficam no bucket privado patient-photos; o portal não tem sessão
++        // para assinar, então a função entrega links temporários.
++        const caminhos = medicos.map((m: any) => m.foto_url).filter((p: unknown): p is string => typeof p === "string" && !!p && !p.startsWith("http"));
++        const assinados = new Map<string, string>();
++        if (caminhos.length) {
++          const { data: urls } = await supabase.storage.from("patient-photos").createSignedUrls(caminhos, 3600);
++          for (const u of urls ?? []) if (u.path && u.signedUrl) assinados.set(u.path, u.signedUrl);
++        }
++        result = medicos.map((m: any) => ({ ...m, foto_url: assinados.get(m.foto_url) ?? null }));
+         break;
+       }
+ 
+@@ -402,15 +615,24 @@ Deno.serve(async (req) => {
+             });
+           }
+           ignoreAppointmentId = consulta.id;
+-          // Mesmo limite que a remarcação aplica: não oferecer data que será recusada.
+-          const alemDoLimite = await recusarDataAlemDoLimite(supabase, pacienteClinicaId, data_inicio);
+-          if (alemDoLimite) {
+-            return new Response(JSON.stringify(alemDoLimite.body), {
+-              status: alemDoLimite.status,
++        } else {
++          const liberados = await medicosLiberadosOnline(supabase, pacienteClinicaId);
++          if (liberados && !liberados.includes(medico_id)) {
++            return new Response(JSON.stringify({ error: "Profissional indisponível para agendamento online." }), {
++              status: 404,
+               headers: { ...corsHeaders, "Content-Type": "application/json" },
+             });
+           }
+         }
++        // Mesmo limite de dias à frente do agendamento online e da remarcação:
++        // não oferecer data que será recusada.
++        const alemDoLimite = await recusarDataAlemDoLimite(supabase, pacienteClinicaId, data_inicio);
++        if (alemDoLimite) {
++          return new Response(JSON.stringify(alemDoLimite.body), {
++            status: alemDoLimite.status,
++            headers: { ...corsHeaders, "Content-Type": "application/json" },
++          });
++        }
+         const slots = await horariosLivres(supabase, pacienteClinicaId, medico_id, data_inicio, ignoreAppointmentId);
+ 
+         result = slots;
+@@ -457,6 +679,21 @@ Deno.serve(async (req) => {
+           );
+         }
+ 
++        const liberadosOnline = await medicosLiberadosOnline(supabase, pacienteClinicaId);
++        if (liberadosOnline && !liberadosOnline.includes(medico_id)) {
++          return new Response(JSON.stringify({ error: "Profissional indisponível para agendamento online." }), {
++            status: 404,
++            headers: { ...corsHeaders, "Content-Type": "application/json" },
++          });
++        }
++        const dataAlemDoLimite = await recusarDataAlemDoLimite(supabase, pacienteClinicaId, data);
++        if (dataAlemDoLimite) {
++          return new Response(JSON.stringify(dataAlemDoLimite.body), {
++            status: dataAlemDoLimite.status,
++            headers: { ...corsHeaders, "Content-Type": "application/json" },
++          });
++        }
++
+         const slot = await validatePortalSlot(supabase, pacienteClinicaId, medico_id, data, hora_inicio);
+         if (slot.error) {
+           return new Response(JSON.stringify({ error: slot.error }), {
+@@ -691,3 +928,83 @@ Deno.serve(async (req) => {
+     });
+   }
+ });
++
++// Mesmas chaves de src/lib/preConsulta.ts.
++const CAMPOS_PRE_CONSULTA = ["queixa", "sintomas", "medicamentos", "alergias", "doencas", "cirurgias", "observacoes"] as const;
++
++/**
++ * Lista de médicos que a clínica liberou em Configurações → Agendamento online.
++ * `null` quando a clínica não restringiu (todos os ativos valem).
++ */
++async function medicosLiberadosOnline(supabase: any, clinicaId: string): Promise<string[] | null> {
++  const { data } = await supabase.from("configuracoes_clinica").select("valor")
++    .eq("clinica_id", clinicaId).eq("chave", "agendamento_online")
++    .order("updated_at", { ascending: false }).limit(1).maybeSingle();
++  const lista = (data?.valor as { medicos?: unknown } | null)?.medicos;
++  return Array.isArray(lista) && lista.length > 0 ? lista.map(String) : null;
++}
++
++const RESPOSTA_ACESSO = "Se os dados conferirem com um cadastro, enviamos um novo link de acesso para o e-mail e o WhatsApp cadastrados na clínica.";
++
++/**
++ * Recuperação de acesso sem token: CPF + data de nascimento identificam o
++ * paciente, mas o link só é entregue nos contatos já cadastrados. A resposta
++ * é sempre a mesma para não revelar se o CPF existe.
++ */
++async function solicitarAcesso(supabase: any, req: Request, body: any, corsHeaders: Record<string, string>) {
++  const json = (payload: unknown, status = 200) =>
++    new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
++
++  const cpf = String(body.cpf ?? "").replace(/\D/g, "");
++  const nascimento = String(body.data_nascimento ?? "");
++  if (cpf.length !== 11 || !/^\d{4}-\d{2}-\d{2}$/.test(nascimento)) {
++    return json({ error: "Informe o CPF e a data de nascimento." }, 400);
++  }
++
++  const limitado =
++    await checarRateLimit(supabase, { chave: `portal-acesso:${clientIp(req)}`, limite: 5, janelaSegundos: 600 }) ||
++    await checarRateLimit(supabase, { chave: `portal-acesso-cpf:${cpf}`, limite: 3, janelaSegundos: 3600 });
++  if (limitado) return json({ error: "Muitas tentativas — aguarde alguns minutos." }, 429);
++
++  const { data: pacientes } = await supabase
++    .from("pacientes")
++    .select("id, nome, email, telefone, clinica_id, clinicas!inner(suspensa, arquivada)")
++    .eq("cpf_digitos", cpf)
++    .eq("data_nascimento", nascimento)
++    .limit(5);
++
++  const appUrl = Deno.env.get("APP_URL") || "https://app.elolab.com.br";
++  for (const paciente of pacientes ?? []) {
++    const clinicaStatus = Array.isArray(paciente.clinicas) ? paciente.clinicas[0] : paciente.clinicas;
++    if (!paciente.clinica_id || clinicaStatus?.suspensa || clinicaStatus?.arquivada) continue;
++    if (!paciente.email && !paciente.telefone) continue;
++    try {
++      const [link, clinica] = await Promise.all([
++        emitirLinkPortal(supabase, paciente.id, paciente.clinica_id, appUrl),
++        dadosPublicosClinica(supabase, paciente.clinica_id),
++      ]);
++      const primeiroNome = String(paciente.nome ?? "").split(" ")[0];
++      if (paciente.email) {
++        await sendBrevoEmail({
++          to: { email: paciente.email, name: paciente.nome },
++          subject: `Seu acesso ao portal do paciente — ${clinica.nome}`,
++          senderName: clinica.nome,
++          html: `<p>Olá, ${primeiroNome.replace(/[<>&"']/g, "")}!</p><p>Recebemos um pedido de acesso ao seu portal do paciente na ${clinica.nome.replace(/[<>&"']/g, "")}.</p><p><a href="${link}">Abrir meu portal</a></p><p>Se você não pediu, ignore este e-mail. O link é pessoal; não compartilhe.</p>`,
++          tags: ["portal-acesso"],
++        }).catch((erro) => console.error("Falha ao enviar acesso por e-mail:", erro));
++      }
++      if (paciente.telefone) {
++        await enviarWhatsappClinica(
++          supabase,
++          paciente.clinica_id,
++          paciente.telefone,
++          `Olá, ${primeiroNome}! Aqui está seu acesso ao portal do paciente da ${clinica.nome}:\n\n${link}\n\nO link é pessoal. Se você não pediu, ignore esta mensagem.`,
++        ).catch((erro) => console.error("Falha ao enviar acesso por WhatsApp:", erro));
++      }
++    } catch (erro) {
++      console.error("Falha ao emitir acesso do portal:", erro);
++    }
++  }
++
++  return json({ ok: true, mensagem: RESPOSTA_ACESSO });
++}

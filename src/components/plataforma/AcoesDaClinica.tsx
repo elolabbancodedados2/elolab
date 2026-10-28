@@ -18,6 +18,7 @@
  * outra decisão. A tela diz isso em voz alta, porque "arquivar" sugere o
  * contrário.
  */
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Archive, ArchiveRestore, Trash2, Loader2, AlertTriangle } from 'lucide-react';
@@ -81,7 +82,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
       setConteudo(data as Conteudo);
       setAba('excluir');
     } catch (e: any) {
-      toast.error('Não consegui verificar o conteúdo da clínica', { description: e?.message });
+      toast.error('Não consegui verificar o conteúdo da clínica', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       operationLock.current = false;
       setOcupado(false);
@@ -100,7 +101,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
       toast.success(`${nome} arquivada`, { description: 'Sai da lista, mas continua acessível para quem usa.' });
       fechar(); atualizar();
     } catch (e: any) {
-      toast.error('Não consegui arquivar', { description: e?.message });
+      toast.error('Não consegui arquivar', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       operationLock.current = false;
       setOcupado(false);
@@ -118,7 +119,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
       toast.success(`${nome} voltou para a lista`);
       atualizar();
     } catch (e: any) {
-      toast.error('Não consegui desarquivar', { description: e?.message });
+      toast.error('Não consegui desarquivar', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       operationLock.current = false;
       setOcupado(false);
@@ -137,7 +138,7 @@ export function AcoesDaClinica({ clinicaId, nome, arquivada }: Props) {
       toast.success(`${nome} excluída`);
       fechar(); atualizar();
     } catch (e: any) {
-      toast.error('Não consegui excluir', { description: e?.message });
+      toast.error('Não consegui excluir', { description: friendlyErrorMessage(e, 'Tente novamente em instantes.') });
     } finally {
       operationLock.current = false;
       setOcupado(false);

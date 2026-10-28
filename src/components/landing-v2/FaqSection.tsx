@@ -20,7 +20,7 @@ const faqItems: Array<{ q: string; a: ReactNode }> = [
     a: (
       <>
         O sistema aplica separação de dados por clínica e permissões por perfil. Consulte a{" "}
-        <Link to="/politica-privacidade" className="inline-flex min-h-10 items-center font-semibold text-elolab-blue underline underline-offset-4">Política de Privacidade</Link>{" "}
+        <Link to="/politica-privacidade" className="inline-flex min-h-10 items-center font-semibold text-primary underline underline-offset-4">Política de Privacidade</Link>{" "}
         para saber como os dados são tratados e confirme com a equipe os procedimentos de backup e recuperação vigentes.
       </>
     ),
@@ -47,19 +47,19 @@ function FaqItem({ q, a, index }: { q: string; a: ReactNode; index: number }) {
   const [open, setOpen] = useState(false);
   const panelId = `faq-resposta-${index}`;
   return (
-    <div className="border-b border-elolab-blue/10 last:border-0">
+    <div className="border-b border-border last:border-0">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="group flex w-full items-center justify-between gap-4 py-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue"
+        className="group flex w-full items-center justify-between gap-4 py-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <span className="font-inter text-base font-semibold text-elolab-navy">{q}</span>
-        <ChevronDown className={cn("h-5 w-5 shrink-0 text-elolab-blue transition-transform duration-300", open && "rotate-180")} aria-hidden="true" />
+        <span className="font-inter text-base font-semibold text-foreground">{q}</span>
+        <ChevronDown className={cn("h-5 w-5 shrink-0 text-primary transition-transform duration-300", open && "rotate-180")} aria-hidden="true" />
       </button>
       <div id={panelId} hidden={!open} className="pb-5">
-        <p className="font-inter text-sm leading-relaxed text-elolab-navy/70">{a}</p>
+        <p className="font-inter text-sm leading-relaxed text-muted-foreground">{a}</p>
       </div>
     </div>
   );
@@ -70,17 +70,17 @@ export default function FaqSection() {
     <section id="faq" className="relative scroll-mt-24 bg-background px-5 py-16 sm:px-8 sm:py-20 lg:py-24">
       <div className="mx-auto max-w-3xl">
         <div className="mb-10 text-center">
-          <GradientWaveText as="h2" align="center" inView once={false} repeat speed={0.75} className="font-inter text-3xl font-medium leading-[1.04] tracking-[-0.045em] text-elolab-navy sm:text-4xl">
+          <GradientWaveText as="h2" align="center" inView once={false} repeat speed={0.75} className="font-inter text-3xl font-medium leading-[1.04] tracking-[-0.045em] text-foreground sm:text-4xl">
             Perguntas frequentes
           </GradientWaveText>
-          <p className="mt-3 font-inter text-sm text-elolab-navy/65 sm:text-base">Respostas diretas para decidir com tranquilidade.</p>
+          <p className="mt-3 font-inter text-sm text-muted-foreground sm:text-base">Respostas diretas para decidir com tranquilidade.</p>
         </div>
-        <div className="rounded-3xl border border-elolab-blue/10 bg-white/85 p-6 shadow-[0_24px_65px_rgba(10,34,55,0.08)] backdrop-blur md:p-8">
+        <div className="rounded-3xl border border-border bg-card/85 p-6 shadow-lg backdrop-blur md:p-8">
           {faqItems.map((item, index) => <FaqItem key={item.q} q={item.q} a={item.a} index={index} />)}
         </div>
-        <p className="mt-8 text-center font-inter text-sm text-elolab-navy/65">
+        <p className="mt-8 text-center font-inter text-sm text-muted-foreground">
           Ficou com alguma dúvida?{" "}
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center font-bold text-elolab-blue hover:underline">
+          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center font-bold text-primary hover:underline">
             Fale agora com um especialista no WhatsApp
           </a>
         </p>

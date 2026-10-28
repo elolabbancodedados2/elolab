@@ -25,13 +25,13 @@ export default function NotebookToAppSection() {
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-0 h-72 w-[min(90vw,900px)] -translate-x-1/2 rounded-full bg-elolab-blue/[0.06] blur-[100px]"
+        className="pointer-events-none absolute left-1/2 top-0 h-72 w-[min(90vw,900px)] -translate-x-1/2 rounded-full bg-primary/[0.06] blur-[100px]"
       />
 
       <div className="relative mx-auto max-w-[1320px]">
         <FadeIn className="mx-auto mb-8 max-w-3xl text-center sm:mb-10">
-          <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-elolab-blue/15 bg-white/80 px-3.5 py-1.5 font-inter text-xs font-semibold text-elolab-blue shadow-sm">
-            <span className="size-1.5 rounded-full bg-elolab-cyan" />
+          <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 font-inter text-xs font-semibold text-primary shadow-sm">
+            <span className="size-1.5 rounded-full bg-primary" />
             Menos papelada. Mais cuidado.
           </span>
           <GradientWaveText
@@ -42,11 +42,11 @@ export default function NotebookToAppSection() {
             once={false}
             repeat
             speed={0.75}
-            className="font-inter text-3xl font-medium leading-[1.05] tracking-[-0.045em] text-elolab-navy sm:text-4xl lg:text-5xl"
+            className="font-inter text-3xl font-medium leading-[1.05] tracking-[-0.045em] text-foreground sm:text-4xl lg:text-5xl"
           >
             Saia do caderno. Use o app EloLab.
           </GradientWaveText>
-          <p className="mx-auto mt-4 max-w-2xl font-inter text-sm leading-relaxed text-elolab-navy/65 sm:text-base">
+          <p className="mx-auto mt-4 max-w-2xl font-inter text-sm leading-relaxed text-muted-foreground sm:text-base">
             Leve agenda, pacientes e atendimentos para uma rotina digital, organizada e acessível à sua equipe.
           </p>
         </FadeIn>
@@ -64,7 +64,7 @@ export default function NotebookToAppSection() {
                 width={1122}
                 height={1402}
                 sizes="(min-width: 1024px) 30vw, (min-width: 768px) 32vw, 92vw"
-                className="h-auto w-full object-contain drop-shadow-[0_18px_30px_rgba(10,34,55,0.08)] transition-transform duration-500 ease-out group-hover:-translate-y-1"
+                className="h-auto w-full object-contain drop-shadow-lg"
               />
             </FadeIn>
           ))}

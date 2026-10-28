@@ -1,0 +1,6 @@
+{
+  "comum": "Leia docs/time/REGRAS_DO_TIME.md e docs/time/GATES.md. Os outros agentes da rodada 2 já terminaram; você é o único rodando agora. Sem deploy, sem migration aplicada, sem commit, sem acesso à VPS. Ao terminar, grave docs/time/rodada-2/{agente}-final.md com os resultados reais. TAREFA: ",
+  "tarefas": {
+    "tech-lead": "Faça a verificação completa da rodada 2, uma única vez: npx tsc --noEmit -p tsconfig.app.json, npm run test:run, npm run lint e os npm run check:* (colunas, falhas, permissoes, a11y). Corrija falhas causadas pelas mudanças das rodadas 1 e 2 (não as preexistentes de outra frente; liste-as separadamente). Registre números reais."
+  }
+}

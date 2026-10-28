@@ -134,7 +134,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
           <>
             <span className="h-1.5 w-1.5 rounded-full bg-[#1080CA]" />
             <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
-            {confirmed > 0 && <span className="text-success">✓ {confirmed}</span>}
+            {confirmed > 0 && <span className="text-success">{confirmed} conf.</span>}
           </>
         ) : (
           <span className="italic text-muted-foreground/60">{total === 0 ? 'Agenda livre' : 'Sem próximas consultas'}</span>
@@ -317,16 +317,9 @@ export function DailyMultiDoctorView({
     return () => clearInterval(t);
   }, []);
 
-  // A rolagem vertical pertence ao <main>; só trazemos a linha de "agora"
-  // para a tela quando ela está fora da área visível.
-  useEffect(() => {
-    const line = nowLineRef.current;
-    if (!showNow || !line) return;
-    const rect = line.getBoundingClientRect();
-    if (rect.top >= DOCTOR_HEADER_PX && rect.bottom <= window.innerHeight) return;
-    line.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, showNow]);
+  // A rolagem vertical pertence ao <main>. Rolar sozinho até "agora" escondia
+  // data, filtros e "Nova consulta"; por isso a ida ao horário é sob demanda.
+  const irParaAgora = () => nowLineRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
   const nowPx = showNow && nowMin >= START_HOUR * 60 && nowMin <= END_HOUR * 60
     ? ((nowMin - START_HOUR * 60) / SLOT_MINUTES) * SLOT_PX
@@ -339,7 +332,16 @@ export function DailyMultiDoctorView({
       <div className="px-4 py-2 border-b border-border/60 bg-muted/30">
         <div className="text-sm font-medium flex items-center gap-2">
           {dayStr}
-          {showNow && <span className="rounded-full bg-gradient-primary px-2 py-0.5 text-[10px] font-bold text-white">agora {fromMinutes(nowMin)}</span>}
+          {showNow && (
+            <button
+              type="button"
+              onClick={irParaAgora}
+              className="rounded-full bg-gradient-primary px-2 py-0.5 text-[10px] font-bold text-white hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-1"
+              aria-label={`Ir para o horário atual, ${fromMinutes(nowMin)}`}
+            >
+              agora {fromMinutes(nowMin)}
+            </button>
+          )}
         </div>
       </div>
       {doctorsToShow.length > 0 && (

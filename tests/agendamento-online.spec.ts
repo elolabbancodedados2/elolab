@@ -22,7 +22,7 @@ test.describe('Agendamento online', () => {
         pedidoEnviado = body;
         await route.fulfill({ json: {
           success: true,
-          message: 'Pedido de agendamento enviado! A clínica vai entrar em contato para confirmar.',
+          message: 'Pedido de agendamento recebido. A clínica vai entrar em contato para confirmar o horário.',
         } });
       }
     });
@@ -35,6 +35,7 @@ test.describe('Agendamento online', () => {
 
     await page.getByLabel('Nome completo *').fill('Mariana da Silva');
     await page.getByLabel('CPF *').fill('123');
+    await page.getByLabel('Data de nascimento *').fill('1990-05-31');
     await page.getByLabel('Celular / WhatsApp *').fill('119');
     await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Solicitar agendamento' }).click();
@@ -52,7 +53,7 @@ test.describe('Agendamento online', () => {
     await page.getByLabel('Celular / WhatsApp *').fill('11987654321');
     await page.getByRole('button', { name: 'Solicitar agendamento' }).click();
 
-    await expect(page.getByText(/Pedido de agendamento enviado/)).toBeVisible();
+    await expect(page.getByText(/Pedido de agendamento recebido/)).toBeVisible();
     await expect(page.getByRole('status')).toBeFocused();
     await expect(page.getByText(/Dra\. Ana/)).toBeVisible();
     expect(pedidoEnviado).toMatchObject({
@@ -61,6 +62,7 @@ test.describe('Agendamento online', () => {
       hora: '10:30',
       nome: 'Mariana da Silva',
       cpf: '529.982.247-25',
+      data_nascimento: '1990-05-31',
       aceite_lgpd: true,
     });
     expect(tokenReservado).toMatch(/^[0-9a-f-]{36}$/i);
@@ -125,6 +127,7 @@ test.describe('Agendamento online', () => {
     await page.getByRole('button', { name: /10:30/ }).click();
     await page.getByLabel('Nome completo *').fill('Mariana da Silva');
     await page.getByLabel('CPF *').fill('52998224725');
+    await page.getByLabel('Data de nascimento *').fill('1990-05-31');
     await page.getByLabel('Celular / WhatsApp *').fill('11987654321');
     await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Solicitar agendamento' }).click();

@@ -19,8 +19,9 @@ import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
-import { ErrorState } from '@/components/ErrorState';
+import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
+import { FieldHelp } from '@/components/ContextualHelp';
 import { PageHeader } from '@/components/PageHeader';
 import { useNavigate } from 'react-router-dom';
 import { linkWhatsApp } from '@/lib/whatsapp';
@@ -80,7 +81,7 @@ function formatarDataConsulta(pred: PredictedNoShow, padrao: string): string {
 
 function mensagemWhatsApp(pred: PredictedNoShow): string {
   const primeiroNome = pred.paciente_nome.split(' ')[0];
-  return `Olá, ${primeiroNome}! Passando para confirmar sua consulta em ${formatarDataConsulta(pred, 'dd/MM')} com ${pred.medico_nome}. Podemos contar com você?`;
+  return `Olá, ${primeiroNome}. Passando para confirmar sua consulta em ${formatarDataConsulta(pred, 'dd/MM')} com ${pred.medico_nome}. Podemos contar com você?`;
 }
 
 function BarraRisco({ probabilidade, className }: { probabilidade: number; className?: string }) {
@@ -186,9 +187,7 @@ export default function AnalisePreditiva() {
       if (error) throw error;
       toast.success(data ? 'Lembrete enfileirado' : 'Já existe um lembrete na fila ou enviado nas últimas 20 horas');
     } catch (error) {
-      const mensagem = error && typeof error === 'object' && 'message' in error
-        ? String(error.message)
-        : error instanceof Error ? error.message : 'Verifique a conexão e tente novamente.';
+      const mensagem = friendlyErrorMessage(error, 'Verifique a conexão e tente novamente.');
       toast.error('Não foi possível enfileirar o lembrete', {
         description: mensagem,
       });
@@ -311,7 +310,7 @@ export default function AnalisePreditiva() {
               onClick={() => setFiltroRisco(ativo && filtro !== 'todos' ? 'todos' : filtro)}
               className={cn(
                 classes,
-                'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
                 ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
                 ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
               )}
@@ -382,11 +381,11 @@ export default function AnalisePreditiva() {
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">Agendamentos por risco</CardTitle>
+              <CardTitle className="flex items-center gap-1 text-base">Agendamentos por risco<FieldHelp term="risco_falta" /></CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs tabular-nums text-muted-foreground">{predicoesFiltradas.length} de {predicoes.length}</span>
                 <Select value={filtroRisco} onValueChange={setFiltroRisco}>
-                  <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="h-10 w-full rounded-full border-[#DCE6F2] bg-white text-[#111111] sm:w-44">
+                  <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="h-10 w-full rounded-full border-[#DCE6F2] bg-white text-foreground sm:w-44">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -551,9 +550,9 @@ export default function AnalisePreditiva() {
             <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white">
               <TrendingUp className="h-4 w-4" />
             </span>
-            <div className="text-sm text-[#111111]">
+            <div className="text-sm text-foreground">
               <p className="mb-1 font-semibold">Como funciona o índice?</p>
-              <ul className="space-y-1 text-xs text-[#111111]/75">
+              <ul className="space-y-1 text-xs text-foreground/75">
                 <li>Histórico real de faltas e cancelamentos do paciente</li>
                 <li>Confirmação pendente e antecedência do agendamento</li>
                 <li>Dia da semana e horário da consulta</li>

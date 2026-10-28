@@ -1,6 +1,6 @@
 # Padrão visual azul/branco (fase 3 do redesign — preto removido)
 
-Guia curto para refazer uma tela no padrão azul/branco. Referências de código: `src/pages/Fila.tsx` (indicadores e cabeçalho), `src/pages/Salas.tsx` e `src/pages/ListaEspera.tsx` (indicadores clicáveis, filtros em pílula, destaque "próximo", tabela) — **atenção**: esses arquivos ainda têm o preto `#111111` da fase anterior e precisam ser atualizados na varredura de remoção do preto (ver seção abaixo); não copiar o preto deles.
+Guia curto para refazer uma tela no padrão azul/branco. Referências de código: `src/pages/Fila.tsx` (indicadores e cabeçalho), `src/pages/Salas.tsx` e `src/pages/ListaEspera.tsx` (indicadores clicáveis, filtros em pílula, destaque "próximo", tabela).
 
 ## Mudança de direção (2026-10-18): sem preto
 
@@ -51,3 +51,7 @@ Ao refazer a tela, acrescentar o que falta para o fluxo ficar completo, sem muda
 ## `framer-motion` nas telas de referência
 
 `Fila.tsx`, `Pacientes.tsx` e `Recepcao.tsx` (citadas acima como referência de indicadores/cabeçalho) ainda usam `framer-motion` para microanimação de cartões (hover, stagger, layout). Isso é aceito nessas três telas — não removê-lo delas sem necessidade, pelo risco de regressão em UX já validada. Para toda tela nova ou refeita depois dessas, a convenção passou a ser não introduzir `framer-motion`; usar `transition`/`animate-in` do Tailwind quando precisar de alguma animação simples.
+
+## Estado (2026-10-22)
+
+Todas as telas roteadas (clínica, portal do paciente, Painel da plataforma, telas pessoais e públicas) estão no padrão azul/branco. O token `--primary` passou a ser o azul da marca, então `bg-primary`/`text-primary` já não saem pretos. Hex roxo/lilás remanescente só em paletas que o usuário escolhe (cor de sala, tipo de consulta, agenda), na cor real do tubo EDTA e em decoração da landing.

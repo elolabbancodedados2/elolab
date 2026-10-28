@@ -1,8 +1,10 @@
+import { primeiroNome } from '@/lib/formatters';
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { format, parseISO, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatWithDatePreference } from '@/lib/datePreference';
 import {
   Calendar, Users, FileText, Pill, Clock, Stethoscope, ClipboardList,
   ArrowRight, ArrowUpRight, Activity, Target,
@@ -170,7 +172,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   const SaudacaoIcon = horaAtual < 12 ? Sun : horaAtual < 18 ? Sunset : Moon;
   // O nome cadastrado costuma trazer o título ("Dr. Carlos"): sem tirá-lo, a
   // saudação virava "Dr(a). Dr.".
-  const firstName = userName?.replace(/^(dr|dra|dr\(a\))\.?\s+/i, '').split(' ')[0] || 'Doutor(a)';
+  const firstName = primeiroNome(userName) || 'Doutor(a)';
 
   const stats = useMemo(() => {
     const consultasHoje = agendamentos.filter((a: any) => a.data === hoje && a.medico_id === medicoId);
@@ -322,7 +324,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
         <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
           {/* ─── Coluna de pacientes do dia (estilo trilho + lista) ─── */}
-          <motion.aside variants={fadeUp} aria-labelledby="pacientes-hoje-title" className="rounded-[24px] border border-border/60 bg-card p-4 shadow-xs xl:sticky xl:top-24 xl:self-start">
+          <motion.aside variants={fadeUp} aria-labelledby="pacientes-hoje-title" className="rounded-xl border border-border/60 bg-card p-4 shadow-xs xl:sticky xl:top-24 xl:self-start">
             <div className="mb-3 flex items-center justify-between px-1">
               <h2 id="pacientes-hoje-title" className="text-lg font-extrabold tracking-tight">Pacientes de hoje</h2>
               <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-extrabold text-primary">{stats.totalHoje}</span>
@@ -375,8 +377,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
           <div className="min-w-0 space-y-5">
             {/* ─── Destaque + indicadores ─── */}
             <motion.div variants={fadeUp} className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto]">
-              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-[24px] bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow lg:row-span-2">
-                <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-60 w-60 rounded-full bg-highlight/40 blur-3xl" />
+              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-xl bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow lg:row-span-2">
                 <div className="relative flex h-full flex-col">
                   <h2 id="proximo-paciente-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">Próximo paciente</h2>
                   {stats.proximaConsulta && proximoPaciente ? (
@@ -409,7 +410,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                     </>
                   ) : (
                     <div className="mt-4">
-                      <CheckCircle2 className="h-8 w-8 text-highlight" />
+                      <CheckCircle2 className="h-8 w-8 text-white" />
                       <p className="mt-3 text-xl font-bold">Nenhum paciente pendente</p>
                       <p className="mt-1 max-w-xs text-sm text-white/75">{stats.consultasAmanha > 0 ? `Amanhã você tem ${stats.consultasAmanha} consulta(s) agendada(s).` : 'Sua agenda está livre por enquanto.'}</p>
                     </div>
@@ -418,11 +419,11 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
               </section>
               {[
                 { label: 'Consultas hoje', value: stats.totalHoje, note: stats.canceladasHoje > 0 ? `${stats.canceladasHoje} cancelada(s)` : `${stats.confirmadas} confirmada(s)`, tone: 'border border-border/60 bg-card' },
-                { label: 'Em atendimento', value: stats.emAtendimento, note: 'agora no consultório', tone: 'bg-highlight text-highlight-foreground' },
+                { label: 'Em atendimento', value: stats.emAtendimento, note: 'agora no consultório', tone: 'border border-border/60 bg-card' },
                 { label: 'Finalizados', value: stats.finalizadas, note: stats.totalHoje > 0 ? `${Math.round(stats.finalizadas / stats.totalHoje * 100)}% do dia` : 'sem atendimentos', tone: 'bg-foreground text-background' },
                 { label: 'Amanhã', value: stats.consultasAmanha, note: 'consultas agendadas', tone: 'bg-accent text-accent-foreground' },
               ].map(kpi => (
-                <div key={kpi.label} className={cn('flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs', kpi.tone)}>
+                <div key={kpi.label} className={cn('flex min-w-0 flex-col rounded-xl p-5 shadow-xs', kpi.tone)}>
                   <p className="text-xs font-semibold opacity-75">{kpi.label}</p>
                   <p className="mt-3 text-[36px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
                   <p className="mt-auto pt-3 text-xs opacity-75">{kpi.note}</p>
@@ -440,7 +441,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
               ].map((kpi) => (
                 <div key={kpi.title}>
                   <DoctorDashboardKpiLink href={kpi.href}>
-                    <Card className={cn('group relative h-full overflow-hidden rounded-[22px]', kpi.href && 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md')}>
+                    <Card className={cn('group relative h-full overflow-hidden rounded-xl', kpi.href && 'cursor-pointer transition hover:shadow-md')}>
                       <CardContent className="p-5">
                         <div className="flex items-start justify-between gap-3">
                           <p className="min-w-0 text-xs font-semibold leading-tight text-muted-foreground">{kpi.title}</p>
@@ -458,19 +459,19 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
             <motion.div variants={fadeUp} className="grid gap-5 lg:grid-cols-2">
               {/* ─── Ações clínicas ─── */}
-              <Card className="rounded-[22px]">
+              <Card className="rounded-xl">
                 <CardHeader className="pb-3"><CardTitle className="text-base">Ações rápidas</CardTitle><CardDescription>Documentos e pedidos mais usados no consultório</CardDescription></CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2.5">
                     {[
                       { icon: FileText, label: 'Prontuário', href: '/prontuarios', tone: 'bg-[image:var(--gradient-primary)] text-white shadow-glow' },
-                      { icon: Pill, label: 'Prescrição', href: '/prescricoes', tone: 'bg-highlight text-highlight-foreground' },
+                      { icon: Pill, label: 'Prescrição', href: '/prescricoes', tone: 'bg-accent text-accent-foreground' },
                       { icon: ClipboardList, label: 'Atestado', href: '/atestados', tone: 'bg-foreground text-background' },
                       { icon: TestTube, label: 'Exames', href: '/exames', tone: 'bg-accent text-accent-foreground' },
                       { icon: Send, label: 'Encaminhar', href: '/encaminhamentos', tone: 'bg-accent text-accent-foreground' },
                       { icon: Eye, label: 'Fila', href: '/fila', tone: 'bg-accent text-accent-foreground' },
                     ].map(action => (
-                      <Link key={action.label} to={action.href} className={cn('flex min-h-[84px] flex-col justify-between rounded-2xl p-3 transition hover:-translate-y-0.5 hover:shadow-md', action.tone)}>
+                      <Link key={action.label} to={action.href} className={cn('flex min-h-[84px] flex-col justify-between rounded-2xl p-3 transition hover:shadow-md', action.tone)}>
                         <action.icon className="h-5 w-5" />
                         <span className="text-xs font-bold">{action.label}</span>
                       </Link>
@@ -480,7 +481,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
               </Card>
 
               {/* ─── Produtividade ─── */}
-              <Card className="rounded-[22px]">
+              <Card className="rounded-xl">
                 <CardHeader className="pb-3"><CardTitle className="text-base">Produtividade do mês</CardTitle><CardDescription>O que você registrou desde o dia 1º</CardDescription></CardHeader>
                 <CardContent className="space-y-3">
                   {produtividade.map(item => (
@@ -500,7 +501,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
             {minhasTarefas.length > 0 && (
               <motion.div variants={fadeUp}>
-                <Card className="rounded-[22px]">
+                <Card className="rounded-xl">
                   <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                     <CardTitle className="text-base">Minhas tarefas</CardTitle>
                     <Link to="/tarefas" className="text-xs font-bold text-primary hover:underline">Ver todas</Link>
@@ -510,7 +511,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                       <li key={t.id} className="flex items-center gap-3 py-2">
                         <ListChecks className="h-4 w-4 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.titulo}</span>
-                        {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{format(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
+                        {t.data_vencimento && <span className={cn('shrink-0 text-xs font-bold tabular-nums', t.data_vencimento < hoje ? 'text-destructive' : 'text-muted-foreground')}>{formatWithDatePreference(parseDateOnly(t.data_vencimento)!, 'dd/MM', { locale: ptBR })}</span>}
                       </li>
                     ))}</ul>
                   </CardContent>
@@ -520,7 +521,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
             {currentMedico && (
               <motion.div variants={fadeUp}>
-                <Card className="rounded-[22px]">
+                <Card className="rounded-xl">
                   <CardContent className="grid gap-3 p-5 sm:grid-cols-4">
                     {[
                       { label: 'CRM', value: `${currentMedico.crm}/${currentMedico.crm_uf || 'SP'}` },

@@ -43,7 +43,7 @@ export function useRealtimePushNotifications() {
         { event: 'INSERT', schema: 'public', table: 'agendamentos' },
         (payload) => {
           const ag = payload.new as Record<string, unknown>;
-          sendLocalNotification('📅 Novo Agendamento', {
+          sendLocalNotification('Novo agendamento', {
             body: `Nova consulta agendada para ${ag.data} às ${(ag.hora_inicio as string)?.slice(0, 5)}`,
             tag: `agendamento-${ag.id}`,
           });
@@ -57,12 +57,12 @@ export function useRealtimePushNotifications() {
           const old = payload.old as Record<string, unknown>;
           if (ag.status !== old.status) {
             const statusLabels: Record<string, string> = {
-              confirmado: '✅ Consulta Confirmada',
-              cancelado: '❌ Consulta Cancelada',
-              finalizado: '🏁 Consulta Finalizada',
-              faltou: '⚠️ Paciente Faltou',
+              confirmado: 'Consulta confirmada',
+              cancelado: 'Consulta cancelada',
+              finalizado: 'Consulta finalizada',
+              faltou: 'Paciente faltou',
             };
-            const title = statusLabels[ag.status as string] || '📋 Atualização de Consulta';
+            const title = statusLabels[ag.status as string] || 'Atualização de consulta';
             sendLocalNotification(title, {
               body: `Status atualizado para: ${ag.status}`,
               tag: `agendamento-update-${ag.id}`,
@@ -76,7 +76,7 @@ export function useRealtimePushNotifications() {
         (payload) => {
           const fila = payload.new as Record<string, unknown>;
           if (fila.prioridade === 'urgente' || fila.prioridade === 'emergencia') {
-            sendLocalNotification('🚨 Paciente Prioritário na Fila', {
+            sendLocalNotification('Paciente prioritário na fila', {
               body: `Paciente com prioridade ${fila.prioridade} entrou na fila`,
               tag: `fila-urgente-${fila.id}`,
             });
@@ -91,13 +91,13 @@ export function useRealtimePushNotifications() {
           const quantidade = Number(item.quantidade);
           const minimo = Number(item.quantidade_minima) || 0;
           if (quantidade <= minimo && quantidade > 0) {
-            sendLocalNotification('⚠️ Estoque Baixo', {
+            sendLocalNotification('Estoque baixo', {
               body: `"${item.nome}" está com apenas ${quantidade} unidade(s) (mínimo: ${minimo})`,
               tag: `estoque-baixo-${item.id}`,
             });
           } else if (quantidade === 0) {
-            sendLocalNotification('🔴 Estoque Zerado', {
-              body: `"${item.nome}" está com estoque zerado!`,
+            sendLocalNotification('Estoque zerado', {
+              body: `"${item.nome}" está com estoque zerado.`,
               tag: `estoque-zero-${item.id}`,
             });
           }
