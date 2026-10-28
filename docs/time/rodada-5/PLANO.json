@@ -1,0 +1,24 @@
+[
+  {
+    "tarefas": "docs/time/rodada-5/TAREFAS.json",
+    "saidas": [
+      "docs/time/rodada-5/backend-developer.md",
+      "docs/time/rodada-5/qa-engineer.md",
+      "docs/time/rodada-5/devops-sre.md",
+      "docs/time/rodada-5/frontend-developer.md",
+      "docs/time/rodada-5/codex-revisor.md"
+    ]
+  },
+  {
+    "tarefas": "docs/time/rodada-5/TAREFAS-B.json",
+    "saidas": [
+      "docs/time/rodada-5/tech-lead-final.md"
+    ]
+  },
+  {
+    "tarefas": "docs/time/rodada-5/TAREFAS-C.json",
+    "saidas": [
+      "docs/time/rodada-5/CONSOLIDADO.md::PROXIMA-RODADA:"
+    ]
+  }
+]

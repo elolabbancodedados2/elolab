@@ -1,0 +1,372 @@
+diff --git a/src/pages/Recepcao.tsx b/src/pages/Recepcao.tsx
+index 2bec8889..d2078354 100644
+--- a/src/pages/Recepcao.tsx
++++ b/src/pages/Recepcao.tsx
+@@ -12,7 +12,7 @@ import { autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflow
+ import { checkinComCobranca } from '@/lib/checkinWithBilling';
+ import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+ import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
+-import { ErrorState } from '@/components/ErrorState';
++import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+ import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
+ import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
+ import { useAgendamentosPeriodo, useMedicos, useSalas } from '@/hooks/useSupabaseData';
+@@ -21,6 +21,8 @@ import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+ import { toast } from 'sonner';
+ import { mensagemDeErro } from '@/lib/erros';
++import { IdentificacaoPaciente } from '@/components/clinical/IdentificacaoPaciente';
++import { paraIdentificacao } from '@/lib/pacienteDoRegistro';
+ import { cn, sanitizeText } from '@/lib/utils';
+ import {
+   UserCheck, Clock, Play, Check, Banknote, QrCode, CreditCard,
+@@ -326,7 +328,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+       return false;
+     }
+     if (!resultado.data) {
+-      toast.error('Caixa fechado!', {
++      toast.error('Caixa fechado', {
+         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
+         action: {
+           label: 'Abrir Caixa',
+@@ -473,11 +475,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+              : 'A situação da cobrança foi conferida no financeiro.',
+          });
+        } else if (result.billingOutcome === 'free') {
+-         toast.success('Check-in realizado!', {
++         toast.success('Check-in realizado', {
+            description: 'Atendimento sem cobrança. Paciente pronto para ser chamado.',
+          });
+        } else {
+-         toast.success('Check-in realizado!', {
++         toast.success('Check-in realizado', {
+            description: result.billingOutcome === 'already_exists'
+              ? 'Cobrança existente conferida no financeiro.'
+              : 'Paciente encaminhado ao balcão para pagamento.',
+@@ -510,11 +512,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+       }
+ 
+       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+-      toast.success('Paciente chamado!');
++      toast.success('Paciente chamado');
+     } catch (err: any) {
+-      const msg = err?.message || 'Erro desconhecido';
+       console.error('handleChamar error:', err);
+-      toast.error('Erro ao chamar: ' + msg);
++      toast.error('Erro ao chamar', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     } finally {
+       setIsProcessing(false);
+     }
+@@ -528,10 +529,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+       if (!result.success) throw new Error(result.message);
+       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+-      toast.success('Atendimento iniciado!', { description: result.actions.join(' • ') });
++      toast.success('Atendimento iniciado', { description: result.actions.join(' • ') });
+     } catch (err: any) {
+       console.error('handleIniciarAtendimento error:', err);
+-      toast.error('Erro ao iniciar atendimento: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao iniciar atendimento', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     }
+     setIsProcessing(false);
+   }
+@@ -564,12 +565,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
+       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+ 
+-      toast.success('Atendimento finalizado!', {
++      toast.success('Atendimento finalizado', {
+         description: result.actions.join(' • '),
+       });
+     } catch (err: any) {
+       console.error('Erro ao finalizar:', err);
+-      toast.error('Erro ao finalizar: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao finalizar', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     }
+     setIsProcessing(false);
+   }
+@@ -611,7 +612,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+          queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
+        } catch (error: any) {
+          toast.error('Não foi possível abrir a cobrança do exame', {
+-           description: error?.message || 'Cadastre o preço do exame e tente novamente.',
++           description: friendlyErrorMessage(error, 'Cadastre o preço do exame e tente novamente.'),
+          });
+          return;
+        }
+@@ -705,7 +706,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+           window.speechSynthesis.speak(utter);
+         }
+ 
+-        toast.success(`${pac?.nome} chamado ao balcão!`, {
++        toast.success(`${pac?.nome} chamado ao balcão`, {
+           description: agId ? 'Chamado no painel da sala de espera' : 'Aviso sonoro reproduzido na recepção',
+           action: {
+             label: 'Receber agora',
+@@ -873,7 +874,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+       setShowPagamento(false);
+       setSelectedLancamento(null);
+       setSelectedPacienteBalcao(null);
+-      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado!`);
++      if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado`);
+       if (falhaNoRecibo) {
+         toast.warning('Pagamento confirmado; recibo não enviado', {
+           description: falhaNoRecibo,
+@@ -888,7 +889,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+         gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
+       }
+     } catch (err: any) {
+-      toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao confirmar pagamento', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     }
+     setIsProcessing(false);
+   }
+@@ -912,12 +913,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
+       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+-      toast.success('Atendimento concluído com sucesso!');
++      toast.success('Atendimento concluído com sucesso');
+       setConfirmDialogOpen(false);
+       setPendingAction(null);
+     } catch (err: any) {
+       console.error('Erro ao concluir:', err);
+-      toast.error('Erro ao concluir: ' + (err?.message || 'Erro desconhecido'));
++      toast.error('Erro ao concluir', { description: friendlyErrorMessage(err, 'Tente novamente.') });
+     }
+     setIsProcessing(false);
+   }
+@@ -942,7 +943,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+         navigate(`/triagem?${new URLSearchParams({ buscarPaciente: pacienteId }).toString()}`);
+         return;
+       }
+-      toast.success('Paciente encaminhado para triagem!', {
++      toast.success('Paciente encaminhado para triagem', {
+         description: 'A ficha será aberta com o paciente e o agendamento selecionados.',
+       });
+       navigate(`/triagem?${new URLSearchParams({ paciente: pacienteId, agendamento: agId }).toString()}`);
+@@ -1226,7 +1227,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                               {/* Patient info */}
+                               <div className="flex-1 min-w-0">
+                                 <div className="flex items-center gap-2 mb-1">
+-                                  <h3 className="font-semibold truncate">
++                                  <h3 className="min-w-0 font-semibold truncate">
+                                     {(pac as any)?.nome_social || pac?.nome || 'Paciente'}
+                                   </h3>
+                                   {pac?.alergias && pac.alergias.length > 0 && (
+@@ -1244,7 +1245,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                   </span>
+                                   {sala && (
+                                     <span className="flex items-center gap-1">
+-                                      🚪 {sala.nome}
++                                      {sala.nome}
+                                     </span>
+                                   )}
+                                   {ag.tipo && (
+@@ -1291,14 +1292,14 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                               )}
+ 
+                               {/* Action buttons */}
+-                              <div className="flex items-center gap-2 shrink-0">
++                              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                 {step === 0 && (
+-                                  <div className="flex gap-1.5">
++                                  <div className="flex flex-wrap items-center gap-1.5">
+                                     <Button
+                                       size="sm"
+                                       onClick={() => handleCheckin(ag.id)}
+                                       disabled={isProcessing}
+-                                      className="gap-1.5"
++                                      className="h-11 gap-1.5 sm:h-9"
+                                     >
+                                       <UserCheck className="h-3.5 w-3.5" /> Check-in
+                                     </Button>
+@@ -1307,7 +1308,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                       variant="outline"
+                                       onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
+                                       disabled={isProcessing}
+-                                      className="gap-1"
++                                      className="h-11 gap-1 sm:h-9"
+                                     >
+                                       <Activity className="h-3.5 w-3.5" /> Triagem
+                                     </Button>
+@@ -1322,7 +1323,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                         size="sm"
+                                         variant="outline"
+                                         onClick={() => queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] })}
+-                                        className="gap-1"
++                                        className="h-11 gap-1 sm:h-9"
+                                       >
+                                         <RotateCcw className="h-3.5 w-3.5" /> Tentar carregar cobrança
+                                       </Button>
+@@ -1333,7 +1334,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                         variant="outline"
+                                         onClick={() => handleCheckin(ag.id)}
+                                         disabled={isProcessing}
+-                                        className="gap-1"
++                                        className="h-11 gap-1 sm:h-9"
+                                       >
+                                         <RotateCcw className="h-3.5 w-3.5" />
+                                         {lanc ? 'Confirmar cobrança' : 'Retomar cobrança'}
+@@ -1344,7 +1345,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                       variant="outline"
+                                       onClick={() => handleChamarBalcao(lanc, pac)}
+                                       disabled={isProcessing}
+-                                      className="gap-1"
++                                      className="h-11 gap-1 sm:h-9"
+                                     >
+                                       <Bell className="h-3.5 w-3.5" /> Chamar ao Balcão
+                                     </Button>
+@@ -1353,7 +1354,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                         size="sm"
+                                         onClick={() => openPagamento(lanc, pac)}
+                                         disabled={isProcessing}
+-                                        className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
++                                        className="h-11 gap-1.5 bg-success hover:bg-success/90 text-success-foreground sm:h-9"
+                                       >
+                                         <DollarSign className="h-3.5 w-3.5" />
+                                         Receber {formatCurrency(calcularSaldoPagamento(
+@@ -1369,7 +1370,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+ 
+                                 {/* Step 2: Paid, waiting/in consultation */}
+                                 {step === 2 && (
+-                                  <div className="flex gap-1.5">
++                                  <div className="flex flex-wrap items-center gap-1.5">
+                                     {lanc?.status === 'pago' && (
+                                       <Badge className="bg-success/10 text-success border-0 mr-1">
+                                         <CheckCircle2 className="h-3 w-3 mr-1" /> Pago
+@@ -1382,7 +1383,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                           variant="outline"
+                                           onClick={() => handleChamar(fila.id)}
+                                           disabled={isProcessing}
+-                                          className="gap-1"
++                                          className="h-11 gap-1 sm:h-9"
+                                         >
+                                           <Bell className="h-3.5 w-3.5" /> Chamar
+                                         </Button>
+@@ -1390,7 +1391,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                           size="sm"
+                                           onClick={() => handleIniciarAtendimento(ag.id, fila.id)}
+                                           disabled={isProcessing}
+-                                          className="gap-1"
++                                          className="h-11 gap-1 sm:h-9"
+                                         >
+                                           <Play className="h-3.5 w-3.5" /> Atender
+                                         </Button>
+@@ -1406,7 +1407,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                           nome: (pac as any)?.nome_social || pac?.nome || 'Paciente',
+                                         })}
+                                         disabled={isProcessing}
+-                                        className="gap-1"
++                                        className="h-11 gap-1 sm:h-9"
+                                       >
+                                         <Check className="h-3.5 w-3.5" /> Finalizar
+                                       </Button>
+@@ -1434,29 +1435,29 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                         Number(lanc.acrescimo || 0),
+                                         Number(lanc.valor_pago || 0),
+                                       ) > 0 && (
+-                                        <Button size="sm" className="gap-1 text-xs h-7 bg-success hover:bg-success/90 text-success-foreground"
++                                        <Button size="sm" className="gap-1 text-xs h-11 sm:h-7 bg-success hover:bg-success/90 text-success-foreground"
+                                           onClick={() => openPagamento(lanc, pac)} disabled={isProcessing}>
+                                           <DollarSign className="h-3 w-3" /> Receber saldo
+                                         </Button>
+                                       )}
+-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
++                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-9 sm:h-7"
+                                         onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
+                                         <CalendarPlus className="h-3 w-3" /> Reagendar
+                                       </Button>
+-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
++                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-9 sm:h-7"
+                                         onClick={() => navigate(`/retornos?paciente=${ag.paciente_id}`)}>
+                                         <RotateCcw className="h-3 w-3" /> Retorno
+                                       </Button>
+-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
++                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-9 sm:h-7"
+                                         onClick={() => navigate(`/exames?paciente=${ag.paciente_id}`)}>
+                                         <FlaskConical className="h-3 w-3" /> Exames
+                                       </Button>
+-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
++                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-9 sm:h-7"
+                                         onClick={() => navigate(`/prontuarios?paciente=${ag.paciente_id}`)}>
+                                         <ClipboardList className="h-3 w-3" /> Prontuário
+                                       </Button>
+                                       {fila && (!lanc || lanc.status === 'pago') && (
+-                                        <Button size="sm" className="gap-1 text-xs h-7 bg-success hover:bg-success/90 text-success-foreground ml-auto"
++                                        <Button size="sm" className="gap-1 text-xs h-11 sm:h-7 bg-success hover:bg-success/90 text-success-foreground ml-auto"
+                                           onClick={() => handleConcluir(ag.id, fila.id)}
+                                           disabled={isProcessing}>
+                                           <CheckCircle2 className="h-3 w-3" /> Concluir
+@@ -1474,11 +1475,11 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                       Concluído {lanc?.forma_pagamento ? `— ${lanc.forma_pagamento}` : ''}
+                                     </Badge>
+                                     <div className="flex flex-wrap gap-1.5">
+-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
++                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-9 sm:h-7"
+                                         onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
+                                         <CalendarPlus className="h-3 w-3" /> Reagendar
+                                       </Button>
+-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
++                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-9 sm:h-7"
+                                         onClick={() => navigate(`/exames?paciente=${ag.paciente_id}`)}>
+                                         <FlaskConical className="h-3 w-3" /> Exames
+                                       </Button>
+@@ -1489,7 +1490,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                                   <Button
+                                     size="sm"
+                                     variant="outline"
+-                                    className="gap-1"
++                                    className="h-11 gap-1 sm:h-9"
+                                     onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}
+                                   >
+                                     <CalendarPlus className="h-3.5 w-3.5" /> Reagendar
+@@ -1522,6 +1523,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+             <DialogDescription>Registre o pagamento do paciente.</DialogDescription>
+           </DialogHeader>
+ 
++          {/* Confirme o paciente antes de cobrar (CLIN-QA-402). */}
++          {selectedLancamento && (
++            <IdentificacaoPaciente
++              variante="dialogo"
++              contexto="cobranca"
++              paciente={selectedPacienteBalcao ? paraIdentificacao(selectedPacienteBalcao) : null}
++            />
++          )}
++
+           {selectedLancamento && (
+             <div className="space-y-4">
+               {/* Resumo Valor / Pago / Saldo, para a recepcionista não precisar
+@@ -1587,6 +1597,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                 <Input
+                   id="valor-recebido-agora"
+                   type="number"
++                  inputMode="decimal"
+                   min="0.01"
+                   max={(() => {
+                     const bruto = Number(selectedLancamento.valor || 0);
+@@ -1629,7 +1640,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                         </SelectContent>
+                       </Select>
+                       <Input
+-                        type="number" min={0} step="0.01" placeholder="R$"
++                        type="number" inputMode="decimal" min={0} step="0.01" placeholder="R$"
+                         aria-label={`Valor da forma de pagamento adicional ${i + 1}`}
+                         className="h-9 w-28"
+                         value={extra.valor || ''}
+@@ -1663,6 +1674,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                   <Input
+                     id="recepcao-desconto"
+                     type="number"
++                    inputMode="decimal"
+                     min={0}
+                     value={desconto || ''}
+                     onChange={e => setDesconto(Number(e.target.value) || 0)}
+@@ -1673,6 +1685,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
+                   <Input
+                     id="recepcao-acrescimo"
+                     type="number"
++                    inputMode="decimal"
+                     min={0}
+                     value={acrescimo || ''}
+                     onChange={e => setAcrescimo(Number(e.target.value) || 0)}

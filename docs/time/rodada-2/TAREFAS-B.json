@@ -1,0 +1,7 @@
+{
+  "comum": "Leia docs/time/REGRAS_DO_TIME.md, docs/time/GATES.md, docs/time/rodada-1/CONSOLIDADO.md e os resumos já existentes em docs/time/rodada-2/ antes de começar. Mexa SÓ nos arquivos da sua tarefa e não reverta alterações que não sejam suas. Sem deploy, sem migration aplicada, sem commit, sem acesso à VPS. Se algo depender de decisão do responsável, registre como pendência e siga. Ao terminar, grave docs/time/rodada-2/{agente}.md com: o que fez, arquivos tocados, evidências (comandos e resultados reais), pendências e próximo dono. TAREFA: ",
+  "tarefas": {
+    "frontend-developer": "Se docs/seguranca/auditoria-rodada-2.md confirmar CLIN-QA-545, corrija em src/pages/Prontuarios.tsx (o diálogo deve fechar ou travar quando o paciente da rota mudar; a gravação usa sempre o paciente exibido), com teste. Integre o componente src/components/clinical/IdentificacaoPaciente.tsx no diálogo de prontuário em edição (CLIN-QA-401) e no diálogo de pagamento da recepção em src/pages/Recepcao.tsx (CLIN-QA-402), seguindo docs/ux/telas/identificacao-paciente.md. Rode só os testes dos arquivos tocados.",
+    "product-owner": "Atualize docs/produto/backlog/ e o README com o estado real de cada história após as rodadas 1 e 2 (feito localmente, aguardando aplicação, aberto, bloqueado por decisão do responsável), incluindo os novos itens CLIN-QA-5xx abertos pelos agentes."
+  }
+}

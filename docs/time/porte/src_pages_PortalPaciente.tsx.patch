@@ -1,0 +1,1007 @@
+diff --git a/src/pages/PortalPaciente.tsx b/src/pages/PortalPaciente.tsx
+index 9020cdd4..d10778eb 100644
+--- a/src/pages/PortalPaciente.tsx
++++ b/src/pages/PortalPaciente.tsx
+@@ -28,6 +28,16 @@ import { format, parseISO } from 'date-fns';
+ import { ptBR } from 'date-fns/locale';
+ import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+ import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
++import { dadosAtestadoPdf } from '@/lib/atestadoPdf';
++import { PERGUNTAS_PRE_CONSULTA, type RespostasPreConsulta } from '@/lib/preConsulta';
++import { friendlyErrorMessage } from '@/components/ErrorState';
++
++const TITULO_ATESTADO: Record<string, string> = {
++  comparecimento: 'Atestado de comparecimento',
++  afastamento: 'Atestado de afastamento',
++  aptidao: 'Atestado de aptidão',
++  acompanhante: 'Declaração de acompanhante',
++};
+ 
+ // ─── Status helpers ────────────────────────────────────────
+ const statusConfig: Record<string, { bg: string; label: string }> = {
+@@ -79,6 +89,73 @@ function AnimatedNumber({ value }: { value: number }) {
+   );
+ }
+ 
++type ClinicaPortal = {
++  nome: string;
++  cnpj?: string | null;
++  logoUrl: string | null;
++  endereco: string | null;
++  telefone: string | null;
++  celular: string | null;
++  email: string | null;
++};
++
++// sessionStorage morre ao fechar a aba: sobrevive ao recarregar sem deixar o
++// acesso salvo em computador compartilhado. localStorage só quando o paciente
++// marca "manter conectado" (app instalado no próprio celular).
++const SESSAO_PORTAL = 'elolab:portal-paciente';
++function salvarSessaoPortal(token: string | null) {
++  try {
++    if (token) {
++      sessionStorage.setItem(SESSAO_PORTAL, token);
++      if (localStorage.getItem(SESSAO_PORTAL)) localStorage.setItem(SESSAO_PORTAL, token);
++    } else {
++      sessionStorage.removeItem(SESSAO_PORTAL);
++      localStorage.removeItem(SESSAO_PORTAL);
++    }
++  } catch { /* navegação privada sem storage: segue só em memória */ }
++}
++function lerSessaoPortal(): string | null {
++  try { return sessionStorage.getItem(SESSAO_PORTAL) || localStorage.getItem(SESSAO_PORTAL); } catch { return null; }
++}
++function lembrarNesteAparelho(token: string | null) {
++  try {
++    if (token) localStorage.setItem(SESSAO_PORTAL, token);
++    else localStorage.removeItem(SESSAO_PORTAL);
++  } catch { /* sem storage: não há como lembrar */ }
++}
++function estaLembrado(): boolean {
++  try { return !!localStorage.getItem(SESSAO_PORTAL); } catch { return false; }
++}
++
++/** Troca o manifest enquanto o portal está aberto: instalar abre o portal, não o painel da equipe. */
++function useManifestDoPortal() {
++  useEffect(() => {
++    // O plugin PWA pode injetar um segundo <link rel="manifest">; troca todos.
++    const links = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="manifest"]'));
++    const originais = links.map(link => link.href);
++    links.forEach(link => { link.href = '/portal-paciente.webmanifest'; });
++    return () => { links.forEach((link, i) => { link.href = originais[i]; }); };
++  }, []);
++}
++
++/** Dados da clínica para o cabeçalho dos PDFs gerados no portal (sem sessão). */
++function clinicaParaPdf(clinica: ClinicaPortal | null) {
++  return {
++    nome: clinica?.nome || '',
++    endereco: clinica?.endereco || '',
++    telefone: clinica?.telefone || clinica?.celular || '',
++    cnpj: clinica?.cnpj || '',
++    logoUrl: clinica?.logoUrl || undefined,
++  };
++}
++
++/** wa.me exige DDI; números brasileiros cadastrados sem 55 recebem o prefixo. */
++function whatsappDaClinica(clinica: ClinicaPortal | null): string | null {
++  const digitos = (clinica?.celular || clinica?.telefone || '').replace(/\D/g, '');
++  if (digitos.length < 10) return null;
++  return digitos.startsWith('55') && digitos.length > 11 ? digitos : `55${digitos}`;
++}
++
+ // ─── Login Screen ──────────────────────────────────────────
+ function LoginScreen({ token, setToken, onLogin, loading, error }: {
+   token: string; setToken: (v: string) => void;
+@@ -87,9 +164,7 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
+   return (
+     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+       {/* Background pattern */}
+-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10" />
+-      <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-primary/5 blur-3xl -translate-y-1/2 translate-x-1/2" />
+-      <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-primary/8 blur-3xl translate-y-1/2 -translate-x-1/2" />
++      <div className="absolute inset-0 bg-muted/40" />
+ 
+       <motion.div
+         initial={{ opacity: 0, y: 30, scale: 0.95 }}
+@@ -106,7 +181,7 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
+               transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+               className="mx-auto mb-4 relative"
+             >
+-              <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
++              <div className="p-5 rounded-2xl bg-primary/10 border border-primary/20">
+                 <HeartHandshake className="h-10 w-10 text-primary" />
+               </div>
+               <motion.div
+@@ -138,7 +213,7 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
+                 />
+               </div>
+               <p className="text-xs text-muted-foreground">
+-                Código fornecido pela clínica EloLab
++                Use o link ou código enviado pela sua clínica
+               </p>
+             </div>
+ 
+@@ -169,6 +244,8 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
+               {loading ? 'Verificando…' : 'Acessar Portal'}
+             </Button>
+ 
++            <RecoverAccess />
++
+             <div className="flex items-center gap-2 justify-center text-xs text-muted-foreground pt-2">
+               <Shield className="h-3.5 w-3.5" />
+               <span>Acesso seguro — Dados protegidos pela LGPD</span>
+@@ -180,6 +257,285 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
+   );
+ }
+ 
++// ─── Pré-consulta ──────────────────────────────────────────
++function PreConsultaButton({ token, dependenteId, agendamentoId }: { token: string; dependenteId: string | null; agendamentoId: string }) {
++  const [open, setOpen] = useState(false);
++  const [respostas, setRespostas] = useState<RespostasPreConsulta>({});
++  const [enviada, setEnviada] = useState(false);
++  const [carregando, setCarregando] = useState(false);
++  const [erro, setErro] = useState('');
++
++  const chamar = async (action: string, extra: Record<string, unknown> = {}) => {
++    const { data, error } = await supabase.functions.invoke('patient-portal', {
++      body: { action, token, agendamento_id: agendamentoId, ...(dependenteId ? { dependente_id: dependenteId } : {}), ...extra },
++    });
++    if (error || data?.error) {
++      let texto = data?.error || 'Não foi possível concluir agora. Tente novamente.';
++      const context = (error as { context?: Response } | null)?.context;
++      if (context && typeof context.json === 'function') {
++        try { texto = (await context.json())?.error || texto; } catch { /* mantém a mensagem padrão */ }
++      }
++      throw new Error(texto);
++    }
++    return data;
++  };
++
++  const abrir = async () => {
++    setOpen(true);
++    setErro('');
++    setCarregando(true);
++    try {
++      const atual = await chamar('get_pre_consulta');
++      setRespostas(atual?.respostas ?? {});
++      setEnviada(!!atual);
++    } catch (e) {
++      setErro(friendlyErrorMessage(e, 'Não foi possível concluir a operação. Tente novamente.'));
++    } finally {
++      setCarregando(false);
++    }
++  };
++
++  const enviar = async () => {
++    setCarregando(true);
++    setErro('');
++    try {
++      await chamar('submit_pre_consulta', { respostas });
++      setEnviada(true);
++      setOpen(false);
++    } catch (e) {
++      setErro(friendlyErrorMessage(e, 'Não foi possível concluir a operação. Tente novamente.'));
++    } finally {
++      setCarregando(false);
++    }
++  };
++
++  return (
++    <>
++      <Button size="sm" variant="secondary" className="w-full text-xs" onClick={() => void abrir()}>
++        <FileText className="h-3.5 w-3.5 mr-1" />
++        {enviada ? 'Pré-consulta enviada — editar' : 'Responder pré-consulta'}
++      </Button>
++      <Dialog open={open} onOpenChange={setOpen}>
++        <DialogContent className="max-h-[90vh] overflow-y-auto">
++          <DialogHeader>
++            <DialogTitle>Pré-consulta</DialogTitle>
++            <DialogDescription>Suas respostas chegam ao médico antes do atendimento. Em caso de urgência, procure um pronto-socorro.</DialogDescription>
++          </DialogHeader>
++          <div className="space-y-3">
++            {PERGUNTAS_PRE_CONSULTA.map(p => (
++              <div key={p.campo} className="space-y-1">
++                <label htmlFor={`pre-${p.campo}`} className="text-sm font-medium">{p.pergunta}{'obrigatoria' in p && ' *'}</label>
++                <Textarea
++                  id={`pre-${p.campo}`}
++                  rows={2}
++                  maxLength={2000}
++                  value={respostas[p.campo] ?? ''}
++                  onChange={e => setRespostas(r => ({ ...r, [p.campo]: e.target.value }))}
++                />
++              </div>
++            ))}
++            {erro && <p role="alert" className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{erro}</p>}
++          </div>
++          <DialogFooter>
++            <Button variant="outline" onClick={() => setOpen(false)}>Fechar</Button>
++            <Button onClick={() => void enviar()} disabled={carregando || !respostas.queixa?.trim()}>{carregando ? 'Enviando…' : 'Enviar ao médico'}</Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </>
++  );
++}
++
++// ─── Privacidade (LGPD) ────────────────────────────────────
++const CONSENTIMENTOS_PORTAL = [
++  { tipo: 'tratamento_dados', titulo: 'Tratamento de dados para o atendimento', revogavel: false },
++  { tipo: 'compartilhamento_convenio', titulo: 'Compartilhar dados com meu convênio', revogavel: true },
++  { tipo: 'comunicacao_marketing', titulo: 'Receber lembretes e novidades da clínica', revogavel: true },
++];
++const PEDIDO_LGPD: Record<string, string> = { access: 'Cópia completa dos dados', correction: 'Correção de dados', export: 'Exportação dos dados' };
++
++function PrivacidadeCard({ token, dependenteId, onExportar }: { token: string; dependenteId: string | null; onExportar: () => void }) {
++  const [dados, setDados] = useState<{ consentimentos: Record<string, boolean>; pedidos: any[] } | null>(null);
++  const [salvando, setSalvando] = useState<string | null>(null);
++  const [correcao, setCorrecao] = useState('');
++  const [mensagem, setMensagem] = useState('');
++
++  const chamar = async (action: string, extra: Record<string, unknown> = {}) => {
++    const { data, error } = await supabase.functions.invoke('patient-portal', {
++      body: { action, token, ...(dependenteId ? { dependente_id: dependenteId } : {}), ...extra },
++    });
++    if (error || data?.error) {
++      let texto = data?.error || 'Não foi possível concluir agora. Tente novamente.';
++      const context = (error as { context?: Response } | null)?.context;
++      if (context && typeof context.json === 'function') {
++        try { texto = (await context.json())?.error || texto; } catch { /* mantém a mensagem padrão */ }
++      }
++      throw new Error(texto);
++    }
++    return data;
++  };
++
++  const carregar = async () => {
++    // Resposta fora do formato (ex.: função antiga no ar) não pode derrubar o portal.
++    try {
++      const r = await chamar('get_privacidade');
++      setDados({ consentimentos: r?.consentimentos ?? {}, pedidos: Array.isArray(r?.pedidos) ? r.pedidos : [] });
++    } catch {
++      setDados({ consentimentos: {}, pedidos: [] });
++    }
++  };
++
++  useEffect(() => { void carregar(); }, [token, dependenteId]); // eslint-disable-line react-hooks/exhaustive-deps
++
++  const alterar = async (tipo: string, aceito: boolean) => {
++    setSalvando(tipo);
++    setMensagem('');
++    try { await chamar('set_consentimento', { tipo, aceito }); await carregar(); }
++    catch (e) { setMensagem(friendlyErrorMessage(e, 'Não foi possível concluir a operação. Tente novamente.')); }
++    finally { setSalvando(null); }
++  };
++
++  const pedir = async (tipo: string) => {
++    setSalvando(tipo);
++    setMensagem('');
++    try {
++      const r = await chamar('solicitar_lgpd', { tipo, notas: tipo === 'correction' ? correcao : '' });
++      setMensagem(r?.ja_existia ? 'Você já tem um pedido desse tipo em andamento.' : 'Pedido enviado à clínica.');
++      if (tipo === 'correction') setCorrecao('');
++      await carregar();
++    } catch (e) { setMensagem(friendlyErrorMessage(e, 'Não foi possível concluir a operação. Tente novamente.')); }
++    finally { setSalvando(null); }
++  };
++
++  return (
++    <Card>
++      <CardHeader className="pb-3">
++        <CardTitle className="flex items-center gap-2 text-base"><Shield className="h-4 w-4 text-primary" />Privacidade e seus dados</CardTitle>
++        <CardDescription>Seus direitos pela LGPD: veja e altere autorizações, baixe seus dados ou peça correção.</CardDescription>
++      </CardHeader>
++      <CardContent className="space-y-4">
++        {!dados ? <p className="text-sm text-muted-foreground">Carregando…</p> : (
++          <ul className="space-y-2">
++            {CONSENTIMENTOS_PORTAL.map(c => {
++              const ativo = !!dados.consentimentos[c.tipo];
++              return (
++                <li key={c.tipo} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
++                  <span>{c.titulo}<span className={`ml-2 text-xs ${ativo ? 'text-success' : 'text-muted-foreground'}`}>{ativo ? 'Autorizado' : 'Não autorizado'}</span></span>
++                  {(!ativo || c.revogavel) && (
++                    <Button size="sm" variant="outline" disabled={salvando !== null} onClick={() => void alterar(c.tipo, !ativo)}>
++                      {salvando === c.tipo ? 'Salvando…' : ativo ? 'Revogar' : 'Autorizar'}
++                    </Button>
++                  )}
++                </li>
++              );
++            })}
++          </ul>
++        )}
++
++        <div className="flex flex-col gap-2 sm:flex-row">
++          <Button variant="outline" size="sm" className="gap-1.5" onClick={onExportar}><Download className="h-3 w-3" />Baixar meus dados</Button>
++          <Button variant="outline" size="sm" disabled={salvando !== null} onClick={() => void pedir('access')}>Pedir cópia completa à clínica</Button>
++        </div>
++
++        <div className="space-y-2">
++          <Textarea aria-label="O que precisa ser corrigido" placeholder="Algum dado seu está errado? Descreva o que precisa ser corrigido." value={correcao} onChange={e => setCorrecao(e.target.value)} rows={2} />
++          <Button size="sm" variant="outline" disabled={salvando !== null || !correcao.trim()} onClick={() => void pedir('correction')}>Pedir correção</Button>
++        </div>
++
++        {mensagem && <p role="status" className="text-sm text-foreground bg-primary/10 px-3 py-2 rounded-lg">{mensagem}</p>}
++
++        {dados && dados.pedidos.length > 0 && (
++          <div className="text-xs text-muted-foreground space-y-1">
++            <p className="font-medium text-foreground">Seus pedidos</p>
++            {dados.pedidos.map(p => (
++              <p key={p.id}>
++                {PEDIDO_LGPD[p.request_type] || p.request_type} — {p.requested_at ? format(new Date(p.requested_at), 'dd/MM/yyyy') : ''} — {p.status === 'pending' ? 'em andamento' : p.status === 'fulfilled' ? 'atendido' : 'negado'}
++              </p>
++            ))}
++          </div>
++        )}
++      </CardContent>
++    </Card>
++  );
++}
++
++// ─── Recuperar acesso ──────────────────────────────────────
++function RecoverAccess() {
++  const [open, setOpen] = useState(false);
++  const [cpf, setCpf] = useState('');
++  const [nascimento, setNascimento] = useState('');
++  const [sending, setSending] = useState(false);
++  const [message, setMessage] = useState('');
++  const [failed, setFailed] = useState(false);
++
++  if (!open) {
++    return (
++      <button type="button" onClick={() => setOpen(true)} className="w-full text-center text-sm text-primary hover:underline">
++        Perdi meu link de acesso
++      </button>
++    );
++  }
++
++  const submit = async () => {
++    setSending(true);
++    setMessage('');
++    setFailed(false);
++    const { data, error } = await supabase.functions.invoke('patient-portal', {
++      body: { action: 'solicitar_acesso', cpf, data_nascimento: nascimento },
++    });
++    setSending(false);
++    if (error || data?.error) {
++      let texto = data?.error || 'Não foi possível enviar agora. Tente novamente em instantes.';
++      const context = (error as { context?: Response } | null)?.context;
++      if (context && typeof context.json === 'function') {
++        try { texto = (await context.json())?.error || texto; } catch { /* mantém a mensagem padrão */ }
++      }
++      setFailed(true);
++      setMessage(texto);
++      return;
++    }
++    setMessage(data?.mensagem || 'Se os dados conferirem, enviamos um novo link.');
++  };
++
++  return (
++    <div className="space-y-3 rounded-xl border border-border/60 p-4">
++      <p className="text-sm font-medium">Receber um novo link</p>
++      <p className="text-xs text-muted-foreground">
++        Enviaremos o link para o e-mail e o WhatsApp cadastrados na clínica.
++      </p>
++      <Input
++        aria-label="CPF"
++        inputMode="numeric"
++        autoComplete="off"
++        placeholder="CPF"
++        value={cpf}
++        onChange={(e) => setCpf(e.target.value)}
++        className="h-11"
++      />
++      <Input
++        aria-label="Data de nascimento"
++        type="date"
++        value={nascimento}
++        onChange={(e) => setNascimento(e.target.value)}
++        className="h-11"
++      />
++      {message && (
++        <p role="status" className={`text-sm px-3 py-2 rounded-lg ${failed ? 'text-destructive bg-destructive/10' : 'text-foreground bg-primary/10'}`}>
++          {message}
++        </p>
++      )}
++      <Button
++        className="w-full h-11"
++        variant="outline"
++        onClick={submit}
++        disabled={sending || cpf.replace(/\D/g, '').length !== 11 || !nascimento}
++      >
++        {sending ? 'Enviando…' : 'Enviar novo link'}
++      </Button>
++    </div>
++  );
++}
++
+ // ─── Next Appointment Hero ─────────────────────────────────
+ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
+   const hojeNaClinica = todaySaoPauloDateOnly();
+@@ -205,9 +561,9 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
+       animate={{ opacity: 1, y: 0 }}
+       transition={{ delay: 0.3 }}
+     >
+-      <Card className="overflow-hidden rounded-[1.4rem] border-[#d6e6f2] bg-white shadow-[0_14px_38px_-28px_rgba(12,31,84,0.35)]">
++      <Card className="overflow-hidden rounded-xl border-[#d6e6f2] bg-white shadow-[0_14px_38px_-28px_rgba(12,31,84,0.35)]">
+         <CardContent className="relative p-5 sm:p-7">
+-          <div className="absolute inset-y-0 left-0 w-1.5 bg-[#39c7d9]" aria-hidden="true" />
++          <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden="true" />
+           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:pl-1">
+             <div className="flex min-w-0 items-start gap-4">
+               <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#eaf4fb] text-[#0059cc] sm:h-14 sm:w-14">
+@@ -216,7 +572,7 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
+               <div className="min-w-0 space-y-1.5">
+                 <div className="flex flex-wrap items-center gap-2">
+                   <h3 className="text-sm font-semibold text-[#0059cc]">Sua próxima consulta</h3>
+-                  {isHoje && <Badge className="border-[#bcecf0] bg-[#e7f9fa] text-[#075f70]">Hoje</Badge>}
++                  {isHoje && <Badge className="border-primary/20 bg-primary/10 text-primary">Hoje</Badge>}
+                 </div>
+                 <p className="text-xl font-bold leading-tight text-[#0c1f54] sm:text-2xl">
+                   {dataConsultaLabel}
+@@ -264,7 +620,7 @@ function NPSSurvey({ token }: { token: string }) {
+       if (error || data?.error) throw new Error(data?.error || error?.message || 'Não foi possível enviar');
+       setSent(true);
+     } catch (e: any) {
+-      setSubmitError(e.message);
++      setSubmitError(friendlyErrorMessage(e, 'Não foi possível enviar sua avaliação. Tente novamente.'));
+     } finally {
+       setSending(false);
+     }
+@@ -278,7 +634,7 @@ function NPSSurvey({ token }: { token: string }) {
+       >
+         <Card className="text-center p-8 border-primary/20 bg-primary/5">
+           <CheckCircle2 className="h-12 w-12 text-primary mx-auto mb-3" />
+-          <h3 className="text-lg font-bold">Obrigado pelo feedback!</h3>
++          <h3 className="text-lg font-bold">Obrigado pela avaliaÃ§Ã£o</h3>
+           <p className="text-sm text-muted-foreground mt-1">Sua opinião nos ajuda a melhorar.</p>
+         </Card>
+       </motion.div>
+@@ -360,10 +716,21 @@ export default function PortalPaciente() {
+   const [portalDataError, setPortalDataError] = useState('');
+   const [error, setError] = useState('');
+   const [profile, setProfile] = useState<any>(null);
++  const [clinica, setClinica] = useState<ClinicaPortal | null>(null);
++  const [lembrado, setLembrado] = useState(estaLembrado);
++  // Dependentes do titular do token; null = o próprio titular. Em ref para que
++  // fetchData (chamado de vários closures) sempre use a pessoa escolhida.
++  const [dependentes, setDependentes] = useState<{ id: string; nome: string }[]>([]);
++  const [titularNome, setTitularNome] = useState('');
++  const [dependenteAtivo, setDependenteAtivo] = useState<string | null>(null);
++  const dependenteRef = useRef<string | null>(null);
++  useManifestDoPortal();
+   const [agendamentos, setAgendamentos] = useState<any[]>([]);
+   const [exames, setExames] = useState<any[]>([]);
+   const [pagamentos, setPagamentos] = useState<any[]>([]);
+   const [prescricoes, setPrescricoes] = useState<any[]>([]);
++  const [atestados, setAtestados] = useState<any[]>([]);
++  const [gerandoPdf, setGerandoPdf] = useState<string | null>(null);
+   const [retornos, setRetornos] = useState<any[]>([]);
+   const [ofertasEspera, setOfertasEspera] = useState<any[]>([]);
+   const [portalHasMore, setPortalHasMore] = useState({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
+@@ -433,7 +800,7 @@ export default function PortalPaciente() {
+ 
+   const fetchData = async (accessToken: string, action: string, bodyData?: any) => {
+     const { data, error } = await supabase.functions.invoke('patient-portal', {
+-      body: { action, token: accessToken, ...bodyData },
++      body: { action, token: accessToken, ...(dependenteRef.current ? { dependente_id: dependenteRef.current } : {}), ...bodyData },
+     });
+     if (error) {
+       let message = error.message;
+@@ -489,6 +856,7 @@ export default function PortalPaciente() {
+         fetchData(accessToken, 'get_medicos'),
+         fetchData(accessToken, 'get_retornos'),
+         fetchData(accessToken, 'get_waitlist_offers'),
++        fetchData(accessToken, 'get_atestados'),
+       ]);
+       if (sessionId !== portalSessionRef.current) return;
+       const valueOrEmpty = (result: PromiseSettledResult<any>) =>
+@@ -501,6 +869,7 @@ export default function PortalPaciente() {
+       setMedicos(valueOrEmpty(results[4]));
+       setRetornos(valueOrEmpty(results[5]));
+       setOfertasEspera(valueOrEmpty(results[6]));
++      setAtestados(valueOrEmpty(results[7]));
+       setPortalHasMore({
+         agendamentos: (valueOrEmpty(results[0]) as any[]).length === 50,
+         exames: (valueOrEmpty(results[1]) as any[]).length === 30,
+@@ -538,7 +907,7 @@ export default function PortalPaciente() {
+       });
+       setPortalHasMore(previous => ({ ...previous, [listKey]: nextRows.length === pageSize }));
+     } catch (loadError) {
+-      if (sessionId === portalSessionRef.current) setPortalDataError('NÃ£o foi possÃ­vel carregar mais registros. Tente novamente.');
++      if (sessionId === portalSessionRef.current) setPortalDataError('Não foi possível carregar mais registros. Tente novamente.');
+     } finally {
+       loadMoreLocks.current.delete(action);
+       setLoadingMore(null);
+@@ -556,12 +925,21 @@ export default function PortalPaciente() {
+       const profileData = await fetchData(accessToken, 'get_profile');
+       if (sessionId !== portalSessionRef.current) return;
+       if (!profileData || profileData.error) {
++        salvarSessaoPortal(null);
+         setError(profileData?.error || 'Token inválido ou expirado');
+         return;
+       }
+       setProfile(profileData);
+       setContactForm({ telefone: profileData.telefone || '', email: profileData.email || '' });
+       setAuthenticated(true);
++      salvarSessaoPortal(accessToken);
++      if (!dependenteRef.current) setTitularNome(profileData.nome || '');
++      fetchData(accessToken, 'get_dependentes')
++        .then((lista) => { if (sessionId === portalSessionRef.current && Array.isArray(lista)) setDependentes(lista); })
++        .catch(() => { /* sem dependentes o seletor não aparece */ });
++      fetchData(accessToken, 'get_clinica')
++        .then((dados) => { if (sessionId === portalSessionRef.current) setClinica(dados); })
++        .catch(() => { /* sem dados da clínica o portal usa a marca padrão */ });
+       await loadPortalData(accessToken, sessionId);
+     } catch (err: any) {
+       if (sessionId !== portalSessionRef.current) return;
+@@ -569,6 +947,7 @@ export default function PortalPaciente() {
+       // ajuda o paciente e revela detalhes internos. Para autenticação por
+       // token, toda falha deve ser indistinguível de token ausente/revogado.
+       if (import.meta.env.DEV) console.error('Falha ao validar acesso do portal:', err);
++      salvarSessaoPortal(null);
+       setError('Token inválido ou expirado');
+     } finally {
+       if (sessionId === portalSessionRef.current) setLoading(false);
+@@ -597,7 +976,7 @@ export default function PortalPaciente() {
+     } catch (err: any) {
+       if (lookupId === schedulingLookupRef.current) {
+         setAvailableSlots([]);
+-        setSchedulingError(err.message || 'Erro ao carregar horários disponíveis');
++        setSchedulingError(friendlyErrorMessage(err, 'Erro ao carregar horários disponíveis'));
+       }
+     } finally {
+       if (lookupId === schedulingLookupRef.current) setSchedulingLoading(false);
+@@ -656,7 +1035,7 @@ export default function PortalPaciente() {
+           await handleRescheduleStateChanged(err.message || 'Esta consulta foi atualizada.');
+         } else {
+           setRescheduleSlots([]);
+-          setRescheduleError(err.message || 'Não foi possível carregar os horários. Tente novamente.');
++          setRescheduleError(friendlyErrorMessage(err, 'Não foi possível carregar os horários. Tente novamente.'));
+         }
+       }
+     } finally {
+@@ -706,7 +1085,7 @@ export default function PortalPaciente() {
+       }
+     } catch (err: any) {
+       setAvailableSlots([]);
+-      setSchedulingError(err.message || 'Erro ao agendar consulta');
++      setSchedulingError(friendlyErrorMessage(err, 'Erro ao agendar consulta'));
+     } finally {
+       schedulingSubmissionLock.current = false;
+       setSchedulingSubmitting(false);
+@@ -737,7 +1116,7 @@ export default function PortalPaciente() {
+       }
+       return true;
+     } catch (err: any) {
+-      const message = err.message || 'Não foi possível cancelar a consulta. Tente novamente.';
++      const message = friendlyErrorMessage(err, 'Não foi possível cancelar a consulta. Tente novamente.');
+       if (err.code === 'appointment_state_changed') {
+         setCancelStateStale(true);
+         try {
+@@ -772,7 +1151,7 @@ export default function PortalPaciente() {
+       setRetornos(await fetchData(token, 'get_retornos'));
+       setRetornoRemarcar(null);
+     } catch (err: any) {
+-      setErroRemarcarRetorno(err.message || 'Não foi possível remarcar o retorno. Tente novamente.');
++      setErroRemarcarRetorno(friendlyErrorMessage(err, 'Não foi possível remarcar o retorno. Tente novamente.'));
+     } finally {
+       setActionLoading(false);
+     }
+@@ -786,7 +1165,7 @@ export default function PortalPaciente() {
+       await fetchData(token, 'confirm_retorno', { retorno_id: retornoId });
+       setRetornos(await fetchData(token, 'get_retornos'));
+     } catch (err: any) {
+-      setErroConfirmarRetorno(err.message || 'Não foi possível confirmar o retorno. Tente novamente.');
++      setErroConfirmarRetorno(friendlyErrorMessage(err, 'Não foi possível confirmar o retorno. Tente novamente.'));
+     } finally {
+       setActionLoading(false);
+       setRetornoConfirmandoId(null);
+@@ -806,22 +1185,36 @@ export default function PortalPaciente() {
+       setAgendamentos(agendamentosAtualizados || []);
+       setOfertasEspera(ofertasAtualizadas || []);
+     } catch (err: any) {
+-      setErroAceitarOferta(err.message || 'Não foi possível aceitar a vaga. Atualize a lista e tente novamente.');
++      setErroAceitarOferta(friendlyErrorMessage(err, 'Não foi possível aceitar a vaga. Atualize a lista e tente novamente.'));
+     } finally {
+       setActionLoading(false);
+       setOfertaAceitandoId(null);
+     }
+   };
+ 
++  const trocarPessoa = (id: string | null) => {
++    dependenteRef.current = id;
++    setDependenteAtivo(id);
++    setRescheduleModal(null);
++    void handleLogin(token);
++  };
++
+   const handleLogout = () => {
+     portalSessionRef.current += 1;
++    dependenteRef.current = null;
++    setDependenteAtivo(null);
++    setDependentes([]);
++    salvarSessaoPortal(null);
++    setLembrado(false);
+     setAuthenticated(false);
+     setToken('');
+     setProfile(null);
++    setClinica(null);
+     setAgendamentos([]);
+     setExames([]);
+     setPagamentos([]);
+     setPrescricoes([]);
++    setAtestados([]);
+     setRetornos([]);
+     setOfertasEspera([]);
+     setPortalHasMore({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
+@@ -830,6 +1223,54 @@ export default function PortalPaciente() {
+     setPortalDataError('');
+   };
+ 
++  // jsPDF só carrega quando o paciente pede um documento.
++  const baixarPdf = async (id: string, gerar: (lib: typeof import('@/lib/pdfGenerator')) => Promise<import('jspdf').jsPDF>, arquivo: string) => {
++    setGerandoPdf(id);
++    try {
++      const lib = await import('@/lib/pdfGenerator');
++      lib.downloadPDF(await gerar(lib), arquivo);
++    } catch {
++      setPortalDataError('Não foi possível gerar o PDF. Tente novamente.');
++    } finally {
++      setGerandoPdf(null);
++    }
++  };
++
++  const baixarAtestado = (a: any) => baixarPdf(a.id, (lib) => lib.gerarAtestado(
++    { nome: profile?.nome || '', cpf: profile?.cpf || '' },
++    { nome: a.medicos?.nome || '', crm: a.medicos?.crm, especialidade: a.medicos?.especialidade || '' },
++    dadosAtestadoPdf(a),
++    clinicaParaPdf(clinica),
++  ), `atestado-${a.data_emissao || a.id}.pdf`);
++
++  const baixarRecibo = (p: any) => baixarPdf(p.id, (lib) => lib.gerarReciboPagamento(
++    { nome: profile?.nome || '', cpf: profile?.cpf || '' },
++    { id: p.id, descricao: p.descricao, valor: Number(p.valor) || 0, data: p.created_at || '', metodo: p.metodo_pagamento },
++    clinicaParaPdf(clinica),
++  ), `recibo-${p.id}.pdf`);
++
++  // Portabilidade (LGPD art. 18, V): tudo que o portal já carregou, em JSON.
++  const exportarMeusDados = () => {
++    const semLinks = (lista: any[]) => lista.map(({ pdf_url, checkout_url, arquivo_resultado, ...resto }) => resto);
++    const conteudo = {
++      gerado_em: new Date().toISOString(),
++      clinica: clinica?.nome ?? null,
++      paciente: profile,
++      consultas: agendamentos,
++      exames: semLinks(exames),
++      receitas: semLinks(prescricoes.filter(p => !p.excluida)),
++      atestados,
++      pagamentos: semLinks(pagamentos),
++      retornos,
++    };
++    const url = URL.createObjectURL(new Blob([JSON.stringify(conteudo, null, 2)], { type: 'application/json' }));
++    const a = document.createElement('a');
++    a.href = url;
++    a.download = 'meus-dados.json';
++    a.click();
++    URL.revokeObjectURL(url);
++  };
++
+   const handleUpdateContact = async () => {
+     setContactSaving(true);
+     setContactMessage('');
+@@ -839,7 +1280,7 @@ export default function PortalPaciente() {
+       setProfile(response.profile);
+       setContactMessage('Dados de contato atualizados.');
+     } catch (err: any) {
+-      setContactMessage(err.message || 'Não foi possível atualizar seus dados.');
++      setContactMessage(friendlyErrorMessage(err, 'Não foi possível atualizar seus dados.'));
+     } finally {
+       setContactSaving(false);
+     }
+@@ -866,7 +1307,7 @@ export default function PortalPaciente() {
+         setActionError('Consulta confirmada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
+       }
+     } catch (err: any) {
+-      const message = err.message || 'Não foi possível confirmar a consulta. Tente novamente.';
++      const message = friendlyErrorMessage(err, 'Não foi possível confirmar a consulta. Tente novamente.');
+       if (err.code === 'appointment_state_changed') {
+         try {
+           setAgendamentos(await fetchData(token, 'get_agendamentos'));
+@@ -918,7 +1359,7 @@ export default function PortalPaciente() {
+         setActionError('Consulta remarcada, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
+       }
+     } catch (err: any) {
+-      const message = err.message || 'Não foi possível remarcar a consulta. Tente novamente.';
++      const message = friendlyErrorMessage(err, 'Não foi possível remarcar a consulta. Tente novamente.');
+       const stateChanged = err.code === 'appointment_state_changed';
+       if (stateChanged) {
+         await handleRescheduleStateChanged(message);
+@@ -934,11 +1375,17 @@ export default function PortalPaciente() {
+ 
+   useEffect(() => {
+     const urlToken = searchParams.get('token');
++    const savedToken = urlToken ? null : lerSessaoPortal();
++    if (savedToken && !autoLoginAttempted.current) {
++      autoLoginAttempted.current = true;
++      setToken(savedToken);
++      void handleLogin(savedToken);
++    }
+     if (urlToken && !autoLoginAttempted.current) {
+       autoLoginAttempted.current = true;
+       // O link pode chegar por e-mail/WhatsApp, mas o segredo não deve
+       // permanecer no histórico, em screenshots ou no Referer de navegação.
+-      // O estado React mantém o token apenas em memória durante esta sessão.
++      // O token fica só nesta aba (sessionStorage), para sobreviver a um recarregar.
+       const sanitizedUrl = new URL(window.location.href);
+       sanitizedUrl.searchParams.delete('token');
+       window.history.replaceState({}, '', `${sanitizedUrl.pathname}${sanitizedUrl.search}${sanitizedUrl.hash}`);
+@@ -1051,15 +1498,31 @@ export default function PortalPaciente() {
+       <header className="sticky top-0 z-50 border-b border-[#dfe9ef] bg-white/95 px-4 py-3 backdrop-blur-xl">
+         <div className="mx-auto flex max-w-7xl items-center justify-between">
+           <div className="flex items-center gap-3">
+-            <div className="rounded-xl bg-[#eaf4fb] p-2.5 text-[#0059cc]">
+-              <HeartHandshake className="h-5 w-5" />
+-            </div>
+-            <div>
+-              <h1 className="text-lg font-bold font-display text-foreground">EloLab</h1>
++            {clinica?.logoUrl?.startsWith('https://') ? (
++              <img src={clinica.logoUrl} alt="" className="h-10 w-10 rounded-xl object-contain" />
++            ) : (
++              <div className="rounded-xl bg-[#eaf4fb] p-2.5 text-[#0059cc]">
++                <HeartHandshake className="h-5 w-5" />
++              </div>
++            )}
++            <div className="min-w-0">
++              <h1 className="truncate text-lg font-bold font-display text-foreground">{clinica?.nome || 'EloLab'}</h1>
+               <p className="text-[11px] text-muted-foreground -mt-0.5">Portal do Paciente</p>
+             </div>
+           </div>
+           <div className="flex items-center gap-3">
++            {dependentes.length > 0 && (
++              <select
++                aria-label="Ver portal de"
++                value={dependenteAtivo ?? ''}
++                onChange={(e) => trocarPessoa(e.target.value || null)}
++                disabled={loading}
++                className="max-w-[9rem] truncate rounded-md border bg-background px-2 py-1 text-sm font-semibold sm:max-w-none"
++              >
++                <option value="">{titularNome || 'Eu'}</option>
++                {dependentes.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
++              </select>
++            )}
+             <div className="text-right hidden sm:block">
+               <p className="text-sm font-semibold">{profile?.nome}</p>
+               <p className="text-[11px] text-muted-foreground">
+@@ -1090,14 +1553,14 @@ export default function PortalPaciente() {
+           <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+             <div className="space-y-1.5">
+               <h2 className="font-display text-2xl font-bold tracking-tight text-[#0c1f54] sm:text-3xl">
+-                Olá, {profile?.nome?.split(' ')[0]} 👋
++                Olá, {profile?.nome?.split(' ')[0]}
+               </h2>
+               <p className="max-w-xl text-sm text-[#52647b] sm:text-base">
+                 Acompanhe suas consultas, exames e pagamentos.
+               </p>
+             </div>
+             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#d6e6f2] bg-white px-3 py-2 text-xs font-medium text-[#405875]">
+-              <Shield className="h-4 w-4 text-[#008b9d]" aria-hidden="true" />
++              <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
+               Seus dados em ambiente seguro
+             </div>
+           </motion.div>
+@@ -1131,7 +1594,7 @@ export default function PortalPaciente() {
+             <motion.div variants={itemVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
+               {[
+               { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#0059cc] bg-[#eaf4fb]' },
+-              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-[#087b8a] bg-[#e7f8fa]' },
++              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-primary bg-primary/10' },
+               { icon: FlaskConical, label: 'Exames pendentes', value: examesPendentes, accent: 'text-[#8b6710] bg-[#fff6db]' },
+               { icon: FileText, label: 'Laudos prontos', value: laudosDisponiveis, accent: 'text-[#14744d] bg-[#e8f7ef]' },
+               ].map(stat => (
+@@ -1234,6 +1697,19 @@ export default function PortalPaciente() {
+                           </option>
+                         ))}
+                       </select>
++                      {(() => {
++                        const escolhido = medicos.find(m => m.id === schedulingForm.medico_id);
++                        if (!escolhido?.foto_url) return null;
++                        return (
++                          <div className="flex items-center gap-3 pt-1">
++                            <img src={escolhido.foto_url} alt="" className="h-12 w-12 rounded-full object-cover" />
++                            <p className="text-sm">
++                              <span className="font-medium">{nomeMedico(escolhido.nome)}</span>
++                              {escolhido.especialidade && <span className="block text-xs text-muted-foreground">{escolhido.especialidade}</span>}
++                            </p>
++                          </div>
++                        );
++                      })()}
+                     </div>
+ 
+                     <div className="space-y-2">
+@@ -1405,10 +1881,13 @@ export default function PortalPaciente() {
+                                     disabled={actionLoading}
+                                     className="flex-1 text-xs text-destructive hover:text-destructive"
+                                   >
+-                                    ✕ Cancelar
++                                    Cancelar
+                                   </Button>
+                                 </div>
+                               )}
++                              {!passado && ['agendado', 'confirmado'].includes(a.status) && (
++                                <PreConsultaButton token={token} dependenteId={dependenteAtivo} agendamentoId={a.id} />
++                              )}
+                             </div>
+                           </CardContent>
+                         </Card>
+@@ -1445,7 +1924,7 @@ export default function PortalPaciente() {
+                                     {e.tipo_exame}
+                                     {isLaudo && (
+                                       <Badge className="bg-green-500/10 text-green-700 text-[9px] border-green-200">
+-                                        ✓ Laudo pronto
++                                        Laudo pronto
+                                       </Badge>
+                                     )}
+                                   </p>
+@@ -1487,10 +1966,10 @@ export default function PortalPaciente() {
+ 
+               {/* ─── Prescrições Tab ─── */}
+               <TabsContent value="prescricoes" className="mt-4 space-y-3">
+-                {!prescricoes.length ? (
++                {!prescricoes.some((p: any) => !p.excluida) ? (
+                   <EmptyState icon={Pill} text="Nenhuma prescrição encontrada" />
+                 ) : (
+-                  prescricoes.map((p: any, i: number) => (
++                  prescricoes.filter((p: any) => !p.excluida).map((p: any, i: number) => (
+                     <motion.div
+                       key={p.id}
+                       initial={{ opacity: 0, x: -10 }}
+@@ -1519,16 +1998,55 @@ export default function PortalPaciente() {
+                                 {p.medicos?.nome && ` — ${nomeMedico(p.medicos.nome)}`}
+                               </p>
+                             </div>
+-                            <Badge variant="outline" className="text-[10px]">
+-                              {p.tipo === 'controle_especial' ? 'Especial' : p.tipo === 'antimicrobiano' ? 'Antimicro' : 'Simples'}
+-                            </Badge>
++                            <div className="flex flex-col items-end gap-2">
++                              <Badge variant="outline" className="text-[10px]">
++                                {p.tipo === 'controle_especial' ? 'Especial' : p.tipo === 'antimicrobiano' ? 'Antimicro' : 'Simples'}
++                              </Badge>
++                              {p.pdf_url && (
++                                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => abrirUrlSegura(p.pdf_url, storageUrlSeguro)}>
++                                  <Download className="h-3 w-3" />
++                                  PDF
++                                </Button>
++                              )}
++                            </div>
+                           </div>
+                         </CardContent>
+                       </Card>
+                     </motion.div>
+                   ))
+                 )}
+-                {portalHasMore.prescricoes && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_prescricoes', 'prescricoes', prescricoes, setPrescricoes, 50)}>{loadingMore === 'get_prescricoes' ? 'Carregando...' : 'Carregar mais prescricoes'}</Button></div>}
++                {portalHasMore.prescricoes && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_prescricoes', 'prescricoes', prescricoes, setPrescricoes, 50)}>{loadingMore === 'get_prescricoes' ? 'Carregando...' : 'Carregar mais prescrições'}</Button></div>}
++
++                {atestados.length > 0 && (
++                  <div className="space-y-3 pt-4">
++                    <h3 className="text-sm font-semibold">Atestados</h3>
++                    {atestados.map((a: any) => (
++                      <Card key={a.id}>
++                        <CardContent className="flex items-center justify-between gap-3 p-4">
++                          <div className="flex items-start gap-3">
++                            <div className="p-2.5 rounded-xl bg-primary/10">
++                              <FileText className="h-4 w-4 text-primary" />
++                            </div>
++                            <div className="space-y-0.5">
++                              <p className="font-semibold text-sm">
++                                {TITULO_ATESTADO[a.tipo as string] || 'Atestado'}
++                                {a.tipo === 'afastamento' && a.dias ? ` — ${a.dias} dia(s)` : ''}
++                              </p>
++                              <p className="text-[11px] text-muted-foreground">
++                                {a.data_emissao ? format(parseISO(a.data_emissao), 'dd/MM/yyyy') : ''}
++                                {a.medicos?.nome && ` — ${nomeMedico(a.medicos.nome)}`}
++                              </p>
++                            </div>
++                          </div>
++                          <Button size="sm" variant="outline" className="gap-1.5" disabled={gerandoPdf !== null} onClick={() => void baixarAtestado(a)}>
++                            <Download className="h-3 w-3" />
++                            {gerandoPdf === a.id ? 'Gerando…' : 'PDF'}
++                          </Button>
++                        </CardContent>
++                      </Card>
++                    ))}
++                  </div>
++                )}
+ </TabsContent>
+ 
+               {/* ─── Histórico Médico Tab ─── */}
+@@ -1560,21 +2078,25 @@ export default function PortalPaciente() {
+                         </div>
+                         <div>
+                           <p className="text-sm font-semibold">Precisa agendar uma consulta?</p>
+-                          <p className="text-xs text-muted-foreground">Entre em contato com a clínica</p>
++                          <p className="text-xs text-muted-foreground">
++                            {whatsappDaClinica(clinica) ? 'Fale com a clínica pelo WhatsApp' : 'Use a aba Agendar'}
++                          </p>
+                         </div>
+                       </div>
+-                      <Button
+-                        variant="outline"
+-                        size="sm"
+-                        className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+-                        onClick={() => {
+-                          const msg = encodeURIComponent(`Olá! Sou ${profile?.nome}, gostaria de agendar uma consulta.`);
+-                          window.open(`https://wa.me/?text=${msg}`, '_blank');
+-                        }}
+-                      >
+-                        <Phone className="h-3.5 w-3.5" />
+-                        WhatsApp
+-                      </Button>
++                      {whatsappDaClinica(clinica) && (
++                        <Button
++                          variant="outline"
++                          size="sm"
++                          className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
++                          onClick={() => {
++                            const msg = encodeURIComponent(`Olá, sou ${profile?.nome} e gostaria de agendar uma consulta.`);
++                            window.open(`https://wa.me/${whatsappDaClinica(clinica)}?text=${msg}`, '_blank', 'noopener,noreferrer');
++                          }}
++                        >
++                          <Phone className="h-3.5 w-3.5" />
++                          WhatsApp
++                        </Button>
++                      )}
+                     </div>
+                   </CardContent>
+                 </Card>
+@@ -1717,6 +2239,12 @@ export default function PortalPaciente() {
+                                 <p className="font-bold tabular-nums">{formatCurrency(p.valor)}</p>
+                                 <StatusBadge status={p.status} />
+                               </div>
++                              {(p.status === 'pago' || p.status === 'aprovado') && (
++                                <Button size="sm" variant="outline" className="gap-1.5" disabled={gerandoPdf !== null} onClick={() => void baixarRecibo(p)}>
++                                  <Download className="h-3 w-3" />
++                                  {gerandoPdf === p.id ? 'Gerando…' : 'Recibo'}
++                                </Button>
++                              )}
+                               {p.checkout_url && p.status === 'pendente' && (
+                                 <Button
+                                   size="sm"
+@@ -1877,6 +2405,10 @@ export default function PortalPaciente() {
+             </motion.div>
+           )}
+ 
++          <motion.div variants={itemVariants}>
++            <PrivacidadeCard token={token} dependenteId={dependenteAtivo} onExportar={exportarMeusDados} />
++          </motion.div>
++
+           <motion.div variants={itemVariants}>
+             <NPSSurvey token={token} />
+           </motion.div>
+@@ -1888,8 +2420,25 @@ export default function PortalPaciente() {
+                 <Shield className="h-3.5 w-3.5" />
+                 <span>Seus dados são protegidos pela LGPD</span>
+               </div>
++              {clinica && (
++                <div className="text-xs text-muted-foreground space-y-0.5">
++                  <p className="font-medium text-foreground">{clinica.nome}</p>
++                  {clinica.endereco && <p>{clinica.endereco}</p>}
++                  {[clinica.telefone, clinica.celular, clinica.email].filter(Boolean).length > 0 && (
++                    <p>{[clinica.telefone, clinica.celular, clinica.email].filter(Boolean).join(' • ')}</p>
++                  )}
++                </div>
++              )}
++              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
++                <input
++                  type="checkbox"
++                  checked={lembrado}
++                  onChange={(e) => { lembrarNesteAparelho(e.target.checked ? token : null); setLembrado(e.target.checked); }}
++                />
++                Manter conectado neste aparelho (só no seu celular pessoal)
++              </label>
+               <p className="text-[11px] text-muted-foreground">
+-                EloLab Clínica Médica • Portal seguro do paciente
++                Portal seguro do paciente • EloLab
+               </p>
+             </div>
+           </motion.div>

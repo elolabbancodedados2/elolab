@@ -1,0 +1,40 @@
+diff --git a/src/pages/MapaColeta.tsx b/src/pages/MapaColeta.tsx
+index d6ca8c5f..4093078e 100644
+--- a/src/pages/MapaColeta.tsx
++++ b/src/pages/MapaColeta.tsx
+@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
+ import {
+   CheckCircle2, RefreshCw, Loader2, RotateCcw, XCircle, Search, Printer, FlaskConical,
+   AlertTriangle, Clock, Zap, MapPin, User, Droplets, Timer, Activity,
+-  ArrowRight, Eye, Shield,
++  ArrowRight, Eye, Shield, X,
+ } from 'lucide-react';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+@@ -341,7 +341,7 @@ export default function MapaColeta() {
+         .label{border:1px dashed #999;padding:8px;margin:4px 0;page-break-inside:avoid}
+         .code{font-size:16px;font-weight:bold;letter-spacing:2px}
+         @media print{.no-print{display:none}}</style></head><body>
+-        <button class="no-print" id="imprimir-mapa">🖨️ Imprimir</button>
++        <button class="no-print" id="imprimir-mapa">Imprimir</button>
+         <h3 class="no-print">${selected.size} etiqueta(s)</h3>
+         ${selectedItems.map(i => `<div class="label">
+           <div class="code">${escapeHtml(i.codigo_amostra)}</div>
+@@ -543,7 +543,7 @@ export default function MapaColeta() {
+   return (
+     <div className="space-y-6 pb-8">
+       {/* Header */}
+-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-gradient-to-r from-[#f4f8ff] via-white to-[#effaff] p-4 sm:p-5">
++      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-[#d8e8fb] bg-card p-4 sm:p-5">
+         <div>
+           <h1 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2">
+             <span className="rounded-xl bg-[#e5f1ff] p-2 text-[#1766b3] ring-1 ring-[#d5e6fa]"><FlaskConical className="h-5 w-5" /></span> Mapa de Coleta
+@@ -656,7 +656,7 @@ export default function MapaColeta() {
+         {selected.size > 0 && (
+           <Badge variant="outline" className="text-xs gap-1">
+             {selected.size} selecionado(s)
+-            <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}>✕</button>
++            <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}><X className="h-3 w-3" /></button>
+           </Badge>
+         )}
+       </div>

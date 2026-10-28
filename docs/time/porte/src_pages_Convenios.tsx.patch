@@ -1,0 +1,97 @@
+diff --git a/src/pages/Convenios.tsx b/src/pages/Convenios.tsx
+index 19c98c24..f7604543 100644
+--- a/src/pages/Convenios.tsx
++++ b/src/pages/Convenios.tsx
+@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
+ import { Switch } from '@/components/ui/switch';
+ import { Separator } from '@/components/ui/separator';
+ import { Skeleton } from '@/components/ui/skeleton';
+-import { ErrorState } from '@/components/ErrorState';
++import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+ import { toast } from 'sonner';
+ import { cn } from '@/lib/utils';
+@@ -200,21 +200,21 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
+           .eq('id', editingExameId).eq('convenio_id', convenioId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+         if (error) throw error;
+         if (!data) throw new Error('O exame não foi atualizado. Verifique se ele ainda existe e se você tem permissão.');
+-        toast.success('Exame atualizado!');
++        toast.success('Exame atualizado');
+       } else {
+         const { error } = await supabase.from('precos_exames_convenio').insert({
+           ...payload,
+           clinica_id: profile.clinica_id,
+         });
+         if (error) throw error;
+-        toast.success('Exame adicionado à tabela!');
++        toast.success('Exame adicionado à tabela');
+       }
+       queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
+       setIsExameFormOpen(false);
+     } catch (err: any) {
+       const message = err.code === '23505'
+         ? 'Já existe um exame com este nome para este convênio. Edite o registro existente.'
+-        : err.message || 'Erro ao salvar exame.';
++        : friendlyErrorMessage(err, 'Erro ao salvar exame.');
+       toast.error(message);
+     } finally { exameSaveLock.current = false; setIsSaving(false); }
+   };
+@@ -233,7 +233,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
+       toast.success('Exame removido da tabela.');
+       queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
+     } catch (err: any) {
+-      toast.error(err.message || 'Erro ao excluir.');
++      toast.error(friendlyErrorMessage(err, 'Erro ao excluir.'));
+     } finally { exameDeleteLock.current = false; setIsDeletingExame(false); setDeleteExameId(null); }
+   };
+ 
+@@ -511,7 +511,7 @@ function Convenios() {
+       queryClient.invalidateQueries({ queryKey: ['convenios'] });
+       toast.success(convenio.ativo ? 'Convênio inativado.' : 'Convênio ativado.');
+     } catch (error: any) {
+-      toast.error('Não foi possível alterar o status do convênio.', { description: error.message || 'Tente novamente.' });
++      toast.error('Não foi possível alterar o status do convênio.', { description: friendlyErrorMessage(error, 'Tente novamente.') });
+     } finally {
+       setAtualizandoStatusId(null);
+     }
+@@ -528,12 +528,12 @@ function Convenios() {
+         .eq('id', selectedId).eq('clinica_id', profile.clinica_id).select('id');
+       if (error) throw error;
+       if (!data || data.length === 0) { toast.error('Sem permissão ou convênio já removido.'); return; }
+-      toast.success('Convênio excluído!');
++      toast.success('Convênio excluído');
+       queryClient.invalidateQueries({ queryKey: ['convenios'] });
+     } catch (error: any) {
+       const message = error.code === '23503'
+         ? 'Este convênio possui pacientes, autorizações, preços ou lotes vinculados. Inative-o para preservar esses dados e o histórico.'
+-        : error.message || 'Erro ao excluir.';
++        : friendlyErrorMessage(error, 'Erro ao excluir.');
+       toast.error('Não foi possível excluir o convênio.', { description: message });
+     } finally { convenioDeleteLock.current = false; setIsDeleting(false); setIsDeleteOpen(false); }
+   };
+@@ -598,14 +598,14 @@ function Convenios() {
+         if (error) throw error;
+         if (!data) throw new Error('Este convênio foi alterado ou removido em outra sessão. Seus dados continuam no formulário; reabra o cadastro e confira as alterações antes de salvar novamente.');
+         setEditingUpdatedAt(data.updated_at);
+-        toast.success('Convênio atualizado!');
++        toast.success('Convênio atualizado');
+       } else {
+         const { data, error } = await supabase.from('convenios').insert({
+           ...payload,
+           clinica_id: profile?.clinica_id || null,
+         }).select('id').single();
+         if (error) throw error;
+-        toast.success('Convênio cadastrado!');
++        toast.success('Convênio cadastrado');
+         if (data) setEditingId(data.id);
+       }
+       queryClient.invalidateQueries({ queryKey: ['convenios'] });
+@@ -615,7 +615,7 @@ function Convenios() {
+     } catch (error: any) {
+       const message = error.code === '23505'
+         ? 'Já existe um convênio com este código interno nesta clínica. Use outro código.'
+-        : error.message || 'Erro ao salvar.';
++        : friendlyErrorMessage(error, 'Erro ao salvar.');
+       toast.error('Não foi possível salvar o convênio.', { description: message });
+     } finally { convenioSaveLock.current = false; setIsSubmitting(false); }
+   };

@@ -1,0 +1,196 @@
+diff --git a/tests/rls.spec.ts b/tests/rls.spec.ts
+index ab6dc19c..a1588516 100644
+--- a/tests/rls.spec.ts
++++ b/tests/rls.spec.ts
+@@ -1,25 +1,42 @@
+-import { test, expect } from '@playwright/test';
++import { test, expect, type APIRequestContext } from '@playwright/test';
+ import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scripts/test-supabase-env.ts';
++import { CONFIRMACAO_DESCARTAVEL } from './fixtures/duasClinicas.ts';
++import {
++  decidirSkipDeConfiguracao,
++  motivoSkipPermitido,
++  VARIAVEIS_BASE,
++  variaveisAusentes,
++} from './fixtures/suiteSeguranca.ts';
+ 
+ /**
+  * Testes de RLS contra a API REST do Supabase usando apenas a chave anon.
+  *
+- * A versão anterior destes testes aceitava qualquer HTTP 200 desde que o corpo
+- * fosse um array — ou seja, um vazamento total de dados passaria. Agora exigimos
+- * explicitamente ZERO linhas para quem não está autenticado.
++ * Exigimos ZERO linhas para quem não está autenticado. E, desde a rodada 2
++ * (CLIN-QA-565), conferimos antes, com a service role LOCAL, que a tabela tem
++ * linhas: "anônimo leu 0 linhas de uma tabela vazia" não prova nada.
++ *
++ * Massa: `node tests/fixtures/seed-duas-clinicas.ts` (CLIN-QA-566).
++ * Sem configuração a suíte é pulada fora do CI e FALHA no CI
++ * (`tests/fixtures/suiteSeguranca.ts`).
+  */
+ 
+ const QA_SUPABASE = resolveLocalQaSupabaseConfig(process.env);
+ const SUPABASE_URL = QA_SUPABASE?.url || DEFAULT_LOCAL_SUPABASE_URL;
+ const SUPABASE_ANON_KEY = QA_SUPABASE?.anonKey || '';
++const SERVICE_ROLE_KEY = process.env.QA_SUPABASE_SERVICE_ROLE_KEY?.trim() || '';
++const PACIENTE_A = process.env.QA_CLINICA_A_PACIENTE_ID?.trim() || '';
++const CLINICA_A = process.env.QA_CLINICA_A_ID?.trim() || '';
++
+ const headers = {
+   apikey: SUPABASE_ANON_KEY,
+   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+   'Content-Type': 'application/json',
+ };
+-
+-/** IDs in mutation tests are deliberately impossible. All requests are restricted to loopback QA. */
+-const ID_INEXISTENTE = '00000000-0000-0000-0000-000000000000';
++const headersServico = {
++  apikey: SERVICE_ROLE_KEY,
++  Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
++  'Content-Type': 'application/json',
++};
+ 
+ /** Tabelas que jamais podem devolver linhas para um visitante anônimo. */
+ const PRIVATE_TABLES = [
+@@ -43,16 +60,29 @@ const PRIVATE_TABLES = [
+   'whatsapp_sessions',
+ ];
+ 
++/** Lê com a service role local; só para pré-condições e conferência pós-ataque. */
++async function lerComoServico(request: APIRequestContext, caminho: string): Promise<Array<Record<string, unknown>>> {
++  const resposta = await request.get(`${SUPABASE_URL}/rest/v1/${caminho}`, { headers: headersServico });
++  expect(resposta.ok(), `leitura de pré-condição falhou: ${caminho} → ${resposta.status()}`).toBe(true);
++  const corpo = await resposta.json();
++  expect(Array.isArray(corpo)).toBe(true);
++  return corpo;
++}
++
+ test.beforeAll(() => {
+-  test.skip(
+-    !QA_SUPABASE,
+-    'Configure QA_SUPABASE_URL e QA_SUPABASE_ANON_KEY para um Supabase local em loopback.',
+-  );
++  const motivo = decidirSkipDeConfiguracao('RLS', variaveisAusentes(VARIAVEIS_BASE));
++  test.skip(Boolean(motivo), motivo ?? '');
+ });
+ 
+ test.describe('RLS — leitura anônima', () => {
+   for (const table of PRIVATE_TABLES) {
+     test(`${table}: anônimo não lê nenhuma linha`, async ({ request }) => {
++      const existentes = await lerComoServico(request, `${table}?select=*&limit=1`);
++      expect(
++        existentes.length,
++        `PRÉ-CONDIÇÃO: ${table} está vazia; o teste passaria sem provar nada (CLIN-QA-565). Rode o seed.`,
++      ).toBeGreaterThan(0);
++
+       const response = await request.get(`${SUPABASE_URL}/rest/v1/${table}?select=*&limit=5`, {
+         headers,
+       });
+@@ -71,45 +101,58 @@ test.describe('RLS — leitura anônima', () => {
+ 
+ test.describe('RLS — escrita anônima', () => {
+   test.beforeAll(() => {
+-    test.skip(!QA_SUPABASE?.disposable, 'Testes de escrita exigem QA_SUPABASE_DISPOSABLE=ELOLAB_LOCAL_DISPOSABLE em banco local descartável.');
++    const faltando = [
++      ...(process.env.QA_SUPABASE_DISPOSABLE === CONFIRMACAO_DESCARTAVEL ? [] : ['QA_SUPABASE_DISPOSABLE']),
++      ...variaveisAusentes(['QA_CLINICA_A_ID', 'QA_CLINICA_A_PACIENTE_ID']),
++    ];
++    const motivo = decidirSkipDeConfiguracao('RLS escrita (banco local descartável)', faltando);
++    test.skip(Boolean(motivo), motivo ?? '');
+   });
++
+   test('insert de paciente é bloqueado', async ({ request }) => {
++    const marcador = `RLS Test ${Date.now()} — deve falhar`;
+     const response = await request.post(`${SUPABASE_URL}/rest/v1/pacientes`, {
+       headers: { ...headers, Prefer: 'return=representation' },
+-      data: { nome: 'RLS Test — deve falhar', cpf: '00000000000' },
++      data: { nome: marcador, cpf: '00000000000', clinica_id: CLINICA_A },
+     });
+ 
+     expect(response.ok(), 'anônimo conseguiu inserir paciente').toBe(false);
++    const gravados = await lerComoServico(request, `pacientes?select=id&nome=eq.${encodeURIComponent(marcador)}`);
++    expect(gravados, 'VAZAMENTO: a linha do anônimo existe no banco').toHaveLength(0);
+   });
+ 
+-  test('update de paciente não afeta linhas', async ({ request }) => {
+-    // Impossible row id; this mutation check is limited to a disposable local DB.
+-    const response = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${ID_INEXISTENTE}`, {
++  test('update de paciente existente não altera a linha', async ({ request }) => {
++    // Alvo real do seed (banco descartável): um alvo inexistente passaria
++    // mesmo sem RLS nenhuma (CLIN-QA-565).
++    const [antes] = await lerComoServico(request, `pacientes?select=id,observacoes&id=eq.${PACIENTE_A}`);
++    expect(antes, 'PRÉ-CONDIÇÃO: paciente do seed não existe').toBeTruthy();
++
++    const response = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_A}`, {
+       headers: { ...headers, Prefer: 'return=representation' },
+-      data: { observacoes: 'rls-test' },
++      data: { observacoes: `rls-test ${Date.now()}` },
+     });
+-
+     if (response.ok()) {
+-      const data = await response.json();
+-      expect(data, 'anônimo alterou linhas de pacientes').toHaveLength(0);
++      expect(await response.json(), 'anônimo alterou linhas de pacientes').toHaveLength(0);
+     } else {
+       expect([401, 403, 404, 405, 406]).toContain(response.status());
+     }
++
++    const [depois] = await lerComoServico(request, `pacientes?select=id,observacoes&id=eq.${PACIENTE_A}`);
++    expect(depois?.observacoes, 'VAZAMENTO: o anônimo alterou o paciente').toBe(antes.observacoes);
+   });
+ 
+-  test('delete de paciente não remove linhas', async ({ request }) => {
+-    // Mesmo cuidado do teste acima: alvo impossível, para que uma falha de RLS
+-    // seja detectada sem apagar nada.
+-    const response = await request.delete(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${ID_INEXISTENTE}`, {
++  test('delete de paciente existente não remove a linha', async ({ request }) => {
++    const response = await request.delete(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_A}`, {
+       headers: { ...headers, Prefer: 'return=representation' },
+     });
+-
+     if (response.ok()) {
+-      const data = await response.json();
+-      expect(data, 'anônimo removeu linhas de pacientes').toHaveLength(0);
++      expect(await response.json(), 'anônimo removeu linhas de pacientes').toHaveLength(0);
+     } else {
+       expect([401, 403, 404, 405, 406]).toContain(response.status());
+     }
++
++    const restantes = await lerComoServico(request, `pacientes?select=id&id=eq.${PACIENTE_A}`);
++    expect(restantes, 'VAZAMENTO: o anônimo apagou o paciente').toHaveLength(1);
+   });
+ });
+ 
+@@ -125,7 +168,10 @@ test.describe('RLS — escrita anônima', () => {
+  */
+ test.describe('Edge functions — autorização própria', () => {
+   test.beforeAll(() => {
+-    test.skip(process.env.QA_EDGE_STUB_CONFIRMED !== 'ELOLAB_LOCAL_STUB', 'Edge tests exigem confirmação de stub local sem integrações externas.');
++    test.skip(
++      process.env.QA_EDGE_STUB_CONFIRMED !== 'ELOLAB_LOCAL_STUB',
++      motivoSkipPermitido('edge-stub', 'Edge tests exigem QA_EDGE_STUB_CONFIRMED=ELOLAB_LOCAL_STUB (stub local sem integrações externas).'),
++    );
+   });
+   const SESSAO_DE_OUTRA_CLINICA = '11111111-2222-3333-4444-555555555555';
+ 
+@@ -171,14 +217,17 @@ test.describe('Edge functions — autorização própria', () => {
+ });
+ 
+ test.describe('RLS — catálogo público', () => {
+-  test('planos ativos continuam visíveis (página de preços)', async ({ request }) => {
+-    const response = await request.get(`${SUPABASE_URL}/rest/v1/planos?select=id,nome,ativo`, {
++  test('planos ativos continuam visíveis e inativos não vazam (página de preços)', async ({ request }) => {
++    const response = await request.get(`${SUPABASE_URL}/rest/v1/planos?select=id,nome,slug,ativo`, {
+       headers,
+     });
+     expect(response.ok()).toBe(true);
+     const data = await response.json();
+     expect(Array.isArray(data)).toBe(true);
+-    // Se algum plano vier, precisa estar ativo — inativos não devem vazar.
++    // O seed cria um plano ativo e um inativo; sem isso "nenhum plano" passava.
++    const slugs = data.map((plano: { slug: string }) => plano.slug);
++    expect(slugs, 'o plano ativo do seed deveria aparecer no catálogo público').toContain('qa-plano-ativo');
++    expect(slugs, 'VAZAMENTO: plano inativo apareceu no catálogo público').not.toContain('qa-plano-inativo');
+     for (const plano of data) {
+       expect(plano.ativo).toBe(true);
+     }

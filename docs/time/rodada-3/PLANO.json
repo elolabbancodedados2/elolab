@@ -1,0 +1,16 @@
+[
+  { "tarefas": "docs/time/rodada-3/TAREFAS.json", "saidas": [
+    "docs/time/rodada-3/backend-developer.md",
+    "docs/time/rodada-3/frontend-developer.md",
+    "docs/time/rodada-3/qa-engineer.md",
+    "docs/time/rodada-3/product-designer.md",
+    "docs/time/rodada-3/codex-database.md",
+    "docs/time/rodada-3/codex-revisor.md"
+  ] },
+  { "tarefas": "docs/time/rodada-3/TAREFAS-B.json", "saidas": [
+    "docs/time/rodada-3/tech-lead-final.md"
+  ] },
+  { "tarefas": "docs/time/rodada-3/TAREFAS-C.json", "saidas": [
+    "docs/time/rodada-3/CONSOLIDADO.md::PROXIMA-RODADA:"
+  ] }
+]

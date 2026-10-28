@@ -1,0 +1,7 @@
+{
+  "comum": "Worktree: C:\\Users\\lopes\\orca\\workspaces\\elolab\\time-estabilizacao (base nova). Leia docs/time/REGRAS_DO_TIME.md e os resumos em docs/time/rodada-4/. Sem deploy, sem migration aplicada, sem commit, sem acesso à VPS. TAREFA: ",
+  "tarefas": {
+    "tech-lead": "Você é o único agente Claude rodando agora. Faça a verificação completa da base nova com o porte, uma única vez: npx tsc --noEmit -p tsconfig.app.json, npm run test:run, npm run lint e os npm run check:*. Corrija falhas causadas pelo porte; liste separadamente as preexistentes da base nova. Grave docs/time/rodada-4/tech-lead-final.md com os números reais.",
+    "codex-revisor": { "executor": "codex", "papel": "tech-lead", "tarefa": "Revisão independente de correção do PORTE: compare, para cada arquivo tocado na rodada 4 (veja docs/time/rodada-4/*.md e git diff), a intenção descrita nas rodadas 1-3 com o que foi aplicado na base nova. Procure mudança perdida, mudança aplicada pela metade, regressão de funcionalidade do main e bugs de paciente errado/isolamento/perda de dado. P0–P3 com caminho:linha. NÃO edite código; grave docs/time/rodada-4/codex-revisor.md." }
+  }
+}

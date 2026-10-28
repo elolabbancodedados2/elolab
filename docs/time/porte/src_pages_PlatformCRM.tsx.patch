@@ -1,0 +1,13 @@
+diff --git a/src/pages/PlatformCRM.tsx b/src/pages/PlatformCRM.tsx
+index 728575eb..4bfb4c16 100644
+--- a/src/pages/PlatformCRM.tsx
++++ b/src/pages/PlatformCRM.tsx
+@@ -156,7 +156,7 @@ export default function PlatformCRM() {
+ 
+   return (
+     <div className="space-y-6">
+-      <div className="rounded-2xl border border-[#dce9f6] bg-gradient-to-r from-[#f3f8ff] via-white to-[#f3fbfa] p-5 sm:p-6">
++      <div className="rounded-2xl border border-[#dce9f6] bg-card p-5 sm:p-6">
+         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+           <Building2 className="h-7 w-7 text-primary" />
+           CRM da plataforma

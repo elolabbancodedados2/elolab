@@ -1,0 +1,445 @@
+diff --git a/src/pages/Prontuarios.tsx b/src/pages/Prontuarios.tsx
+index dd195bc8..a51ae519 100644
+--- a/src/pages/Prontuarios.tsx
++++ b/src/pages/Prontuarios.tsx
+@@ -6,7 +6,7 @@ import {
+   Search, FileText, Plus, Save, CalendarCheck, FileDown, History, Loader2,
+   Heart, Thermometer, Activity, Scale, Ruler, Droplets,
+   Stethoscope, Brain, Bone, Eye as EyeIcon, Pill, Paperclip,
+-  ClipboardList, AlertTriangle, User, Clock, ChevronDown, ChevronRight,
++  ClipboardList, AlertTriangle, User, Clock, ChevronDown, ChevronLeft, ChevronRight,
+   Printer, BookOpen, ShieldCheck, FileCheck, X, Clipboard,
+   Phone, Mail, Building2, CreditCard, Baby, Shield, Lock, PenLine,
+   TestTube, ArrowRight, UserCheck, BadgeCheck, Share2, MessageCircle, ExternalLink,
+@@ -38,12 +38,13 @@ import {
+   ClinicalSafetyPanel,
+ } from '@/components/clinical';
+ import { ProntuarioAdendos } from '@/components/clinical/ProntuarioAdendos';
++import { PreConsultaCard } from '@/components/clinical/PreConsultaCard';
+ import { useMedicos, useAgendamentos, useSupabaseQuery } from '@/hooks/useSupabaseData';
+ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+ import { supabase } from '@/integrations/supabase/client';
+ import { agruparBaixasEstoque } from '@/lib/stockPrescriptionDeductions';
+ import { Skeleton } from '@/components/ui/skeleton';
+-import { ErrorState } from '@/components/ErrorState';
++import { ErrorState, friendlyErrorMessage } from '@/components/ErrorState';
+ import { exportToFHIR, exportToXML } from '@/lib/clinicalExport';
+ import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+ import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
+@@ -58,6 +59,8 @@ import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+ import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
+ import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+ import { filtrarRascunhosAbertos } from '@/lib/prontuarioDrafts';
++import { IdentificacaoPaciente } from '@/components/clinical/IdentificacaoPaciente';
++import { pacienteDivergeDoRegistro, pacienteDoRegistro, paraIdentificacao } from '@/lib/pacienteDoRegistro';
+ 
+ // ─── Types ─────────────────────────────────────────────────
+ interface PrescricaoForm {
+@@ -263,7 +266,7 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
+     <div className="space-y-4">
+       {/* Header strip */}
+       <div className="rounded-2xl overflow-hidden border border-border/60 bg-card">
+-        <div className="bg-gradient-to-r from-primary/8 via-primary/4 to-transparent p-5">
++        <div className="bg-primary/5 p-5">
+           <div className="flex items-start gap-4">
+             <PatientPhoto
+               pacienteId={paciente.id}
+@@ -285,7 +288,7 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
+                 </Badge>
+                 {paciente.sexo && (
+                   <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+-                    {paciente.sexo === 'masculino' ? '♂ Masc' : paciente.sexo === 'feminino' ? '♀ Fem' : 'Outro'}
++                    {paciente.sexo === 'masculino' ? 'Masculino' : paciente.sexo === 'feminino' ? 'Feminino' : 'Outro'}
+                   </Badge>
+                 )}
+                 {paciente.data_nascimento && (
+@@ -723,8 +726,8 @@ export default function Prontuarios() {
+       const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+       const r = await autoDispensarMedicamentos({
+         medicamentos: itens,
+-        pacienteId: selectedPaciente?.id ?? '',
+-        pacienteNome: selectedPaciente?.nome ?? 'Paciente',
++        pacienteId: pacienteDoDialogo?.id ?? '',
++        pacienteNome: pacienteDoDialogo?.nome ?? 'Paciente',
+         prontuarioId,
+         userId: user?.id,
+       });
+@@ -739,7 +742,7 @@ export default function Prontuarios() {
+         toast.success(r.message, { description: r.actions.join(' • ') });
+       }
+     } catch (e: any) {
+-      toast.error('Não foi possível dar baixa', { description: e?.message });
++      toast.error('Não foi possível dar baixa', { description: friendlyErrorMessage(e, 'Tente novamente.') });
+     } finally {
+       setDispensando(false);
+     }
+@@ -751,6 +754,8 @@ export default function Prontuarios() {
+   const routeOpenedRef = useRef(false);
+   const routeKeyRef = useRef<string | null>(null);
+   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
++  // Só no celular: a lista some quando há paciente aberto; "voltar" a reexibe.
++  const [listaMobileAberta, setListaMobileAberta] = useState(false);
+   const [rascunhoParaAbrir, setRascunhoParaAbrir] = useState<Record<string, any> | null>(null);
+   const [rascunhoParaEditarId, setRascunhoParaEditarId] = useState<string | null>(null);
+   const [searchTerm, setSearchTerm] = useState('');
+@@ -873,6 +878,12 @@ export default function Prontuarios() {
+     ],
+   });
+   const selectedPaciente = pacienteSelecionadoQuery.data?.[0] ?? null;
++  // CLIN-QA-545: o diálogo identifica, exibe alergias e grava sempre o paciente
++  // do registro aberto (`currentProntuario.paciente_id`), nunca o selecionado
++  // na lista quando os dois divergem.
++  const pacienteDoDialogo = pacienteDoRegistro(currentProntuario.paciente_id, selectedPaciente);
++  const pacienteDialogoDiverge = isProntuarioOpen
++    && pacienteDivergeDoRegistro(currentProntuario.paciente_id, selectedPacienteId);
+   const routePacienteNaoEncontrado = Boolean(
+     routePacienteId && routePacienteId === selectedPacienteId && !pacienteSelecionadoQuery.isLoading
+     && !pacienteSelecionadoQuery.isError && !selectedPaciente,
+@@ -1053,7 +1064,7 @@ export default function Prontuarios() {
+ 
+       if (error || !agendamento || agendamento.paciente_id !== routePacienteId) {
+         toast.error('Não foi possível abrir este atendimento', {
+-          description: error?.message || 'O agendamento não pertence a este paciente ou não está disponível nesta clínica.',
++          description: friendlyErrorMessage(error, 'O agendamento não pertence a este paciente ou não está disponível nesta clínica.'),
+         });
+         limparAtalho();
+         return;
+@@ -1190,6 +1201,13 @@ export default function Prontuarios() {
+       if (!silent) toast.info('Salvamento em andamento. Aguarde a conclusão.');
+       return null;
+     }
++    // CLIN-QA-545: nunca gravar num paciente diferente do exibido na tela.
++    if (pacienteDivergeDoRegistro(currentProntuario.paciente_id, selectedPacienteId)) {
++      const message = 'O paciente exibido não corresponde ao desta evolução. Nada foi gravado. Feche o prontuário e abra-o novamente pelo paciente correto.';
++      if (silent) setAutoSaveError(message);
++      else toast.error('Evolução não salva', { description: message });
++      return null;
++    }
+     saveInProgressRef.current = true;
+     if (!user?.clinica_id) {
+       if (silent) setAutoSaveError('Clínica não identificada. Atualize a sessão antes de salvar.');
+@@ -1354,7 +1372,7 @@ export default function Prontuarios() {
+                 p_quantidade: baixaSolicitada.quantity,
+                 p_prontuario_id: prontuarioId,
+                 p_usuario_id: user?.id || null,
+-                p_motivo: `Prescrição — ${selectedPaciente?.nome || 'paciente'}`,
++                p_motivo: `Prescrição — ${pacienteDoDialogo?.nome || 'paciente'}`,
+               },
+             );
+ 
+@@ -1363,7 +1381,7 @@ export default function Prontuarios() {
+               // outro erro precisa aparecer, porque a transação inteira foi
+               // desfeita e o saldo continua inalterado.
+               toast.warning(`Estoque não foi baixado: ${baixaSolicitada.itemName}`, {
+-                description: movErr.message,
++                description: friendlyErrorMessage(movErr, 'Tente novamente.'),
+               });
+               continue;
+             }
+@@ -1490,6 +1508,15 @@ export default function Prontuarios() {
+     setIsProntuarioOpen(open);
+   };
+ 
++  // CLIN-QA-545: se o paciente da tela mudar com o diálogo aberto, fecha o
++  // diálogo. Com alterações não salvas, ele fica travado (sem gravar) até o
++  // profissional fechar e decidir, pela confirmação de descarte.
++  useEffect(() => {
++    if (!pacienteDialogoDiverge || hasUnsavedChanges || salvandoProntuario) return;
++    setIsProntuarioOpen(false);
++    toast.info('O prontuário foi fechado porque o paciente selecionado mudou.');
++  }, [pacienteDialogoDiverge, hasUnsavedChanges, salvandoProntuario]);
++
+   // Reset auto-save time when dialog closes
+   useEffect(() => {
+     if (!isProntuarioOpen) setAutoSaveTime(null);
+@@ -1516,10 +1543,14 @@ export default function Prontuarios() {
+       toast.error('Erro', { description: 'Informe o tipo do exame.' });
+       return;
+     }
+-    if (!currentProntuario.id || !medicoId || !selectedPacienteId) {
++    if (!currentProntuario.id || !medicoId || !currentProntuario.paciente_id) {
+       toast.error('Não foi possível identificar o paciente ou médico solicitante.');
+       return;
+     }
++    if (pacienteDivergeDoRegistro(currentProntuario.paciente_id, selectedPacienteId)) {
++      toast.error('Exame não solicitado', { description: 'O paciente exibido não corresponde ao desta evolução.' });
++      return;
++    }
+     if (!user?.clinica_id) {
+       toast.error('Clínica não identificada. Atualize a sessão antes de solicitar o exame.');
+       return;
+@@ -1527,7 +1558,7 @@ export default function Prontuarios() {
+     setIsRequestingExam(true);
+     try {
+       const { error } = await supabase.from('exames').insert({
+-        paciente_id: selectedPacienteId,
++        paciente_id: currentProntuario.paciente_id,
+         medico_solicitante_id: medicoId,
+         prontuario_id: currentProntuario.id,
+         tipo_exame: examForm.tipo_exame,
+@@ -1597,7 +1628,7 @@ export default function Prontuarios() {
+       {erroMedicos && <ErrorState compact error={erroMedicos} title="Lista de médicos indisponível" description="Não é possível iniciar um atendimento ou assinar um prontuário sem carregar os dados do médico." onRetry={() => { void refetchMedicos(); }} />}
+       {erroConvenios && <ErrorState compact error={erroConvenios} title="Convênios indisponíveis" description="A ficha pode ser consultada, mas o convênio do paciente não será identificado até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
+       {/* Page header */}
+-      <div className="flex items-center justify-between">
++      <div className="flex flex-wrap items-center justify-between gap-2">
+         <div className="flex items-center gap-3">
+           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+             <ClipboardList className="h-5 w-5 text-primary" />
+@@ -1637,7 +1668,7 @@ export default function Prontuarios() {
+       {/* Main layout: patient list + content */}
+       <div className="grid gap-5 lg:grid-cols-12">
+         {/* ─── Patient List (Left column) ─── */}
+-        <div className="lg:col-span-3">
++        <div className={`min-w-0 lg:col-span-3 ${selectedPacienteId && !listaMobileAberta ? 'max-md:hidden' : ''}`}>
+           <Card className="overflow-hidden border-border/50">
+             <CardHeader className="pb-2 px-3 pt-3">
+               <div className="relative">
+@@ -1646,12 +1677,12 @@ export default function Prontuarios() {
+                   placeholder="Nome, CPF, telefone ou e-mail..."
+                   value={searchTerm}
+                   onChange={e => setSearchTerm(e.target.value)}
+-                  className="pl-8 h-8 text-xs"
++                  className="pl-8 h-8 text-xs max-md:h-11 max-md:text-base"
+                 />
+               </div>
+             </CardHeader>
+             <CardContent className="p-0">
+-              <ScrollArea className="h-[calc(100vh-240px)]">
++              <ScrollArea className="h-[calc(100vh-240px)] max-md:[&>[data-radix-scroll-area-viewport]>div]:!block">
+                 {medicoId && (
+                   <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE9F2] bg-[#F5FAFE] p-2.5">
+                     <div className="mb-2 flex items-center justify-between gap-2">
+@@ -1677,7 +1708,10 @@ export default function Prontuarios() {
+                               variant="ghost"
+                               className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-[#DCE9F2] bg-white px-2.5 py-2 text-left hover:border-[#B7D9FF] hover:bg-[#EFF7FF]"
+                               onClick={() => {
++                                // Invalida aberturas em andamento de outro paciente (CLIN-QA-545, H1).
++                                prescricoesRequestRef.current += 1;
+                                 setRascunhoParaAbrir(draft);
++                                setListaMobileAberta(false);
+                                 setSelectedPacienteId(draft.paciente_id);
+                               }}
+                             >
+@@ -1721,6 +1755,7 @@ export default function Prontuarios() {
+                         prescricoesRequestRef.current += 1;
+                         setRascunhoParaAbrir(null);
+                         setErroPrescricoes(null);
++                        setListaMobileAberta(false);
+                         setSelectedPacienteId(pac.id);
+                       }}
+                     />
+@@ -1747,7 +1782,12 @@ export default function Prontuarios() {
+         </div>
+ 
+         {/* ─── Patient File + Records (Right column) ─── */}
+-        <div className="lg:col-span-9 space-y-4">
++        <div className={`min-w-0 lg:col-span-9 space-y-4 ${listaMobileAberta ? 'max-md:hidden' : ''}`}>
++          {selectedPacienteId && (
++            <Button variant="ghost" className="h-11 gap-1.5 px-2 md:hidden" onClick={() => setListaMobileAberta(true)}>
++              <ChevronLeft className="h-4 w-4" />Voltar à lista de pacientes
++            </Button>
++          )}
+           {selectedPacienteId && pacienteSelecionadoQuery.isError ? (
+             <ErrorState
+               title="Não foi possível carregar a ficha do paciente"
+@@ -1769,10 +1809,11 @@ export default function Prontuarios() {
+               <FichaPaciente paciente={selectedPaciente} convenioNome={getConvenioNome(selectedPaciente.convenio_id)} />
+ 
+               <ClinicalSafetyPanel pacienteId={selectedPacienteId!} alergias={selectedPaciente.alergias} />
++              {routeAgendamentoId && <PreConsultaCard pacienteId={selectedPacienteId!} agendamentoId={routeAgendamentoId} />}
+ 
+               {/* Actions bar */}
+               <div className="flex items-center gap-2">
+-                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-xl" disabled={!!erroMedicos || !!erroProntuarios}>
++                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-xl max-md:h-11" disabled={!!erroMedicos || !!erroProntuarios}>
+                   <Plus className="h-3.5 w-3.5" />Novo Atendimento
+                 </Button>
+                 <span className="text-[10px] text-muted-foreground flex-1">
+@@ -1985,30 +2026,31 @@ export default function Prontuarios() {
+         }}
+       />}
+       <Dialog open={isProntuarioOpen} onOpenChange={handleProntuarioOpenChange}>
+-        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
++        {/* No celular o diálogo inteiro rola (cabeçalho sai de cena) e o rodapé fica fixo embaixo. */}
++        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col max-md:max-h-[95dvh] max-md:overflow-y-auto max-md:[&_input]:text-base max-md:[&_textarea]:text-base">
+           <DialogHeader className="flex-shrink-0">
+-            <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
++            <DialogTitle className="flex items-center justify-between flex-wrap gap-2 max-md:pr-6">
+               <span className="flex items-center gap-2 text-base">
+                 <Stethoscope className="h-4 w-4 text-primary" />
+                 {currentProntuario.id ? 'Prontuário' : 'Novo Atendimento'}
+-                {selectedPaciente && <span className="text-muted-foreground font-normal text-sm">— {selectedPaciente.nome}</span>}
++                {pacienteDoDialogo && <span className="text-muted-foreground font-normal text-sm">— {pacienteDoDialogo.nome}</span>}
+               </span>
+               <div className="flex gap-1.5 flex-wrap">
+-                {selectedPaciente && (medicoId || user?.id) && (
+-                  <ReturnScheduler pacienteId={selectedPaciente.id} prontuarioId={currentProntuario.id} medicoId={medicoId || user?.id || ''} compact />
++                {pacienteDoDialogo && (medicoId || user?.id) && (
++                  <ReturnScheduler pacienteId={pacienteDoDialogo.id} prontuarioId={currentProntuario.id} medicoId={medicoId || user?.id || ''} compact />
+                 )}
+                 {currentProntuario.id && (() => {
+                   const buildPDF = () => {
+                     const md = medicos.find((m: any) => m.id === currentProntuario.medico_id);
+                     return gerarProntuarioPDF(
+                       {
+-                        nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined,
+-                        dataNascimento: selectedPaciente?.data_nascimento || undefined,
+-                        alergias: selectedPaciente?.alergias || [], telefone: selectedPaciente?.telefone || undefined,
+-                        email: selectedPaciente?.email || undefined, sexo: selectedPaciente?.sexo || undefined,
+-                        convenio: getConvenioNome(selectedPaciente?.convenio_id),
+-                        numeroCarteira: selectedPaciente?.numero_carteira || undefined,
+-                        nomeResponsavel: selectedPaciente?.nome_responsavel || undefined,
++                        nome: pacienteDoDialogo?.nome || '', cpf: pacienteDoDialogo?.cpf || undefined,
++                        dataNascimento: pacienteDoDialogo?.data_nascimento || undefined,
++                        alergias: pacienteDoDialogo?.alergias || [], telefone: pacienteDoDialogo?.telefone || undefined,
++                        email: pacienteDoDialogo?.email || undefined, sexo: pacienteDoDialogo?.sexo || undefined,
++                        convenio: getConvenioNome(pacienteDoDialogo?.convenio_id),
++                        numeroCarteira: pacienteDoDialogo?.numero_carteira || undefined,
++                        nomeResponsavel: pacienteDoDialogo?.nome_responsavel || undefined,
+                       },
+                       { nome: md?.nome || user?.nome || 'Médico', crm: md?.crm, especialidade: md?.especialidade, rqe: md?.rqe, crmUf: md?.crm_uf },
+                       {
+@@ -2030,7 +2072,7 @@ export default function Prontuarios() {
+                       prescricoes.filter(p => p.medicamento.trim())
+                     );
+                   };
+-                  const fn = `prontuario-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`;
++                  const fn = `prontuario-${pacienteDoDialogo?.nome?.replace(/\s+/g, '-') || 'paciente'}`;
+                   return (
+                     <>
+                       {/* `buildPDF()` agora é assíncrono: o jsPDF só é baixado
+@@ -2039,7 +2081,7 @@ export default function Prontuarios() {
+                       <Button variant="outline" size="sm" disabled={!currentProntuario.id || salvandoProntuario} onClick={async () => { if (await auditarExportacaoPdf('PDF')) downloadPDF(await buildPDF(), fn); }} className="gap-1 text-xs h-7"><Printer className="h-3 w-3" />PDF</Button>
+                       <Button variant="outline" size="sm" onClick={async () => {
+                         if (!await auditarExportacaoPdf('WhatsApp')) return;
+-                        sharePDFWhatsApp(await buildPDF(), fn, selectedPaciente?.telefone);
++                        sharePDFWhatsApp(await buildPDF(), fn, pacienteDoDialogo?.telefone);
+                         toast.info('WhatsApp', { description: 'PDF baixado! Cole na conversa.' });
+                       }} disabled={!currentProntuario.id || salvandoProntuario} className="gap-1 text-xs h-7 text-success border-success/30 hover:bg-success/5">
+                         <MessageCircle className="h-3 w-3" />WhatsApp
+@@ -2054,19 +2096,27 @@ export default function Prontuarios() {
+             </DialogTitle>
+           </DialogHeader>
+ 
+-          {/* Patient summary strip */}
+-          {selectedPaciente && (
+-            <div className="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-xl text-xs border border-border/40">
+-              <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 font-bold text-[10px]">
+-                <User className="h-2.5 w-2.5" />{selectedPaciente.nome}
+-              </Badge>
+-              <span className="text-muted-foreground">{selectedPaciente.data_nascimento ? `${calcularIdade(selectedPaciente.data_nascimento)}a` : 'N/I'}</span>
+-              {selectedPaciente.cpf && <span className="text-muted-foreground">• {selectedPaciente.cpf}</span>}
+-              <span className="text-muted-foreground">• {getConvenioNome(selectedPaciente.convenio_id)}</span>
+-              <Badge className="ml-auto bg-success/10 text-success border-success/20 text-[9px] rounded-full px-2">
+-                <ShieldCheck className="h-2.5 w-2.5 mr-0.5" />LGPD
+-              </Badge>
++          {/* Identificação do paciente (CLIN-QA-401), fora da área que rola.
++              Lê o paciente do registro aberto, não o da lista (CLIN-QA-545). */}
++          {pacienteDialogoDiverge ? (
++            <div role="alert" className="flex-shrink-0 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-foreground">
++              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
++              <span>
++                O paciente selecionado na lista não é o paciente desta evolução. A gravação está bloqueada.
++                Feche o prontuário e abra-o novamente pelo paciente correto.
++              </span>
+             </div>
++          ) : (
++            <IdentificacaoPaciente
++              variante="dialogo"
++              className="flex-shrink-0"
++              carregando={!pacienteDoDialogo && pacienteSelecionadoQuery.isLoading}
++              erro={!pacienteDoDialogo ? pacienteSelecionadoQuery.error : undefined}
++              onTentarNovamente={() => void pacienteSelecionadoQuery.refetch()}
++              paciente={pacienteDoDialogo
++                ? paraIdentificacao(pacienteDoDialogo, getConvenioNome(pacienteDoDialogo.convenio_id))
++                : null}
++            />
+           )}
+ 
+           {!currentProntuario.id && !medicoId && (
+@@ -2132,7 +2182,7 @@ export default function Prontuarios() {
+           )}
+ 
+           {/* Scrollable content */}
+-          <ScrollArea className="flex-1 pr-4">
++          <ScrollArea className="flex-1 pr-4 max-md:flex-none max-md:pr-0 max-md:[&>[data-radix-scroll-area-viewport]>div]:!block">
+             <Tabs defaultValue="anamnese" className="w-full">
+                 <TabsList className="mb-3 flex h-auto w-full justify-start gap-0.5 overflow-x-auto rounded-xl bg-muted/40 p-0.5">
+                   {[
+@@ -2297,7 +2347,7 @@ export default function Prontuarios() {
+                 {/* ─── Prescrição ─── */}
+                 <TabsContent value="prescricao" className="space-y-3 pt-1">
+                   <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
+-                  <div className="flex justify-between items-center">
++                  <div className="flex flex-wrap justify-between items-center gap-2">
+                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                       <Pill className="h-3.5 w-3.5" />Receituário Digital
+                     </span>
+@@ -2340,7 +2390,7 @@ export default function Prontuarios() {
+                   {prescricoes.filter(p => p.medicamento.trim()).length > 0 && (
+                     <DrugInteractionChecker
+                       medicamentos={prescricoes.filter(p => p.medicamento.trim()).map(p => p.medicamento.trim())}
+-                      alergias={selectedPaciente?.alergias || []}
++                      alergias={pacienteDoDialogo?.alergias || []}
+                     />
+                   )}
+ 
+@@ -2356,7 +2406,7 @@ export default function Prontuarios() {
+                         <div key={i} className="border rounded-xl p-3 space-y-2">
+                           <div className="flex justify-between items-center">
+                             <span className="text-xs font-semibold">Medicamento {i + 1}</span>
+-                            <Button variant="ghost" size="sm" onClick={() => handleRemovePrescricao(i)} className="text-destructive h-6 w-6 p-0"><X className="h-3 w-3" /></Button>
++                            <Button variant="ghost" size="sm" onClick={() => handleRemovePrescricao(i)} aria-label={`Remover medicamento ${i + 1}`} className="text-destructive h-6 w-6 p-0 max-md:h-10 max-md:w-10"><X className="h-3 w-3" /></Button>
+                           </div>
+                           <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+                             <div className="col-span-2 md:col-span-3">
+@@ -2382,8 +2432,8 @@ export default function Prontuarios() {
+                   <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2 mb-3">
+                     <Paperclip className="h-3 w-3" />Upload de PDFs, imagens e exames — LGPD.
+                   </p>
+-                  {currentProntuario.id && selectedPacienteId ? (
+-                    <AnexosWrapper pacienteId={selectedPacienteId} prontuarioId={currentProntuario.id} readOnly={isReadOnly || salvandoProntuario} />
++                  {currentProntuario.id && pacienteDoDialogo ? (
++                    <AnexosWrapper pacienteId={pacienteDoDialogo.id} prontuarioId={currentProntuario.id} readOnly={isReadOnly || salvandoProntuario} />
+                   ) : (
+                     <div className="flex flex-col items-center py-10 text-muted-foreground">
+                       <Paperclip className="h-8 w-8 opacity-20 mb-2" />
+@@ -2509,9 +2559,9 @@ export default function Prontuarios() {
+           </ScrollArea>
+ 
+           {/* Footer */}
+-          <DialogFooter className="flex-shrink-0 flex-col gap-3 border-t border-border/40 pt-3 sm:flex-row">
++          <DialogFooter className="flex-shrink-0 flex-col gap-3 border-t border-border/40 pt-3 sm:flex-row max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-4 max-md:-mb-4 max-md:bg-background max-md:px-4 max-md:pb-4">
+             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+-              <div className="flex min-w-0 items-center gap-3 sm:flex-1">
++              <div className="flex min-w-0 flex-wrap items-center gap-3 sm:flex-1">
+                 {currentProntuario.id && (
+                   <DigitalSignature
+                     documentId={currentProntuario.id}
+@@ -2522,7 +2572,7 @@ export default function Prontuarios() {
+                     alreadySigned={isSigned}
+                     signedAt={currentProntuario.assinado_em}
+                     disabledReason={isEditing || hasUnsavedChanges || salvandoProntuario
+-                      ? 'Salve as alteraÃ§Ãµes e reabra o prontuÃ¡rio para assinar a versÃ£o atual.'
++                      ? 'Salve as alterações e reabra o prontuário para assinar a versão atual.'
+                       : undefined}
+                     onSigned={() => {
+                       setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: new Date().toISOString() }));
+@@ -2542,13 +2592,13 @@ export default function Prontuarios() {
+                   </span>
+                 )}
+               </div>
+-              <div className="flex flex-wrap justify-end gap-2">
+-                <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(true)} disabled={!currentProntuario.id || !medicoId || isRequestingExam} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
++              <div className="flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2">
++                <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(true)} disabled={!currentProntuario.id || !medicoId || isRequestingExam || pacienteDialogoDiverge} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
+                   <TestTube className="h-3.5 w-3.5" />Solicitar Exame
+                 </Button>
+                 <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="rounded-xl text-xs">Cancelar</Button>
+                 {!isReadOnly && (
+-                  <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
++                  <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs max-md:order-first max-md:col-span-2 max-md:h-11 max-md:text-sm" disabled={salvandoProntuario || pacienteDialogoDiverge}><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
+                 )}
+               </div>
+ 

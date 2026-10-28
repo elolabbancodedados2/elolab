@@ -1,0 +1,70 @@
+diff --git a/src/components/ErrorState.tsx b/src/components/ErrorState.tsx
+index d02444ea..5a3ce34b 100644
+--- a/src/components/ErrorState.tsx
++++ b/src/components/ErrorState.tsx
+@@ -2,6 +2,7 @@ import { AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
+ import { Button } from '@/components/ui/button';
+ import { Card } from '@/components/ui/card';
+ import { cn } from '@/lib/utils';
++import { mensagemDeErro } from '@/lib/erros';
+ 
+ interface ErrorStateProps {
+   title?: string;
+@@ -13,14 +14,43 @@ interface ErrorStateProps {
+   compact?: boolean;
+ }
+ 
+-/** Traduz erros técnicos em mensagens que o usuário da clínica entende. */
+-export function friendlyErrorMessage(error: unknown): string {
++const TECHNICAL_MARKERS =
++  /error|undefined|null|violates|relation|column|function|fetch|json|status code|pgrst|syntax|constraint|unexpected|cannot read|is not|\bat\s+\S+\s*\(|^\s*\d+\s*$|[{}<>[\]]|::|_id\b/i;
++const ENGLISH_HINT =
++  /\b(the|is|are|was|not|of|to|for|with|and|or|on|in|invalid|failed|cannot|unable|request|denied|found|exists|must|should|already|returned|wrong|unknown|internal|server|missing|required|too|bad|forbidden|unauthorized|credentials|aborted)\b/i;
++
++/**
++ * Traduz erros técnicos em mensagens que o usuário da clínica entende.
++ * Mensagens em português lançadas de propósito pelo próprio app são mantidas.
++ */
++export function friendlyErrorMessage(error: unknown, fallback?: string): string {
+   const raw =
+     typeof error === 'string'
+       ? error
+       : (error as { message?: string } | undefined)?.message || '';
++  const code = String((error as { code?: unknown } | undefined)?.code ?? '');
+   const msg = raw.toLowerCase();
+ 
++  // Erro do Postgres/PostgREST com código: lib/erros já traduz e nomeia o campo.
++  if (/^(2\d{4}|42501|PGRST)/.test(code)) return mensagemDeErro(error);
++
++  // Erro do Postgres/PostgREST com código: o mapeamento de lib/erros já nomeia o campo.
++  if (/^(2d{4}|42501|PGRST)/.test(code)) return mensagemDeErro(error);
++
++  if (msg.includes('duplicate key') || code === '23505') {
++    return 'Já existe um registro com esses dados.';
++  }
++  if (msg.includes('violates foreign key') || code === '23503') {
++    return 'Este registro está vinculado a outros dados e não pode ser alterado ou removido.';
++  }
++  if (
++    msg.includes('violates not-null') ||
++    msg.includes('violates check constraint') ||
++    code === '23502' ||
++    code === '23514'
++  ) {
++    return 'Há campos obrigatórios ou inválidos. Revise os dados e tente novamente.';
++  }
+   if (!navigator.onLine || msg.includes('failed to fetch') || msg.includes('networkerror')) {
+     return 'Sem conexão com o servidor. Verifique sua internet e tente novamente.';
+   }
+@@ -33,6 +63,11 @@ export function friendlyErrorMessage(error: unknown): string {
+   if (msg.includes('timeout') || msg.includes('timed out')) {
+     return 'A consulta demorou mais que o esperado. Tente novamente.';
+   }
++  // shortcut: heurística simples (sem marcadores técnicos nem palavras comuns do inglês = frase nossa); trocar por códigos de erro próprios se surgir falso positivo.
++  if (raw.trim() && raw.length < 200 && !ENGLISH_HINT.test(raw) && !TECHNICAL_MARKERS.test(raw)) {
++    return raw.trim();
++  }
++  if (fallback) return fallback;
+   return 'Não conseguimos carregar estas informações agora. Tente novamente em instantes.';
+ }
+ 

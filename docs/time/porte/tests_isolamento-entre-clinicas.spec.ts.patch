@@ -1,0 +1,358 @@
+diff --git a/tests/isolamento-entre-clinicas.spec.ts b/tests/isolamento-entre-clinicas.spec.ts
+index cf9cef54..c794731f 100644
+--- a/tests/isolamento-entre-clinicas.spec.ts
++++ b/tests/isolamento-entre-clinicas.spec.ts
+@@ -1,5 +1,12 @@
+ import { test, expect, type APIRequestContext } from '@playwright/test';
+ import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scripts/test-supabase-env.ts';
++import { CONFIRMACAO_DESCARTAVEL, TABELAS_COM_CLINICA } from './fixtures/duasClinicas.ts';
++import {
++  decidirSkipDeConfiguracao,
++  motivoSkipPermitido,
++  VARIAVEIS_BASE,
++  variaveisAusentes,
++} from './fixtures/suiteSeguranca.ts';
+ 
+ /**
+  * Isolamento entre clínicas — o teste que faltava.
+@@ -17,13 +24,17 @@ import { DEFAULT_LOCAL_SUPABASE_URL, resolveLocalQaSupabaseConfig } from '../scr
+  * da concorrente no próprio celular —, mandava mensagem em nome dela ou apagava
+  * a instância.
+  *
++ * Rodada 2 (CLIN-QA-565): a versão anterior aceitava "no máximo 1 clínica
++ * visível", o que passava com banco vazio e passava se A enxergasse SÓ dados
++ * de B. Agora cada tabela exige: A vê pelo menos 1 linha; todas as linhas
++ * visíveis a A são da clínica A; e A não alcança nenhuma das linhas que B vê.
++ *
+  * ─── COMO RODAR ──────────────────────────────────────────────────────────────
+- * Use somente contas sinteticas em duas clinicas no Supabase local descartavel:
+- * QA_SUPABASE_URL=http://127.0.0.1:54321
+- * QA_SUPABASE_ANON_KEY=<chave-anon-local>
+- * QA_CLINICA_A_EMAIL/PASSWORD e QA_CLINICA_B_EMAIL/PASSWORD
+- * Acoes WhatsApp exigem QA_WHATSAPP_STUB_CONFIRMED=ELOLAB_LOCAL_STUB.
+- * Sem essas variaveis, os testes sao pulados e nenhum backend e acessado.
++ * Só contas sintéticas no Supabase local descartável, criadas pelo seed
++ * `node tests/fixtures/seed-duas-clinicas.ts`, que grava QA_SUPABASE_*,
++ * QA_CLINICA_A/B_EMAIL/PASSWORD e QA_CLINICA_A/B_ID.
++ * Ações WhatsApp exigem QA_WHATSAPP_STUB_CONFIRMED=ELOLAB_LOCAL_STUB.
++ * Sem configuração, a suíte é pulada fora do CI e FALHA no CI.
+  */
+ 
+ const QA_SUPABASE = resolveLocalQaSupabaseConfig(process.env);
+@@ -31,8 +42,18 @@ const SUPABASE_URL = QA_SUPABASE?.url || DEFAULT_LOCAL_SUPABASE_URL;
+ const ANON_KEY = QA_SUPABASE?.anonKey || '';
+ const CONTA_A = { email: process.env.QA_CLINICA_A_EMAIL, senha: process.env.QA_CLINICA_A_PASSWORD };
+ const CONTA_B = { email: process.env.QA_CLINICA_B_EMAIL, senha: process.env.QA_CLINICA_B_PASSWORD };
+-const temAsDuasContas = Boolean(CONTA_A.email && CONTA_A.senha && CONTA_B.email && CONTA_B.senha);
++const CLINICA_A = process.env.QA_CLINICA_A_ID?.trim() || '';
++const CLINICA_B = process.env.QA_CLINICA_B_ID?.trim() || '';
++const PACIENTE_B = process.env.QA_CLINICA_B_PACIENTE_ID?.trim() || '';
+ const whatsappStubConfirmed = process.env.QA_WHATSAPP_STUB_CONFIRMED === 'ELOLAB_LOCAL_STUB';
++const bancoDescartavel = process.env.QA_SUPABASE_DISPOSABLE === CONFIRMACAO_DESCARTAVEL;
++
++const VARIAVEIS_DA_SUITE = [
++  ...VARIAVEIS_BASE,
++  'QA_CLINICA_A_EMAIL', 'QA_CLINICA_A_PASSWORD', 'QA_CLINICA_B_EMAIL', 'QA_CLINICA_B_PASSWORD',
++  'QA_CLINICA_A_ID', 'QA_CLINICA_B_ID',
++];
++
+ /** Faz login e devolve o access_token. */
+ async function entrar(
+   request: APIRequestContext,
+@@ -59,19 +80,28 @@ function cabecalhos(token: string) {
+   };
+ }
+ 
+-test.describe('Isolamento entre clínicas', () => {
+-  test.skip(
+-    (!QA_SUPABASE || !temAsDuasContas),
+-    'Defina Supabase QA local e QA_CLINICA_A/B_EMAIL/PASSWORD para contas descartaveis em duas clinicas locais.',
+-  );
++async function linhasVisiveis(request: APIRequestContext, token: string, caminho: string) {
++  const resposta = await request.get(`${SUPABASE_URL}/rest/v1/${caminho}`, { headers: cabecalhos(token) });
++  expect(resposta.ok(), `${caminho}: ${resposta.status()} ${await resposta.text()}`).toBe(true);
++  const linhas = await resposta.json();
++  expect(Array.isArray(linhas), `${caminho} deveria devolver um array`).toBe(true);
++  return linhas as Array<{ id: string; clinica_id: string | null; [coluna: string]: unknown }>;
++}
+ 
++test.describe('Isolamento entre clínicas', () => {
+   let tokenA = '';
++  let tokenB = '';
+   let sessaoDaClinicaB: string | null = null;
+ 
+   test.beforeAll(async ({ playwright }) => {
++    const motivo = decidirSkipDeConfiguracao('Isolamento', variaveisAusentes(VARIAVEIS_DA_SUITE));
++    test.skip(Boolean(motivo), motivo ?? '');
++
++    expect(CLINICA_A, 'QA_CLINICA_A_ID e QA_CLINICA_B_ID precisam ser clínicas diferentes').not.toBe(CLINICA_B);
++
+     const request = await playwright.request.newContext();
+     tokenA = await entrar(request, CONTA_A.email!, CONTA_A.senha!);
+-    const tokenB = await entrar(request, CONTA_B.email!, CONTA_B.senha!);
++    tokenB = await entrar(request, CONTA_B.email!, CONTA_B.senha!);
+ 
+     // A clínica B lista as próprias sessões — é assim que descobrimos um id
+     // real para tentar alcançar de fora. Em produção, um atacante obteria
+@@ -87,116 +117,173 @@ test.describe('Isolamento entre clínicas', () => {
+     await request.dispose();
+   });
+ 
+-  test('A não lê registros de pacientes de B', async ({ request }) => {
+-    // O RLS é a primeira linha: mesmo autenticada, a clínica A só enxerga o
+-    // que é dela. Comparamos clinica_id para garantir que nada de fora entrou.
+-    const resposta = await request.get(
+-      `${SUPABASE_URL}/rest/v1/pacientes?select=id,clinica_id&limit=200`,
+-      { headers: cabecalhos(tokenA) },
+-    );
+-    expect(resposta.ok()).toBe(true);
+-
+-    const pacientes = await resposta.json();
+-    const clinicas = new Set(pacientes.map((p: any) => p.clinica_id));
+-    expect(
+-      clinicas.size,
+-      `A enxergou pacientes de ${clinicas.size} clínicas diferentes: ${[...clinicas].join(', ')}`,
+-    ).toBeLessThanOrEqual(1);
++  test('cada conta está na clínica sintética esperada', async ({ request }) => {
++    // Sem isto, um seed errado (as duas contas na mesma clínica) faria todos
++    // os testes abaixo passarem sem provar isolamento nenhum.
++    const [perfilA] = await linhasVisiveis(request, tokenA, `profiles?select=id,clinica_id&email=eq.${encodeURIComponent(CONTA_A.email!)}`);
++    const [perfilB] = await linhasVisiveis(request, tokenB, `profiles?select=id,clinica_id&email=eq.${encodeURIComponent(CONTA_B.email!)}`);
++    expect(perfilA?.clinica_id, 'perfil da conta A').toBe(CLINICA_A);
++    expect(perfilB?.clinica_id, 'perfil da conta B').toBe(CLINICA_B);
+   });
+ 
+-  for (const tabela of ['agendamentos', 'prontuarios', 'prescricoes', 'lancamentos', 'retornos', 'feedbacks_nps']) {
++  for (const tabela of TABELAS_COM_CLINICA) {
+     test(`A enxerga somente sua clínica em ${tabela}`, async ({ request }) => {
+-      const resposta = await request.get(`${SUPABASE_URL}/rest/v1/${tabela}?select=id,clinica_id&limit=500`, {
+-        headers: cabecalhos(tokenA),
+-      });
+-      expect(resposta.ok(), await resposta.text()).toBe(true);
+-      const linhas = await resposta.json();
+-      const clinicas = new Set(linhas.map((linha: any) => linha.clinica_id).filter(Boolean));
+-      expect(clinicas.size, `VAZAMENTO: ${tabela} devolveu ${clinicas.size} clínicas`).toBeLessThanOrEqual(1);
++      const deA = await linhasVisiveis(request, tokenA, `${tabela}?select=id,clinica_id&limit=1000`);
++      expect(
++        deA.length,
++        `PRÉ-CONDIÇÃO: A não vê nenhuma linha em ${tabela}; o teste passaria com banco vazio (CLIN-QA-565). Rode o seed.`,
++      ).toBeGreaterThan(0);
++      const estranhas = deA.filter((linha) => linha.clinica_id !== CLINICA_A);
++      expect(
++        estranhas.map((l) => `${l.id} (clinica_id=${l.clinica_id ?? 'null'})`),
++        `VAZAMENTO: ${tabela} devolveu para A linhas que não são da clínica A`,
++      ).toEqual([]);
++
++      const deB = await linhasVisiveis(request, tokenB, `${tabela}?select=id,clinica_id&limit=1000`);
++      expect(deB.length, `PRÉ-CONDIÇÃO: B não vê nenhuma linha em ${tabela}. Rode o seed.`).toBeGreaterThan(0);
++      expect(deB.every((l) => l.clinica_id === CLINICA_B), `B deveria ver só a clínica B em ${tabela}`).toBe(true);
++
++      // Busca direta pelos IDs de B: cobre o caso de a listagem paginar ou
++      // ordenar de um jeito que esconda a linha de B.
++      const idsDeB = deB.slice(0, 50).map((l) => l.id).join(',');
++      const alcancadas = await linhasVisiveis(request, tokenA, `${tabela}?select=id&id=in.(${idsDeB})`);
++      expect(alcancadas, `VAZAMENTO: A alcançou por ID linhas de B em ${tabela}`).toHaveLength(0);
+     });
+   }
+ 
+-  test('A não obtém o QR Code do WhatsApp de B', async ({ request }) => {
+-    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
+-    test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
++  test.describe('escrita cruzada (banco local descartável)', () => {
++    test.beforeAll(() => {
++      const faltando = [
++        ...(bancoDescartavel ? [] : ['QA_SUPABASE_DISPOSABLE']),
++        ...variaveisAusentes(['QA_CLINICA_B_PACIENTE_ID']),
++      ];
++      const motivo = decidirSkipDeConfiguracao('Isolamento (escrita)', faltando);
++      test.skip(Boolean(motivo), motivo ?? '');
++    });
++
++    test('A não altera paciente de B', async ({ request }) => {
++      const [antes] = await linhasVisiveis(request, tokenB, `pacientes?select=id,clinica_id,observacoes&id=eq.${PACIENTE_B}`);
++      expect(antes, 'PRÉ-CONDIÇÃO: paciente sintético de B não existe').toBeTruthy();
+ 
+-    const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
+-      headers: cabecalhos(tokenA),
+-      data: { action: 'get_qr_code', session_id: sessaoDaClinicaB },
++      const resposta = await request.patch(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_B}`, {
++        headers: { ...cabecalhos(tokenA), Prefer: 'return=representation' },
++        data: { observacoes: `isolamento ${Date.now()}` },
++      });
++      if (resposta.ok()) expect(await resposta.json(), 'A alterou paciente de B').toHaveLength(0);
++
++      const [depois] = await linhasVisiveis(request, tokenB, `pacientes?select=id,observacoes&id=eq.${PACIENTE_B}`);
++      expect(depois?.observacoes, 'VAZAMENTO: o paciente de B foi alterado pela conta A').toBe(antes.observacoes);
+     });
+ 
+-    // Quem pega o QR Code pareia o WhatsApp da outra clínica no próprio celular.
+-    expect(
+-      resposta.status(),
+-      'VAZAMENTO: a clínica A obteve o QR Code do WhatsApp da clínica B',
+-    ).not.toBe(200);
+-    expect([403, 404]).toContain(resposta.status());
+-  });
++    test('A não cria paciente dentro da clínica B', async ({ request }) => {
++      const marcador = `Isolamento ${Date.now()} — deve falhar`;
++      const resposta = await request.post(`${SUPABASE_URL}/rest/v1/pacientes`, {
++        headers: { ...cabecalhos(tokenA), Prefer: 'return=representation' },
++        data: { nome: marcador, clinica_id: CLINICA_B },
++      });
++      expect(resposta.ok(), 'A conseguiu inserir paciente com clinica_id de B').toBe(false);
+ 
+-  test('A não envia mensagem pela instância de B', async ({ request }) => {
+-    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
+-    test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
+-
+-    const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
+-      headers: cabecalhos(tokenA),
+-      data: {
+-        action: 'send_message',
+-        session_id: sessaoDaClinicaB,
+-        to: '0000000000000',
+-        message: 'teste de isolamento entre clínicas',
+-      },
++      const vistosPorB = await linhasVisiveis(request, tokenB, `pacientes?select=id&nome=eq.${encodeURIComponent(marcador)}`);
++      expect(vistosPorB, 'VAZAMENTO: paciente criado por A apareceu na clínica B').toHaveLength(0);
+     });
+ 
+-    expect(
+-      resposta.status(),
+-      'VAZAMENTO: a clínica A disparou mensagem em nome da clínica B',
+-    ).not.toBe(200);
+-  });
++    test('A não apaga paciente de B', async ({ request }) => {
++      const resposta = await request.delete(`${SUPABASE_URL}/rest/v1/pacientes?id=eq.${PACIENTE_B}`, {
++        headers: { ...cabecalhos(tokenA), Prefer: 'return=representation' },
++      });
++      if (resposta.ok()) expect(await resposta.json(), 'A apagou paciente de B').toHaveLength(0);
+ 
+-  test('A não apaga a instância de B', async ({ request }) => {
+-    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
+-    test.skip(!sessaoDaClinicaB, 'A clínica B não tem sessão de WhatsApp cadastrada para servir de alvo.');
++      const restantes = await linhasVisiveis(request, tokenB, `pacientes?select=id&id=eq.${PACIENTE_B}`);
++      expect(restantes, 'VAZAMENTO: o paciente de B foi apagado pela conta A').toHaveLength(1);
++    });
++  });
+ 
+-    const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
+-      headers: cabecalhos(tokenA),
+-      data: { action: 'delete_instance', session_id: sessaoDaClinicaB },
++  test.describe('WhatsApp (edge function)', () => {
++    test.beforeAll(() => {
++      test.skip(
++        !whatsappStubConfirmed,
++        motivoSkipPermitido('whatsapp-stub', 'Ações WhatsApp exigem QA_WHATSAPP_STUB_CONFIRMED=ELOLAB_LOCAL_STUB.'),
++      );
++      // O seed cria uma sessão em cada clínica; sem ela o alvo não existe e o teste não prova nada.
++      expect(sessaoDaClinicaB, 'PRÉ-CONDIÇÃO: a clínica B não tem sessão de WhatsApp. Rode o seed.').toBeTruthy();
+     });
+ 
+-    expect(
+-      resposta.status(),
+-      'VAZAMENTO: a clínica A apagou a conexão de WhatsApp da clínica B',
+-    ).not.toBe(200);
+-  });
++    test('A não obtém o QR Code do WhatsApp de B', async ({ request }) => {
++      const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
++        headers: cabecalhos(tokenA),
++        data: { action: 'get_qr_code', session_id: sessaoDaClinicaB },
++      });
+ 
+-  test('list_instances devolve só o que é da clínica de quem chamou', async ({ request }) => {
+-    test.skip(!whatsappStubConfirmed, 'Acoes WhatsApp exigem stub local confirmado.');
+-    const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
+-      headers: cabecalhos(tokenA),
+-      data: { action: 'list_instances' },
++      // Quem pega o QR Code pareia o WhatsApp da outra clínica no próprio celular.
++      expect(
++        resposta.status(),
++        'VAZAMENTO: a clínica A obteve o QR Code do WhatsApp da clínica B',
++      ).not.toBe(200);
++      expect([403, 404]).toContain(resposta.status());
+     });
+ 
+-    if (!resposta.ok()) return; // sem Evolution API configurada, nada a conferir
++    test('A não envia mensagem pela instância de B', async ({ request }) => {
++      const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
++        headers: cabecalhos(tokenA),
++        data: {
++          action: 'send_message',
++          session_id: sessaoDaClinicaB,
++          to: '0000000000000',
++          message: 'teste de isolamento entre clínicas',
++        },
++      });
+ 
+-    const corpo = await resposta.json();
+-    const lista = Array.isArray(corpo?.data) ? corpo.data : (Array.isArray(corpo) ? corpo : []);
++      expect(
++        resposta.status(),
++        'VAZAMENTO: a clínica A disparou mensagem em nome da clínica B',
++      ).not.toBe(200);
++    });
+ 
+-    // Antes esta ação devolvia TODAS as instâncias do servidor Evolution —
+-    // era o mapa que tornava os outros ataques triviais.
+-    const sessoesDaClinicaA = await request.get(
+-      `${SUPABASE_URL}/rest/v1/whatsapp_sessions?select=instance_name`,
+-      { headers: cabecalhos(tokenA) },
+-    );
+-    const permitidas = new Set(
+-      (await sessoesDaClinicaA.json()).map((s: any) => s.instance_name),
+-    );
++    test('A não apaga a instância de B', async ({ request }) => {
++      const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
++        headers: cabecalhos(tokenA),
++        data: { action: 'delete_instance', session_id: sessaoDaClinicaB },
++      });
+ 
+-    for (const item of lista) {
+-      const nome = item?.instance?.instanceName ?? item?.instanceName ?? item?.name;
+-      if (!nome) continue;
+       expect(
+-        permitidas.has(nome),
+-        `VAZAMENTO: list_instances devolveu "${nome}", que não é da clínica A`,
+-      ).toBe(true);
+-    }
++        resposta.status(),
++        'VAZAMENTO: a clínica A apagou a conexão de WhatsApp da clínica B',
++      ).not.toBe(200);
++    });
++
++    test('list_instances devolve só o que é da clínica de quem chamou', async ({ request }) => {
++      const resposta = await request.post(`${SUPABASE_URL}/functions/v1/whatsapp-evolution`, {
++        headers: cabecalhos(tokenA),
++        data: { action: 'list_instances' },
++      });
++
++      // Antes este caso fazia `return` e contava como PASSOU sem conferir nada.
++      test.skip(
++        !resposta.ok(),
++        motivoSkipPermitido('evolution-indisponivel', `list_instances respondeu ${resposta.status()}; sem Evolution de teste não há o que conferir.`),
++      );
++
++      const corpo = await resposta.json();
++      const lista = Array.isArray(corpo?.data) ? corpo.data : (Array.isArray(corpo) ? corpo : []);
++
++      // Antes esta ação devolvia TODAS as instâncias do servidor Evolution —
++      // era o mapa que tornava os outros ataques triviais.
++      const sessoesDaClinicaA = await request.get(
++        `${SUPABASE_URL}/rest/v1/whatsapp_sessions?select=instance_name`,
++        { headers: cabecalhos(tokenA) },
++      );
++      const permitidas = new Set(
++        (await sessoesDaClinicaA.json()).map((s: any) => s.instance_name),
++      );
++
++      for (const item of lista) {
++        const nome = item?.instance?.instanceName ?? item?.instanceName ?? item?.name;
++        if (!nome) continue;
++        expect(
++          permitidas.has(nome),
++          `VAZAMENTO: list_instances devolveu "${nome}", que não é da clínica A`,
++        ).toBe(true);
++      }
++    });
+   });
+ });
