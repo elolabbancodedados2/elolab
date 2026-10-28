@@ -14,8 +14,8 @@ export const WHATSAPP_AGENT_CAPABILITIES: Array<{
 }> = [
   { value: 'informacoes_clinica', label: 'Responder sobre a clínica', description: 'Informa endereço, contatos e horários cadastrados pela clínica.' },
   { value: 'consultar_disponibilidade', label: 'Consultar horários', description: 'Verifica os horários livres e profissionais disponíveis.' },
-  { value: 'criar_agendamento', label: 'Marcar consultas', description: 'Agenda uma consulta após o paciente escolher dia e horário.' },
-  { value: 'consultar_agendamentos_paciente', label: 'Consultar minhas consultas', description: 'Mostra apenas os próximos agendamentos do número que chamou.' },
+  { value: 'criar_agendamento', label: 'Marcar consultas', description: 'Agenda uma consulta após o paciente confirmar CPF e data de nascimento e escolher dia e horário.' },
+  { value: 'consultar_agendamentos_paciente', label: 'Consultar minhas consultas', description: 'Mostra data, hora e status dos próximos agendamentos depois que o paciente confirma CPF e data de nascimento.' },
   { value: 'cancelar_agendamento', label: 'Cancelar consultas', description: 'Cancela consultas do paciente após informar o motivo e confirmar com SIM.' },
   { value: 'reagendar_agendamento', label: 'Reagendar consultas', description: 'Troca o horário de consultas do paciente após escolher a nova data e confirmar com SIM.' },
   { value: 'registrar_triagem', label: 'Fazer pré-triagem', description: 'Registra sintomas para a equipe; não fornece diagnóstico.' },

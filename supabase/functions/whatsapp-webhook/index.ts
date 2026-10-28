@@ -1,9 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsPadrao } from '../_shared/cors.ts';
-import { findUniquePatientIdByPhone, isWhatsAppToolAllowed, normalizeBrazilianPhone, normalizeMedicalSpecialty, parseExplicitConfirmation } from '../_shared/whatsappAgentPolicy.ts';
+import { isWhatsAppToolAllowed, normalizeMedicalSpecialty, parseExplicitConfirmation } from '../_shared/whatsappAgentPolicy.ts';
 import { createNvidiaChatCompletion, DEFAULT_NVIDIA_CHAT_MODEL } from '../_shared/nvidia.ts';
 import { plainWhatsAppText } from '../_shared/whatsappText.ts';
 import { recursoDoPlanoLiberado } from '../_shared/planEntitlement.ts';
+import { checarRateLimit } from '../_shared/rateLimit.ts';
+import { cronSecretOk } from '../_shared/cronAuth.ts';
+import { enfileirarJob, ErroJobDefinitivo, ErroJobIncerto, processarLote, type Job } from '../_shared/jobs.ts';
+import { filaAtivaParaClinica, lerPayloadMensagem, montarJobMensagem, recenteParaReenfileirar, TIPO_MENSAGEM_RECEBIDA, tokenConfere } from './fila.ts';
+import { buscarCandidatosPorCpf, cpfValido, decidirVinculoPaciente, normalizarDataNascimento } from '../_shared/identificacaoPaciente.ts';
 
 /** Sem confirmação do plano, a IA fica calada e a mensagem segue para a equipe. */
 // deno-lint-ignore no-explicit-any
@@ -27,7 +32,8 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  let alertClient: ReturnType<typeof createClient> | null = null
+  // deno-lint-ignore no-explicit-any
+  let alertClient: any = null
   let alertClinicId: string | null = null
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -47,6 +53,23 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Worker da fila (ADR 0003): chamado pelo pg_cron com x-cron-secret.
+    if (new URL(req.url).searchParams.get('modo') === 'jobs') {
+      if (!cronSecretOk(req)) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      const db = createClient(supabaseUrl, supabaseServiceKey)
+      const env: AmbienteWebhook = { evolutionApiUrl, evolutionApiKey, nvidiaApiKey, nvidiaModel, embeddingApiKey, openaiModel }
+      const resumo = await processarLote(db, {
+        [TIPO_MENSAGEM_RECEBIDA]: (job) => processarJobMensagem(db, env, job),
+      }, { limite: 5, leaseSegundos: 120, porClinica: 3 })
+      return new Response(JSON.stringify({ ok: true, ...resumo }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // Verifica assinatura do webhook. Evolution API pode ser configurada para
     // enviar o header `apikey` (ou `x-webhook-token`). Sem essa checagem,
     // qualquer requisição pública podia forjar mensagens/status.
@@ -55,7 +78,7 @@ Deno.serve(async (req) => {
       req.headers.get('x-webhook-token') ||
       req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
       ''
-    if (!providedToken || providedToken !== evolutionApiKey) {
+    if (!tokenConfere(providedToken, evolutionApiKey)) {
       console.warn('[Webhook] Unauthorized: token ausente ou inválido')
       return new Response(
         JSON.stringify({ error: 'unauthorized' }),
@@ -175,7 +198,12 @@ Deno.serve(async (req) => {
               .eq('clinica_id', session.clinica_id)
               .maybeSingle()
 
-            if (existingMessage) continue
+            if (existingMessage) {
+              // No modo fila, uma gravação anterior pode ter falhado antes de
+              // enfileirar; o job é idempotente pela chave da mensagem.
+              await reenfileirarMensagemExistente(supabase, session, incomingMessageId)
+              continue
+            }
           }
 
           // Buscar ou criar conversa
@@ -190,27 +218,19 @@ Deno.serve(async (req) => {
             .maybeSingle()
 
           if (!conversation) {
-            // Vincular somente uma correspondência única e exata após normalizar
-            // o telefone. Sufixos compartilhados nunca escolhem um paciente à sorte.
-            const phoneNumber = normalizeBrazilianPhone(remoteJid)
-            let patientId: string | null = null
-            if (phoneNumber.length >= 10) {
-              const { data: candidates } = await supabase
-                .from('pacientes')
-                .select('id, telefone')
-                .eq('clinica_id', session.clinica_id)
-                .or(`telefone.ilike.%${phoneNumber.slice(-8)}%,telefone.ilike.%${phoneNumber.slice(-9)}%`)
-                .limit(20)
-              patientId = findUniquePatientIdByPhone(phoneNumber, candidates || [])
-            }
-
-          const { data: newConversation } = await supabase
+            // A conversa nasce sem paciente. O vínculo pelo telefone foi desligado,
+            // inclusive a correspondência exata e única: o número do WhatsApp não
+            // prova quem escreve (aparelho da família, número reaproveitado,
+            // cadastro com telefone de outra pessoa), e o bot revelaria ou marcaria
+            // consulta em nome de outro paciente (CLIN-QA-003). O vínculo só
+            // acontece por identificar_paciente (CPF + nascimento) ou pela equipe.
+            const { data: newConversation } = await supabase
             .from('whatsapp_conversations')
             .insert({
                 session_id: session.id,
                 clinica_id: session.clinica_id || null,
                 remote_jid: remoteJid,
-                paciente_id: patientId,
+                paciente_id: null,
                 contexto: [],
               })
               .select()
@@ -222,7 +242,7 @@ Deno.serve(async (req) => {
           if (!conversation) continue
 
           // Salvar mensagem recebida
-          const { error: erroInsercaoMensagem } = await supabase
+          const { data: mensagemGravada, error: erroInsercaoMensagem } = await supabase
             .from('whatsapp_messages')
             .insert({
               conversation_id: conversation.id,
@@ -236,12 +256,18 @@ Deno.serve(async (req) => {
                 tipo_mensagem: Object.keys(msg.message || {})[0] || 'texto',
               },
             })
+            .select('id')
+            .single()
 
           // O índice único é a barreira contra duas entregas concorrentes do
           // mesmo evento. Não executar IA, ferramentas ou incremento de não
           // lidas quando outra execução já registrou a mensagem.
-          if (erroInsercaoMensagem?.code === '23505' && incomingMessageId) continue
+          if (erroInsercaoMensagem?.code === '23505' && incomingMessageId) {
+            await reenfileirarMensagemExistente(supabase, session, incomingMessageId)
+            continue
+          }
           if (erroInsercaoMensagem) throw erroInsercaoMensagem
+          if (!mensagemGravada?.id) continue
 
           // Atualizar última mensagem
           await supabase
@@ -253,367 +279,24 @@ Deno.serve(async (req) => {
             _conversation_id: conversation.id,
           })
 
-          if (!conversation.acao_pendente && !['aguardando_humano','em_atendimento_humano'].includes(conversation.status)) {
-            const surveyReply = await capturePatientSatisfaction(supabase, session.clinica_id, remoteJid, messageContent)
-            if (surveyReply) {
-              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, surveyReply)
-              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
-                direcao: 'saida', tipo: 'texto', conteudo: surveyReply })
-              continue
-            }
-          }
-          if (conversation.status === 'aguardando_avaliacao') {
-            const ratingMatch = messageContent.trim().match(/^[1-5]$/)
-            const thankYou = ratingMatch
-              ? 'Obrigado pela sua avaliação! Ela nos ajuda a melhorar continuamente.'
-              : 'Para registrar sua avaliação, responda somente com um número de 1 a 5.'
-            if (ratingMatch) {
-              await supabase.from('whatsapp_conversations').update({
-                status: 'encerrado', satisfacao_nota: Number(ratingMatch[0]), nao_lidas: 0,
-              }).eq('id', conversation.id).eq('clinica_id', session.clinica_id)
-            }
-            await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, thankYou)
-            await supabase.from('whatsapp_messages').insert({
-              conversation_id: conversation.id, clinica_id: session.clinica_id || null,
-              direcao: 'saida', tipo: 'texto', conteudo: thankYou,
-            })
+          if (filaAtivaParaClinica(session.clinica_id, Deno.env.get('WHATSAPP_FILA_CLINICAS'))) {
+            // Modo fila (ADR 0003): a mensagem já está gravada; IA e resposta
+            // ficam com o worker. Responder rápido evita reenvio do Evolution.
+            await enfileirarJob(supabase, montarJobMensagem({
+              clinicaId: session.clinica_id,
+              sessionId: session.id,
+              conversationId: conversation.id,
+              mensagemId: mensagemGravada.id,
+              messageIdProvedor: incomingMessageId,
+            }))
             continue
           }
 
-          // Processar com IA se tiver agente configurado
-          if (session.agent_id && session.whatsapp_agents?.ativo && await agenteIaLiberado(supabase, session.clinica_id)) {
-            const agent = session.whatsapp_agents
-
-            // Depois do handoff, a IA permanece silenciosa até um atendente
-            // devolver explicitamente a conversa. Isso evita que ela interrompa
-            // ou contradiga o atendimento humano.
-            if (conversation.status === 'aguardando_humano' || conversation.status === 'em_atendimento_humano') {
-              continue
-            }
-
-            if (conversation.acao_pendente) {
-              const reply = await handlePendingAgendaAction(supabase, conversation, session.clinica_id, messageContent)
-              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
-              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
-                direcao: 'saida', tipo: 'texto', conteudo: reply })
-              continue
-            }
-
-            const legacyProposal = getPendingBooking(conversation.contexto)
-            if (legacyProposal) {
-              await clearPendingBooking(supabase, conversation, session.clinica_id)
-              // Old proposals used a different storage contract; ask again instead of silently executing one.
-              const reply = 'Atualizei o atendimento. Pode informar novamente o dia e horário que você prefere?'
-              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
-              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
-                direcao: 'saida', tipo: 'texto', conteudo: reply })
-              continue
-            }
-
-            // O modelo nem sempre escolhe cancelar_agendamento mesmo com o ID
-            // disponivel no contexto. Quando ja sabemos (sem IA) que ha uma
-            // unica consulta futura e a intencao da conversa e cancelar,
-            // tratamos a mensagem atual como o motivo diretamente, a menos
-            // que ela pareca estar trocando de intencao.
-            const priorReceptionState = (Array.isArray(conversation.contexto) ? conversation.contexto : [])
-              .find((item: any) => item?.kind === 'reception_state' && Date.parse(item.expires_at) > Date.now())
-            const switchingIntent = /remarc|reagend|trocar.*consulta|agendar|marcar/i.test(messageContent)
-            if (priorReceptionState?.intent === 'cancelar_agendamento' && !switchingIntent
-              && conversation.paciente_id && isWhatsAppToolAllowed('cancelar_agendamento', agent.habilidades)
-              && Array.isArray(priorReceptionState.data?.agendamentos) && priorReceptionState.data.agendamentos.length === 1) {
-              const toolResult = await executeAgentTool(supabase, 'cancelar_agendamento',
-                { agendamento_id: priorReceptionState.data.agendamentos[0].id, motivo: messageContent },
-                conversation, session.clinica_id, agent.habilidades)
-              const reply = plainWhatsAppText(toolResult.message || 'Não consegui preparar o cancelamento. Pode tentar novamente?')
-              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
-              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
-                direcao: 'saida', tipo: 'texto', conteudo: reply })
-              continue
-            }
-
-            // Mesma limitacao: depois de listar especialidades, o modelo as
-            // vezes lista de novo em vez de consultar a disponibilidade da
-            // especialidade que o paciente acabou de escolher. Quando a
-            // mensagem bate com uma especialidade ja oferecida, consulta
-            // direto em vez de repetir a pergunta.
-            if (!priorReceptionState?.data?.agendamentos && Array.isArray(priorReceptionState?.data?.medicos)
-              && priorReceptionState.data.medicos.length > 0 && isWhatsAppToolAllowed('consultar_disponibilidade', agent.habilidades)) {
-              const wanted = normalizeMedicalSpecialty(messageContent)
-              const matches = wanted && priorReceptionState.data.medicos.some((m: any) => normalizeMedicalSpecialty(String(m.especialidade || '')).includes(wanted))
-              if (matches) {
-                const toolResult = await executeAgentTool(supabase, 'consultar_disponibilidade',
-                  { especialidade: messageContent, data_preferencia: todaySaoPauloDateOnly() },
-                  conversation, session.clinica_id, agent.habilidades)
-                const reply = plainWhatsAppText(toolResult.message || 'Não consegui consultar a disponibilidade. Pode tentar novamente?')
-                await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
-                await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
-                  direcao: 'saida', tipo: 'texto', conteudo: reply })
-                continue
-              }
-            }
-
-            // O modelo as vezes confunde uma pergunta informativa simples
-            // (endereco, horario, preco, convenio, preparo) com uma acao de
-            // agenda (ex.: pediram o endereco e ele propos cancelar a
-            // consulta). Quando a mensagem bate com um desses assuntos de
-            // forma clara, responde direto sem passar pelo modelo.
-            const infoAssunto = /endere[cç]o|onde fica|localiza[cç][aã]o/i.test(messageContent) ? 'endereco'
-              : /hor[aá]rio|funcionamento|\babre\b|\bfecha\b/i.test(messageContent) ? 'horarios'
-              : /pre[cç]o|valor|quanto custa/i.test(messageContent) ? 'precos'
-              : /conv[eê]nio|plano de sa[uú]de/i.test(messageContent) ? 'convenios'
-              : /preparo|jejum/i.test(messageContent) ? 'preparo' : null
-            if (infoAssunto && isWhatsAppToolAllowed('consultar_informacoes_clinica', agent.habilidades)) {
-              const toolResult = await executeAgentTool(supabase, 'consultar_informacoes_clinica',
-                { assunto: infoAssunto }, conversation, session.clinica_id, agent.habilidades)
-              const reply = plainWhatsAppText(toolResult.message || 'Não encontrei essa informação. Posso chamar a equipe para conferir?')
-              await sendWhatsAppMessage(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid, reply)
-              await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
-                direcao: 'saida', tipo: 'texto', conteudo: reply })
-              continue
-            }
-
-            if (!nvidiaApiKey) {
-              console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
-              continue
-            }
-
-            // Verificar horário de atendimento
-            const clinicNowParts = new Intl.DateTimeFormat('pt-BR', {
-              timeZone: 'America/Sao_Paulo',
-              weekday: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hourCycle: 'h23',
-            }).formatToParts(new Date())
-            const clinicNow = Object.fromEntries(clinicNowParts.map(part => [part.type, part.value]))
-            const currentTime = `${clinicNow.hour}:${clinicNow.minute}`
-            const isWeekday = !['sáb.', 'dom.'].includes(clinicNow.weekday)
-            const isWithinHours = isWeekday && currentTime >= agent.horario_atendimento_inicio &&
-                                   currentTime <= agent.horario_atendimento_fim
-
-            if (!isWithinHours && !agent.atende_fora_horario) {
-              // Enviar mensagem de fora do horário
-              await sendWhatsAppMessage(
-                evolutionApiUrl,
-                evolutionApiKey,
-                instanceName,
-                remoteJid,
-                agent.mensagem_fora_horario
-              )
-              continue
-            }
-
-            // Buscar contexto da conversa
-            const { data: recentMessages } = await supabase
-              .from('whatsapp_messages')
-              .select('direcao, conteudo, created_at')
-              .eq('conversation_id', conversation.id)
-              .order('created_at', { ascending: false })
-              .limit(10)
-
-            const conversationHistory = (recentMessages || []).reverse().map(m => ({
-              role: m.direcao === 'entrada' ? 'user' : 'assistant',
-              content: m.conteudo,
-            }))
-
-            // Buscar dados do paciente se vinculado
-            //
-            // ⚠️ MINIMIZAÇÃO DE DADOS (LGPD art. 6º, III e art. 33)
-            // Este contexto é enviado para api.deepseek.com, provedor sediado
-            // fora do Brasil. Transferência internacional de dado pessoal
-            // sensível de saúde exige base legal e cláusulas contratuais
-            // específicas. Enquanto isso não estiver formalizado, mandamos o
-            // MÍNIMO necessário para o agente funcionar.
-            //
-            // Antes iam nome completo, data de nascimento, telefone e ALERGIAS.
-            // Nada disso é necessário para agendar: alergia é dado de saúde
-            // (art. 11), o telefone o WhatsApp já conhece, e o primeiro nome
-            // basta para tratar bem a pessoa.
-            //
-            // Se algum dia o agente precisar de dado clínico, exponha isso como
-            // opção por agente e registre o consentimento do paciente.
-            let patientContext = ''
-            if (conversation.paciente_id) {
-              const { data: paciente } = await supabase
-                .from('pacientes')
-                .select('nome')
-                .eq('id', conversation.paciente_id)
-                .maybeSingle()
-
-              if (paciente) {
-                const primeiroNome = (paciente.nome || '').trim().split(/\s+/)[0] || 'Paciente'
-                patientContext = `
-DADOS DO PACIENTE:
-- Primeiro nome: ${primeiroNome}
-`
-
-                // Só data, hora e status — sem médico, especialidade ou tipo de
-                // procedimento, que revelariam informação clínica.
-            const { data: agendamentos } = await supabase
-              .from('agendamentos')
-              .select('data, hora_inicio, status')
-              .eq('paciente_id', conversation.paciente_id)
-              .eq('clinica_id', session.clinica_id)
-              .gte('data', new Date().toISOString().split('T')[0])
-                  .order('data', { ascending: true })
-                  .limit(3)
-
-                if (agendamentos && agendamentos.length > 0) {
-                  patientContext += '\nPRÓXIMOS AGENDAMENTOS:\n'
-                  agendamentos.forEach(a => {
-                    patientContext += `- ${a.data} às ${a.hora_inicio} - Status: ${a.status}\n`
-                  })
-                }
-              }
-            }
-
-            // Busca híbrida contextualiza apenas dúvidas operacionais com fontes
-            // desta clínica. Mensagens e dados do paciente nunca são indexados.
-            const knowledge = await retrieveAgentKnowledge(
-              supabase,
-              embeddingApiKey,
-              session.clinica_id,
-              agent.id,
-              messageContent,
-            )
-
-            // Construir system prompt baseado no tipo, humor e fontes do agente
-            const systemPrompt = buildSystemPrompt(agent, patientContext, knowledge.context, knowledge.configured)
-
-            // Atendimento IA via OpenAI Responses API. A chave permanece no
-            // backend e nunca é enviada ao navegador ou ao WhatsApp.
-            let responseText = ''
-            try {
-              responseText = await runNvidiaAgent({
-                apiKey: nvidiaApiKey,
-                model: nvidiaModel,
-                agent,
-                systemPrompt,
-                conversationHistory,
-                messageContent,
-                supabase,
-                conversation,
-                clinicaId: session.clinica_id,
-              })
-            } catch (error) {
-              console.error('[AI] NVIDIA error:', error instanceof Error ? error.message : 'unknown')
-              responseText = 'No momento estou com dificuldade para responder. Vou encaminhar seu atendimento para nossa equipe humana.'
-              await supabase
-                .from('whatsapp_conversations')
-                .update({ status: 'aguardando_humano' })
-                .eq('id', conversation.id)
-            }
-
-            if (responseText) {
-              await sendWhatsAppMessage(
-                evolutionApiUrl,
-                evolutionApiKey,
-                instanceName,
-                remoteJid,
-                responseText,
-              )
-
-              await supabase
-                .from('whatsapp_messages')
-                .insert({
-                  conversation_id: conversation.id,
-                  clinica_id: session.clinica_id || null,
-                  direcao: 'saida',
-                  tipo: 'texto',
-                  conteudo: responseText,
-                })
-              await supabase.from('whatsapp_conversations')
-                .update({ primeira_resposta_em: new Date().toISOString() })
-                .eq('id', conversation.id)
-                .is('primeira_resposta_em', null)
-            }
-
-            if (legacyDeepSeekDisabled()) {
-            // Legado DeepSeek mantido apenas durante a migração; não é executado.
-            const startTime = Date.now()
-            const aiResponse = await fetch('https://api.openai.com/v1/responses', {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer disabled',
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: openaiModel,
-                messages: [
-                  { role: 'system', content: systemPrompt },
-                  ...conversationHistory,
-                  { role: 'user', content: messageContent },
-                ],
-                max_tokens: agent.max_tokens || 2000,
-                temperature: parseFloat(agent.temperatura) || 0.7,
-              }),
-            })
-
-            if (!aiResponse.ok) {
-              console.error('[AI] Error:', await aiResponse.text())
-              continue
-            }
-
-            const aiResult = await aiResponse.json()
-            const duration = Date.now() - startTime
-
-            // Processar resposta
-            let responseText = ''
-            const choice = aiResult.choices?.[0]
-
-            if (choice?.message?.tool_calls) {
-              // Processar chamadas de ferramentas
-              for (const toolCall of choice.message.tool_calls) {
-                const toolResult = await executeAgentTool(
-                  supabase,
-                  toolCall.function.name,
-                  JSON.parse(toolCall.function.arguments),
-                  conversation
-                )
-
-                // Logar ação
-                await supabase.from('whatsapp_agent_actions').insert({
-                  conversation_id: conversation.id,
-                  tipo_acao: toolCall.function.name,
-                  dados_entrada: JSON.parse(toolCall.function.arguments),
-                  dados_saida: toolResult,
-                  sucesso: toolResult.success,
-                  erro_mensagem: toolResult.error,
-                  duracao_ms: duration,
-                })
-
-                // Se a ferramenta retornou uma mensagem, usar ela
-                if (toolResult.message) {
-                  responseText = toolResult.message
-                }
-              }
-            }
-            if (!responseText && choice?.message?.content) {
-              responseText = choice.message.content
-            }
-
-            if (responseText) {
-              // Enviar resposta via WhatsApp
-              await sendWhatsAppMessage(
-                evolutionApiUrl,
-                evolutionApiKey,
-                instanceName,
-                remoteJid,
-                responseText
-              )
-
-              // Salvar mensagem enviada
-              await supabase
-                .from('whatsapp_messages')
-                .insert({
-                  conversation_id: conversation.id,
-                  direcao: 'saida',
-                  tipo: 'texto',
-                  conteudo: responseText,
-                })
-            }
-            }
-          }
+          const { enviar } = criarEnvio(evolutionApiUrl, evolutionApiKey, instanceName, remoteJid)
+          await processarMensagemRecebida({
+            supabase, session, conversation, remoteJid, messageContent,
+            nvidiaApiKey, nvidiaModel, embeddingApiKey, openaiModel, enviar,
+          })
         }
         break
       }
@@ -642,6 +325,469 @@ DADOS DO PACIENTE:
     )
   }
 })
+
+interface ContextoMensagem {
+  // deno-lint-ignore no-explicit-any
+  supabase: any
+  // deno-lint-ignore no-explicit-any
+  session: any
+  // deno-lint-ignore no-explicit-any
+  conversation: any
+  remoteJid: string
+  messageContent: string
+  nvidiaApiKey: string | undefined
+  nvidiaModel: string
+  embeddingApiKey: string
+  openaiModel: string
+  enviar: (texto: string) => Promise<void>
+}
+
+/**
+ * Pesquisa de satisfação, avaliação, ações pendentes e agente de IA para uma
+ * mensagem já gravada. Roda no request do webhook (modo síncrono) ou no
+ * worker da fila (modo fila, ADR 0003).
+ */
+async function processarMensagemRecebida(ctx: ContextoMensagem): Promise<void> {
+  const { supabase, session, conversation, remoteJid, messageContent, nvidiaApiKey, nvidiaModel, embeddingApiKey, openaiModel, enviar } = ctx
+  if (!conversation.acao_pendente && !['aguardando_humano','em_atendimento_humano'].includes(conversation.status)) {
+    const surveyReply = await capturePatientSatisfaction(supabase, session.clinica_id, remoteJid, messageContent)
+    if (surveyReply) {
+      await enviar(surveyReply)
+      await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+        direcao: 'saida', tipo: 'texto', conteudo: surveyReply })
+      return
+    }
+  }
+  if (conversation.status === 'aguardando_avaliacao') {
+    const ratingMatch = messageContent.trim().match(/^[1-5]$/)
+    const thankYou = ratingMatch
+      ? 'Obrigado pela sua avaliação! Ela nos ajuda a melhorar continuamente.'
+      : 'Para registrar sua avaliação, responda somente com um número de 1 a 5.'
+    if (ratingMatch) {
+      await supabase.from('whatsapp_conversations').update({
+        status: 'encerrado', satisfacao_nota: Number(ratingMatch[0]), nao_lidas: 0,
+      }).eq('id', conversation.id).eq('clinica_id', session.clinica_id)
+    }
+    await enviar(thankYou)
+    await supabase.from('whatsapp_messages').insert({
+      conversation_id: conversation.id, clinica_id: session.clinica_id || null,
+      direcao: 'saida', tipo: 'texto', conteudo: thankYou,
+    })
+    return
+  }
+
+  // Processar com IA se tiver agente configurado
+  if (session.agent_id && session.whatsapp_agents?.ativo && await agenteIaLiberado(supabase, session.clinica_id)) {
+    const agent = session.whatsapp_agents
+
+    // Depois do handoff, a IA permanece silenciosa até um atendente
+    // devolver explicitamente a conversa. Isso evita que ela interrompa
+    // ou contradiga o atendimento humano.
+    if (conversation.status === 'aguardando_humano' || conversation.status === 'em_atendimento_humano') {
+      return
+    }
+
+    if (conversation.acao_pendente) {
+      const reply = await handlePendingAgendaAction(supabase, conversation, session.clinica_id, messageContent)
+      await enviar(reply)
+      await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+        direcao: 'saida', tipo: 'texto', conteudo: reply })
+      return
+    }
+
+    const legacyProposal = getPendingBooking(conversation.contexto)
+    if (legacyProposal) {
+      await clearPendingBooking(supabase, conversation, session.clinica_id)
+      // Old proposals used a different storage contract; ask again instead of silently executing one.
+      const reply = 'Atualizei o atendimento. Pode informar novamente o dia e horário que você prefere?'
+      await enviar(reply)
+      await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+        direcao: 'saida', tipo: 'texto', conteudo: reply })
+      return
+    }
+
+    // O modelo nem sempre escolhe cancelar_agendamento mesmo com o ID
+    // disponivel no contexto. Quando ja sabemos (sem IA) que ha uma
+    // unica consulta futura e a intencao da conversa e cancelar,
+    // tratamos a mensagem atual como o motivo diretamente, a menos
+    // que ela pareca estar trocando de intencao.
+    const priorReceptionState = (Array.isArray(conversation.contexto) ? conversation.contexto : [])
+      .find((item: any) => item?.kind === 'reception_state' && Date.parse(item.expires_at) > Date.now())
+    const switchingIntent = /remarc|reagend|trocar.*consulta|agendar|marcar/i.test(messageContent)
+    if (priorReceptionState?.intent === 'cancelar_agendamento' && !switchingIntent
+      && conversation.paciente_id && isWhatsAppToolAllowed('cancelar_agendamento', agent.habilidades)
+      && Array.isArray(priorReceptionState.data?.agendamentos) && priorReceptionState.data.agendamentos.length === 1) {
+      const toolResult = await executeAgentTool(supabase, 'cancelar_agendamento',
+        { agendamento_id: priorReceptionState.data.agendamentos[0].id, motivo: messageContent },
+        conversation, session.clinica_id, agent.habilidades)
+      const reply = plainWhatsAppText(toolResult.message || 'Não consegui preparar o cancelamento. Pode tentar novamente?')
+      await enviar(reply)
+      await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+        direcao: 'saida', tipo: 'texto', conteudo: reply })
+      return
+    }
+
+    // Mesma limitacao: depois de listar especialidades, o modelo as
+    // vezes lista de novo em vez de consultar a disponibilidade da
+    // especialidade que o paciente acabou de escolher. Quando a
+    // mensagem bate com uma especialidade ja oferecida, consulta
+    // direto em vez de repetir a pergunta.
+    if (!priorReceptionState?.data?.agendamentos && Array.isArray(priorReceptionState?.data?.medicos)
+      && priorReceptionState.data.medicos.length > 0 && isWhatsAppToolAllowed('consultar_disponibilidade', agent.habilidades)) {
+      const wanted = normalizeMedicalSpecialty(messageContent)
+      const matches = wanted && priorReceptionState.data.medicos.some((m: any) => normalizeMedicalSpecialty(String(m.especialidade || '')).includes(wanted))
+      if (matches) {
+        const toolResult = await executeAgentTool(supabase, 'consultar_disponibilidade',
+          { especialidade: messageContent, data_preferencia: todaySaoPauloDateOnly() },
+          conversation, session.clinica_id, agent.habilidades)
+        const reply = plainWhatsAppText(toolResult.message || 'Não consegui consultar a disponibilidade. Pode tentar novamente?')
+        await enviar(reply)
+        await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+          direcao: 'saida', tipo: 'texto', conteudo: reply })
+        return
+      }
+    }
+
+    // O modelo as vezes confunde uma pergunta informativa simples
+    // (endereco, horario, preco, convenio, preparo) com uma acao de
+    // agenda (ex.: pediram o endereco e ele propos cancelar a
+    // consulta). Quando a mensagem bate com um desses assuntos de
+    // forma clara, responde direto sem passar pelo modelo.
+    const infoAssunto = /endere[cç]o|onde fica|localiza[cç][aã]o/i.test(messageContent) ? 'endereco'
+      : /hor[aá]rio|funcionamento|\babre\b|\bfecha\b/i.test(messageContent) ? 'horarios'
+      : /pre[cç]o|valor|quanto custa/i.test(messageContent) ? 'precos'
+      : /conv[eê]nio|plano de sa[uú]de/i.test(messageContent) ? 'convenios'
+      : /preparo|jejum/i.test(messageContent) ? 'preparo' : null
+    if (infoAssunto && isWhatsAppToolAllowed('consultar_informacoes_clinica', agent.habilidades)) {
+      const toolResult = await executeAgentTool(supabase, 'consultar_informacoes_clinica',
+        { assunto: infoAssunto }, conversation, session.clinica_id, agent.habilidades)
+      const reply = plainWhatsAppText(toolResult.message || 'Não encontrei essa informação. Posso chamar a equipe para conferir?')
+      await enviar(reply)
+      await supabase.from('whatsapp_messages').insert({ conversation_id: conversation.id, clinica_id: session.clinica_id,
+        direcao: 'saida', tipo: 'texto', conteudo: reply })
+      return
+    }
+
+    if (!nvidiaApiKey) {
+      console.error('[AI] OPENAI_API_KEY não configurada para sessão:', session.id)
+      return
+    }
+
+    // Verificar horário de atendimento
+    const clinicNowParts = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date())
+    const clinicNow = Object.fromEntries(clinicNowParts.map(part => [part.type, part.value]))
+    const currentTime = `${clinicNow.hour}:${clinicNow.minute}`
+    const isWeekday = !['sáb.', 'dom.'].includes(clinicNow.weekday)
+    const isWithinHours = isWeekday && currentTime >= agent.horario_atendimento_inicio &&
+                           currentTime <= agent.horario_atendimento_fim
+
+    if (!isWithinHours && !agent.atende_fora_horario) {
+      // Enviar mensagem de fora do horário
+      await enviar(agent.mensagem_fora_horario
+      )
+      return
+    }
+
+    // Buscar contexto da conversa
+    const { data: recentMessages } = await supabase
+      .from('whatsapp_messages')
+      .select('direcao, conteudo, created_at')
+      .eq('conversation_id', conversation.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    const conversationHistory = ((recentMessages || []) as { direcao: string; conteudo: string }[]).reverse().map(m => ({
+      role: m.direcao === 'entrada' ? 'user' : 'assistant',
+      content: m.conteudo,
+    }))
+
+    // Buscar dados do paciente se vinculado
+    //
+    // ⚠️ MINIMIZAÇÃO DE DADOS (LGPD art. 6º, III e art. 33)
+    // Este contexto é enviado para api.deepseek.com, provedor sediado
+    // fora do Brasil. Transferência internacional de dado pessoal
+    // sensível de saúde exige base legal e cláusulas contratuais
+    // específicas. Enquanto isso não estiver formalizado, mandamos o
+    // MÍNIMO necessário para o agente funcionar.
+    //
+    // Antes iam nome completo, data de nascimento, telefone e ALERGIAS.
+    // Nada disso é necessário para agendar: alergia é dado de saúde
+    // (art. 11), o telefone o WhatsApp já conhece, e o primeiro nome
+    // basta para tratar bem a pessoa.
+    //
+    // Se algum dia o agente precisar de dado clínico, exponha isso como
+    // opção por agente e registre o consentimento do paciente.
+    let patientContext = ''
+    if (conversation.paciente_id) {
+      const { data: paciente } = await supabase
+        .from('pacientes')
+        .select('nome')
+        .eq('id', conversation.paciente_id)
+        .maybeSingle()
+
+      if (paciente) {
+        const primeiroNome = (paciente.nome || '').trim().split(/\s+/)[0] || 'Paciente'
+        patientContext = `
+DADOS DO PACIENTE:
+- Primeiro nome: ${primeiroNome}
+`
+
+        // Só data, hora e status — sem médico, especialidade ou tipo de
+        // procedimento, que revelariam informação clínica.
+    const { data: agendamentos } = await supabase
+      .from('agendamentos')
+      .select('data, hora_inicio, status')
+      .eq('paciente_id', conversation.paciente_id)
+      .eq('clinica_id', session.clinica_id)
+      .gte('data', new Date().toISOString().split('T')[0])
+          .order('data', { ascending: true })
+          .limit(3)
+
+        if (agendamentos && agendamentos.length > 0) {
+          patientContext += '\nPRÓXIMOS AGENDAMENTOS:\n'
+          agendamentos.forEach((a: { data: string; hora_inicio: string; status: string }) => {
+            patientContext += `- ${a.data} às ${a.hora_inicio} - Status: ${a.status}\n`
+          })
+        }
+      }
+    }
+
+    // Busca híbrida contextualiza apenas dúvidas operacionais com fontes
+    // desta clínica. Mensagens e dados do paciente nunca são indexados.
+    const knowledge = await retrieveAgentKnowledge(
+      supabase,
+      embeddingApiKey,
+      session.clinica_id,
+      agent.id,
+      messageContent,
+    )
+
+    // Construir system prompt baseado no tipo, humor e fontes do agente
+    const systemPrompt = buildSystemPrompt(agent, patientContext, knowledge.context, knowledge.configured)
+
+    // Atendimento IA via OpenAI Responses API. A chave permanece no
+    // backend e nunca é enviada ao navegador ou ao WhatsApp.
+    let responseText = ''
+    try {
+      responseText = await runNvidiaAgent({
+        apiKey: nvidiaApiKey,
+        model: nvidiaModel,
+        agent,
+        systemPrompt,
+        conversationHistory,
+        messageContent,
+        supabase,
+        conversation,
+        clinicaId: session.clinica_id,
+      })
+    } catch (error) {
+      console.error('[AI] NVIDIA error:', error instanceof Error ? error.message : 'unknown')
+      responseText = 'No momento estou com dificuldade para responder. Vou encaminhar seu atendimento para nossa equipe humana.'
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ status: 'aguardando_humano' })
+        .eq('id', conversation.id)
+    }
+
+    if (responseText) {
+      await enviar(responseText,
+      )
+
+      await supabase
+        .from('whatsapp_messages')
+        .insert({
+          conversation_id: conversation.id,
+          clinica_id: session.clinica_id || null,
+          direcao: 'saida',
+          tipo: 'texto',
+          conteudo: responseText,
+        })
+      await supabase.from('whatsapp_conversations')
+        .update({ primeira_resposta_em: new Date().toISOString() })
+        .eq('id', conversation.id)
+        .is('primeira_resposta_em', null)
+    }
+
+    if (legacyDeepSeekDisabled()) {
+    // Legado DeepSeek mantido apenas durante a migração; não é executado.
+    const startTime = Date.now()
+    const aiResponse = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer disabled',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: openaiModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...conversationHistory,
+          { role: 'user', content: messageContent },
+        ],
+        max_tokens: agent.max_tokens || 2000,
+        temperature: parseFloat(agent.temperatura) || 0.7,
+      }),
+    })
+
+    if (!aiResponse.ok) {
+      console.error('[AI] Error:', await aiResponse.text())
+      return
+    }
+
+    const aiResult = await aiResponse.json()
+    const duration = Date.now() - startTime
+
+    // Processar resposta
+    let responseText = ''
+    const choice = aiResult.choices?.[0]
+
+    if (choice?.message?.tool_calls) {
+      // Processar chamadas de ferramentas
+      for (const toolCall of choice.message.tool_calls) {
+        const toolResult = await executeAgentTool(
+          supabase,
+          toolCall.function.name,
+          JSON.parse(toolCall.function.arguments),
+          conversation
+        )
+
+        // Logar ação
+        await supabase.from('whatsapp_agent_actions').insert({
+          conversation_id: conversation.id,
+          tipo_acao: toolCall.function.name,
+          dados_entrada: JSON.parse(toolCall.function.arguments),
+          dados_saida: toolResult,
+          sucesso: toolResult.success,
+          erro_mensagem: toolResult.error,
+          duracao_ms: duration,
+        })
+
+        // Se a ferramenta retornou uma mensagem, usar ela
+        if (toolResult.message) {
+          responseText = toolResult.message
+        }
+      }
+    }
+    if (!responseText && choice?.message?.content) {
+      responseText = choice.message.content
+    }
+
+    if (responseText) {
+      // Enviar resposta via WhatsApp
+      await enviar(responseText
+      )
+
+      // Salvar mensagem enviada
+      await supabase
+        .from('whatsapp_messages')
+        .insert({
+          conversation_id: conversation.id,
+          direcao: 'saida',
+          tipo: 'texto',
+          conteudo: responseText,
+        })
+    }
+    }
+  }
+}
+
+/** Envio pelo Evolution que registra se algo saiu (para marcar o job como incerto). */
+function criarEnvio(apiUrl: string, apiKey: string, instanceName: string, remoteJid: string) {
+  const estado = { enviou: false }
+  const enviar = async (texto: string) => {
+    estado.enviou = true
+    await sendWhatsAppMessage(apiUrl, apiKey, instanceName, remoteJid, texto)
+  }
+  return { estado, enviar }
+}
+
+interface AmbienteWebhook {
+  evolutionApiUrl: string
+  evolutionApiKey: string
+  nvidiaApiKey: string | undefined
+  nvidiaModel: string
+  embeddingApiKey: string
+  openaiModel: string
+}
+
+/**
+ * Handler do job whatsapp.mensagem_recebida. Recarrega mensagem, sessão e
+ * conversa pelo id e confere que todas pertencem à clínica do job antes de
+ * agir. Falha depois de enviar algo vira ErroJobIncerto (sem reenvio).
+ */
+// deno-lint-ignore no-explicit-any
+async function processarJobMensagem(supabase: any, env: AmbienteWebhook, job: Job): Promise<void> {
+  const payload = lerPayloadMensagem(job.payload)
+  if (!payload || !job.clinica_id) throw new ErroJobDefinitivo('payload_invalido')
+
+  const { data: mensagem, error: erroMensagem } = await supabase.from('whatsapp_messages')
+    .select('id, conversation_id, clinica_id, direcao, conteudo')
+    .eq('id', payload.mensagem_id).eq('clinica_id', job.clinica_id).maybeSingle()
+  if (erroMensagem) throw erroMensagem
+  if (!mensagem || mensagem.direcao !== 'entrada' || mensagem.conversation_id !== payload.conversation_id || !mensagem.conteudo) {
+    throw new ErroJobDefinitivo('mensagem_nao_encontrada')
+  }
+
+  const { data: session, error: erroSessao } = await supabase.from('whatsapp_sessions')
+    .select('*, whatsapp_agents(*)').eq('id', payload.session_id).eq('clinica_id', job.clinica_id).maybeSingle()
+  if (erroSessao) throw erroSessao
+  if (!session) throw new ErroJobDefinitivo('sessao_nao_encontrada')
+  if (session.whatsapp_agents?.clinica_id && session.whatsapp_agents.clinica_id !== session.clinica_id) {
+    throw new ErroJobDefinitivo('agente_de_outra_clinica')
+  }
+
+  const { data: conversation, error: erroConversa } = await supabase.from('whatsapp_conversations')
+    .select('*').eq('id', payload.conversation_id).eq('clinica_id', job.clinica_id).maybeSingle()
+  if (erroConversa) throw erroConversa
+  if (!conversation || conversation.session_id !== session.id || !conversation.remote_jid) {
+    throw new ErroJobDefinitivo('conversa_nao_encontrada')
+  }
+
+  const { estado, enviar } = criarEnvio(env.evolutionApiUrl, env.evolutionApiKey, session.instance_name, conversation.remote_jid)
+  try {
+    await processarMensagemRecebida({
+      supabase, session, conversation,
+      remoteJid: conversation.remote_jid,
+      messageContent: mensagem.conteudo,
+      nvidiaApiKey: env.nvidiaApiKey,
+      nvidiaModel: env.nvidiaModel,
+      embeddingApiKey: env.embeddingApiKey,
+      openaiModel: env.openaiModel,
+      enviar,
+    })
+  } catch (error) {
+    if (estado.enviou) throw new ErroJobIncerto('falha_apos_envio')
+    throw error
+  }
+}
+
+/**
+ * Reentrega de mensagem já gravada: no modo fila, garante que o job exista
+ * (a gravação anterior pode ter falhado antes de enfileirar). Só dentro da
+ * janela de reentrega, para não responder de novo a mensagens antigas.
+ */
+// deno-lint-ignore no-explicit-any
+async function reenfileirarMensagemExistente(supabase: any, session: any, messageId: string): Promise<void> {
+  if (!filaAtivaParaClinica(session.clinica_id, Deno.env.get('WHATSAPP_FILA_CLINICAS'))) return
+  const { data: existente } = await supabase.from('whatsapp_messages')
+    .select('id, conversation_id, created_at')
+    .eq('message_id', messageId).eq('clinica_id', session.clinica_id).eq('direcao', 'entrada')
+    .maybeSingle()
+  if (!existente?.conversation_id || !recenteParaReenfileirar(existente.created_at)) return
+  await enfileirarJob(supabase, montarJobMensagem({
+    clinicaId: session.clinica_id,
+    sessionId: session.id,
+    conversationId: existente.conversation_id,
+    mensagemId: existente.id,
+    messageIdProvedor: messageId,
+  }))
+}
 
 async function runNvidiaAgent({
   apiKey,
@@ -1057,7 +1203,8 @@ REGRAS IMPORTANTES:
 7. Nunca invente endereco, preco, profissional, disponibilidade ou confirmacao.
 8. Para cancelar, consultar primeiro os agendamentos do paciente e perguntar o motivo. Para remarcar, consultar a agenda e preservar a consulta antiga ate confirmar a alteracao. Para confirmar presenca, consultar o agendamento. Usar somente IDs retornados pelas ferramentas. Nunca pedir UUID ao paciente. Todas as alteracoes exigem SIM.
 10. Preserve a ultima especialidade, data, profissional e horario escolhidos. Pergunte apenas o dado que falta. Quando nao houver vaga, ofereca consultar a proxima data. Informacoes sobre endereco, valores, convenios e preparos exigem consultar_informacoes_clinica.
-9. Se o paciente pedir uma pessoa, parar a automacao, reclamar, demonstrar confusao persistente ou houver risco clinico, use transferir_humano imediatamente.`
+9. Se o paciente pedir uma pessoa, parar a automacao, reclamar, demonstrar confusao persistente ou houver risco clinico, use transferir_humano imediatamente.
+11. Antes de consultar, marcar, remarcar, cancelar ou confirmar consultas sem cadastro confirmado nesta conversa, peca o CPF e a data de nascimento e chame identificar_paciente. Nunca use nome ou telefone como identificacao. Se a ferramenta nao confirmar, nao tente adivinhar e nao diga qual dado divergiu.`
 }
 
 interface PendingBooking {
@@ -1198,6 +1345,22 @@ function getAgentTools(_tipo: string, habilidades: unknown): any[] {
     tools.push({
       type: 'function',
       function: {
+        name: 'identificar_paciente',
+        description: 'Confere o CPF e a data de nascimento informados pelo paciente e vincula a conversa ao cadastro da clínica. Obrigatório antes de consultar, criar, cancelar, remarcar ou confirmar agendamentos do paciente.',
+        parameters: {
+          type: 'object',
+          properties: {
+            cpf: { type: 'string', description: 'CPF informado pelo paciente, com ou sem pontuação' },
+            data_nascimento: { type: 'string', description: 'Data de nascimento informada pelo paciente (DD/MM/AAAA ou AAAA-MM-DD)' },
+          },
+          required: ['cpf', 'data_nascimento'],
+        },
+      },
+    })
+
+    tools.push({
+      type: 'function',
+      function: {
         name: 'consultar_agendamentos_paciente',
         description: 'Lista os agendamentos do paciente',
         parameters: {
@@ -1297,7 +1460,7 @@ async function executeAgentTool(
       case 'cancelar_agendamento':
       case 'reagendar_agendamento':
       case 'confirmar_presenca': {
-        if (!conversation.paciente_id) return { success: false, message: 'Preciso que a equipe vincule seu cadastro para alterar sua consulta com segurança.' }
+        if (!conversation.paciente_id) return { success: false, message: MENSAGEM_PEDIR_IDENTIFICACAO }
         if (!args.agendamento_id) return { success: false, message: 'Qual das suas consultas você quer alterar?' }
         const { data: appointment, error } = await supabase.from('agendamentos').select('id, data, hora_inicio, status, medico_id')
           .eq('id', args.agendamento_id).eq('clinica_id', clinicaId).eq('paciente_id', conversation.paciente_id).maybeSingle()
@@ -1421,17 +1584,24 @@ async function executeAgentTool(
         }
       }
 
+      case 'identificar_paciente': {
+        return await identificarPaciente(supabase, args, conversation, clinicaId)
+      }
+
       case 'consultar_agendamentos_paciente': {
         if (!conversation.paciente_id) {
           return {
             success: false,
-            message: 'Não consegui identificar seu cadastro. Poderia informar seu CPF ou nome completo?',
+            message: MENSAGEM_PEDIR_IDENTIFICACAO,
           }
         }
 
+        // Sem especialidade nem CRM: revelam informação clínica e não são
+        // necessários para o paciente reconhecer a consulta. O id e o medico_id
+        // ficam porque cancelar, remarcar e confirmar usam os ids devolvidos aqui.
         let pacienteAgendamentosQuery = supabase
           .from('agendamentos')
-          .select('id, data, hora_inicio, status, medico_id, medicos(nome, especialidade)')
+          .select('id, data, hora_inicio, status, medico_id, medicos(nome)')
           .eq('paciente_id', conversation.paciente_id)
           .gte('data', todaySaoPauloDateOnly())
           .in('status', ['agendado', 'confirmado'])
@@ -1451,7 +1621,7 @@ async function executeAgentTool(
         let texto = 'Seus próximos agendamentos:\n\n'
         agendamentos.forEach((a: any, i: number) => {
           texto += `${i + 1}. ${a.data} às ${a.hora_inicio}\n`
-          texto += `   ${a.medicos?.nome || a.medicos?.especialidade || 'Profissional cadastrado'}\n`
+          texto += `   ${a.medicos?.nome || 'Profissional cadastrado'}\n`
           texto += `   Status: ${a.status}\n\n`
         })
 
@@ -1460,14 +1630,10 @@ async function executeAgentTool(
 
       case 'criar_agendamento': {
         if (!conversation.paciente_id) {
-          await supabase
-            .from('whatsapp_conversations')
-            .update({ status: 'aguardando_humano' })
-            .eq('id', conversation.id)
-            .eq('clinica_id', clinicaId)
+          // Nada é criado sem identificação confirmada por CPF + nascimento.
           return {
-            success: true,
-            message: 'Não consegui vincular seu cadastro com segurança. Vou chamar um atendente para concluir o agendamento.',
+            success: false,
+            message: MENSAGEM_PEDIR_IDENTIFICACAO,
           }
         }
 
@@ -1599,6 +1765,93 @@ async function executeAgentTool(
     console.error(`[Tool ${toolName}] Error:`, error)
     return { success: false, error: String(error) }
   }
+}
+
+const MENSAGEM_PEDIR_IDENTIFICACAO =
+  'Para sua segurança, preciso confirmar seu cadastro antes. Informe, por favor, seu CPF e sua data de nascimento.'
+const MENSAGEM_IDENTIFICACAO_NAO_CONFIRMADA =
+  'Não consegui confirmar seu cadastro com esses dados. Confira o CPF e a data de nascimento e envie novamente, ou peça para falar com um atendente.'
+const MENSAGEM_IDENTIFICACAO_HUMANO =
+  'Não consegui confirmar seu cadastro com segurança. Vou encaminhar seu atendimento para a equipe da clínica.'
+const TENTATIVAS_IDENTIFICACAO_POR_DIA = 3
+
+/**
+ * Vincula a conversa ao paciente só quando há um único cadastro da clínica
+ * com o CPF e a data de nascimento confere. As respostas ao paciente não dizem
+ * qual dado divergiu nem se o CPF existe, para a conversa não servir de
+ * consulta. Casos que só a recepção resolve (CPF duplicado, cadastro sem
+ * nascimento) e o excesso de tentativas vão para atendimento humano.
+ */
+async function identificarPaciente(
+  supabase: Parameters<typeof executeAgentTool>[0],
+  args: { cpf?: unknown; data_nascimento?: unknown } | null | undefined,
+  conversation: { id: string; paciente_id: string | null; remote_jid?: string | null },
+  clinicaId: string,
+): Promise<{ success: boolean; message: string }> {
+  if (conversation.paciente_id) {
+    return { success: true, message: 'Seu cadastro já está confirmado nesta conversa.' }
+  }
+
+  const encaminharHumano = async () => {
+    await supabase
+      .from('whatsapp_conversations')
+      .update({ status: 'aguardando_humano' })
+      .eq('id', conversation.id)
+      .eq('clinica_id', clinicaId)
+    return { success: false, message: MENSAGEM_IDENTIFICACAO_HUMANO }
+  }
+
+  // Sem o contador não há como limitar tentativas de CPF + nascimento:
+  // a falha do banco vai para a equipe em vez de liberar a conferência.
+  let limitado = true
+  try {
+    limitado = await checarRateLimit(supabase, {
+      chave: `whatsapp-identificacao:${clinicaId}:${conversation.remote_jid || conversation.id}`,
+      limite: TENTATIVAS_IDENTIFICACAO_POR_DIA,
+      janelaSegundos: 86400,
+      failClosed: true,
+    })
+  } catch {
+    limitado = true
+  }
+  if (limitado) return await encaminharHumano()
+
+  const cpfDigitos = String(args?.cpf || '').replace(/\D/g, '')
+  const nascimento = normalizarDataNascimento(args?.data_nascimento, todaySaoPauloDateOnly())
+  if (!cpfValido(cpfDigitos) || !nascimento) {
+    return { success: false, message: MENSAGEM_IDENTIFICACAO_NAO_CONFIRMADA }
+  }
+
+  const decisao = decidirVinculoPaciente(
+    await buscarCandidatosPorCpf(supabase, clinicaId, cpfDigitos),
+    nascimento,
+  )
+  if (decisao.tipo === 'novo') {
+    return { success: false, message: MENSAGEM_IDENTIFICACAO_NAO_CONFIRMADA }
+  }
+  if (decisao.tipo === 'pendente') {
+    if (decisao.motivo === 'nascimento_divergente') {
+      return { success: false, message: MENSAGEM_IDENTIFICACAO_NAO_CONFIRMADA }
+    }
+    return await encaminharHumano()
+  }
+
+  // `is('paciente_id', null)` impede sobrescrever um vínculo feito pela equipe
+  // entre a leitura da conversa e esta gravação.
+  const { data: atualizada, error } = await supabase
+    .from('whatsapp_conversations')
+    .update({ paciente_id: decisao.pacienteId })
+    .eq('id', conversation.id)
+    .eq('clinica_id', clinicaId)
+    .is('paciente_id', null)
+    .select('id')
+    .maybeSingle()
+  if (error) throw error
+  if (!atualizada) return await encaminharHumano()
+
+  // As próximas ferramentas desta mesma resposta já enxergam o vínculo.
+  conversation.paciente_id = decisao.pacienteId
+  return { success: true, message: 'Cadastro confirmado. Como posso ajudar com sua consulta?' }
 }
 
 function timeToMinutes(value: string): number {

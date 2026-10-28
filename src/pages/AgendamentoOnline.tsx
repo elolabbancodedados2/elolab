@@ -200,6 +200,13 @@ export default function AgendamentoOnline() {
       document.getElementById('ag-cpf')?.focus();
       return;
     }
+    // CPF + data de nascimento identificam o paciente; um só dado vinculava a
+    // consulta ao cadastro de outra pessoa (CLIN-QA-003).
+    if (!form.data_nascimento || (info && form.data_nascimento > info.hoje)) {
+      setErro(form.data_nascimento ? 'Data de nascimento inválida.' : 'Informe a data de nascimento.');
+      document.getElementById('ag-nasc')?.focus();
+      return;
+    }
     if (form.telefone.replace(/\D/g, '').length < 10) {
       setErro('Informe um telefone com DDD.');
       document.getElementById('ag-tel')?.focus();
@@ -258,7 +265,7 @@ export default function AgendamentoOnline() {
           <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><CheckCircle2 className="h-8 w-8" aria-hidden="true" /></span>
           <p className="text-lg font-semibold">{concluido}</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
+            Horário solicitado: {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
           </p>
         </CardContent></Card>
         {contatoDigitos.length >= 10 && (
@@ -421,8 +428,8 @@ export default function AgendamentoOnline() {
                 <Input id="ag-nome" className={INPUT} required autoComplete="name" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
               <div className="space-y-1.5"><Label htmlFor="ag-cpf">CPF *</Label>
                 <Input id="ag-cpf" className={INPUT} required inputMode="numeric" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })} placeholder="000.000.000-00" /></div>
-              <div className="space-y-1.5"><Label htmlFor="ag-nasc">Data de nascimento</Label>
-                <Input id="ag-nasc" className={INPUT} type="date" max={info.hoje} value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label htmlFor="ag-nasc">Data de nascimento *</Label>
+                <Input id="ag-nasc" className={INPUT} type="date" required max={info.hoje} value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} /></div>
               <div className="space-y-1.5"><Label htmlFor="ag-tel">Celular / WhatsApp *</Label>
                 <Input id="ag-tel" className={INPUT} required inputMode="tel" autoComplete="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" /></div>
               <div className="space-y-1.5"><Label htmlFor="ag-email">E-mail</Label>
