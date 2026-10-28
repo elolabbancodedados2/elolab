@@ -22,6 +22,13 @@ describe('whatsapp agent policy', () => {
     expect(isWhatsAppToolAllowed('transferir_humano', [])).toBe(true);
     expect(isWhatsAppToolAllowed('delete_clinic', ['informacoes_clinica'])).toBe(false);
   });
+  it('offers patient identification only with a capability that acts on the patient record', () => {
+    expect(isWhatsAppToolAllowed('identificar_paciente', ['consultar_agendamentos_paciente'])).toBe(true);
+    expect(isWhatsAppToolAllowed('identificar_paciente', ['cancelar_agendamento'])).toBe(true);
+    expect(isWhatsAppToolAllowed('identificar_paciente', ['informacoes_clinica', 'consultar_disponibilidade'])).toBe(false);
+    expect(isWhatsAppToolAllowed('identificar_paciente', [])).toBe(false);
+    expect(isWhatsAppToolAllowed('identificar_paciente', 'criar_agendamento')).toBe(false);
+  });
 
   it('normalizes a Brazilian mobile number with or without country prefix', () => {
     expect(normalizeBrazilianPhone('+55 (11) 99999-1234')).toBe('11999991234');
