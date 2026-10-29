@@ -1,12 +1,11 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 import { 
   ArrowRightLeft, 
   Plus, 
   Eye, 
-  Printer, 
   Send,
   FileCheck,
   Clock,
@@ -14,16 +13,9 @@ import {
   XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+
 import {
   Select,
   SelectContent,
@@ -84,6 +76,10 @@ interface EncaminhamentoMedicoProps {
   medicoOrigemId: string;
   encaminhamentos: Encaminhamento[];
   onEncaminhamentoCriado: () => void;
+  creationPage?: boolean;
+  onNew: () => void;
+  onView: (id: string) => void;
+  onBack: () => void;
 }
 
 const ESPECIALIDADES = [
@@ -119,11 +115,10 @@ export function EncaminhamentoMedico({
   medicoOrigemId,
   encaminhamentos,
   onEncaminhamentoCriado,
+  creationPage = false, onNew, onView, onBack,
 }: EncaminhamentoMedicoProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isViewOpen, setIsViewOpen] = useState(false);
-  const [isContraReferenciaOpen, setIsContraReferenciaOpen] = useState(false);
-  const [selectedEncaminhamento, setSelectedEncaminhamento] = useState<Encaminhamento | null>(null);
+  const completed = useRef(false);
+  const saveLock = useRef(false);
   const [medicos, setMedicos] = useState<Medico[]>([]);
   const [isLoadingMedicos, setIsLoadingMedicos] = useState(false);
   const [medicosError, setMedicosError] = useState<unknown>(null);
@@ -142,7 +137,8 @@ export function EncaminhamentoMedico({
     tratamento_atual: '',
     informacoes_adicionais: '',
   });
-  const [contraReferencia, setContraReferencia] = useState('');
+  const baseline = useRef(formData);
+  const dirty = JSON.stringify(formData) !== JSON.stringify(baseline.current);
   const { toast } = useToast();
   const { profile } = useSupabaseAuth();
 
@@ -181,6 +177,7 @@ export function EncaminhamentoMedico({
   }, [profile?.clinica_id, medicosReloadKey]);
 
   const handleCreate = async () => {
+    if (saveLock.current) return;
     if (!formData.especialidade_destino || !formData.motivo.trim()) {
       toast({
         title: 'Campos obrigatórios',
@@ -210,6 +207,7 @@ export function EncaminhamentoMedico({
       return;
     }
 
+    saveLock.current = true;
     setLoading(true);
     try {
       const { error } = await supabase
@@ -240,7 +238,7 @@ export function EncaminhamentoMedico({
         description: 'O encaminhamento foi registrado com sucesso.',
       });
 
-      setIsOpen(false);
+      completed.current = true;
       resetForm();
       onEncaminhamentoCriado();
     } catch (error) {
@@ -250,63 +248,7 @@ export function EncaminhamentoMedico({
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddContraReferencia = async () => {
-    if (!selectedEncaminhamento || !contraReferencia.trim()) {
-      toast({
-        title: 'Atenção',
-        description: 'Preencha a contra-referência.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (!profile?.clinica_id) {
-      toast({ title: 'Clínica não identificada', description: 'Atualize a página e tente novamente.', variant: 'destructive' });
-      return;
-    }
-    if (contraReferencia.trim().length > 10000) {
-      toast({ title: 'Texto muito longo', description: 'Use no máximo 10.000 caracteres.', variant: 'destructive' });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('encaminhamentos')
-        .update({
-          contra_referencia: contraReferencia.trim(),
-          data_contra_referencia: todaySaoPauloDateOnly(),
-          status: 'concluido',
-          data_atendimento: selectedEncaminhamento.data_atendimento || todaySaoPauloDateOnly(),
-        })
-        .eq('id', selectedEncaminhamento.id)
-        .eq('clinica_id', profile.clinica_id)
-        .in('status', ['pendente', 'em_andamento'])
-        .select('id')
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!data) throw new Error('Este encaminhamento já foi concluído ou atualizado. Recarregue a lista.');
-
-      toast({
-        title: 'Contra-referência registrada',
-        description: 'O encaminhamento foi atualizado.',
-      });
-
-      setIsContraReferenciaOpen(false);
-      setContraReferencia('');
-      setSelectedEncaminhamento(null);
-      onEncaminhamentoCriado();
-    } catch (error) {
-      toast({
-        title: 'Erro',
-        description: mensagemDeErro(error),
-        variant: 'destructive',
-      });
-    } finally {
+      saveLock.current = false;
       setLoading(false);
     }
   };
@@ -351,7 +293,7 @@ export function EncaminhamentoMedico({
 
   return (
     <div className="space-y-4">
-      <Card>
+      {!creationPage && <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -361,7 +303,7 @@ export function EncaminhamentoMedico({
                 <Badge variant="secondary">{encaminhamentos.length}</Badge>
               )}
             </div>
-            <Button onClick={() => setIsOpen(true)} size="sm" disabled={isLoadingMedicos || (!medicosError && !medicoOrigemAtivo)}>
+            <Button onClick={onNew} size="sm" disabled={isLoadingMedicos || (!medicosError && !medicoOrigemAtivo)}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Encaminhamento
             </Button>
@@ -420,10 +362,7 @@ export function EncaminhamentoMedico({
                             variant="ghost"
                             size="icon"
                             aria-label={`Ver encaminhamento para ${enc.especialidade_destino}`}
-                            onClick={() => {
-                              setSelectedEncaminhamento(enc);
-                              setIsViewOpen(true);
-                            }}
+                            onClick={() => onView(enc.id)}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -432,11 +371,7 @@ export function EncaminhamentoMedico({
                               variant="ghost"
                               size="icon"
                               aria-label={`Registrar contra-referência para ${enc.especialidade_destino}`}
-                              onClick={() => {
-                                setSelectedEncaminhamento(enc);
-                                setContraReferencia(enc.contra_referencia || '');
-                                setIsContraReferenciaOpen(true);
-                              }}
+                              onClick={() => onView(enc.id)}
                             >
                               <FileCheck className="h-4 w-4" />
                             </Button>
@@ -484,18 +419,11 @@ export function EncaminhamentoMedico({
                           )}
                         </div>
                         <div className="flex shrink-0 gap-1">
-                          <Button variant="ghost" size="icon" aria-label="Ver encaminhamento recebido" onClick={() => {
-                            setSelectedEncaminhamento(enc);
-                            setIsViewOpen(true);
-                          }}>
+                          <Button variant="ghost" size="icon" aria-label="Ver encaminhamento recebido" onClick={() => onView(enc.id)}>
                             <Eye className="h-4 w-4" />
                           </Button>
                           {enc.status !== 'concluido' && enc.status !== 'cancelado' && (
-                            <Button variant="ghost" size="icon" aria-label="Registrar contra-referência" onClick={() => {
-                              setSelectedEncaminhamento(enc);
-                              setContraReferencia(enc.contra_referencia || '');
-                              setIsContraReferenciaOpen(true);
-                            }}>
+                            <Button variant="ghost" size="icon" aria-label="Registrar contra-referência" onClick={() => onView(enc.id)}>
                               <FileCheck className="h-4 w-4" />
                             </Button>
                           )}
@@ -509,17 +437,12 @@ export function EncaminhamentoMedico({
             </TabsContent>
           </Tabs>
         </CardContent>
-      </Card>
+      </Card>}
 
-      {/* Dialog de Novo Encaminhamento */}
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Novo Encaminhamento</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+      {creationPage && <section className="space-y-6">
+        <UnsavedChangesGuard dirty={dirty} busy={loading} completed={completed} />
+          <fieldset disabled={loading} className="min-w-0 space-y-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="encaminhamento-especialidade">Especialidade *</Label>
                 <Select
@@ -640,111 +563,17 @@ export function EncaminhamentoMedico({
                 rows={2}
               />
             </div>
-          </div>
+          </fieldset>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)}>
-              Cancelar
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button variant="outline" onClick={onBack}>
+              Voltar aos encaminhamentos
             </Button>
             <Button onClick={handleCreate} disabled={loading || isLoadingMedicos || !!medicosError || !medicoOrigemAtivo}>
               {loading ? 'Criando...' : 'Criar Encaminhamento'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog de Visualização */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Encaminhamento</DialogTitle>
-          </DialogHeader>
-
-          {selectedEncaminhamento && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Especialidade</Label>
-                  <p className="font-medium">{selectedEncaminhamento.especialidade_destino}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selectedEncaminhamento.status)}</div>
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-muted-foreground">Motivo</Label>
-                <p>{selectedEncaminhamento.motivo}</p>
-              </div>
-
-              {selectedEncaminhamento.hipotese_diagnostica && (
-                <div>
-                  <Label className="text-muted-foreground">Hipótese Diagnóstica</Label>
-                  <p>{selectedEncaminhamento.hipotese_diagnostica}</p>
-                </div>
-              )}
-
-              {selectedEncaminhamento.exames_realizados && (
-                <div>
-                  <Label className="text-muted-foreground">Exames Realizados</Label>
-                  <p>{selectedEncaminhamento.exames_realizados}</p>
-                </div>
-              )}
-
-              {selectedEncaminhamento.tratamento_atual && (
-                <div>
-                  <Label className="text-muted-foreground">Tratamento Atual</Label>
-                  <p>{selectedEncaminhamento.tratamento_atual}</p>
-                </div>
-              )}
-
-              {selectedEncaminhamento.contra_referencia && (
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <Label className="text-muted-foreground">Contra-referência</Label>
-                  <p className="mt-1">{selectedEncaminhamento.contra_referencia}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewOpen(false)}>
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog de Contra-Referência */}
-      <Dialog open={isContraReferenciaOpen} onOpenChange={setIsContraReferenciaOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Registrar Contra-Referência</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <Textarea
-              aria-label="Contra-referência do encaminhamento"
-              value={contraReferencia}
-              onChange={(e) => setContraReferencia(e.target.value)}
-              placeholder="Descreva o resultado do atendimento, diagnóstico, tratamento realizado e recomendações..."
-              rows={6}
-              maxLength={10000}
-            />
-            <p className="text-right text-xs text-muted-foreground">{contraReferencia.length}/10.000</p>
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsContraReferenciaOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleAddContraReferencia} disabled={loading || !contraReferencia.trim()}>
-              {loading ? 'Registrando...' : 'Registrar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </section>}
     </div>
   );
 }

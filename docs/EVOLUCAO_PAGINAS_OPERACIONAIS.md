@@ -148,3 +148,30 @@ Gravações e auditoria dos testes usam dados sintéticos e respostas intercepta
 ### Publicação
 
 Deploy concluído em 29/10/2026: `763ab16c048965be847dde19bc22b6db9e5fd027`, imagem `easypanel/elolab/app:deploy-20261029-763ab16`. Swarm confirmou atualização concluída, `/version.json` confirmou o hash e `/healthz` respondeu `ok`. A página de emissão foi aberta e visualizada em produção com a sessão existente, sem preencher ou salvar, com zero diálogos. Rollback preservado: imagem `deploy-20261029-bbb522d` e fonte `code.before-20261029-763ab16`. Capturas sintéticas locais em `.qa-artifacts/atestados-20261029/` (fora do Git). Sem migration ou alteração de Edge Functions.
+
+## Encaminhamentos — continuidade com o especialista
+
+### Diagnóstico
+
+O módulo possuía quatro modais de trabalho: criação, duas implementações de consulta e uma contra-referência separada. A lista de todos os encaminhamentos usava um controle de versão no salvamento da contra-referência; o painel por paciente não fazia essa mesma conferência. Essa duplicação criava comportamentos diferentes para a mesma tarefa. A lista e o detalhe anteriores foram inspecionados em produção; nenhuma transição foi executada.
+
+### Jornada e decisões
+
+- Médico vinculado e ativo seleciona o paciente → Novo Encaminhamento → `/documentos-clinicos/novo-encaminhamento?paciente=...`. A página apresenta paciente e médico de origem antes de especialidade, urgência e contexto clínico. Administrador sem vínculo médico continua sem emitir em nome de outro profissional, preservando a regra existente.
+- Especialidade e motivo são obrigatórios. Médico de destino, CID, exames, tratamento e informações adicionais mantêm os contratos existentes. Falha conserva o preenchimento; sucesso retorna ao histórico com paciente e busca preservados.
+- Tanto o painel por paciente quanto a tabela geral abrem `/encaminhamentos/:referralId`. A consulta filtra clínica e confirma auditoria de leitura antes de mostrar o documento. O backend mantém a autorização de leitura para médico/administrador da clínica; a atualização continua restrita à administração e aos médicos envolvidos.
+- Estados preservados: pendente → em andamento; pendente/em andamento → concluído somente com contra-referência; pendente/em andamento → cancelado. Registros encerrados não oferecem ações de atualização. Cancelar exige confirmação explícita.
+- Contra-referência e histórico ficam na mesma página. Salvamento confere clínica, estado e `updated_at`; conflito mantém o texto. Atualizar registro permite conferir a versão atual sem apagar o rascunho. Se outra sessão encerrar o registro, o texto local fica disponível para copiar, sem permitir sobrescrever o encerramento.
+- Navegação e recarga protegem trabalho não salvo; requisições de criação e atualização têm bloqueio contra envio simultâneo. Rascunhos permanecem somente em memória.
+
+### Implementação
+
+Arquivos: `src/pages/Encaminhamentos.tsx`, `src/components/clinical/EncaminhamentoMedico.tsx`, `src/App.tsx`, `src/config/routeLabels.ts` e `tests/referral-pages.spec.ts`. Removidos os handlers e overlays duplicados de detalhe/contra-referência do componente por paciente. Formulário de criação reutilizado na página; histórico de status, campos clínicos, links existentes e ações da lista preservados. Sem alteração de API, permissões, dependências ou banco.
+
+### Validação e limites
+
+- 12 cenários Playwright passaram sem retries: criação/detalhe em 1440/768/390 px, proteção de rascunhos, validação e recuperação de salvamento, conflito de atualização, encerramento em outra sessão, confirmação de cancelamento, restrições por médico/perfil, falha de auditoria, entrada pelo painel do paciente, retorno com contexto e regressão do administrador sem vínculo médico.
+- 13 testes unitários focados passaram: auditoria, contratos de autoria/transições, integridade documental e acessibilidade de rota. Os testes de migrations são verificações do código SQL, não execução contra o banco.
+- TypeScript com `tsconfig.app.json` e build de produção passaram. ESLint focal sem erros; 12 avisos no arquivo de página (8 de `any`, 4 de dependências de hooks).
+- Capturas de criação desktop/tablet, rodapé mobile e detalhe desktop/mobile efetivamente visualizadas. Campos usam rolagem da página, sem overlay; ações de criação no celular ficam acima da navegação inferior.
+- Dados, gravações e auditoria dos testes foram interceptados com fixtures sintéticas. Não houve encaminhamento real criado, iniciado, concluído ou cancelado. Isolamento do backend e integrações externas não foram rehomologados nesta entrega.

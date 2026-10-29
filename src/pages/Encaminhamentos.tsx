@@ -1,7 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
-import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search, ArrowRightLeft, FileText, Clock, CheckCircle2,
   Eye, Loader2, Stethoscope, User, Send, Edit, RefreshCw, MessageCircle, X,
@@ -16,9 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
+
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -37,7 +34,11 @@ import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
 import { PageHeader } from '@/components/PageHeader';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
+import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
+import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 interface EncaminhamentoData {
   id: string;
@@ -81,19 +82,58 @@ const URGENCIA_CONFIG: Record<string, { label: string; className: string }> = {
 
 type FiltroStatus = 'todos' | 'pendente' | 'em_andamento' | 'concluido' | 'cancelado';
 
-export default function Encaminhamentos() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [patientSearchTerm, setPatientSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<FiltroStatus>('todos');
-  const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
-  const [isViewOpen, setIsViewOpen] = useState(false);
-  const [selectedEnc, setSelectedEnc] = useState<EncaminhamentoData | null>(null);
+export default function Encaminhamentos({ creationPage = false }: { creationPage?: boolean }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { referralId } = useParams();
+  const [params] = useSearchParams();
+  const taskPage = creationPage || !!referralId;
+  const completed = useRef(false);
+  const initializedRecord = useRef('');
+  const updateLock = useRef(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.referralFilters?.search || '');
+  const [patientSearchTerm, setPatientSearchTerm] = useState<string>(() => location.state?.referralFilters?.patientSearch || '');
+  const [statusFilter, setStatusFilter] = useState<FiltroStatus>(() => location.state?.referralFilters?.status || 'todos');
+  const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(() => params.get('paciente') || location.state?.referralFilters?.patientId || null);
   const [contraRefText, setContraRefText] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
-  const { medicoId } = useCurrentMedico();
+  const { medicoId, currentMedico, isLoading: loadingMedico, error: medicoError, refetch: refetchMedico } = useCurrentMedico();
+  const referralFilters = { search: searchTerm, status: statusFilter, patientSearch: patientSearchTerm, patientId: selectedPacienteId };
+  const returnTo = /^\/documentos-clinicos(?:\?|$)/.test(location.state?.returnTo || '')
+    ? location.state.returnTo : '/documentos-clinicos?tab=encaminhamentos';
+  const leaveTask = () => navigate(returnTo, { replace: true, state: { referralFilters } });
+  const openTask = (path: string) => {
+    const source = taskPage ? returnTo : `${location.pathname}${location.search}`;
+    if (!taskPage) navigate(source, { replace: true, state: { referralFilters } });
+    navigate(path, { state: { returnTo: source, referralFilters } });
+  };
+  const recordKey = ['encaminhamento-pagina', profile?.clinica_id, user?.id, referralId, location.key];
+  const recordQuery = useQuery({
+    queryKey: recordKey,
+    enabled: !!referralId && !!profile?.clinica_id && !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('encaminhamentos')
+        .select('*, paciente:pacientes(nome,nome_social,cpf,telefone,email), medico_origem:medicos!encaminhamentos_medico_origem_id_fkey(nome, crm)')
+        .eq('id', referralId!).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      if (data) await registrarAcessoDocumentoClinico('encaminhamento', data.id, 'visualizacao');
+      return data as EncaminhamentoData | null;
+    },
+    retry: false, staleTime: Infinity, gcTime: 0,
+    refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
+  const selectedEnc = recordQuery.data;
+  const setSelectedEnc = (record: EncaminhamentoData) => queryClient.setQueryData(recordKey, record);
+  useEffect(() => {
+    if (selectedEnc && initializedRecord.current !== selectedEnc.id) {
+      initializedRecord.current = selectedEnc.id;
+      setContraRefText(selectedEnc.contra_referencia || '');
+    }
+  }, [selectedEnc]);
   const medicosQuery = useMedicos();
   const pacientesBuscaQuery = useBuscaPacientes(patientSearchTerm, { limite: 50 });
   const pacientesBusca = pacientesBuscaQuery.data?.pacientes ?? [];
@@ -111,7 +151,7 @@ export default function Encaminhamentos() {
       if (error) throw error;
       return (data || []) as EncaminhamentoData[];
     },
-    enabled: !!user && !!profile?.clinica_id,
+    enabled: !taskPage && !!user && !!profile?.clinica_id,
   });
   const encaminhamentos = encaminhamentosQuery.data || [];
   const podeAtualizarEncaminhamento = (enc: EncaminhamentoData) => Boolean(
@@ -121,7 +161,7 @@ export default function Encaminhamentos() {
 
   const statusHistoryQuery = useQuery({
     queryKey: ['encaminhamento-status-history', profile?.clinica_id ?? null, selectedEnc?.id ?? null],
-    enabled: isViewOpen && !!selectedEnc?.id && !!profile?.clinica_id,
+    enabled: !!referralId && !!selectedEnc?.id && !!profile?.clinica_id,
     queryFn: async () => {
       if (!selectedEnc?.id || !profile?.clinica_id) return [];
       const { data, error } = await (supabase as any)
@@ -134,7 +174,7 @@ export default function Encaminhamentos() {
     },
   });
 
-  const isLoading = encaminhamentosQuery.isLoading || medicosQuery.isLoading;
+  const isLoading = (!taskPage && encaminhamentosQuery.isLoading) || medicosQuery.isLoading || loadingMedico;
 
   const getPacienteNome = (id: string) => {
     const paciente = encaminhamentos.find(enc => enc.paciente_id === id)?.paciente
@@ -198,16 +238,12 @@ export default function Encaminhamentos() {
     ? encaminhamentos.filter(e => e.paciente_id === selectedPacienteId)
     : [];
 
-  const handleView = (enc: EncaminhamentoData) => {
-    setSelectedEnc(enc);
-    setContraRefText(enc.contra_referencia || '');
-    setIsViewOpen(true);
-  };
+  const handleView = (enc: EncaminhamentoData) => openTask(`/encaminhamentos/${enc.id}`);
 
   const handleUpdateEncStatus = async (id: string, newStatus: string) => {
-    if (isUpdating) return;
+    if (updateLock.current) return;
     if (!profile?.clinica_id) return toast.error('Clínica não identificada.');
-    const current = encaminhamentos.find(enc => enc.id === id);
+    const current = selectedEnc?.id === id ? selectedEnc : encaminhamentos.find(enc => enc.id === id);
     if (current && !podeAtualizarEncaminhamento(current)) {
       return toast.error('Somente os médicos envolvidos ou a administração podem atualizar este encaminhamento.');
     }
@@ -215,6 +251,7 @@ export default function Encaminhamentos() {
     if (!current || !expectedStatuses.includes(current.status || '')) {
       return toast.error('O encaminhamento mudou de estado. Atualize a lista e tente novamente.');
     }
+    updateLock.current = true;
     setIsUpdating(true);
     try {
       const updateData: Record<string, any> = { status: newStatus };
@@ -225,19 +262,22 @@ export default function Encaminhamentos() {
       if (!data) throw new Error('O encaminhamento foi alterado em outra sessão. Atualize a lista antes de tentar novamente.');
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
       void queryClient.invalidateQueries({ queryKey: ['encaminhamento-status-history', profile.clinica_id, id] });
-      if (selectedEnc?.id === id) setSelectedEnc({ ...selectedEnc, status: newStatus, updated_at: data.updated_at } as any);
+      if (selectedEnc?.id === id) setSelectedEnc({ ...selectedEnc, ...updateData, updated_at: data.updated_at });
+      if (newStatus === 'cancelado') setContraRefText('');
       toast.success(`Status atualizado para "${STATUS_CONFIG[newStatus]?.label || newStatus}"`);
     } catch (e) { toast.error('Erro ao atualizar status', { description: mensagemDeErro(e) }); }
-    finally { setIsUpdating(false); }
+    finally { updateLock.current = false; setIsUpdating(false); }
   };
 
   const handleSaveContraRef = async () => {
-    if (isUpdating) return;
+    if (updateLock.current) return;
     if (!selectedEnc || !contraRefText.trim()) return;
+    if (!podeAtualizarEncaminhamento(selectedEnc)) return toast.error('Você não pode atualizar este encaminhamento.');
     if (!profile?.clinica_id) return toast.error('Clínica não identificada.');
     if (selectedEnc.status === 'concluido' || selectedEnc.status === 'cancelado') return toast.error('Este encaminhamento não aceita nova contra-referência.');
     if (!selectedEnc.updated_at) return toast.error('Não foi possível confirmar a versão deste encaminhamento. Atualize a lista e abra o registro novamente.');
     if (contraRefText.trim().length > 10000) return toast.error('A contra-referência deve ter no máximo 10.000 caracteres.');
+    updateLock.current = true;
     setIsUpdating(true);
     try {
       const { data, error } = await supabase.from('encaminhamentos').update({
@@ -252,10 +292,10 @@ export default function Encaminhamentos() {
       if (!data) throw new Error('O encaminhamento foi alterado em outra sessão. Seu texto continua nesta tela; atualize o registro e confira o histórico antes de salvar novamente.');
       queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] });
       void queryClient.invalidateQueries({ queryKey: ['encaminhamento-status-history', profile.clinica_id, selectedEnc.id] });
-      setSelectedEnc({ ...selectedEnc, contra_referencia: contraRefText, status: 'concluido', updated_at: data.updated_at } as any);
+      setSelectedEnc({ ...selectedEnc, contra_referencia: contraRefText, data_contra_referencia: todaySaoPauloDateOnly(), data_atendimento: selectedEnc.data_atendimento || todaySaoPauloDateOnly(), status: 'concluido', updated_at: data.updated_at });
       toast.success('Contra-referência registrada! Encaminhamento concluído.');
     } catch (e) { toast.error('Erro ao salvar contra-referência', { description: mensagemDeErro(e) }); }
-    finally { setIsUpdating(false); }
+    finally { updateLock.current = false; setIsUpdating(false); }
   };
 
   if (isLoading) {
@@ -270,14 +310,32 @@ export default function Encaminhamentos() {
     );
   }
 
-  const referralQueries = [encaminhamentosQuery, medicosQuery];
+  const referralQueries = taskPage ? [medicosQuery] : [encaminhamentosQuery, medicosQuery];
   const failedReferralQuery = referralQueries.find(query => query.isError);
   if (failedReferralQuery) {
     return <ErrorState title="Não foi possível carregar encaminhamentos" error={failedReferralQuery.error} onRetry={() => { for (const query of referralQueries) void query.refetch(); }} />;
   }
 
+  if (medicoError) return <ErrorState title="Não foi possível conferir seu vínculo médico" error={medicoError} onRetry={() => void refetchMedico()} />;
+  if (referralId && recordQuery.isError && !selectedEnc) return <div className="space-y-4"><Button variant="outline" onClick={leaveTask}>Voltar aos encaminhamentos</Button><ErrorState title="Não foi possível abrir o encaminhamento" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} /></div>;
+  if (referralId && recordQuery.isLoading) return <div role="status" className="py-8">Conferindo acesso ao encaminhamento…</div>;
+  if (referralId && !selectedEnc) return <div className="space-y-4"><h1 className="text-2xl font-semibold">Encaminhamento indisponível</h1><p>O registro não foi encontrado ou não está disponível para seu perfil nesta clínica.</p><Button variant="outline" onClick={leaveTask}>Voltar aos encaminhamentos</Button></div>;
+  if (creationPage) return <section className="mx-auto max-w-4xl space-y-6">
+    <Button variant="ghost" onClick={leaveTask}>← Voltar aos encaminhamentos</Button>
+    <header className="space-y-2 border-b pb-5"><h1 className="text-2xl font-semibold tracking-tight">Novo Encaminhamento</h1><p className="text-sm text-muted-foreground">Identifique o paciente e informe o contexto necessário para o especialista dar continuidade ao cuidado.</p></header>
+    {!medicoId || currentMedico?.ativo === false ? <div className="space-y-3"><p role="alert">É necessário um médico de origem ativo vinculado ao seu usuário para criar encaminhamentos.</p><Button asChild variant="outline"><Link to="/equipe">Consultar equipe</Link></Button></div>
+      : !selectedPacienteId ? <div className="space-y-2"><label htmlFor="encaminhamento-paciente">Paciente</label><PacienteCombobox id="encaminhamento-paciente" value="" onChange={id => setSelectedPacienteId(id)} /></div>
+      : pacienteSelecionadoQuery.isError ? <ErrorState title="Não foi possível carregar o paciente" error={pacienteSelecionadoQuery.error} onRetry={() => void pacienteSelecionadoQuery.refetch()} />
+      : pacienteSelecionadoQuery.isLoading ? <p role="status">Carregando paciente…</p>
+      : !selectedPaciente ? <p role="alert">Paciente indisponível. Volte ao histórico para selecionar outra ficha.</p>
+      : <><dl className="grid gap-4 border-b pb-5 sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">Paciente</dt><dd className="font-medium">{selectedPaciente.nome_social || selectedPaciente.nome}</dd></div><div><dt className="text-xs text-muted-foreground">Médico de origem</dt><dd className="font-medium">{getMedicoNome(medicoId)}</dd></div></dl>
+        <EncaminhamentoMedico creationPage pacienteId={selectedPaciente.id} pacienteNome={selectedPaciente.nome_social || selectedPaciente.nome} medicoOrigemId={medicoId} encaminhamentos={[]} onNew={() => {}} onView={() => {}} onBack={leaveTask} onEncaminhamentoCriado={() => { void queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] }); leaveTask(); }} />
+      </>}
+  </section>;
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+    <div className="space-y-6">
+      {!taskPage && <>
       <PageHeader
         title="Encaminhamentos"
         description={stats.total > 0
@@ -419,6 +477,9 @@ export default function Encaminhamentos() {
             <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-sm text-muted-foreground">Carregando a ficha do paciente…</CardContent></Card>
           ) : selectedPaciente && medicoId ? (
             <EncaminhamentoMedico
+              onNew={() => openTask(`/documentos-clinicos/novo-encaminhamento?paciente=${selectedPaciente.id}`)}
+              onView={id => openTask(`/encaminhamentos/${id}`)}
+              onBack={leaveTask}
               pacienteId={selectedPaciente.id}
               pacienteNome={(selectedPaciente as any).nome_social || selectedPaciente.nome}
               medicoOrigemId={medicoId}
@@ -604,17 +665,14 @@ export default function Encaminhamentos() {
         </CardContent>
       </Card>
 
-      {/* View Detail Dialog */}
-      <Dialog open={isViewOpen} onOpenChange={(open) => { if (open || !isUpdating) setIsViewOpen(open); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="h-5 w-5 text-primary" />
-              Detalhes do Encaminhamento
-            </DialogTitle>
-          </DialogHeader>
+      </>}
+      {referralId && <section className="mx-auto max-w-4xl space-y-6">
+        <UnsavedChangesGuard dirty={contraRefText !== (selectedEnc?.contra_referencia || '')} busy={isUpdating} completed={completed} />
+        <Button variant="ghost" onClick={leaveTask}>← Voltar aos encaminhamentos</Button>
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-5"><h1 className="text-2xl font-semibold tracking-tight">Detalhes do Encaminhamento</h1><Button variant="outline" disabled={isUpdating || recordQuery.isFetching} onClick={() => void recordQuery.refetch()}>Atualizar registro</Button></header>
+          {recordQuery.isError && <ErrorState compact title="Não foi possível atualizar o registro" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />}
           {selectedEnc && (
-            <div className="space-y-4 text-sm">
+            <div className="space-y-5 break-words text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-muted-foreground text-xs">Paciente</p>
@@ -649,21 +707,23 @@ export default function Encaminhamentos() {
               </div>
               <div>
                 <p className="text-muted-foreground text-xs mb-1">Motivo</p>
-                <p className="bg-muted/50 rounded-lg p-3">{selectedEnc.motivo}</p>
+                <p className="whitespace-pre-wrap border-l-2 border-border py-2 pl-4">{selectedEnc.motivo}</p>
               </div>
               {selectedEnc.hipotese_diagnostica && (
                 <div>
                   <p className="text-muted-foreground text-xs mb-1">Hipótese Diagnóstica</p>
-                  <p className="bg-muted/50 rounded-lg p-3">{selectedEnc.hipotese_diagnostica}</p>
+                  <p className="whitespace-pre-wrap border-l-2 border-border py-2 pl-4">{selectedEnc.hipotese_diagnostica}</p>
                 </div>
               )}
               {selectedEnc.tratamento_atual && (
                 <div>
                   <p className="text-muted-foreground text-xs mb-1">Tratamento Atual</p>
-                  <p className="bg-muted/50 rounded-lg p-3">{selectedEnc.tratamento_atual}</p>
+                  <p className="whitespace-pre-wrap border-l-2 border-border py-2 pl-4">{selectedEnc.tratamento_atual}</p>
                 </div>
               )}
 
+              {selectedEnc.exames_realizados && <div><p className="text-xs text-muted-foreground">Exames Realizados</p><p className="whitespace-pre-wrap border-l-2 py-2 pl-4">{selectedEnc.exames_realizados}</p></div>}
+              {selectedEnc.informacoes_adicionais && <div><p className="text-xs text-muted-foreground">Informações Adicionais</p><p className="whitespace-pre-wrap border-l-2 py-2 pl-4">{selectedEnc.informacoes_adicionais}</p></div>}
               <Separator />
 
               <section className="space-y-2" aria-label="Histórico de status">
@@ -698,6 +758,7 @@ export default function Encaminhamentos() {
               <Separator />
 
               {/* Contra-referência section */}
+              {(selectedEnc.status === 'concluido' || selectedEnc.status === 'cancelado') && contraRefText && contraRefText !== (selectedEnc.contra_referencia || '') && <div className="space-y-2 border-l-2 border-warning pl-4"><p role="alert">O registro foi encerrado em outra sessão. Seu texto não foi salvo; copie-o antes de sair, se necessário.</p><label htmlFor="retorno-preservado">Texto não salvo</label><Textarea id="retorno-preservado" readOnly value={contraRefText} rows={6} /></div>}
               {selectedEnc.contra_referencia ? (
                 <div>
                   <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
@@ -719,7 +780,8 @@ export default function Encaminhamentos() {
                     placeholder="Informe o retorno do especialista, condutas sugeridas, diagnóstico final..."
                     value={contraRefText}
                     onChange={e => setContraRefText(e.target.value)}
-                    rows={3}
+                    rows={6}
+                    maxLength={10000}
                     disabled={isUpdating}
                   />
                   <Button
@@ -738,19 +800,22 @@ export default function Encaminhamentos() {
 
           {/* Status actions in footer */}
           {selectedEnc && selectedEnc.status !== 'concluido' && selectedEnc.status !== 'cancelado' && podeAtualizarEncaminhamento(selectedEnc) && (
-            <DialogFooter className="gap-2">
+            <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
               {selectedEnc.status === 'pendente' && (
                 <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'em_andamento')} disabled={isUpdating}>
                   Marcar Em Andamento
                 </Button>
               )}
-              <Button variant="ghost" size="sm" className="rounded-full text-destructive" onClick={() => handleUpdateEncStatus(selectedEnc.id, 'cancelado')} disabled={isUpdating}>
+              <Button variant="ghost" size="sm" className="rounded-full text-destructive" onClick={() => setConfirmCancel(true)} disabled={isUpdating}>
                 Cancelar Encaminhamento
               </Button>
-            </DialogFooter>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
-    </motion.div>
+        <Button variant="outline" onClick={leaveTask}>Voltar aos encaminhamentos</Button>
+        <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Cancelar encaminhamento?</AlertDialogTitle><AlertDialogDescription>O encaminhamento será encerrado como cancelado. Uma contra-referência ainda não salva será descartada. O histórico será preservado.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Manter encaminhamento</AlertDialogCancel><AlertDialogAction onClick={() => selectedEnc && void handleUpdateEncStatus(selectedEnc.id, 'cancelado')}>Confirmar cancelamento</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        </AlertDialog>
+      </section>}
+    </div>
   );
 }
