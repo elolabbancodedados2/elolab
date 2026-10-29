@@ -33,6 +33,7 @@ const labelsByPath: Record<string, string> = {
   '/pacientes': 'Pacientes',
   '/pacientes/novo': 'Novo paciente',
   '/documentos-clinicos/nova-prescricao': 'Nova prescrição',
+  '/documentos-clinicos/novo-atestado': 'Emitir atestado',
   '/fila': 'Fila de atendimento',
   '/equipe': 'Equipe',
   '/gestao-fluxo': 'Salas e lista de espera',
@@ -105,6 +106,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/agenda\/[^/]+\/editar$/.test(path)) return 'Editar consulta';
   if (/^\/pacientes\/[^/]+\/editar$/.test(path)) return 'Editar paciente';
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
+  if (/^\/atestados\/[^/]+$/.test(path)) return 'Detalhes do atestado';
   if (path.startsWith('/agendar/')) return 'Agendamento online';
   if (path.startsWith('/portal-guias/')) return 'Portal de guias';
   if (path.startsWith('/verificar-assinatura/')) return 'Verificar assinatura';

@@ -1,7 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Printer, FileText, Loader2, Star,
   Clock, Calendar, AlertTriangle, ShieldCheck, Clipboard,
@@ -15,7 +15,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,7 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Cid10Search } from '@/components/clinical';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ErrorState } from '@/components/ErrorState';
-import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
@@ -118,15 +117,19 @@ const afastamentoVigente = (atestado: Atestado, hoje: string) =>
   atestado.tipo === 'afastamento' && !!atestado.data_inicio && !!atestado.data_fim
   && atestado.data_inicio <= hoje && atestado.data_fim >= hoje;
 
-export default function Atestados() {
+export default function Atestados({ creationPage = false }: { creationPage?: boolean }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { certificateId } = useParams();
+  const taskPage = creationPage || !!certificateId;
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
     const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [tipoFiltro, setTipoFiltro] = useState<string>('todos');
-  const [periodoFiltro, setPeriodoFiltro] = useState<FiltroPeriodoAtestado>('todos');
+  const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.certificateFilters?.search || '');
+  const [tipoFiltro, setTipoFiltro] = useState<string>(() => location.state?.certificateFilters?.type || 'todos');
+  const [periodoFiltro, setPeriodoFiltro] = useState<FiltroPeriodoAtestado>(() => location.state?.certificateFilters?.period || 'todos');
   // Deep-link: /documentos-clinicos?tab=atestados&paciente=<id> abre a lista já filtrada pelo paciente.
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
@@ -135,21 +138,47 @@ export default function Atestados() {
     next.delete('paciente');
     return next;
   }, { replace: true });
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isViewOpen, setIsViewOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
-  const [selectedAtestado, setSelectedAtestado] = useState<Atestado | null>(null);
+  const modelTrigger = useRef<HTMLButtonElement>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormDataType>(() => novoFormulario(today));
   const [isSaving, setIsSaving] = useState(false);
   const saveLock = useRef(false);
   const formBaselineRef = useRef<FormDataType>(formData);
-  const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
+  const completed = useRef(false);
+  const initializedTask = useRef('');
+  const [readyFor, setReadyFor] = useState('');
   const hasUnsavedChanges = JSON.stringify(formData) !== JSON.stringify(formBaselineRef.current);
   const { profile } = useSupabaseAuth();
 
   const queryClient = useQueryClient();
-  const { currentMedico, medicoId, isMedicoOnly } = useCurrentMedico();
+  const { currentMedico, medicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
+  const sourceId = certificateId || (creationPage ? searchParams.get('origem') : null);
+  const recordQuery = useQuery({
+    queryKey: ['atestado-pagina', profile?.clinica_id, profile?.id, sourceId, location.key],
+    enabled: !!sourceId && !!profile?.clinica_id && (!isMedicoOnly || !!medicoId),
+    queryFn: async () => {
+      let query = supabase.from('atestados').select('*, pacientes(nome,nome_social,cpf,telefone)')
+        .eq('clinica_id', profile!.clinica_id!).eq('id', sourceId!);
+      if (isMedicoOnly) query = query.eq('medico_id', medicoId!);
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+      if (data) await registrarAcessoDocumentoClinico('atestado', data.id, 'visualizacao');
+      return data as Atestado | null;
+    },
+    staleTime: Infinity, gcTime: 0, retry: false,
+    refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
+  const selectedAtestado = recordQuery.data;
+  const certificateFilters = { search: searchTerm, type: tipoFiltro, period: periodoFiltro };
+  const returnTo = /^\/documentos-clinicos(?:\?|$)/.test(location.state?.returnTo || '')
+    ? location.state.returnTo : `/documentos-clinicos?tab=atestados${pacienteFiltroId ? `&paciente=${encodeURIComponent(pacienteFiltroId)}` : ''}`;
+  const leaveTask = () => navigate(returnTo, { replace: true, state: { certificateFilters } });
+  const openTask = (path: string) => {
+    const source = taskPage ? returnTo : `${location.pathname}${location.search}`;
+    if (!taskPage) navigate(source, { replace: true, state: { certificateFilters } });
+    navigate(path, { state: { returnTo: source, certificateFilters } });
+  };
   const atestadosQuery = useSupabaseQuery<Atestado>('atestados', {
     select: '*, pacientes(nome,nome_social,cpf,telefone)',
     orderBy: { column: 'created_at', ascending: false },
@@ -182,7 +211,7 @@ export default function Atestados() {
     ? medicosAtivos.filter(m => m.id === medicoId)
     : medicosAtivos;
 
-  const isLoading = atestadosQuery.isLoading || medicosQuery.isLoading;
+  const isLoading = (!taskPage && atestadosQuery.isLoading) || medicosQuery.isLoading || loadingCurrentMedico;
 
   const stats = useMemo(() => ({
     total: atestados.length,
@@ -246,12 +275,7 @@ export default function Atestados() {
       toast.error('Não há médicos ativos para emitir atestados.');
       return;
     }
-    setSelectedAtestado(null);
-    setSelectedTemplateId(null);
-    const baseline = { ...novoFormulario(today), medico_id: medicoId || '' };
-    formBaselineRef.current = baseline;
-    setFormData(baseline);
-    setIsFormOpen(true);
+    openTask(`/documentos-clinicos/novo-atestado${pacienteFiltroId ? `?paciente=${encodeURIComponent(pacienteFiltroId)}` : ''}`);
   };
 
   const handleNewWithType = (tipo: string) => {
@@ -259,12 +283,7 @@ export default function Atestados() {
       toast.error('Não há médicos ativos para emitir atestados.');
       return;
     }
-    setSelectedAtestado(null);
-    setSelectedTemplateId(null);
-    const baseline = { ...novoFormulario(today), tipo, medico_id: medicoId || '' };
-    formBaselineRef.current = baseline;
-    setFormData(baseline);
-    setIsFormOpen(true);
+    openTask(`/documentos-clinicos/novo-atestado?tipo=${encodeURIComponent(tipo)}${pacienteFiltroId ? `&paciente=${encodeURIComponent(pacienteFiltroId)}` : ''}`);
   };
 
   const handleLoadTemplate = (template: Record<string, any>) => {
@@ -283,6 +302,7 @@ export default function Atestados() {
     setSelectedTemplateId(selectedAtestadoTemplateId(template));
     if (diasValidos) updateDias(diasValidos);
     setIsTemplateOpen(false);
+    modelTrigger.current?.focus();
     toast.success(`Modelo "${template.nome}" carregado.`);
   };
 
@@ -404,7 +424,8 @@ export default function Atestados() {
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['atestados'] });
-      setIsFormOpen(false);
+      completed.current = true;
+      leaveTask();
       toast.success('Atestado emitido com sucesso.');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving atestado:', error);
@@ -415,7 +436,7 @@ export default function Atestados() {
     }
   };
 
-  const handleDuplicate = (atestado: Atestado) => {
+  const duplicateForm = (atestado: Atestado): FormDataType => {
     const tipo = atestado.tipo || 'comparecimento';
     const motivoOriginal = atestado.motivo || '';
     const comparecimento = tipo === 'comparecimento'
@@ -425,9 +446,7 @@ export default function Atestados() {
       ? (motivoOriginal.match(/^Finalidade:\s*(.*?)\.?$/i)?.[1] || motivoOriginal).trim()
       : '';
     const finalidadePredefinida = FINALIDADES_APTIDAO.includes(finalidadeAptidao);
-    setSelectedAtestado(null);
-    setSelectedTemplateId(null);
-    setFormData({
+    return {
       ...novoFormulario(today),
       tipo,
       paciente_id: atestado.paciente_id,
@@ -444,30 +463,37 @@ export default function Atestados() {
       observacoes: atestado.observacoes || '',
       data_emissao: today,
       data_inicio: today,
-      data_fim: '',
+      data_fim: atestado.dias && atestado.dias > 0 ? format(addDays(new Date(`${today}T12:00`), atestado.dias - 1), 'yyyy-MM-dd') : '',
       finalidade: tipo === 'aptidao'
         ? (finalidadePredefinida ? finalidadeAptidao : finalidadeAptidao ? 'custom' : '')
         : '',
       hora_inicio: comparecimento?.[1] || '',
       hora_fim: comparecimento?.[2] || '',
-    });
-    if (atestado.dias && atestado.dias > 0) {
-      const dataFim = format(addDays(new Date(`${today}T12:00`), atestado.dias - 1), 'yyyy-MM-dd');
-      setFormData(prev => ({ ...prev, data_fim: dataFim }));
-    }
-    setIsFormOpen(true);
-    toast.success('Atestado duplicado — ajuste os dados e emita.');
+    };
   };
 
-  const handleView = async (atestado: Atestado) => {
-    try {
-      await registrarAcessoDocumentoClinico('atestado', atestado.id, 'visualizacao');
-      setSelectedAtestado(atestado);
-      setIsViewOpen(true);
-    } catch (error) {
-      toast.error('Não foi possível registrar o acesso ao atestado.', { description: mensagemDeErro(error) });
-    }
-  };
+  const handleDuplicate = (atestado: Atestado) => openTask(`/documentos-clinicos/novo-atestado?origem=${encodeURIComponent(atestado.id)}`);
+  const handleView = (atestado: Atestado) => openTask(`/atestados/${atestado.id}`);
+
+  const taskKey = `${location.pathname}${location.search}`;
+  useEffect(() => {
+    if (!creationPage || loadingCurrentMedico || (isMedicoOnly && currentMedicoError) || (sourceId && !recordQuery.data)) return;
+    if (initializedTask.current === taskKey) return;
+    initializedTask.current = taskKey;
+    completed.current = false;
+    const tipo = searchParams.get('tipo');
+    const baseline = sourceId && recordQuery.data ? duplicateForm(recordQuery.data) : {
+      ...novoFormulario(today), medico_id: medicoId || '', paciente_id: pacienteFiltroId || '',
+      tipo: TIPOS_ATESTADO.some(item => item.value === tipo) ? tipo! : 'comparecimento',
+    };
+    formBaselineRef.current = baseline;
+    setFormData(baseline);
+    setSelectedTemplateId(null);
+    setIsTemplateOpen(false);
+    setReadyFor(taskKey);
+    // Initialize a task once; query refreshes and editing must not replace its draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creationPage, taskKey, loadingCurrentMedico, currentMedicoError, isMedicoOnly, medicoId, sourceId, recordQuery.data]);
 
   const handlePrint = async (atestado: Atestado) => {
     const paciente = atestado.pacientes;
@@ -526,7 +552,8 @@ export default function Atestados() {
   };
 
   if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
-  const atestadoQueries = [atestadosQuery, medicosQuery];
+  if (currentMedicoError && isMedicoOnly) return <ErrorState title="Não foi possível confirmar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
+  const atestadoQueries = taskPage ? [medicosQuery] : [atestadosQuery, medicosQuery];
   const failedAtestadoQuery = atestadoQueries.find(query => query.isError);
   if (failedAtestadoQuery) {
     return <ErrorState title="Não foi possível carregar atestados e documentos" error={failedAtestadoQuery.error} onRetry={() => { for (const query of atestadoQueries) void query.refetch(); }} />;
@@ -539,9 +566,27 @@ export default function Atestados() {
         : 'Seu usuário não está vinculado a um cadastro médico ativo da clínica. Peça ao administrador para revisar esse vínculo antes de emitir documentos.'}
     />;
   }
+  if (sourceId && recordQuery.isError) return <div className="space-y-4">
+    <Button variant="outline" onClick={leaveTask}>Voltar aos atestados</Button>
+    <ErrorState title="Não foi possível abrir o atestado" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+  </div>;
+  if (sourceId && recordQuery.isLoading) return <div role="status" className="space-y-4 py-8"><h1 className="text-2xl font-semibold">Abrindo atestado</h1><p>Conferindo acesso e carregando o documento…</p></div>;
+  if (sourceId && !recordQuery.data) return <div className="space-y-4">
+    <h1 className="text-2xl font-semibold">Atestado indisponível</h1>
+    <p>O documento não foi encontrado ou não está disponível para seu perfil nesta clínica.</p>
+    <Button variant="outline" onClick={leaveTask}>Voltar aos atestados</Button>
+  </div>;
+  if (creationPage && !medicosDisponiveis.length) return <div className="space-y-4">
+    <h1 className="text-2xl font-semibold">Nenhum médico ativo para emitir</h1>
+    <p>Revise o cadastro da equipe antes de emitir um atestado.</p>
+    <Button variant="outline" onClick={leaveTask}>Voltar aos atestados</Button>
+  </div>;
+  if (creationPage && readyFor !== taskKey) return <div role="status" className="py-8">Preparando formulário do atestado…</div>;
 
   return (
     <div className="space-y-6">
+      {creationPage && <UnsavedChangesGuard key={taskKey} completed={completed} dirty={hasUnsavedChanges || selectedTemplateId !== null} busy={isSaving} />}
+      {!taskPage && <>
       <PageHeader
         title="Atestados e Documentos"
         description={stats.total > 0
@@ -790,38 +835,18 @@ export default function Atestados() {
         </CardContent>
       </Card>
 
-      {/* ─── Form Dialog ─── */}
-      <Dialog
-        open={isFormOpen}
-        onOpenChange={(open) => {
-          if (open) { setIsFormOpen(true); return; }
-          if (isSaving) return;
-          if (hasUnsavedChanges) { setConfirmandoDescarte(true); return; }
-          setIsFormOpen(false);
-        }}
-      >
-        <DialogContent
-          className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col"
-          onEscapeKeyDown={(e) => {
-            // Item 05 (P1): Escape não descarta dados sem confirmação
-            if (isSaving) { e.preventDefault(); return; }
-            if (hasUnsavedChanges) { e.preventDefault(); setConfirmandoDescarte(true); }
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Emitir Atestado
-              <Badge variant="outline" className="gap-1 ml-auto text-[10px]">
-                <FileSignature className="h-3 w-3 text-muted-foreground" />Assinatura manual
-              </Badge>
-            </DialogTitle>
-          </DialogHeader>
+      </>}
+      {creationPage && <section className="mx-auto max-w-5xl space-y-6 pb-6" aria-busy={isSaving}>
+          <header className="space-y-3 border-b border-border pb-5">
+            <Button variant="ghost" className="-ml-3" onClick={leaveTask} disabled={isSaving}>← Voltar aos atestados</Button>
+            <h1 className="text-2xl font-semibold tracking-tight">Emitir Atestado</h1>
+            <p className="text-sm text-muted-foreground">Identifique o paciente, confira o tipo de documento e revise o texto antes de emitir.</p>
+          </header>
 
-          <fieldset disabled={isSaving} className="flex-1 overflow-y-auto space-y-5 pr-2 min-w-0">
+          <fieldset disabled={isSaving} className="min-w-0 space-y-5">
             {/* Tipo + Template */}
-            <div className="flex gap-3 items-end">
-              <div className="flex-1 space-y-1.5">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="min-w-0 basis-60 flex-1 space-y-1.5">
                 <Label htmlFor="atestado-tipo" className="text-xs font-medium">Tipo de Documento *</Label>
                 <Select value={formData.tipo} onValueChange={v => setFormData({ ...formData, tipo: v })}>
                   <SelectTrigger id="atestado-tipo"><SelectValue /></SelectTrigger>
@@ -830,10 +855,51 @@ export default function Atestados() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setIsTemplateOpen(true)} className="gap-1 flex-shrink-0">
+              <Button ref={modelTrigger} variant="outline" size="sm" aria-expanded={isTemplateOpen} aria-controls="atestado-modelos" onClick={() => setIsTemplateOpen(open => !open)} className="gap-1 flex-shrink-0">
                 <Star className="h-3.5 w-3.5" />Modelos
               </Button>
             </div>
+
+            {isTemplateOpen && <section id="atestado-modelos" aria-labelledby="atestado-modelos-title" className="space-y-3 rounded-lg border border-border p-4">
+              <h2 id="atestado-modelos-title" className="text-base font-semibold">Modelos de atestado</h2>
+          {templatesQuery.isError ? (
+            <ErrorState
+              compact
+              title="Não foi possível carregar os modelos de atestado"
+              error={templatesQuery.error}
+              onRetry={() => void templatesQuery.refetch()}
+            />
+          ) : templatesQuery.isLoading ? (
+            <p className="py-12 text-center text-sm text-muted-foreground" role="status">Carregando modelos…</p>
+          ) : templates.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Star className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Nenhum modelo cadastrado</p>
+              <p className="text-xs mt-1">Cadastre modelos na página de Templates</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {templates.map(t => (
+                <div
+                  key={t.id}
+                  className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => handleLoadTemplate(t)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{t.nome}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {getTipoLabel(t.tipo)}
+                        {(t.dias_afastamento ?? t.diasAfastamento) && ` • ${t.dias_afastamento ?? t.diasAfastamento} dias`}
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="gap-1"><Clipboard className="h-3.5 w-3.5" />Aplicar</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+            </section>}
 
             {/* Paciente + Médico */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1041,8 +1107,8 @@ export default function Atestados() {
             </div>
           </fieldset>
 
-          <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
+          <footer className="flex flex-wrap justify-end gap-3 border-t border-border py-4">
+            <Button variant="outline" onClick={leaveTask} disabled={isSaving}>Voltar aos atestados</Button>
             <Button
               onClick={handleSave}
               disabled={isSaving || pacienteSelecionadoQuery.isFetching || !!formData.paciente_id && pacienteSelecionadoQuery.isError}
@@ -1051,72 +1117,18 @@ export default function Atestados() {
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               <FileSignature className="h-4 w-4" />Emitir atestado
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+      </section>}
 
-      <UnsavedChangesDialog
-        open={confirmandoDescarte}
-        onOpenChange={setConfirmandoDescarte}
-        onConfirm={() => {
-          setConfirmandoDescarte(false);
-          setIsFormOpen(false);
-        }}
-      />
 
-      {/* ─── Template Picker ─── */}
-      <Dialog open={isTemplateOpen} onOpenChange={setIsTemplateOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-primary" />
-              Modelos de Atestado
-            </DialogTitle>
-          </DialogHeader>
-          {templatesQuery.isError ? (
-            <ErrorState
-              compact
-              title="Não foi possível carregar os modelos de atestado"
-              error={templatesQuery.error}
-              onRetry={() => void templatesQuery.refetch()}
-            />
-          ) : templatesQuery.isLoading ? (
-            <p className="py-12 text-center text-sm text-muted-foreground" role="status">Carregando modelos…</p>
-          ) : templates.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Star className="h-10 w-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhum modelo cadastrado</p>
-              <p className="text-xs mt-1">Cadastre modelos na página de Templates</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {templates.map(t => (
-                <div
-                  key={t.id}
-                  className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => handleLoadTemplate(t)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{t.nome}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {getTipoLabel(t.tipo)}
-                        {(t.dias_afastamento ?? t.diasAfastamento) && ` • ${t.dias_afastamento ?? t.diasAfastamento} dias`}
-                      </p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="gap-1"><Clipboard className="h-3.5 w-3.5" />Aplicar</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
-      {/* ─── View Dialog ─── */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-primary" />Detalhes do Atestado</DialogTitle></DialogHeader>
+
+
+      {certificateId && <section className="mx-auto max-w-4xl space-y-6 pb-6">
+          <header className="space-y-3 border-b border-border pb-5">
+            <Button variant="ghost" className="-ml-3" onClick={leaveTask}>← Voltar aos atestados</Button>
+            <h1 className="text-2xl font-semibold tracking-tight">Detalhes do Atestado</h1>
+          </header>
           {selectedAtestado && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -1184,16 +1196,16 @@ export default function Atestados() {
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewOpen(false)}>Fechar</Button>
+          <footer className="flex flex-wrap justify-end gap-3 border-t border-border py-4">
+            <Button variant="outline" onClick={leaveTask}>Voltar aos atestados</Button>
+            {selectedAtestado && medicosDisponiveis.length > 0 && <Button variant="outline" onClick={() => handleDuplicate(selectedAtestado)}>Duplicar para nova emissão</Button>}
             {selectedAtestado && (
               <Button onClick={() => handlePrint(selectedAtestado)} className="gap-1">
                 <Printer className="h-4 w-4" />Imprimir
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+      </section>}
     </div>
   );
 }

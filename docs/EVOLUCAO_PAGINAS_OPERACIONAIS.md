@@ -114,3 +114,33 @@ Gravações, uploads e auditoria dos testes foram interceptados com dados sinté
 ### Publicação
 
 Deploy em 29/10/2026: `bbb522d21cca1032c219b53eeabfed28fe82c87b`, imagem `easypanel/elolab/app:deploy-20261029-bbb522d`. Swarm concluiu a atualização, `/version.json` confirmou o build e `/healthz` respondeu `ok`. Na substituição houve resposta transitória de serviço indisponível; o serviço recuperou e a nova página foi recarregada e inspecionada em produção, com zero diálogos e sem emissão real. Rollback preservado: imagem `deploy-20261029-5814890` e fonte `code.before-20261029-bbb522d`.
+
+## Atestados — emissão, consulta e duplicação em páginas próprias
+
+### Diagnóstico e direção
+
+O formulário de emissão usava um modal de aproximadamente 672 px, com rolagem interna e rodapé competindo com a área de texto. A escolha de modelo abria outro modal. A consulta de um documento também dependia de overlay e não possuía endereço próprio. A versão anterior foi efetivamente inspecionada em produção, sem emitir documentos.
+
+Médico e administrador precisam identificar o paciente, selecionar o tipo, revisar informações obrigatórias e concluir a emissão. A nova composição usa a rolagem da página, mantém identificação antes do texto e apresenta somente os campos pertinentes ao tipo. Modelos ficam em uma seção expansível do próprio formulário.
+
+### Jornada, integração e estados
+
+- Histórico → Novo Atestado → `/documentos-clinicos/novo-atestado`. O filtro de paciente preenche a identificação. Médico vinculado continua obrigatório para o perfil médico; administrador seleciona entre os profissionais ativos.
+- Escolher tipo/modelo → preencher horários, afastamento ou finalidade conforme o documento → revisar texto e consentimento de CID → emitir. Validações existentes permanecem; falha conserva os campos, sucesso retorna ao histórico com os filtros anteriores.
+- Histórico → `/atestados/:certificateId`. Consulta direta filtra clínica e, para médico, seu vínculo. O documento só aparece após a auditoria de visualização confirmar o acesso. Falha oferece nova tentativa; documento ausente apresenta recuperação para o histórico.
+- Duplicar abre uma nova emissão com referência ao documento de origem. Datas são recalculadas conforme o comportamento existente; autorização de CID é sempre desmarcada. Não há edição de documento emitido nem alteração de contrato de persistência.
+- Imprimir preserva geração de PDF e exige auditoria de impressão antes de abrir o arquivo. Não foi adicionada assinatura digital.
+- Sair com alterações, inclusive aplicação de modelo, pede confirmação de descarte. Rascunhos não são armazenados no navegador. Seleção de modelo por teclado retorna o foco ao botão Modelos.
+
+### Implementação e validação
+
+Arquivos: `src/pages/Atestados.tsx`, `src/App.tsx`, `src/config/routeLabels.ts` e `tests/certificate-pages.spec.ts`. APIs, permissões, proveniência dos modelos e validações clínicas foram preservadas. Nenhuma migration ou dependência adicionada.
+
+- 9 cenários Playwright passaram sem retries: páginas em 1440/768/390 px, proteção de texto não salvo, validação de horários, falha e recuperação do salvamento, auditoria antes da leitura, duplicação sem consentimento herdado, modelos por teclado, busca preservada, acesso negado e impressão auditada com PDF real (`%PDF-`). Alguns cenários verificam vários comportamentos.
+- 7 testes unitários focados passaram: proveniência de modelo de atestado, auditoria documental e acessibilidade de rota.
+- TypeScript e build de produção passaram; ESLint focal sem erros, com 7 avisos no arquivo de atestados (5 de `any`, 2 de dependências de hooks).
+- Cabeçalhos desktop/tablet/celular, rodapé no celular e detalhe no celular foram efetivamente visualizados. Campos não excedem a largura; ações finais permanecem acessíveis acima da navegação inferior.
+
+### Limites
+
+Gravações e auditoria dos testes usam dados sintéticos e respostas interceptadas. Nenhum atestado real foi emitido. A validação não substitui testes de isolamento no backend nem homologação jurídica do conteúdo dos documentos. A migração dos demais módulos continua incremental; confirmações curtas de segurança permanecem contextuais.
