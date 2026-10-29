@@ -2572,8 +2572,9 @@ test('collection map keeps sample identity and actions usable on desktop and mob
     await expect(pendingRow.getByText('Ana Souza').locator('xpath=..')).toHaveClass(/text-warning-foreground/);
     await page.screenshot({ path: testInfo.outputPath(`mapa-coleta-amostra-${viewport.width}.png`), animations: 'disabled' });
     await pendingRow.getByRole('button', { name: 'Ver detalhes da coleta QA-UR-001' }).click();
-    await expect(page.getByRole('dialog').getByRole('heading', { name: /Detalhes da Coleta — QA-UR-001/ })).toBeVisible();
-    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: 'Detalhes da coleta', exact: true })).toBeVisible();
+    await expect(page.getByText(/Amostra QA-UR-001 ·/)).toBeVisible();
+    await page.getByRole('link', { name: 'Voltar ao mapa de coleta', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   }
 

@@ -164,7 +164,7 @@ function ResultadosWorkspace() {
                 <div key={r.id} className={cn('border-b py-4 px-3', (isAltered || r.critico) ? 'border-destructive/30 bg-destructive/5' : '')}>
                   <div className="flex flex-wrap justify-between items-start gap-3">
                     <div>
-                      <p className="flex flex-wrap items-center gap-2 font-medium">{r.parametro}{isAltered && <Badge variant="outline">Fora da referência</Badge>}{r.critico && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Crítico</Badge>}</p>
+                      <div className="flex flex-wrap items-center gap-2 font-medium">{r.parametro}{isAltered && <Badge variant="outline">Fora da referência</Badge>}{r.critico && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Crítico</Badge>}</div>
                       {r.metodo && <p className="text-xs text-muted-foreground">Método: {r.metodo}</p>}
                     </div>
                     <div className="text-right">

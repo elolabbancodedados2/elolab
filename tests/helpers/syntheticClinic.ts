@@ -569,7 +569,8 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     }
 
     if (method === 'GET' && pathname === '/rest/v1/coletas_laboratorio' && options.labPopulated) {
-      await json(route, syntheticLabColetas);
+      const idFilter = new URL(route.request().url()).searchParams.get('id');
+      await json(route, idFilter?.startsWith('eq.') ? syntheticLabColetas.filter(item => item.id === idFilter.slice(3)) : syntheticLabColetas);
       return;
     }
 

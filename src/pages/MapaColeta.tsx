@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, RefreshCw, Loader2, RotateCcw, XCircle, Search, Printer, FlaskConical,
   AlertTriangle, Clock, Zap, Droplets, Timer, Activity, ArrowRight, X, DoorOpen,
@@ -14,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -22,7 +20,6 @@ import { mensagemDeErro } from '@/lib/erros';
 import { differenceInMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { sampleLabelHtml } from '@/lib/sampleLabel';
-import { buildSampleReasonPayload, SAMPLE_REJECTION_REASONS } from '@/lib/sampleRejection';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { ErrorState } from '@/components/ErrorState';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -109,23 +106,23 @@ const SEM_SETOR = '__sem_setor__';
 const aguardaColeta = (item: any) => item.status === 'pendente' || item.status === 'recoleta';
 
 export default function MapaColeta() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const filters = location.state?.mapaFilters;
+  const setDetailId = (id: string) => navigate(`/mapa-coleta/${id}`, { state: { mapaFilters: { search, tuboFiltro, filtroRapido, setorFiltro } } });
+  const handleRecoleta = (id: string) => navigate(`/mapa-coleta/${id}`, { state: { eventoInicial: 'recoleta', mapaFilters: { search, tuboFiltro, filtroRapido, setorFiltro } } });
   const { profile, hasAnyRole } = useSupabaseAuth();
   const [itens, setItens] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<unknown>(null);
-  const [search, setSearch] = useState('');
-  const [tuboFiltro, setTuboFiltro] = useState('Todos');
-  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>('todos');
-  const [setorFiltro, setSetorFiltro] = useState('todos');
+  const [search, setSearch] = useState(filters?.search ?? '');
+  const [tuboFiltro, setTuboFiltro] = useState(filters?.tuboFiltro ?? 'Todos');
+  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>(filters?.filtroRapido ?? 'todos');
+  const [setorFiltro, setSetorFiltro] = useState(filters?.setorFiltro ?? 'todos');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
   const [cancelarId, setCancelarId] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const [eventoTipo, setEventoTipo] = useState('transporte');
-  const [eventoLocal, setEventoLocal] = useState('');
-  const [eventoMotivoCodigo, setEventoMotivoCodigo] = useState('');
-  const [eventoMotivo, setEventoMotivo] = useState('');
-  const [savingEvento, setSavingEvento] = useState(false);
+
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const processingIdsRef = useRef(new Set<string>());
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -133,19 +130,6 @@ export default function MapaColeta() {
   const fetchRequestRef = useRef(0);
   const activeClinicRef = useRef<string | null>(null);
   const podeVerSalas = hasAnyRole(['admin']);
-
-  const eventosAmostraQuery = useQuery({
-    queryKey: ['lab-amostra-eventos', profile?.clinica_id, detailId],
-    enabled: !!profile?.clinica_id && !!detailId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).from('laboratorio_eventos_amostra')
-        .select('id, tipo, status_anterior, status_novo, local, detalhes, created_at, profiles(nome)')
-        .eq('clinica_id', profile!.clinica_id!).eq('coleta_id', detailId!)
-        .order('created_at', { ascending: false }).limit(100);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -296,59 +280,12 @@ export default function MapaColeta() {
     }
   };
 
-  const handleRecoleta = (id: string) => {
-    setEventoTipo('recoleta');
-    setEventoLocal('');
-    setEventoMotivoCodigo('');
-    setEventoMotivo('');
-    setDetailId(id);
-  };
-
   const handleCancelar = async (id: string) => {
     const cancelled = await transitionStatus(id, ['pendente', 'recoleta'], 'cancelado', 'Coleta cancelada');
     if (cancelled) setCancelarId(null);
   };
 
   const handleEncaminharAnalise = (id: string) => transitionStatus(id, ['coletado'], 'em_analise', 'Enviado para análise');
-
-  const registrarEventoAmostra = async () => {
-    const amostra = itens.find(item => item.id === detailId);
-    if (!amostra || !profile?.clinica_id || savingEvento) return;
-    if (['transporte', 'armazenamento'].includes(eventoTipo) && !eventoLocal.trim()) {
-      toast.error('Informe o local da amostra.');
-      return;
-    }
-    const exigeMotivoEstruturado = ['rejeicao', 'recoleta'].includes(eventoTipo);
-    const motivoEstruturado = exigeMotivoEstruturado
-      ? buildSampleReasonPayload(eventoMotivoCodigo, eventoMotivo)
-      : null;
-    if (exigeMotivoEstruturado && !motivoEstruturado) {
-      toast.error(eventoMotivoCodigo === 'outro'
-        ? 'Explique o motivo selecionado em pelo menos 5 caracteres.'
-        : 'Selecione um motivo para continuar.');
-      return;
-    }
-    setSavingEvento(true);
-    try {
-      const detalhesEvento = motivoEstruturado ?? (eventoMotivo.trim() ? { motivo: eventoMotivo.trim() } : {});
-      const { data, error } = await (supabase as any).rpc('laboratorio_registrar_evento_amostra', {
-        p_coleta_id: amostra.id,
-        p_tipo: eventoTipo,
-        p_local: eventoLocal.trim() || null,
-        p_detalhes: detalhesEvento,
-      });
-      if (error) throw error;
-      const resultId = typeof data === 'string' ? data : amostra.id;
-      toast.success(eventoTipo === 'recoleta' ? 'Nova amostra criada e vinculada à anterior' : 'Movimentação registrada no histórico');
-      setEventoLocal(''); setEventoMotivoCodigo(''); setEventoMotivo(''); setEventoTipo('transporte');
-      await Promise.all([fetchColetas(), eventosAmostraQuery.refetch()]);
-      if (eventoTipo === 'recoleta') setDetailId(resultId);
-    } catch (error) {
-      toast.error('Não foi possível registrar a movimentação', { description: mensagemDeErro(error) });
-    } finally {
-      setSavingEvento(false);
-    }
-  };
 
   const handleBulkPrint = () => {
     if (selected.size === 0) { toast.error('Selecione ao menos uma coleta'); return; }
@@ -509,8 +446,7 @@ export default function MapaColeta() {
     return `Olá, ${primeiroNome}! Aqui é da clínica. Sua coleta de exame${item.exames?.tipo_exame ? ` (${item.exames.tipo_exame})` : ''} está pendente.${jejum} Podemos confirmar sua vinda?`;
   };
 
-  // ─── Detail Modal ───────────────────────────────────────
-  const detailItem = itens.find(i => i.id === detailId);
+
 
   const StatusBadge = ({ status }: { status: string }) => {
     if (status === 'coletado') return <Badge variant="outline" className="rounded-full border-success/30 bg-success/10 text-success">Coletado</Badge>;
@@ -562,10 +498,10 @@ export default function MapaColeta() {
           <div className="flex items-center gap-1.5">
             {isUrgent && <Zap aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 text-warning-foreground" />}
             <div className="min-w-0">
-              <p className={cn('flex items-center gap-1.5 text-sm font-medium', isUrgent && 'text-warning-foreground')}>
+              <div className={cn('flex items-center gap-1.5 text-sm font-medium', isUrgent && 'text-warning-foreground')}>
                 <span className="truncate">{nomePaciente(item.pacientes)}</span>
                 {eProxima && <Badge className="rounded-full border-transparent bg-primary text-[9px] text-primary-foreground hover:bg-primary">Próxima</Badge>}
-              </p>
+              </div>
               <p className="text-[11px] text-muted-foreground">{age !== null ? `${age}a` : '?'} · {sexo}{item.pacientes?.cpf ? ` · ${item.pacientes.cpf}` : ''}</p>
             </div>
           </div>
@@ -953,99 +889,6 @@ export default function MapaColeta() {
           )}
         </div>
       )}
-
-      {/* Detail modal */}
-      <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FlaskConical className="h-5 w-5 text-primary" />
-              Detalhes da Coleta — {detailItem?.codigo_amostra}
-            </DialogTitle>
-          </DialogHeader>
-          {detailItem && (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/60 bg-muted/30 p-3">
-                <div><p className="text-[11px] text-muted-foreground">Paciente</p><p className="font-semibold">{nomePaciente(detailItem.pacientes)}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">CPF</p><p>{detailItem.pacientes?.cpf || '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Solicitada em</p><p>{detailItem.created_at ? dataHoraClinica(new Date(detailItem.created_at)) : '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Coletada em</p><p>{detailItem.data_coleta ? dataHoraClinica(new Date(detailItem.data_coleta)) : '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Médico</p><p>{detailItem.medicos?.nome || '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Exame</p><p>{detailItem.exames?.tipo_exame || '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Setor</p><p>{detailItem.laboratorio_setores?.nome || '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Amostra</p><p>{detailItem.tipo_amostra} {detailItem.tubo && `· ${detailItem.tubo}`}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Volume</p><p>{detailItem.volume_ml ? `${detailItem.volume_ml}mL` : '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Sítio</p><p>{detailItem.sitio_coleta || '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Lote Insumo</p><p>{detailItem.lote_insumo || '—'}</p></div>
-              </div>
-              {detailItem.condicao_amostra?.length > 0 && (
-                <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground">Condições da Amostra</p>
-                  <div className="flex flex-wrap gap-1">
-                    {detailItem.condicao_amostra.map((c: string) => <Badge key={c} variant="destructive" className="rounded-full text-[10px]">{c}</Badge>)}
-                  </div>
-                </div>
-              )}
-              {detailItem.observacoes && (
-                <div><p className="text-[11px] text-muted-foreground">Observações</p><p>{detailItem.observacoes}</p></div>
-              )}
-              <div className="flex flex-wrap gap-2 pt-2">
-                <StatusBadge status={detailItem.status} />
-                {detailItem.urgente && <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-warning-foreground"><Zap aria-hidden="true" className="h-3 w-3" />Urgente</Badge>}
-                {detailItem.jejum_necessario && <Badge variant="outline" className="rounded-full">Jejum {detailItem.jejum_horas}h</Badge>}
-              </div>
-              {detailItem.local_atual && <p className="text-xs text-muted-foreground">Local atual: <span className="font-medium text-foreground">{detailItem.local_atual}</span></p>}
-              {detailItem.rejeicao_motivo && <p className="rounded-md bg-destructive/5 p-2 text-xs text-destructive">Motivo da rejeição: {detailItem.rejeicao_motivo}</p>}
-
-              <section className="space-y-3 rounded-xl border p-3" aria-label="Histórico de rastreabilidade">
-                <div><p className="text-sm font-semibold">Rastreabilidade da amostra</p><p className="text-xs text-muted-foreground">Cada movimentação fica registrada com data e responsável.</p></div>
-                {eventosAmostraQuery.isError ? <ErrorState compact title="Não foi possível carregar o histórico" error={eventosAmostraQuery.error} onRetry={() => void eventosAmostraQuery.refetch()} /> : eventosAmostraQuery.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : eventosAmostraQuery.data?.length ? (
-                  <ol className="max-h-48 space-y-3 overflow-y-auto">{eventosAmostraQuery.data.map((evento: any) => <li key={evento.id} className="flex gap-2 border-l-2 border-primary/30 pl-3"><div className="min-w-0"><p className="text-xs font-medium capitalize">{String(evento.tipo).replace(/_/g, ' ')}{evento.status_novo ? ` · ${evento.status_novo}` : ''}</p><p className="text-[11px] text-muted-foreground">{dataHoraClinica(new Date(evento.created_at))}{evento.profiles?.nome ? ` · ${evento.profiles.nome}` : ''}{evento.local ? ` · ${evento.local}` : ''}</p>{evento.detalhes?.motivo && <p className="mt-0.5 text-xs">{evento.detalhes.motivo}</p>}</div></li>)}</ol>
-                ) : <p className="text-xs text-muted-foreground">Nenhuma movimentação registrada.</p>}
-              </section>
-
-              <section className="space-y-3 rounded-xl border bg-muted/10 p-3">
-                <p className="text-sm font-semibold">Registrar movimentação</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1"><Label htmlFor="lab-amostra-evento">Evento</Label><Select value={eventoTipo} onValueChange={value => { setEventoTipo(value); setEventoMotivoCodigo(''); setEventoMotivo(''); setEventoLocal(''); }}><SelectTrigger id="lab-amostra-evento"><SelectValue /></SelectTrigger><SelectContent>
-                    <SelectItem value="recebida">Recebimento no laboratório</SelectItem><SelectItem value="transporte">Transporte</SelectItem><SelectItem value="armazenamento">Armazenamento</SelectItem><SelectItem value="observacao">Observação</SelectItem>
-                    {(detailItem.status === 'coletado' || detailItem.status === 'em_analise') && <SelectItem value="rejeicao">Rejeitar amostra</SelectItem>}
-                    {['coletado', 'em_analise', 'rejeitada'].includes(detailItem.status) && <SelectItem value="recoleta">Solicitar recoleta</SelectItem>}
-                  </SelectContent></Select></div>
-                  {['rejeicao', 'recoleta'].includes(eventoTipo) && (
-                    <>
-                      <div className="space-y-1">
-                        <Label htmlFor="lab-amostra-motivo-categoria">Motivo</Label>
-                        <Select value={eventoMotivoCodigo} onValueChange={value => { setEventoMotivoCodigo(value); setEventoMotivo(''); }}>
-                          <SelectTrigger id="lab-amostra-motivo-categoria"><SelectValue placeholder="Selecione o motivo" /></SelectTrigger>
-                          <SelectContent>
-                            {SAMPLE_REJECTION_REASONS.map(reason => <SelectItem key={reason.code} value={reason.code}>{reason.label}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="lab-amostra-motivo-detalhe">
-                          {eventoMotivoCodigo === 'outro' ? 'Explique o motivo' : 'Detalhe adicional (opcional)'}
-                        </Label>
-                        <Input
-                          id="lab-amostra-motivo-detalhe"
-                          value={eventoMotivo}
-                          onChange={event => setEventoMotivo(event.target.value)}
-                          maxLength={300}
-                          placeholder={eventoMotivoCodigo === 'outro' ? 'Mínimo de 5 caracteres' : 'Até 300 caracteres'}
-                        />
-                      </div>
-                    </>
-                  )}
-                  {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
-                  {eventoTipo === 'observacao' && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">Observação</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
-                </div>
-                <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
-              </section>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Cancel dialog */}
       <AlertDialog open={!!cancelarId} onOpenChange={(open) => !open && setCancelarId(null)}>

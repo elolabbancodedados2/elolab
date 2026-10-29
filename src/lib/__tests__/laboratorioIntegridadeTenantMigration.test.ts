@@ -6,6 +6,7 @@ const migration = readFileSync(
   'utf8',
 );
 const mapaColeta = readFileSync('src/pages/MapaColeta.tsx', 'utf8');
+const amostra = readFileSync('src/pages/laboratorio/AmostraPage.tsx', 'utf8');
 const laboratorio = readFileSync('src/pages/Laboratorio.tsx', 'utf8');
 
 describe('integridade de tenant no fluxo laboratorial', () => {
@@ -57,7 +58,9 @@ describe('integridade de tenant no fluxo laboratorial', () => {
   });
 
   it('abre recoleta rastreável por RPC e não grava status diretamente pela tela', () => {
-    expect(mapaColeta).toMatch(/const handleRecoleta = \(id: string\) => \{[\s\S]*?setEventoTipo\('recoleta'\)[\s\S]*?setDetailId\(id\)/i);
+    expect(mapaColeta).toMatch(/const handleRecoleta = \(id: string\) => navigate\([\s\S]*?eventoInicial: 'recoleta'/i);
+    expect(amostra).toContain("rpc('laboratorio_registrar_evento_amostra'");
+    expect(amostra).toContain('buildSampleReasonPayload(eventoMotivoCodigo, eventoMotivo)');
     expect(mapaColeta).not.toMatch(/transitionStatus\(id, \['coletado'\], 'recoleta'/i);
     expect(migration).toMatch(/p_tipo = 'recoleta'[\s\S]*?v_coleta\.status IN \('coletado', 'em_analise'\)/i);
     expect(migration).toMatch(/'recoleta', concat_ws/i);
