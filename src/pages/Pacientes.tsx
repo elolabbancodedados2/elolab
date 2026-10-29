@@ -1,7 +1,8 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Link as RouterLink, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import {
   Plus, Search, Edit, Trash2, Eye, Tag, Link, Loader2, MapPin,
   Phone, Mail, Calendar, Filter, Users, UserCheck, Baby, Heart,
@@ -32,7 +33,6 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
@@ -178,7 +178,19 @@ const minutosDaHora = (hora: string | null | undefined): number | null => {
 };
 
 export default function Pacientes() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { patientId } = useParams();
+  const newPatientPage = location.pathname === '/pacientes/novo';
+  const editPatientPage = !!patientId && location.pathname.endsWith('/editar');
+  const patientTaskPage = newPatientPage || !!patientId;
+  const patientFormPage = newPatientPage || editPatientPage;
+  const [taskReadyFor, setTaskReadyFor] = useState('');
+  const [taskError, setTaskError] = useState<unknown>(null);
+  const initializedTask = useRef('');
+  const completedTask = useRef(false);
+  const [initialFormSnapshot, setInitialFormSnapshot] = useState(JSON.stringify(initialFormData));
+  const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.patientFilters?.search || '');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [possibleDuplicatesOpen, setPossibleDuplicatesOpen] = useState(false);
   const [possibleDuplicates, setPossibleDuplicates] = useState<PossiblePatientDuplicate[]>([]);
@@ -194,8 +206,7 @@ export default function Pacientes() {
   // Deep-link: /pacientes?paciente=<id>&tab=<financeiro|...>
   // Vem da agenda ("Ficha do paciente" / "Extrato financeiro" no menu de
   // contexto do card) e de outros lugares que queiram apontar direto.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const deepLinkAplicadoRef = useRef<string | null>(null);
+  const [searchParams] = useSearchParams();
 
   /** Modal de guias/senhas de autorização do convênio do paciente. */
   const [showAutorizacao, setShowAutorizacao] = useState(false);
@@ -218,10 +229,10 @@ export default function Pacientes() {
   const pacienteDeleteLockRef = useRef(false);
   const exameSaveLockRef = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [filterSexo, setFilterSexo] = useState<string>('todos');
-  const [filterConvenio, setFilterConvenio] = useState<string>('todos');
-  const [filterIdade, setFilterIdade] = useState<string>('todos');
-  const [filterStatusPaciente, setFilterStatusPaciente] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
+  const [filterSexo, setFilterSexo] = useState<string>(() => location.state?.patientFilters?.sexo || 'todos');
+  const [filterConvenio, setFilterConvenio] = useState<string>(() => location.state?.patientFilters?.convenio || 'todos');
+  const [filterIdade, setFilterIdade] = useState<string>(() => location.state?.patientFilters?.idade || 'todos');
+  const [filterStatusPaciente, setFilterStatusPaciente] = useState<'ativos' | 'inativos' | 'todos'>(() => location.state?.patientFilters?.status || 'ativos');
   const [formSection, setFormSection] = useState<string>('pessoal');
   // Prontuário inline state
   const [prontuarioList, setProntuarioList] = useState<any[]>([]);
@@ -277,7 +288,14 @@ export default function Pacientes() {
   const vinculoMedicoValido = !!medicoId && currentMedico?.ativo !== false;
   const podeEditarProntuarioAtual = activeProntuario && activeProntuario.assinado !== true
     && (isAdmin() || (hasRole('medico') && vinculoMedicoValido && activeProntuario.medico_id === medicoId));
-  const [paginaPacientes, setPaginaPacientes] = useState(0);
+  const [paginaPacientes, setPaginaPacientes] = useState<number>(() => location.state?.patientFilters?.page || 0);
+  const patientFilters = { search: searchTerm, sexo: filterSexo, convenio: filterConvenio, idade: filterIdade, status: filterStatusPaciente, page: paginaPacientes };
+  const patientReturnTo = /^\/pacientes(?:\?|$)/.test(location.state?.returnTo || '') ? location.state.returnTo : '/pacientes';
+  const leavePatientTask = () => navigate(patientReturnTo, { replace: true, state: { patientFilters } });
+  const openPatientTask = (path: string) => {
+    if (!patientTaskPage) navigate('/pacientes', { replace: true, state: { patientFilters } });
+    navigate(path, { state: { returnTo: patientReturnTo, patientFilters } });
+  };
   const limiteBusca = 50;
   const hoje = todaySaoPauloDateOnly();
   const dataLimite = useCallback((anos: number) => format(subYears(parseDateOnly(hoje), anos), 'yyyy-MM-dd'), [hoje]);
@@ -317,9 +335,9 @@ export default function Pacientes() {
     },
     staleTime: 60_000,
   });
-  const deepLinkPacienteId = searchParams.get('paciente');
+  const deepLinkPacienteId = patientId || searchParams.get('paciente');
   const { data: pacienteDeepLink, isLoading: carregandoDeepLink, error: erroDeepLink, refetch: refazerDeepLink } = useQuery({
-    queryKey: ['paciente-deep-link', authProfile?.clinica_id, deepLinkPacienteId],
+    queryKey: ['paciente-deep-link', authProfile?.clinica_id, deepLinkPacienteId, patientId ? location.key : 'legacy'],
     enabled: !!authProfile?.clinica_id && !!deepLinkPacienteId,
     queryFn: async () => {
       const { data, error } = await (supabase as any).from('pacientes').select('*').eq('clinica_id', authProfile!.clinica_id).eq('id', deepLinkPacienteId).maybeSingle();
@@ -496,47 +514,20 @@ export default function Pacientes() {
   }, [loadProntuarios, loadAgendamentos, loadExames]);
 
   useEffect(() => {
-    const pid = searchParams.get('paciente');
-    if (!pid) {
-      deepLinkAplicadoRef.current = null;
-      return;
-    }
-    if (isLoading || pacientesError || erroDeepLink || (deepLinkPacienteId && carregandoDeepLink)) return;
-
-    const tab = searchParams.get('tab') || 'dados';
-    const linkKey = `${pid}:${tab}`;
-    if (deepLinkAplicadoRef.current === linkKey) return;
-
-    const paciente = pacienteDeepLink;
-    if (!paciente) {
-      deepLinkAplicadoRef.current = linkKey;
-      toast.error('Não foi possível abrir a ficha deste paciente.', {
-        description: 'O cadastro não foi encontrado ou você não tem acesso a ele.',
-      });
-    } else {
-      const abasDisponiveis = ['dados', 'consultas', 'exames', 'sinais', 'endereco', 'lgpd'];
-      if (podeVerTimelinePaciente) abasDisponiveis.push('historico');
-      if (podeVerExtratoFinanceiroPaciente) abasDisponiveis.push('financeiro');
-      if (podeVerProntuario) abasDisponiveis.push('prontuario');
-      handleViewWithProntuario(paciente);
-      setViewTab(abasDisponiveis.includes(tab) ? tab : 'dados');
-      deepLinkAplicadoRef.current = linkKey;
-    }
-
-    // Mantém a URL intacta enquanto a lista carrega; limpa apenas depois de
-    // abrir a ficha ou informar que o paciente não está acessível.
-    const params = new URLSearchParams(searchParams);
-    params.delete('paciente');
-    params.delete('tab');
-    setSearchParams(params, { replace: true });
-  }, [searchParams, setSearchParams, isLoading, pacientesError, erroDeepLink, pacienteDeepLink, deepLinkPacienteId, carregandoDeepLink, podeVerProntuario, podeVerTimelinePaciente, podeVerExtratoFinanceiroPaciente, handleViewWithProntuario]);
+    const id = searchParams.get('paciente');
+    if (!id || patientTaskPage) return;
+    const tab = searchParams.get('tab');
+    navigate(`/pacientes/${encodeURIComponent(id)}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`, {
+      replace: true, state: { returnTo: '/pacientes' },
+    });
+  }, [searchParams, patientTaskPage, navigate]);
 
   const handleNewProntuario = () => {
     if (isMedicoOnly && !vinculoMedicoValido) {
       toast.error('Não foi possível confirmar seu vínculo médico ativo. Atualize a página antes de atender.');
       return;
     }
-    const paciente = pacientes.find(p => p.id === selectedPacienteId);
+    const paciente = patientId ? pacienteDeepLink : pacientes.find(p => p.id === selectedPacienteId);
     setProntuarioForm({
       paciente_id: selectedPacienteId,
       medico_id: medicoId || authProfile?.id || '',
@@ -761,7 +752,7 @@ export default function Pacientes() {
   }, []);
 
   const filteredPacientes = pacientes;
-  const selectedPaciente = pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
+  const selectedPaciente = patientId ? pacienteDeepLink : pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
   const consentimentosPacienteQuery = useQuery({
     queryKey: ['consentimentos-paciente', authProfile?.clinica_id, selectedPaciente?.id],
     enabled: Boolean(authProfile?.clinica_id && selectedPaciente?.id),
@@ -837,7 +828,7 @@ export default function Pacientes() {
     }
   };
 
-  const handleNew = () => {
+  const prepareNewPatient = () => {
     edicaoPacienteSolicitadaRef.current += 1;
     cepLookupRef.current += 1;
     setCepLoading(false);
@@ -845,11 +836,12 @@ export default function Pacientes() {
     setSelectedPacienteId(null);
     setSelectedPacienteUpdatedAt(null);
     setFormData(initialFormData);
+    setInitialFormSnapshot(JSON.stringify(initialFormData));
     setFormSection('pessoal');
     setIsFormOpen(true);
   };
 
-  const handleEdit = async (paciente: any) => {
+  const preparePatientEdit = async (paciente: any) => {
     const edicaoSolicitada = ++edicaoPacienteSolicitadaRef.current;
     cepLookupRef.current += 1;
     setCepLoading(false);
@@ -867,15 +859,16 @@ export default function Pacientes() {
       .eq('ativo', true)
       .order('created_at');
 
-    if (edicaoPacienteSolicitadaRef.current !== edicaoSolicitada) return;
+    if (edicaoPacienteSolicitadaRef.current !== edicaoSolicitada) return false;
     if (erroComorbidades) {
       // Sem isto, um erro aqui abriria o formulário com o campo vazio e o
       // salvamento apagaria as comorbidades que já existiam.
       toast.error('Não foi possível carregar as comorbidades. Recarregue antes de salvar.', { description: mensagemDeErro(erroComorbidades) });
-      return;
+      setTaskError(erroComorbidades);
+      return false;
     }
 
-    setFormData({
+    const loadedForm: PacienteFormData = {
       nome: paciente.nome,
       nome_social: paciente.nome_social || '',
       cpf: paciente.cpf || '',
@@ -909,12 +902,17 @@ export default function Pacientes() {
       cpf_responsavel: paciente.cpf_responsavel || '',
       parentesco_responsavel: paciente.parentesco_responsavel || '',
       is_menor: !!paciente.nome_responsavel || isMinor(paciente.data_nascimento || ''),
-    });
+    };
+    setFormData(loadedForm);
+    setInitialFormSnapshot(JSON.stringify(loadedForm));
     setFormSection('pessoal');
     setIsFormOpen(true);
+    return true;
   };
 
-  const handleView = handleViewWithProntuario;
+  const handleNew = () => openPatientTask('/pacientes/novo');
+  const handleEdit = (paciente: any) => openPatientTask(`/pacientes/${paciente.id}/editar`);
+  const handleView = (paciente: any) => openPatientTask(`/pacientes/${paciente.id}`);
 
   const handleDeleteClick = (paciente: any) => {
     setSelectedPacienteId(paciente.id);
@@ -1167,6 +1165,8 @@ export default function Pacientes() {
 
       atualizarListasPacientes();
       setIsFormOpen(false);
+      completedTask.current = true;
+      leavePatientTask();
     } catch (error: any) {
       console.error('Erro ao salvar paciente:', error);
       const duplicidadeCpf = error?.code === '23505'
@@ -1270,6 +1270,44 @@ export default function Pacientes() {
     return c?.nome || 'Particular';
   };
 
+  useEffect(() => {
+    const path = location.pathname;
+    if (!patientTaskPage) {
+      initializedTask.current = '';
+      completedTask.current = false;
+      edicaoPacienteSolicitadaRef.current += 1;
+      setTaskReadyFor('');
+      setIsFormOpen(false);
+      setIsViewOpen(false);
+      return;
+    }
+    if (patientFormPage && !podeEditarPaciente) return;
+    if (!newPatientPage && (carregandoDeepLink || erroDeepLink || !pacienteDeepLink)) return;
+    if (initializedTask.current === path) return;
+    initializedTask.current = path;
+    completedTask.current = false;
+    setTaskError(null);
+    if (newPatientPage) {
+      prepareNewPatient();
+      setTaskReadyFor(path);
+    } else if (editPatientPage) {
+      void preparePatientEdit(pacienteDeepLink).then(ready => {
+        if (ready && initializedTask.current === path) setTaskReadyFor(path);
+      });
+    } else {
+      handleViewWithProntuario(pacienteDeepLink);
+      const allowedTabs = ['dados', 'consultas', 'exames', 'sinais', 'endereco', 'lgpd'];
+      if (podeVerTimelinePaciente) allowedTabs.push('historico');
+      if (podeVerExtratoFinanceiroPaciente) allowedTabs.push('financeiro');
+      if (podeVerProntuario) allowedTabs.push('prontuario');
+      const requestedTab = searchParams.get('tab') || 'dados';
+      setViewTab(allowedTabs.includes(requestedTab) ? requestedTab : 'dados');
+      setTaskReadyFor(path);
+    }
+    // Initialize once per task. Editing fields must not reload the patient's form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, patientTaskPage, patientFormPage, newPatientPage, editPatientPage, pacienteDeepLink, carregandoDeepLink, erroDeepLink, podeEditarPaciente, podeVerTimelinePaciente, podeVerExtratoFinanceiroPaciente, podeVerProntuario, taskError]);
+
   const pacientesForEtiqueta: Paciente[] = filteredPacientes.map((p) => ({
     id: p.id, nome: p.nome, cpf: p.cpf || '', dataNascimento: p.data_nascimento || '',
     telefone: p.telefone || '', email: p.email || '', convenio: null,
@@ -1277,7 +1315,25 @@ export default function Pacientes() {
     alergias: p.alergias || [], observacoes: p.observacoes || '', criadoEm: p.created_at,
   }));
 
-  if (isLoading) {
+  if (patientTaskPage && patientFormPage && !podeEditarPaciente) return <div className="space-y-4">
+    <h1 className="text-2xl font-semibold">Cadastro indisponível para seu perfil</h1>
+    <p>Seu acesso permite consultar as informações autorizadas, mas não editar este cadastro.</p>
+    <Button variant="outline" onClick={leavePatientTask}>Voltar à lista</Button>
+  </div>;
+  if (patientTaskPage && (taskError || erroDeepLink)) return <div className="space-y-4">
+    <Button variant="outline" onClick={leavePatientTask}>Voltar à lista</Button>
+    <ErrorState title="Não foi possível preparar a ficha" error={taskError || erroDeepLink} onRetry={() => { initializedTask.current = ''; setTaskError(null); void refazerDeepLink(); }} />
+  </div>;
+  if (patientId && !carregandoDeepLink && !pacienteDeepLink) return <div className="space-y-4">
+    <h1 className="text-2xl font-semibold">Paciente indisponível</h1>
+    <p>O cadastro não foi encontrado ou não está disponível para seu perfil nesta clínica.</p>
+    <Button variant="outline" onClick={leavePatientTask}>Voltar à lista</Button>
+  </div>;
+  if (patientTaskPage && taskReadyFor !== location.pathname) return <div role="status" className="space-y-4 py-8">
+    <h1 className="text-2xl font-semibold">{newPatientPage ? 'Novo paciente' : editPatientPage ? 'Editar paciente' : 'Ficha do paciente'}</h1>
+    <p>Preparando cadastro e informações autorizadas…</p>
+  </div>;
+  if (isLoading && !patientTaskPage) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -1289,12 +1345,16 @@ export default function Pacientes() {
     );
   }
 
-  if (pacientesError) return <ErrorState error={pacientesError} title="Não foi possível carregar os pacientes" onRetry={() => { void refetch(); }} />;
+  if (pacientesError && !patientTaskPage) return <ErrorState error={pacientesError} title="Não foi possível carregar os pacientes" onRetry={() => { void refetch(); }} />;
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      {patientTaskPage && <UnsavedChangesGuard key={location.pathname} completed={completedTask}
+        dirty={patientFormPage ? JSON.stringify(formData) !== initialFormSnapshot : isEditingProntuario || showAgendamentoForm || showExameForm}
+        busy={isSubmitting || savingProntuario || savingAgendamento || savingExame} />}
       {conveniosError && <ErrorState compact error={conveniosError} title="Convênios indisponíveis" description="A lista de convênios não carregou. Você pode continuar consultando pacientes, mas não deve alterar o convênio até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
       {medicosError && <ErrorState compact error={medicosError} title="Médicos indisponíveis" description="A lista de médicos não carregou. Atualize os dados antes de agendar consultas ou solicitar exames nesta ficha." onRetry={() => { void refetchMedicos(); }} />}
+      {!patientTaskPage && <>
       {/* Header */}
       <div className="min-w-0">
         <PageHeader
@@ -1493,17 +1553,14 @@ export default function Pacientes() {
         </CardContent>
       </Card>
 
-      {/* ─── Form Dialog ─── */}
-      <Dialog open={isFormOpen} onOpenChange={(open) => {
-        if (open || !isSubmitting) {
-          if (!open) edicaoPacienteSolicitadaRef.current += 1;
-          setIsFormOpen(open);
-        }
-      }}>
-        <DialogContent className="max-h-[100dvh] w-full max-w-3xl overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg" aria-busy={isSubmitting}>
-          <DialogHeader>
-            <DialogTitle>{selectedPacienteId ? 'Editar Paciente' : 'Novo Paciente'}</DialogTitle>
-          </DialogHeader>
+      </>}
+
+      {patientFormPage && isFormOpen && <section className="mx-auto max-w-5xl space-y-6 pb-6" aria-busy={isSubmitting}>
+          <header className="space-y-3 border-b border-border pb-5">
+            <Button variant="ghost" className="-ml-3" onClick={leavePatientTask} disabled={isSubmitting}>← Voltar à lista</Button>
+            <h1 className="text-2xl font-semibold tracking-tight">{selectedPacienteId ? 'Editar Paciente' : 'Novo Paciente'}</h1>
+            <p className="text-sm text-muted-foreground">Preencha a identificação e complemente as informações nas seções abaixo.</p>
+          </header>
 
           <fieldset disabled={isSubmitting} className="min-w-0 space-y-6 border-0 p-0">
           {/* Section nav */}
@@ -1898,24 +1955,22 @@ export default function Pacientes() {
           </div>
 
           </fieldset>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Cancelar</Button>
+          <footer className="flex flex-wrap justify-end gap-3 border-t border-border py-4">
+            <Button variant="outline" onClick={leavePatientTask} disabled={isSubmitting}>Voltar à lista</Button>
             <LoadingButton onClick={handleSave} isLoading={isSubmitting} loadingText="Salvando...">Salvar</LoadingButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+      </section>}
 
-      {/* ─── View Dialog (with Prontuário) ─── */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <User2 className="h-5 w-5 text-primary" />
-              Ficha do Paciente
-            </DialogTitle>
-          </DialogHeader>
+      {patientId && !editPatientPage && isViewOpen && <section className="mx-auto max-w-6xl space-y-5 pb-6">
+          <header className="space-y-3 border-b border-border pb-5">
+            <Button variant="ghost" className="-ml-3" onClick={leavePatientTask}>← Voltar à lista</Button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight">Ficha do Paciente</h1>
+              {podeEditarPaciente && selectedPaciente && <Button variant="outline" onClick={() => handleEdit(selectedPaciente)}>Editar cadastro</Button>}
+            </div>
+          </header>
           {selectedPaciente && (
-            <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="min-w-0 space-y-4">
               {/* Patient header summary */}
               <div className="flex flex-wrap items-center gap-3 px-1 py-2 flex-shrink-0 sm:flex-nowrap">
                 <PatientPhoto
@@ -1926,7 +1981,7 @@ export default function Pacientes() {
                   editable={false}
                 />
                 <div className="min-w-[180px] flex-1">
-                  <h3 className="text-base font-bold truncate">{(selectedPaciente as any).nome_social || selectedPaciente.nome}</h3>
+                  <h3 className="break-words text-base font-bold">{(selectedPaciente as any).nome_social || selectedPaciente.nome}</h3>
                   <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                     <span>{selectedPaciente.data_nascimento
                       ? Number.isFinite(calcularIdade(selectedPaciente.data_nascimento)) && calcularIdade(selectedPaciente.data_nascimento) >= 0
@@ -1951,9 +2006,9 @@ export default function Pacientes() {
                 })()}
               </div>
 
-              <Tabs value={viewTab} onValueChange={setViewTab} className="flex-1 overflow-hidden flex flex-col">
+              <Tabs value={viewTab} onValueChange={setViewTab} className="min-w-0">
                 <div className="flex-shrink-0">
-                  <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/40 p-1 md:grid-cols-5 lg:flex lg:w-auto lg:flex-nowrap lg:justify-start">
+                  <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/40 p-1 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-start">
                     <TabsTrigger value="dados" className="text-[11px] gap-1 py-1.5 rounded-lg"><User2 className="h-3 w-3" />Dados</TabsTrigger>
                     <TabsTrigger value="consultas" className="text-[11px] gap-1 py-1.5 rounded-lg"><Calendar className="h-3 w-3" />Consultas</TabsTrigger>
                     <TabsTrigger value="exames" className="text-[11px] gap-1 py-1.5 rounded-lg"><TestTube className="h-3 w-3" />Exames</TabsTrigger>
@@ -1970,7 +2025,7 @@ export default function Pacientes() {
                   </TabsList>
                 </div>
 
-                <ScrollArea className="flex-1 mt-3">
+                <div className="mt-5">
                   {/* Tab: Financeiro —
                       "esse paciente deve alguma coisa?" é a pergunta que a
                       recepção faz o dia inteiro e que não tinha resposta em
@@ -2687,12 +2742,11 @@ export default function Pacientes() {
                   <TabsContent value="sinais" className="pt-1 mt-0">
                     <VitalSignsChart pacienteId={selectedPaciente.id} />
                   </TabsContent>
-                </ScrollArea>
+                </div>
               </Tabs>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+      </section>}
 
       {/* Review possible duplicates before creating a new patient record. */}
       <AlertDialog open={possibleDuplicatesOpen} onOpenChange={setPossibleDuplicatesOpen}>
@@ -2723,6 +2777,8 @@ export default function Pacientes() {
                     setSearchTerm(candidate.nome);
                     setPossibleDuplicatesOpen(false);
                     setIsFormOpen(false);
+                    completedTask.current = true;
+                    navigate('/pacientes', { replace: true, state: { patientFilters: { ...patientFilters, search: candidate.nome, page: 0 } } });
                   }}
                 >
                   Localizar esta ficha na lista

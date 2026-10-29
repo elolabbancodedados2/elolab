@@ -68,9 +68,10 @@ test('patient registry puts lookup and the patient list ahead of secondary actio
   await expect(patientRow).toBeFocused();
   await page.screenshot({ path: testInfo.outputPath('patient-registry-row-keyboard-focus-1280.png'), animations: 'disabled' });
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/\/pacientes\/[^/]+$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await main.getByRole('button', { name: /Voltar .* lista/ }).click();
+  await expect(page).toHaveURL(/\/pacientes$/);
   const filters = main.getByRole('button', { name: 'Mostrar filtros' });
   await filters.click();
   await expect(main.getByRole('button', { name: 'Ocultar filtros' })).toHaveAttribute('aria-expanded', 'true');
@@ -108,7 +109,7 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
   await page.goto('/pacientes');
   const main = page.locator('#main-content');
   await main.getByRole('button', { name: 'Ver detalhes de Pessoa Exemplo QA' }).click();
-  const patientDialog = page.getByRole('dialog');
+  const patientDialog = page.locator('#main-content');
   await patientDialog.getByRole('tab', { name: /Prontu.rio/ }).click();
   const signedEvolution = patientDialog.getByRole('button', { name: /Cefaleia recorrente/ });
   await expect(signedEvolution).toBeVisible();

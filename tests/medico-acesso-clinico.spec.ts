@@ -23,20 +23,20 @@ test('médico acessa pacientes, cadastra e edita a ficha clínica', async ({ pag
   const main = page.locator('#main-content');
   await expect(main.getByRole('button', { name: /Inativar Pessoa|Excluir Pessoa/ })).toHaveCount(0);
   await main.getByRole('button', { name: 'Editar Pessoa Exemplo QA', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: 'Editar Paciente' });
+  let dialog = page.locator('#main-content');
   await dialog.getByLabel('Nome Completo').fill('Pessoa Clínica Atualizada');
   await dialog.getByLabel('CPF', { exact: true }).fill('');
   await dialog.getByLabel('Telefone', { exact: true }).fill('');
   await dialog.getByRole('button', { name: 'Salvar', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/pacientes$/);
   expect(saved).toContainEqual({ method: 'PATCH', body: expect.objectContaining({ nome: 'Pessoa Clínica Atualizada', clinica_id: clinicId }) });
   await expect(page.getByText('Paciente atualizado com sucesso', { exact: true })).toBeVisible();
 
   await main.getByRole('button', { name: 'Novo Paciente', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: 'Novo Paciente' });
+  dialog = page.locator('#main-content');
   await dialog.getByLabel('Nome Completo').fill('Paciente Novo do Médico');
   await dialog.getByRole('button', { name: 'Salvar', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/pacientes$/);
   expect(saved).toContainEqual({ method: 'POST', body: expect.objectContaining({ nome: 'Paciente Novo do Médico', clinica_id: clinicId }) });
   await expect(page.getByText('Paciente cadastrado com sucesso', { exact: true })).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
@@ -78,7 +78,7 @@ test('médico lê histórico assinado e edita apenas seu rascunho na ficha', asy
   ] }));
   await page.goto('/pacientes');
   await page.getByRole('button', { name: 'Ver detalhes de Pessoa Exemplo QA', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Ficha do Paciente' });
+  const dialog = page.locator('#main-content');
   await expect(dialog.getByRole('tab', { name: 'Exames', exact: true })).toBeVisible();
   await dialog.getByRole('tab', { name: 'Prontuário', exact: true }).click();
   await dialog.getByText('Histórico assinado por outra médica', { exact: true }).click();
@@ -98,7 +98,7 @@ test('formulários clínicos da ficha usam o médico da sessão', async ({ page 
   ] }));
   await page.goto('/pacientes');
   await page.getByRole('button', { name: 'Ver detalhes de Pessoa Exemplo QA', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Ficha do Paciente' });
+  const dialog = page.locator('#main-content');
   await dialog.getByRole('tab', { name: 'Consultas', exact: true }).click();
   await dialog.getByRole('button', { name: 'Agendar Consulta', exact: true }).click();
   await expect(dialog.getByRole('combobox').filter({ hasText: 'Médico da sessão' })).toBeDisabled();

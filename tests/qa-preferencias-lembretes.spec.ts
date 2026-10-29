@@ -15,7 +15,7 @@ test('cadastro oferece canais, horário e fuso para os lembretes do paciente', a
 
   await page.goto('/pacientes');
   await page.getByRole('button', { name: 'Novo Paciente' }).click();
-  const dialog = page.getByRole('dialog');
+  const dialog = page.locator('#main-content');
   await expect(dialog.getByRole('heading', { name: 'Novo Paciente' })).toBeVisible();
 
   const channel = dialog.locator('#paciente-canal-lembrete');
