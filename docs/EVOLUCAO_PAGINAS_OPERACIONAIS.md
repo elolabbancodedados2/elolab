@@ -144,3 +144,7 @@ Arquivos: `src/pages/Atestados.tsx`, `src/App.tsx`, `src/config/routeLabels.ts` 
 ### Limites
 
 Gravações e auditoria dos testes usam dados sintéticos e respostas interceptadas. Nenhum atestado real foi emitido. A validação não substitui testes de isolamento no backend nem homologação jurídica do conteúdo dos documentos. A migração dos demais módulos continua incremental; confirmações curtas de segurança permanecem contextuais.
+
+### Publicação
+
+Deploy concluído em 29/10/2026: `763ab16c048965be847dde19bc22b6db9e5fd027`, imagem `easypanel/elolab/app:deploy-20261029-763ab16`. Swarm confirmou atualização concluída, `/version.json` confirmou o hash e `/healthz` respondeu `ok`. A página de emissão foi aberta e visualizada em produção com a sessão existente, sem preencher ou salvar, com zero diálogos. Rollback preservado: imagem `deploy-20261029-bbb522d` e fonte `code.before-20261029-763ab16`. Capturas sintéticas locais em `.qa-artifacts/atestados-20261029/` (fora do Git). Sem migration ou alteração de Edge Functions.
