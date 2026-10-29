@@ -212,3 +212,13 @@ Testes de gravação, upload e automação foram executados com respostas interc
 ### Publicação
 
 Deploy concluído em 29/10/2026: `f749c0369ade733b71a2bfa4fc658e5bfc42b9af`, imagem `easypanel/elolab/app:deploy-20261029-f749c03`. Swarm concluiu a atualização; versão pública conferida e `/healthz` respondeu `ok`. A guia vazia foi aberta e efetivamente visualizada em produção: página própria, zero diálogos, campos e ações presentes. Nenhum pedido ou resultado real foi salvo. Rollback preservado: imagem `deploy-20261029-f5a8eae` e fonte `code.before-20261029-f749c03`. Capturas sintéticas em `.qa-artifacts/exames-20261029/`, fora do Git. Sem migration ou deploy de Edge Functions.
+
+## Laboratórios e fornecedores — páginas próprias (29/10/2026)
+
+Diagnóstico: listagem e cadastro estavam em modais aninhados; acesso direto à edição não existia. O gerenciador e o seletor de exames compartilhavam uma chave de cache com formatos e filtros diferentes.
+
+Direção e implementação: listagem em `/exames/laboratorios`, cadastro em `/exames/laboratorios/novo` e edição em `/exames/laboratorios/:laboratoryId/editar`. Retorno preserva contexto dos exames. Formulário com rótulos associados, proteção de saída, bloqueio de envio duplicado, recuperação de falha e estados de registro ausente/carregamento/erro. Cache de gestão separado do seletor. As ações refletem as políticas SQL existentes: médico consulta, administração/enfermagem cadastram e editam, administração exclui. Exclusão mantém confirmação curta. Nenhuma API, permissão de banco ou integração alterada.
+
+Arquivos: `GerenciadorLaboratorios.tsx`, `Exames.tsx`, `App.tsx`, `routeLabels.ts` e `tests/laboratory-directory-pages.spec.ts`.
+
+Validação: seis cenários Playwright passaram (1440/768/390 px, retorno, recarga de edição, rascunho, falha e sucesso de gravação, registro ausente e permissões). TypeScript da aplicação e build passaram. ESLint focal: zero erros, 23 avisos de tipagem/hooks. Capturas desktop e mobile efetivamente visualizadas. Corrigida margem de rolagem do botão final que ficava atrás da navegação inferior no celular. Escritas foram interceptadas com dados sintéticos; nenhum fornecedor real foi alterado. Capturas em `.qa-artifacts/laboratorios-20261029/`.

@@ -25,6 +25,8 @@ const labelsByPath: Record<string, string> = {
   '/prontuarios': 'Prontuários',
   '/documentos-clinicos': 'Documentos clínicos',
   '/exames': 'Exames',
+  '/exames/laboratorios': 'Laboratórios e fornecedores',
+  '/exames/laboratorios/novo': 'Novo laboratório',
   '/retornos': 'Retornos',
   '/laboratorio': 'Laboratório',
   '/mapa-coleta': 'Mapa de coleta',
@@ -110,6 +112,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
   if (/^\/atestados\/[^/]+$/.test(path)) return 'Detalhes do atestado';
   if (/^\/encaminhamentos\/[^/]+$/.test(path)) return 'Detalhes do encaminhamento';
+  if (/^\/exames\/laboratorios\/[^/]+\/editar$/.test(path)) return 'Editar laboratório';
   if (/^\/exames\/[^/]+\/resultado$/.test(path)) return 'Lançar resultado';
   if (/^\/exames\/[^/]+$/.test(path)) return 'Detalhes do exame';
   if (path.startsWith('/agendar/')) return 'Agendamento online';

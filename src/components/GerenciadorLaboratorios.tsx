@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit2, Building2, Loader2 } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/loading-skeleton';
@@ -27,11 +27,28 @@ interface Laboratorio {
 // Helper to bypass strict typing for tables not yet in generated types
 const db = supabase as any;
 
-export function GerenciadorLaboratorios() {
-  const { profile } = useSupabaseAuth();
+export default function GerenciadorLaboratorios() {
+  const location = useLocation();
+  return <Laboratorios key={location.pathname} />;
+}
+
+function Laboratorios() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { laboratoryId: editingId } = useParams();
+  const formPage = !!editingId || location.pathname.endsWith('/novo');
+  const listUrl = '/exames/laboratorios' + location.search;
+  const navigationState = location.state;
+  const completed = useRef(false);
+  const saving = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef('');
+  const leaveForm = () => navigate(listUrl, { state: navigationState });
+  const examsReturn = new URLSearchParams(location.search).get('voltar');
+  const examsUrl = examsReturn && /^\/exames(?:\?|$)/.test(examsReturn) ? examsReturn : '/exames';
+  const { profile, isAdmin, hasRole } = useSupabaseAuth();
+  const canEdit = isAdmin() || hasRole('enfermagem');
   const queryClient = useQueryClient();
-  const [showDialog, setShowDialog] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [laboratorioParaExcluir, setLaboratorioParaExcluir] = useState<Laboratorio | null>(null);
   const [form, setForm] = useState({
     nome: '',
@@ -42,7 +59,7 @@ export function GerenciadorLaboratorios() {
   });
 
   const laboratoriosQuery = useQuery({
-    queryKey: ['laboratorios', profile?.clinica_id],
+    queryKey: ['laboratorios', 'gestao', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
       const { data, error } = await db
@@ -53,12 +70,33 @@ export function GerenciadorLaboratorios() {
       if (error) throw error;
       return (data || []) as Laboratorio[];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && !formPage,
   });
   const { data: laboratorios = [], isLoading } = laboratoriosQuery;
 
+  const recordQuery = useQuery({
+    queryKey: ['laboratorios', 'editar', profile?.clinica_id, editingId],
+    queryFn: async () => {
+      const { data, error } = await db.from('laboratorios').select('*').eq('id', editingId).eq('clinica_id', profile!.clinica_id).maybeSingle();
+      if (error) throw error;
+      return data as Laboratorio | null;
+    },
+    enabled: !!profile?.clinica_id && !!editingId,
+    retry: false,
+    gcTime: 0,
+  });
+  useEffect(() => {
+    if (!formPage || initialized.current || (editingId && !recordQuery.data)) return;
+    const lab = recordQuery.data;
+    const value = lab ? { nome: lab.nome, cnpj: lab.cnpj || '', telefone: lab.telefone || '', email: lab.email || '', endereco: lab.endereco || '' } : { nome: '', cnpj: '', telefone: '', email: '', endereco: '' };
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setForm(value);
+  }, [formPage, editingId, recordQuery.data]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!canEdit) throw new Error('Seu perfil permite consultar os laboratórios, mas não alterar o cadastro.');
       if (!profile?.clinica_id) throw new Error('Clínica não identificada');
       if (!form.nome.trim()) throw new Error('Nome obrigatório');
 
@@ -85,8 +123,8 @@ export function GerenciadorLaboratorios() {
     onSuccess: () => {
       toast.success(editingId ? 'Laboratório atualizado!' : 'Laboratório adicionado!');
       queryClient.invalidateQueries({ queryKey: ['laboratorios'] });
-      resetForm();
-      setShowDialog(false);
+      completed.current = true;
+      leaveForm();
     },
     onError: (error: any) => toast.error(error.message),
   });
@@ -112,28 +150,25 @@ export function GerenciadorLaboratorios() {
     onError: (error: any) => toast.error(error.message),
   });
 
-  const resetForm = () => {
-    setForm({ nome: '', cnpj: '', telefone: '', email: '', endereco: '' });
-    setEditingId(null);
-  };
-
-  const handleEdit = (lab: Laboratorio) => {
-    setForm({ nome: lab.nome, cnpj: lab.cnpj || '', telefone: lab.telefone || '', email: lab.email || '', endereco: lab.endereco || '' });
-    setEditingId(lab.id);
-    setShowDialog(true);
+  const handleEdit = (lab: Laboratorio) => navigate(`/exames/laboratorios/${lab.id}/editar${location.search}`, { state: navigationState });
+  const submit = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    try { await saveMutation.mutateAsync(); } catch { /* Feedback remains in the form. */ }
+    finally { saving.current = false; }
   };
 
   return (
-    <>
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-24 lg:pb-8">
+      <UnsavedChangesGuard dirty={formPage && initialized.current && JSON.stringify(form) !== baseline.current} busy={saveMutation.isPending} completed={completed} />
+      <Button variant="outline" onClick={() => formPage ? leaveForm() : navigate(examsUrl, { state: navigationState })}>{formPage ? 'Voltar aos laboratórios' : 'Voltar aos exames'}</Button>
+      {!formPage && <div className="space-y-4">
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Building2 className="h-5 w-5" />
             Laboratórios/Fornecedores
-          </h3>
-          <Button onClick={() => { resetForm(); setShowDialog(true); }} size="sm" className="gap-1">
-            <Plus className="h-4 w-4" /> Novo
-          </Button>
+          </h1>
+          {canEdit && <Button asChild className="gap-1"><Link to={`/exames/laboratorios/novo${location.search}`} state={navigationState}><Plus className="h-4 w-4" /> Novo laboratório</Link></Button>}
         </div>
 
         {laboratoriosQuery.isError ? (
@@ -166,12 +201,12 @@ export function GerenciadorLaboratorios() {
                     <TableCell className="text-sm">{lab.telefone || '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" aria-label={`Editar laboratório ${lab.nome}`} onClick={() => handleEdit(lab)}>
+                        {canEdit && <Button variant="ghost" size="icon" aria-label={`Editar laboratório ${lab.nome}`} onClick={() => handleEdit(lab)}>
                           <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Excluir laboratório ${lab.nome}`} onClick={() => setLaboratorioParaExcluir(lab)} disabled={deleteMutation.isPending}>
+                        </Button>}
+                        {isAdmin() && <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Excluir laboratório ${lab.nome}`} onClick={() => setLaboratorioParaExcluir(lab)} disabled={deleteMutation.isPending}>
                           <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </Button>}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -180,46 +215,53 @@ export function GerenciadorLaboratorios() {
             </Table>
           </div>
         )}
-      </div>
+      </div>}
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Editar Laboratório' : 'Novo Laboratório'}</DialogTitle>
-          </DialogHeader>
+      {formPage && (!canEdit ? <p role="status">Seu perfil permite consultar os laboratórios, mas não alterar o cadastro.</p>
+        : editingId && recordQuery.isError ? <ErrorState title="Não foi possível abrir o laboratório" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+        : editingId && recordQuery.isPending ? <ListSkeleton items={3} />
+        : editingId && !recordQuery.data ? <p role="status">Laboratório não encontrado na clínica atual. Volte à lista para selecionar outro registro.</p>
+        : <form onSubmit={event => { event.preventDefault(); void submit(); }} className="max-w-3xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5">
+            <p className="text-sm text-muted-foreground">Exames / Laboratórios e fornecedores</p>
+            <h1 className="text-2xl font-semibold">{editingId ? 'Editar laboratório' : 'Novo laboratório'}</h1>
+            <p className="text-sm text-muted-foreground">Identificação e contato do parceiro responsável pelos exames. O nome é obrigatório.</p>
+          </header>
+          <fieldset disabled={saveMutation.isPending} className="min-w-0">
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Nome *</Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Diagnósticos Brasil" />
+              <Label htmlFor="laboratorio-nome" className="text-xs font-medium">Nome *</Label>
+              <Input id="laboratorio-nome" required value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Diagnósticos Brasil" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">CNPJ</Label>
-                <Input value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
+                <Label htmlFor="laboratorio-cnpj" className="text-xs font-medium">CNPJ</Label>
+                <Input id="laboratorio-cnpj" value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Telefone</Label>
-                <Input value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} placeholder="(11) 9999-9999" />
+                <Label htmlFor="laboratorio-telefone" className="text-xs font-medium">Telefone</Label>
+                <Input id="laboratorio-telefone" value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} placeholder="(11) 9999-9999" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Email</Label>
-              <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} type="email" placeholder="contato@lab.com" />
+              <Label htmlFor="laboratorio-email" className="text-xs font-medium">Email</Label>
+              <Input id="laboratorio-email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} type="email" placeholder="contato@lab.com" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Endereço</Label>
-              <Input value={form.endereco} onChange={e => setForm({ ...form, endereco: e.target.value })} placeholder="Av. Principal, 1000" />
+              <Label htmlFor="laboratorio-endereco" className="text-xs font-medium">Endereço</Label>
+              <Input id="laboratorio-endereco" value={form.endereco} onChange={e => setForm({ ...form, endereco: e.target.value })} placeholder="Av. Principal, 1000" />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.nome.trim()}>
+          </fieldset>
+          {saveMutation.isError && <p role="alert" className="text-sm text-destructive">Não foi possível salvar. Seus dados continuam nesta página; confira a mensagem e tente novamente.</p>}
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="outline" onClick={leaveForm} disabled={saveMutation.isPending}>Cancelar</Button>
+            <Button type="submit" className="scroll-mb-24" disabled={saveMutation.isPending || !form.nome.trim()}>
               {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {editingId ? 'Atualizar' : 'Adicionar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>)}
 
       <AlertDialog open={!!laboratorioParaExcluir} onOpenChange={open => { if (!open && !deleteMutation.isPending) setLaboratorioParaExcluir(null); }}>
         <AlertDialogContent>
@@ -242,6 +284,6 @@ export function GerenciadorLaboratorios() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }

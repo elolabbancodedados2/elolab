@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -47,7 +46,6 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame } from '@/lib/workflowAutomation';
 import { podeExcluirExame, preparosAusentesNaGuia, proximaAcaoExame, textoPreparosParaGuia } from '@/lib/examesWorkflow';
-import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
 import { LancarResultado } from '@/components/exames/LancarResultado';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { gerarGuiaSolicitacaoExames, downloadPDF } from '@/lib/pdfGenerator';
@@ -371,7 +369,6 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
   const setIndicador = (valor: IndicadorExame) => atualizarFiltros({ indicador: valor });
   const isDialogOpen = creationPage;
   const isViewOpen = !!examId && !resultPage;
-  const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
 
   const [baixandoLaudoId, setBaixandoLaudoId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({ ...initialFormData });
@@ -1244,7 +1241,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
             <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
               <Link to="/guias-externas"><ExternalLink aria-hidden="true" className="h-4 w-4" /> Guias externas</Link>
             </Button>
-            <Button variant="outline" onClick={() => setIsManageTypesOpen(true)} className="shrink-0 gap-2 rounded-full">
+            <Button variant="outline" onClick={() => navigate(`/exames/laboratorios?voltar=${encodeURIComponent(location.pathname + location.search)}`, { state: { examSearch: searchTerm } })} className="shrink-0 gap-2 rounded-full">
               <Building2 aria-hidden="true" className="h-4 w-4" />Laboratórios
             </Button>
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refreshExames} aria-label="Atualizar exames" title="Atualizar exames">
@@ -2127,16 +2124,6 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
             {selectedExame?.status === 'realizado' && (selectedExame.tipo_categorizado || '').toLowerCase() !== 'laboratorial' && !selectedExame.resultado && !selectedExame.arquivo_resultado && <Button onClick={() => setLancandoResultado(selectedExame)}>Lançar resultado</Button>}
           </div>
       </section>}
-
-      {/* ─── Manage Laboratories ─── */}
-      <Dialog open={isManageTypesOpen} onOpenChange={setIsManageTypesOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader><DialogTitle>Gerenciar Laboratórios e Fornecedores</DialogTitle></DialogHeader>
-          <div className="flex-1 overflow-y-auto pr-4">
-            <GerenciadorLaboratorios />
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog
         open={!!exameParaCancelar}
