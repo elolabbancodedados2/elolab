@@ -674,6 +674,29 @@ html[data-text-size='large'] {
   }
 }
 
+/* A agenda se adapta ao espaço disponível entre busca, clínica e ações. */
+.agenda-toolbar {
+  container-type: inline-size;
+  container-name: agenda-toolbar;
+}
+
+.agenda-toolbar .agenda-toolbar-date,
+.agenda-toolbar .agenda-toolbar-next {
+  display: none;
+}
+
+@container agenda-toolbar (min-width: 26rem) {
+  .agenda-toolbar .agenda-toolbar-next {
+    display: flex;
+  }
+}
+
+@container agenda-toolbar (min-width: 38rem) {
+  .agenda-toolbar .agenda-toolbar-date {
+    display: block;
+  }
+}
+
 @keyframes heroFloat {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-14px); }

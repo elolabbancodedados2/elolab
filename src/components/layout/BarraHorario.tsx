@@ -145,9 +145,9 @@ export function BarraHorario() {
     <section
       aria-label="Agenda de hoje"
       aria-busy={isLoading}
-      className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-brand-dark p-1 pl-3 text-white shadow-sm"
+      className="agenda-toolbar flex h-11 min-w-0 items-center gap-1 rounded-full bg-brand-dark p-1 pl-3 text-white shadow-sm"
     >
-      <div className="hidden shrink-0 pr-2 leading-tight 2xl:block">
+      <div className="agenda-toolbar-date shrink-0 pr-2 leading-tight">
         <p className="text-[12px] font-semibold">{isMedicoOnly ? 'Sua agenda' : 'Hoje'}</p>
         <p className="text-[10px] capitalize text-white/50">{dataFormatada} · {totalHoje} consulta{totalHoje === 1 ? '' : 's'}</p>
       </div>
@@ -156,7 +156,7 @@ export function BarraHorario() {
       ) : (
         <>
           <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta' : 'Sem consultas'} />
-          <Segmento consulta={proxima} hoje={hoje} vazio="Nenhuma próxima" className="hidden 2xl:flex" />
+          <Segmento consulta={proxima} hoje={hoje} vazio="Nenhuma próxima" className="agenda-toolbar-next" />
         </>
       )}
     </section>
