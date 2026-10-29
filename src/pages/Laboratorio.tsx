@@ -1,5 +1,4 @@
 import { nomeMedico } from '@/lib/formatters';
-import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,7 +11,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -27,7 +25,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dadosAoRegistrarColeta, gravarFiltrosWorklist, lerFiltrosWorklist, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, resumirPendenciasPorSetor, STATUS_COLETA_LABELS, STATUS_COLETA_PENDENTES, type FiltrosWorklist } from '@/lib/laboratorioWorkflow';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
 import { GestaoLaboratorioPanel } from '@/pages/laboratorio/GestaoLaboratorioPanel';
 import { IndicadoresLaboratorioPanel } from '@/pages/laboratorio/IndicadoresLaboratorioPanel';
@@ -42,35 +40,6 @@ import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
  */
 const TETO_WORKLIST = 500;
 const FUSO_CLINICA = 'America/Sao_Paulo';
-
-function dataHoraLocalDaClinica(instant = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: FUSO_CLINICA,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(instant);
-  const part = (type: string) => parts.find(item => item.type === type)?.value || '';
-  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
-}
-
-function dataHoraDaClinicaParaIso(value: string): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const [, yearText, monthText, dayText, hourText, minuteText] = match;
-  const targetWallTime = Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText), Number(hourText), Number(minuteText));
-  const initial = new Date(targetWallTime);
-  const clinicParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: FUSO_CLINICA,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-  }).formatToParts(initial);
-  const part = (type: string) => Number(clinicParts.find(item => item.type === type)?.value || 0);
-  const representedWallTime = Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second'));
-  const instant = new Date(targetWallTime - (representedWallTime - targetWallTime));
-  const resolved = dataHoraLocalDaClinica(instant);
-  return resolved === value ? instant.toISOString() : null;
-}
-
 import {
   FlaskConical, Search, Plus, TestTube, ClipboardCheck, AlertTriangle,
   Clock, CheckCircle2, XCircle, Eye, Printer, Tag,
@@ -96,26 +65,6 @@ const statusLabels = STATUS_COLETA_LABELS;
 const PIPELINE_STEPS = ['pendente', 'coletado', 'em_analise', 'validado', 'liberado'];
 const LIMITE_PENDENCIAS_SETOR = 2000;
 
-const CONDICOES_AMOSTRA = ['Hemólise', 'Lipemia', 'Icterícia', 'Coagulada', 'Volume insuficiente'];
-
-const SITIOS_COLETA = [
-  'Braço direito (veia cubital)', 'Braço esquerdo (veia cubital)',
-  'Mão direita', 'Mão esquerda', 'Acesso venoso central',
-  'Veia jugular', 'Cateter', 'Outro',
-];
-
-const TUBOS = [
-  { value: 'EDTA (Roxo)', color: 'bg-purple-500' },
-  { value: 'Soro (Amarelo)', color: 'bg-yellow-400' },
-  { value: 'Seco (Vermelho)', color: 'bg-red-500' },
-  { value: 'Citrato (Azul)', color: 'bg-blue-400' },
-  { value: 'Fluoreto (Cinza)', color: 'bg-gray-400' },
-  { value: 'Heparina (Verde)', color: 'bg-green-500' },
-  { value: 'Coletor Urina', color: 'bg-amber-300' },
-  { value: 'Coletor Fezes', color: 'bg-amber-700' },
-  { value: 'Swab (Laranja)', color: 'bg-orange-400' },
-];
-
 const SLA_WARNING_MINUTES = 120; // 2h
 const SLA_CRITICAL_MINUTES = 240; // 4h
 
@@ -128,6 +77,8 @@ function parseNumeroOpcional(valor: unknown): number | null {
 
 export default function Laboratorio() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const openNewColeta = () => navigate('/laboratorio/coletas/nova', { state: { laboratorioSearch: location.search, buscaPaciente: search } });
   const contextoDaRota = location.state as { buscaPaciente?: unknown } | null;
   const [agora, setAgora] = useState(() => new Date());
   const [search, setSearch] = useState(() => typeof contextoDaRota?.buscaPaciente === 'string' ? contextoDaRota.buscaPaciente : '');
@@ -140,7 +91,7 @@ export default function Laboratorio() {
   const setStatusFilter = (status: string) => atualizarFiltros({ status });
   const setSetorFilter = (setor: string) => atualizarFiltros({ setor });
   const setDateFilter = (periodo: string) => atualizarFiltros({ periodo });
-  const [showNewColeta, setShowNewColeta] = useState(false);
+
 
   // Limpeza de fila em lote: a INOVALAB acumulou 253 coletas em `pendente`
   // vindas de exames que nunca tinham passado pelo laboratório. Sem uma
@@ -156,14 +107,6 @@ export default function Laboratorio() {
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
   const podeGerenciarLaboratorio = podeGerenciarLaboratorioPorPapel(profile?.roles);
-  const [newColetaForm, setNewColetaForm] = useState({
-    paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
-    tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
-    coletado_por: '', data_coleta: dataHoraLocalDaClinica(),
-    exame_id: '', volume_ml: '', condicao_amostra: [] as string[], sitio_coleta: '', lote_insumo: '',
-    finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
-    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '', setor_id: '',
-  });
 
   useEffect(() => {
     const timer = window.setInterval(() => setAgora(new Date()), 60_000);
@@ -215,39 +158,6 @@ export default function Laboratorio() {
   });
 
 
-  const medicosQuery = useQuery({
-    queryKey: ['medicos-lab', profile?.clinica_id, user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('medicos').select('id, nome, crm, especialidade').eq('clinica_id', profile!.clinica_id!).order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id,
-  });
-  const medicos = medicosQuery.data;
-
-  const funcionariosQuery = useQuery({
-    queryKey: ['funcionarios-lab', profile?.clinica_id, user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, nome').eq('clinica_id', profile!.clinica_id!).order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id,
-  });
-  const funcionarios = funcionariosQuery.data;
-
-  const conveniosQuery = useQuery({
-    queryKey: ['convenios-lab', profile?.clinica_id, user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('convenios').select('id, nome, codigo').eq('clinica_id', profile!.clinica_id!).eq('ativo', true).order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id,
-  });
-  const convenios = conveniosQuery.data;
-
   const setoresQuery = useQuery({
     queryKey: ['lab-setores-worklist', profile?.clinica_id],
     enabled: !!profile?.clinica_id,
@@ -257,24 +167,6 @@ export default function Laboratorio() {
       if (error) throw error;
       return (data ?? []) as Array<{ id: string; nome: string }>;
     },
-  });
-
-  const examesPendentesQuery = useQuery({
-    queryKey: ['exames-pendentes-lab', profile?.clinica_id, user?.id, newColetaForm.paciente_id],
-    queryFn: async () => {
-      if (!newColetaForm.paciente_id) return { items: [], hasMore: false };
-      const { data, error } = await (supabase as any).from('exames').select('id, tipo_exame, paciente_id, pacientes(nome), tipo_exames_catalog(setor_id)')
-        .eq('clinica_id', profile!.clinica_id!)
-        .eq('paciente_id', newColetaForm.paciente_id)
-        .in('status', ['solicitado', 'agendado'])
-        .order('data_solicitacao', { ascending: false })
-        .order('id', { ascending: true })
-        .limit(201);
-      if (error) throw error;
-      const pedidos = data ?? [];
-      return { items: pedidos.slice(0, 200), hasMore: pedidos.length > 200 };
-    },
-    enabled: !!profile?.clinica_id && showNewColeta && !!newColetaForm.paciente_id,
   });
 
   const coletasQuery = useInfiniteQuery({
@@ -365,35 +257,6 @@ export default function Laboratorio() {
     },
   });
   const resultados = resultadosQuery.data;
-
-  const createColeta = useMutation({
-    mutationFn: async (form: any) => {
-      if (!profile?.clinica_id || !user?.id) throw new Error('Usuário ou clínica não identificados.');
-      if (form.exame_id) {
-        const { data: coletaExistente, error: erroConsulta } = await supabase
-          .from('coletas_laboratorio')
-          .select('id')
-          .eq('clinica_id', profile.clinica_id)
-          .eq('exame_id', form.exame_id)
-          .limit(1)
-          .maybeSingle();
-        if (erroConsulta) throw erroConsulta;
-        if (coletaExistente) {
-          throw new Error('Este pedido já possui uma coleta. Localize a amostra existente na worklist para continuar o atendimento.');
-        }
-      }
-      const payload = { ...form, clinica_id: profile.clinica_id };
-      const { error } = await supabase.from('coletas_laboratorio').insert(payload);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
-      queryClient.invalidateQueries({ queryKey: ['exames-pendentes-lab', profile?.clinica_id] });
-      toast.success('Coleta registrada com sucesso!');
-      setShowNewColeta(false);
-    },
-    onError: (e) => toast.error('Erro ao registrar coleta', { description: mensagemDeErro(e) }),
-  });
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status, expectedStatus }: { id: string; status: string; expectedStatus: string }) => {
@@ -555,27 +418,6 @@ export default function Laboratorio() {
     return `${h}h${mins % 60 > 0 ? `${mins % 60}m` : ''}`;
   };
 
-  // ─── Form state ──────────────────────────────────────────
-  const resetColetaForm = () => setNewColetaForm({
-    paciente_id: '', medico_solicitante_id: '', tipo_amostra: 'sangue',
-    tubo: '', observacoes: '', jejum_necessario: false, jejum_horas: 0, urgente: false,
-    coletado_por: user?.id || '', data_coleta: dataHoraLocalDaClinica(),
-    exame_id: '', volume_ml: '', condicao_amostra: [], sitio_coleta: '', lote_insumo: '',
-    finalidade: 'diagnostico', indicacao_clinica: '', categoria_exame: '',
-    numero_guia: '', material: '', trouxe_material: false, cid: '', procedimento_codigo: '', convenio_id: '', grupo: '', setor_id: '',
-  });
-
-  const toggleCondicao = (cond: string) => {
-    setNewColetaForm(prev => ({
-      ...prev,
-      condicao_amostra: prev.condicao_amostra.includes(cond)
-        ? prev.condicao_amostra.filter(c => c !== cond)
-        : [...prev.condicao_amostra, cond],
-    }));
-  };
-
-  const examesFiltrados = examesPendentesQuery.data?.items ?? [];
-
   const [newResultForm, setNewResultForm] = useState({
     parametro: '', resultado: '', unidade: '', valor_referencia_min: '',
     valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false,
@@ -626,7 +468,7 @@ export default function Laboratorio() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
-              onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
+              onClick={openNewColeta}
               className="rounded-full gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
             >
               <Plus aria-hidden="true" className="h-4 w-4" /> Nova coleta
@@ -987,7 +829,7 @@ export default function Laboratorio() {
                         ? () => void coletasQuery.fetchNextPage()
                         : dateFilter !== 'todos'
                           ? () => setDateFilter('todos')
-                          : () => { resetColetaForm(); setShowNewColeta(true); }}
+                          : openNewColeta}
                     >
                       {coletasQuery.hasNextPage ? 'Carregar mais registros' : dateFilter !== 'todos' ? 'Ver todos os períodos' : <><Plus className="h-4 w-4" />Nova coleta</>}
                     </Button>
@@ -1169,7 +1011,7 @@ export default function Laboratorio() {
               </div>
               <Button
                 className="rounded-full gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
-                onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
+                onClick={openNewColeta}
               >
                 <Plus className="h-4 w-4" /> Registrar coleta
               </Button>
@@ -1247,395 +1089,6 @@ export default function Laboratorio() {
       </Tabs>
 
       {/* ─── Dialog Nova Coleta ─── */}
-      <Dialog open={showNewColeta} onOpenChange={open => {
-        if (open || !createColeta.isPending) setShowNewColeta(open);
-      }}>
-        <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <TestTube className="h-5 w-5 text-primary" />
-              Nova Coleta de Amostra
-              <Badge variant="outline" className="ml-auto text-[10px] gap-1"><Tag className="h-3 w-3" />ID Automático</Badge>
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            if (!newColetaForm.paciente_id) { toast.error('Selecione o paciente.'); return; }
-            if (medicosQuery.isLoading || funcionariosQuery.isLoading || conveniosQuery.isLoading) {
-              toast.info('Aguarde o carregamento das listas de profissionais e convênios.');
-              return;
-            }
-            if (medicosQuery.isError || funcionariosQuery.isError || conveniosQuery.isError) {
-              toast.error('Não foi possível confirmar os dados auxiliares da coleta.', {
-                description: 'Atualize as listas de médicos, profissionais e convênios antes de salvar para evitar um vínculo incorreto.',
-              });
-              return;
-            }
-            const dataColetaIso = dataHoraDaClinicaParaIso(newColetaForm.data_coleta);
-            if (!dataColetaIso) {
-              toast.error('Informe uma data e horário válidos para a coleta.');
-              return;
-            }
-            if (new Date(dataColetaIso).getTime() > Date.now()) {
-              toast.error('A coleta não pode ser registrada no futuro.', {
-                description: 'Este formulário registra uma amostra já coletada. Para uma coleta futura, mantenha o pedido como pendente até a realização.',
-              });
-              return;
-            }
-            if (!newColetaForm.coletado_por) {
-              toast.error('Informe o profissional que realizou a coleta.');
-              return;
-            }
-            createColeta.mutate({
-              paciente_id: newColetaForm.paciente_id,
-              medico_solicitante_id: newColetaForm.medico_solicitante_id || null,
-              tipo_amostra: newColetaForm.tipo_amostra,
-              tubo: newColetaForm.tubo || null,
-              observacoes: newColetaForm.observacoes || null,
-              jejum_necessario: newColetaForm.jejum_necessario,
-              jejum_horas: newColetaForm.jejum_horas || null,
-              urgente: newColetaForm.urgente,
-              status: 'coletado',
-              coletado_por: newColetaForm.coletado_por || null,
-              data_coleta: dataColetaIso,
-              exame_id: newColetaForm.exame_id && newColetaForm.exame_id !== '__none__' ? newColetaForm.exame_id : null,
-              volume_ml: newColetaForm.volume_ml ? parseFloat(newColetaForm.volume_ml) : null,
-              condicao_amostra: newColetaForm.condicao_amostra.length > 0 ? newColetaForm.condicao_amostra : null,
-              sitio_coleta: newColetaForm.sitio_coleta && newColetaForm.sitio_coleta !== '__none__' ? newColetaForm.sitio_coleta : null,
-              lote_insumo: newColetaForm.lote_insumo || null,
-              finalidade: newColetaForm.finalidade || 'diagnostico',
-              indicacao_clinica: newColetaForm.indicacao_clinica || null,
-              categoria_exame: newColetaForm.categoria_exame || null,
-              numero_guia: newColetaForm.numero_guia || null,
-              material: newColetaForm.material || null,
-              trouxe_material: newColetaForm.trouxe_material,
-              cid: newColetaForm.cid || null,
-              procedimento_codigo: newColetaForm.procedimento_codigo || null,
-              convenio_id: newColetaForm.convenio_id && newColetaForm.convenio_id !== '__none__' ? newColetaForm.convenio_id : null,
-              grupo: newColetaForm.grupo || null,
-            } as any);
-          }} className="flex-1 overflow-y-auto pr-2" aria-busy={createColeta.isPending}>
-            <fieldset disabled={createColeta.isPending} className="space-y-5 border-0 p-0">
-
-            {/* Rastreabilidade */}
-            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" />Rastreabilidade
-              </h4>
-              <p className="text-xs text-muted-foreground">Código gerado automaticamente ao salvar.</p>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Lote do Insumo (tubo/agulha)</Label>
-                <Input value={newColetaForm.lote_insumo}
-                  onChange={e => setNewColetaForm(p => ({ ...p, lote_insumo: e.target.value }))}
-                  placeholder="Ex: LOT-2026-03-ABC123" />
-              </div>
-            </div>
-
-            {/* Paciente + Médico */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Paciente *</Label>
-                <PacienteCombobox value={newColetaForm.paciente_id} onChange={v => setNewColetaForm(p => ({ ...p, paciente_id: v, exame_id: '' }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Médico Solicitante</Label>
-                {medicosQuery.isError ? (
-                  <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
-                ) : (
-                  <Select value={newColetaForm.medico_solicitante_id} onValueChange={v => setNewColetaForm(p => ({ ...p, medico_solicitante_id: v }))} disabled={medicosQuery.isLoading}>
-                    <SelectTrigger><SelectValue placeholder={medicosQuery.isLoading ? 'Carregando…' : 'Selecione...'} /></SelectTrigger>
-                    <SelectContent>{medicos?.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || `CRM ${m.crm}`} — {m.especialidade || 'Clínico'}</SelectItem>)}</SelectContent>
-                  </Select>
-                )}
-              </div>
-            </div>
-
-            {/* Dados da Solicitação (estilo WEBLIS) */}
-            <div className="bg-muted/30 border rounded-lg p-4 space-y-4">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-primary" />Dados da Solicitação
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Convênio</Label>
-                  {conveniosQuery.isError ? (
-                    <ErrorState compact title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />
-                  ) : (
-                    <Select value={newColetaForm.convenio_id || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, convenio_id: v === '__none__' ? '' : v }))} disabled={conveniosQuery.isLoading}>
-                      <SelectTrigger><SelectValue placeholder={conveniosQuery.isLoading ? 'Carregando…' : 'Particular'} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">Particular</SelectItem>
-                        {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome} ({c.codigo})</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Nº da Guia</Label>
-                  <Input value={newColetaForm.numero_guia}
-                    onChange={e => setNewColetaForm(p => ({ ...p, numero_guia: e.target.value }))}
-                    placeholder="Ex: 2600015029" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">CID-10</Label>
-                  <Input value={newColetaForm.cid}
-                    onChange={e => setNewColetaForm(p => ({ ...p, cid: e.target.value }))}
-                    placeholder="Ex: E11, D50" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Código do Procedimento</Label>
-                  <Input value={newColetaForm.procedimento_codigo}
-                    onChange={e => setNewColetaForm(p => ({ ...p, procedimento_codigo: e.target.value.toUpperCase() }))}
-                    placeholder="Ex: COL, HDL, HEM" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Grupo</Label>
-                  <Input value={newColetaForm.grupo}
-                    onChange={e => setNewColetaForm(p => ({ ...p, grupo: e.target.value.toUpperCase() }))}
-                    placeholder="Ex: CTF, HEM" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Material</Label>
-                  <Select value={newColetaForm.material || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, material: v === '__none__' ? '' : v }))}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Não informado</SelectItem>
-                      <SelectItem value="SORO">Soro</SelectItem>
-                      <SelectItem value="PLASMA">Plasma</SelectItem>
-                      <SelectItem value="SANGUE_TOTAL">Sangue Total</SelectItem>
-                      <SelectItem value="URINA">Urina</SelectItem>
-                      <SelectItem value="FEZES">Fezes</SelectItem>
-                      <SelectItem value="LIQUOR">Líquor</SelectItem>
-                      <SelectItem value="ESCARRO">Escarro</SelectItem>
-                      <SelectItem value="SECRECAO">Secreção</SelectItem>
-                      <SelectItem value="SWAB">Swab</SelectItem>
-                      <SelectItem value="OUTRO">Outro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox checked={newColetaForm.trouxe_material} onCheckedChange={v => setNewColetaForm(p => ({ ...p, trouxe_material: !!v }))} />
-                <Label className="text-sm flex items-center gap-1"><Package className="h-3.5 w-3.5" />Trouxe Material</Label>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Setor responsável</Label>
-                <Select value={newColetaForm.setor_id || '__none__'} onValueChange={value => setNewColetaForm(p => ({ ...p, setor_id: value === '__none__' ? '' : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Sem setor definido" /></SelectTrigger>
-                  <SelectContent><SelectItem value="__none__">Sem setor definido</SelectItem>{(setoresQuery.data ?? []).map(setor => <SelectItem key={setor.id} value={setor.id}>{setor.nome}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Vincular a Exame */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium flex items-center gap-1"><Link2 className="h-3 w-3" />Vincular a Pedido de Exame</Label>
-              {!newColetaForm.paciente_id ? (
-                <p className="text-xs text-muted-foreground">Selecione o paciente para localizar os pedidos em aberto.</p>
-              ) : examesPendentesQuery.isLoading ? (
-                <p role="status" className="text-xs text-muted-foreground">Buscando pedidos de exame do paciente…</p>
-              ) : examesPendentesQuery.isError ? (
-                <ErrorState compact title="Não foi possível carregar os pedidos deste paciente" error={examesPendentesQuery.error} onRetry={() => void examesPendentesQuery.refetch()} />
-              ) : (
-                <>
-                  <Select value={newColetaForm.exame_id || '__none__'} onValueChange={v => { const exame = examesFiltrados.find((item: any) => item.id === v); const catalogo = Array.isArray(exame?.tipo_exames_catalog) ? exame.tipo_exames_catalog[0] : exame?.tipo_exames_catalog; setNewColetaForm(p => ({ ...p, exame_id: v === '__none__' ? '' : v, setor_id: v === '__none__' ? p.setor_id : (catalogo?.setor_id || p.setor_id) })); }} disabled={examesFiltrados.length === 0}>
-                    <SelectTrigger><SelectValue placeholder={examesFiltrados.length ? 'Opcional' : 'Nenhum pedido em aberto'} /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Nenhum (coleta avulsa)</SelectItem>
-                      {examesFiltrados.map((e: any) => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.tipo_exame} — {(e as any).pacientes?.nome || ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {examesPendentesQuery.data?.hasMore && (
-                    <p role="status" className="text-xs text-warning-foreground">A lista atingiu 200 pedidos em aberto; os mais antigos podem não aparecer neste seletor.</p>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Finalidade + Categoria do Exame */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />Para quê é o exame? *</Label>
-                <Select value={newColetaForm.finalidade} onValueChange={v => setNewColetaForm(p => ({ ...p, finalidade: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Finalidade" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="diagnostico">Diagnóstico</SelectItem>
-                    <SelectItem value="checkup">Check-up / Rotina</SelectItem>
-                    <SelectItem value="pre_operatorio">Pré-operatório</SelectItem>
-                    <SelectItem value="acompanhamento">Acompanhamento de tratamento</SelectItem>
-                    <SelectItem value="controle">Controle periódico</SelectItem>
-                    <SelectItem value="urgencia">Urgência / Emergência</SelectItem>
-                    <SelectItem value="pre_natal">Pré-natal</SelectItem>
-                    <SelectItem value="admissional">Admissional / Periódico</SelectItem>
-                    <SelectItem value="retorno">Retorno / Reavaliação</SelectItem>
-                    <SelectItem value="outro">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Categoria do Exame</Label>
-                <Select value={newColetaForm.categoria_exame || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, categoria_exame: v === '__none__' ? '' : v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Não informado</SelectItem>
-                    <SelectItem value="hematologia">Hematologia</SelectItem>
-                    <SelectItem value="bioquimica">Bioquímica</SelectItem>
-                    <SelectItem value="hormonal">Hormonal</SelectItem>
-                    <SelectItem value="imunologia">Imunologia / Sorologia</SelectItem>
-                    <SelectItem value="microbiologia">Microbiologia</SelectItem>
-                    <SelectItem value="urinanalise">Urinálise</SelectItem>
-                    <SelectItem value="coagulacao">Coagulação</SelectItem>
-                    <SelectItem value="parasitologia">Parasitologia</SelectItem>
-                    <SelectItem value="toxicologia">Toxicologia</SelectItem>
-                    <SelectItem value="genetica">Genética / Molecular</SelectItem>
-                    <SelectItem value="outro">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Indicação Clínica */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Indicação Clínica</Label>
-              <Input value={newColetaForm.indicacao_clinica}
-                onChange={e => setNewColetaForm(p => ({ ...p, indicacao_clinica: e.target.value }))}
-                placeholder="Ex: Suspeita de anemia, controle glicêmico, investigação tireoidiana..." />
-            </div>
-
-            <Separator />
-
-            {/* Data/Hora + Profissional */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1"><Clock className="h-3 w-3" />Data e Hora da Coleta (horário da clínica)</Label>
-                <Input type="datetime-local" value={newColetaForm.data_coleta}
-                  onChange={e => setNewColetaForm(p => ({ ...p, data_coleta: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1"><User className="h-3 w-3" />Profissional</Label>
-                {funcionariosQuery.isError ? (
-                  <ErrorState compact title="Não foi possível carregar os profissionais" error={funcionariosQuery.error} onRetry={() => void funcionariosQuery.refetch()} />
-                ) : (
-                  <Select value={newColetaForm.coletado_por || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, coletado_por: v === '__none__' ? '' : v }))} disabled={funcionariosQuery.isLoading}>
-                    <SelectTrigger><SelectValue placeholder={funcionariosQuery.isLoading ? 'Carregando…' : 'Quem realizou'} /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Não informado</SelectItem>
-                      {funcionarios?.map((f: any) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Amostra */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tipo de Amostra</Label>
-                <Select value={newColetaForm.tipo_amostra} onValueChange={v => setNewColetaForm(p => ({ ...p, tipo_amostra: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {['sangue', 'urina', 'fezes', 'escarro', 'secreção', 'líquor', 'outro'].map(t => (
-                      <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tubo</Label>
-                <Select value={newColetaForm.tubo || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, tubo: v === '__none__' ? '' : v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Selecione</SelectItem>
-                    {TUBOS.map(t => (
-                      <SelectItem key={t.value} value={t.value}>
-                        <span className="flex items-center gap-2">
-                          <span className={`h-3 w-2 rounded-sm ${t.color}`} />{t.value}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1"><Droplets className="h-3 w-3" />Volume (mL)</Label>
-                <Input type="number" step="0.1" min="0" value={newColetaForm.volume_ml}
-                  onChange={e => setNewColetaForm(p => ({ ...p, volume_ml: e.target.value }))} placeholder="Ex: 5" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3" />Sítio de Coleta</Label>
-                <Select value={newColetaForm.sitio_coleta || '__none__'} onValueChange={v => setNewColetaForm(p => ({ ...p, sitio_coleta: v === '__none__' ? '' : v }))}>
-                  <SelectTrigger><SelectValue placeholder="Local" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Não informado</SelectItem>
-                    {SITIOS_COLETA.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Condições */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Condições da Amostra</Label>
-              <div className="flex flex-wrap gap-3">
-                {CONDICOES_AMOSTRA.map(cond => (
-                  <div key={cond} className="flex items-center gap-1.5">
-                    <Checkbox id={`cond-${cond}`} checked={newColetaForm.condicao_amostra.includes(cond)}
-                      onCheckedChange={() => toggleCondicao(cond)} />
-                    <Label htmlFor={`cond-${cond}`} className="text-xs cursor-pointer">{cond}</Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Jejum + Urgência */}
-            <div className="flex items-center gap-6 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Checkbox checked={newColetaForm.jejum_necessario} onCheckedChange={v => setNewColetaForm(p => ({ ...p, jejum_necessario: !!v }))} />
-                <Label className="text-sm">Jejum necessário</Label>
-              </div>
-              {newColetaForm.jejum_necessario && (
-                <div className="flex items-center gap-2">
-                  <Input type="number" className="w-20" value={newColetaForm.jejum_horas}
-                    onChange={e => setNewColetaForm(p => ({ ...p, jejum_horas: +e.target.value }))} />
-                  <span className="text-sm text-muted-foreground">horas</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <Checkbox checked={newColetaForm.urgente} onCheckedChange={v => setNewColetaForm(p => ({ ...p, urgente: !!v }))} />
-                <Label className="text-sm text-warning-foreground font-medium">Urgente</Label>
-              </div>
-            </div>
-
-            {/* Observações */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Observações</Label>
-              <Textarea value={newColetaForm.observacoes} onChange={e => setNewColetaForm(p => ({ ...p, observacoes: e.target.value }))}
-                placeholder="Instruções especiais..." rows={2} />
-            </div>
-
-            <DialogFooter className="pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setShowNewColeta(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!newColetaForm.paciente_id || createColeta.isPending} className="gap-1">
-                {createColeta.isPending && <Clock className="h-4 w-4 animate-spin" />}
-                <TestTube className="h-4 w-4" />Registrar Coleta
-              </Button>
-            </DialogFooter>
-            </fieldset>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* ─── Dialog Resultados ─── */}
       <Dialog open={!!showResultados} onOpenChange={() => setShowResultados(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">

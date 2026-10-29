@@ -126,6 +126,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (pathname === '/laboratorio/coletas/nova') return 'Nova coleta de amostra';
   if (pathname === '/laboratorio/pedidos/novo') return 'Novo pedido laboratorial';
   if (/^\/laboratorio\/pedidos\/[^/]+\/historico$/.test(pathname)) return 'Histórico do pedido';
   if (pathname === '/todos-templates/email/novo') return 'Novo modelo de e-mail';
