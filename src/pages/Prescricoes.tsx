@@ -1013,7 +1013,7 @@ export default function Prescricoes() {
             </Button>
             <Button
               onClick={handleOpen}
-              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+              className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
               disabled={
                 medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError
                 || !clinicConfig?.nome_fantasia?.trim()
@@ -1060,14 +1060,14 @@ export default function Prescricoes() {
         </div>
       )}
 
-      {/* Indicadores */}
-      <section role="group" aria-label="Resumo das prescrições" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+      {/* Atalhos para a fila de prescrições */}
+      <section role="group" aria-label="Resumo das prescrições" className="grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-card md:grid-cols-5 md:divide-x md:divide-y-0">
         {([
-          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje', color: 'text-white', surface: 'bg-white/15', escuro: true },
-          { key: 'pdf', icon: FileText, label: 'Com PDF', value: stats.pdf, caption: 'prontas para baixar', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-          { key: 'sem_pdf', icon: CloudOff, label: 'Sem PDF', value: stats.semPdf, caption: 'gerar a partir do histórico', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
-          { key: 'memed', icon: ExternalLink, label: 'Memed', value: stats.memed, caption: 'PDF fora do EloLab', color: 'text-info', surface: 'bg-info/10', escuro: false },
-          { key: 'todos', icon: Pill, label: 'Total', value: stats.total, caption: `${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}`, color: 'text-foreground', surface: 'bg-muted', escuro: false },
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje' },
+          { key: 'pdf', icon: FileText, label: 'Com PDF', value: stats.pdf, caption: 'prontas para baixar' },
+          { key: 'sem_pdf', icon: CloudOff, label: 'Sem PDF', value: stats.semPdf, caption: 'precisam gerar arquivo' },
+          { key: 'memed', icon: ExternalLink, label: 'Memed', value: stats.memed, caption: 'gerenciadas na Memed' },
+          { key: 'todos', icon: Pill, label: 'Total', value: stats.total, caption: `${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}` },
         ] as const).map(s => {
           const Icon = s.icon;
           const ativo = filtroOrigem === s.key;
@@ -1076,25 +1076,25 @@ export default function Prescricoes() {
               key={s.key}
               type="button"
               aria-pressed={ativo}
+              aria-label={`Filtrar: ${s.label}, ${s.value} ${s.value === 1 ? 'receita' : 'receitas'}`}
               onClick={() => setFiltroOrigem(ativo && s.key !== 'todos' ? 'todos' : s.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                s.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                'min-w-0 border-border px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                'border-b last:border-b-0 md:border-b-0',
+                s.key === 'hoje' || s.key === 'sem_pdf' ? 'border-r' : '',
+                s.key === 'todos' ? 'col-span-2 md:col-span-1' : '',
+                ativo && 'bg-primary/5',
               )}
             >
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
-                  <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+              <div className="flex min-h-12 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Icon aria-hidden="true" className={cn('h-4 w-4 shrink-0', ativo ? 'text-primary' : '')} />
+                    <span className="truncate">{s.label}</span>
+                  </span>
+                  <span className="hidden truncate text-[11px] text-muted-foreground sm:mt-1 sm:block">{s.caption}</span>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
-                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
-                  </div>
-                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
-                </div>
+                <span className={cn('text-xl font-semibold tabular-nums', ativo ? 'text-primary' : 'text-foreground')}>{s.value}</span>
               </div>
             </button>
           );
@@ -1114,7 +1114,7 @@ export default function Prescricoes() {
                   placeholder="Buscar paciente, CPF ou medicamento..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                        className="h-10 rounded-full pl-9 focus-visible:ring-primary"
                 />
               </div>
             </div>
@@ -1133,8 +1133,8 @@ export default function Prescricoes() {
                       aria-pressed={ativo}
                       onClick={() => setFiltroPeriodo(opt.key)}
                       className={cn(
-                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                        ativo ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                       )}
                     >
                       {opt.label}
@@ -1142,13 +1142,13 @@ export default function Prescricoes() {
                   );
                 })}
                 {pacienteFiltroId && (
-                  <Badge variant="outline" className="h-8 gap-1 rounded-full border-[#BFD8EE] pl-3 pr-1 text-xs font-medium text-[#1080CA]">
+                  <Badge variant="outline" className="h-8 gap-1 rounded-full border-primary/30 pl-3 pr-1 text-xs font-medium text-primary">
                     Paciente: {pacienteFiltroNome}
                     <button
                       type="button"
                       onClick={limparPacienteFiltro}
                       aria-label="Remover filtro de paciente"
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-[#1080CA]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <X aria-hidden="true" className="h-3 w-3" />
                     </button>
@@ -1179,8 +1179,8 @@ export default function Prescricoes() {
               <TableBody>
                 {filteredPrescricoes.length === 0 ? (
                   <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
-                    <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
-                      <Pill className="h-7 w-7" />
+                    <span aria-hidden="true" className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Pill className="h-6 w-6" />
                     </span>
                     <p className="font-semibold text-foreground">{prescricoes.length === 0 ? 'Nenhuma prescrição' : 'Nenhum resultado encontrado'}</p>
                     <p className="mt-1 text-sm">{prescricoes.length === 0 ? 'Crie sua primeira prescrição médica' : 'Tente outro paciente, CPF, telefone, medicamento ou período.'}</p>
@@ -1189,7 +1189,7 @@ export default function Prescricoes() {
                     ) : (
                       <Button
                         size="sm"
-                        className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                        className="mt-4 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                         onClick={handleOpen}
                         disabled={medicosDisponiveis.length === 0 || clinicConfigQuery.isLoading || clinicConfigQuery.isError || !clinicConfig?.nome_fantasia?.trim()}
                       >
@@ -1203,23 +1203,26 @@ export default function Prescricoes() {
                   const semArquivo = receitaSemArquivo(p);
                   const ocupado = downloadingPrescriptionId !== null || gerandoHistoricoId !== null;
                   return (
-                    <TableRow key={p.id} className="transition-colors hover:bg-[#F3F8FC]/70">
+                    <TableRow key={p.id} className="transition-colors hover:bg-muted/40">
                       <TableCell className="tabular-nums">{p.data_emissao ? format(new Date(p.data_emissao + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</TableCell>
                       <TableCell className="font-medium">
                         <div className="flex flex-wrap items-center gap-2">
                           <span>{nomePaciente}</span>
-                          {p.data_emissao === today && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Hoje</Badge>}
+                          {p.data_emissao === today && <Badge className="rounded-full border-primary/20 bg-primary/10 text-[9px] text-primary hover:bg-primary/15">Hoje</Badge>}
                           {receitaMemed(p) && <Badge variant="outline" className="rounded-full text-[10px]">Memed</Badge>}
                           {receitaMemedExcluida(p) && <Badge variant="destructive" className="rounded-full text-[10px]">Excluída</Badge>}
                           {semArquivo && <Badge variant="outline" className="rounded-full border-warning/40 text-[10px] text-warning">Sem PDF</Badge>}
                         </div>
+                        <p className="mt-1 line-clamp-2 max-w-[32ch] break-words text-xs font-normal leading-snug text-muted-foreground sm:hidden" title={p.medicamento || p.posologia || undefined}>
+                          {p.medicamento || p.posologia || 'Medicamento não informado'}
+                        </p>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">{getMedicoNome(p.medico_id)}</TableCell>
                       <TableCell className="hidden max-w-[220px] truncate sm:table-cell" title={p.medicamento || p.posologia || undefined}>{p.medicamento || p.posologia || '—'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap items-center justify-end gap-1">
                           {whatsapp && (
-                            <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                          <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                               <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
                                 <MessageCircle className="h-4 w-4" />
                               </a>
@@ -1247,7 +1250,7 @@ export default function Prescricoes() {
                           {p.arquivo_pdf && versaoAssinadaPorReceita.has(p.id) && (
                             <Button
                               type="button"
-                              className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110"
+                              className="h-9 gap-1.5 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90"
                               aria-label={`Baixar versão assinada da receita de ${nomePaciente}`}
                               title="Baixar a cópia assinada anexada"
                               disabled={ocupado}
@@ -1278,7 +1281,7 @@ export default function Prescricoes() {
                           ) : (
                             <Button
                               type="button"
-                              className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110"
+                              className="h-9 gap-1.5 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90"
                               aria-label={`Gerar PDF da receita de ${nomePaciente}`}
                               title="Montar o PDF com os medicamentos já gravados"
                               disabled={ocupado || clinicConfigQuery.isLoading || clinicConfigQuery.isError}

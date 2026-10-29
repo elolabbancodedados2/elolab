@@ -20,7 +20,7 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
 vi.mock('@/lib/operationalTransitions', () => ({ atomicMarkNoShow: mocks.atomicMarkNoShow }));
 vi.mock('@/lib/workflowAutomation', () => ({ autoFinalizarAtendimento: mocks.autoFinalizarAtendimento }));
 vi.mock('@/components/fila/FinalizarAtendimentoDialog', () => ({
-  FinalizarAtendimentoDialog: (props: { open: boolean; onConfirm: (dias: number | null) => Promise<void> }) =>
+  FinalizarAtendimentoDialog: (props: { open: boolean; onConfirm: (dias: number | null) => Promise<boolean> }) =>
     props.open
       ? <button onClick={() => void props.onConfirm(30)}>Confirmar finalização</button>
       : null,
@@ -108,7 +108,7 @@ describe('atendimentos antigos em aberto', () => {
     render(<AtendimentosEmAberto />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Foi atendido' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar finalização' }));
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar finaliza/ }));
 
     await waitFor(() => expect(mocks.autoFinalizarAtendimento).toHaveBeenCalledWith(expect.objectContaining({
       agendamentoId: 'appointment-1',
@@ -117,6 +117,7 @@ describe('atendimentos antigos em aberto', () => {
       notificarPaciente: false,
     })));
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Atendimento finalizado com sucesso', { description: 'Cobrança gerada' });
+
   });
 
   it('atualiza a lista quando a finalização informa que o atendimento mudou', async () => {
@@ -127,7 +128,7 @@ describe('atendimentos antigos em aberto', () => {
     render(<AtendimentosEmAberto />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Foi atendido' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar finalização' }));
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar finaliza/ }));
 
     await waitFor(() => expect(mocks.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['atendimentos-em-aberto', 'clinic-1'],
@@ -135,5 +136,6 @@ describe('atendimentos antigos em aberto', () => {
     expect(mocks.toastError).toHaveBeenCalledWith('Não foi possível finalizar', {
       description: 'Atendimento mudou desde a última atualização.',
     });
+    expect(screen.getByRole('button', { name: /Confirmar finaliza/ })).toBeInTheDocument();
   });
 });

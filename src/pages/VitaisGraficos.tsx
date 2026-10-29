@@ -37,16 +37,16 @@ const formatarDataClinica = (valor: string, incluirHora = false) =>
     ...(incluirHora ? { year: 'numeric' as const, hour: '2-digit' as const, minute: '2-digit' as const } : { year: '2-digit' as const }),
   }).format(new Date(valor));
 
-// Paleta de dados do padrão azul/preto.
-const COR_SERIE_PRIMARIA = '#1080CA';
-const COR_SERIE_SECUNDARIA = '#0B4F7D';
-const COR_GRADE = '#DCE6F2';
-const COR_EIXO = '#64748b';
+// As séries usam tons da marca; o traço também diferencia a segunda série.
+const COR_SERIE_PRIMARIA = 'hsl(var(--primary))';
+const COR_SERIE_SECUNDARIA = 'hsl(var(--brand-dark))';
+const COR_GRADE = 'hsl(var(--border))';
+const COR_EIXO = 'hsl(var(--muted-foreground))';
 const ESTILO_TOOLTIP = {
   backgroundColor: 'hsl(var(--card))',
-  border: '1px solid #DCE6F2',
+  border: '1px solid hsl(var(--border))',
   borderRadius: '0.75rem',
-  boxShadow: '0 8px 24px rgba(16,128,202,0.12)',
+  boxShadow: 'var(--shadow-md)',
   fontSize: '0.75rem',
 } as const;
 const ESTILO_ROTULO_TOOLTIP = { color: 'hsl(var(--foreground))', fontWeight: 600 } as const;
@@ -236,16 +236,6 @@ export default function VitaisGraficos() {
       { key: null, label: 'IMC', icon: Weight, unit: 'kg/m²', texto: imc.valor !== null ? imc.valor.toFixed(1) : '—', em: imc.em, alterado: false },
     ];
   }, [vitaisTotais]);
-  const indiceEscuro = useMemo(() => {
-    let escolhido = -1;
-    let maisRecente = -Infinity;
-    indicadores.forEach((item, i) => {
-      if (!item.alterado || !item.em) return;
-      const t = Date.parse(item.em);
-      if (t > maisRecente) { maisRecente = t; escolhido = i; }
-    });
-    return escolhido >= 0 ? escolhido : 0;
-  }, [indicadores]);
   const totalAlterados = indicadores.filter((i) => i.alterado).length;
 
   const isLoading = vitaisQuery.isLoading;
@@ -277,7 +267,7 @@ export default function VitaisGraficos() {
 
   const classeCardGrafico = (key: GraficoChave) => cn(
     'rounded-2xl border-border/60 shadow-xs transition-all duration-200',
-    graficoFoco === key && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]',
+    graficoFoco === key && 'border-primary/50 ring-1 ring-primary/30 shadow-md',
   );
   const CelulaValor = ({ campo, valor, formatar }: { campo: CampoVital; valor: number | null; formatar?: (v: number) => string }) => {
     if (valor === null) return <span className="text-muted-foreground">—</span>;
@@ -323,7 +313,7 @@ export default function VitaisGraficos() {
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Search className="h-4 w-4" />
               </span>
               <h2 className="text-base font-semibold text-foreground">Selecionar Paciente</h2>
@@ -348,7 +338,7 @@ export default function VitaisGraficos() {
       {!selectedPacienteId ? (
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-12 text-center">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <Droplets className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Selecione um paciente para visualizar o histórico</p>
@@ -365,12 +355,12 @@ export default function VitaisGraficos() {
       ) : vitaisTotais.length === 0 ? (
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-12 text-center">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <AlertCircle className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Nenhuma medição encontrada</p>
             <p className="mt-1 text-sm text-muted-foreground">Quando houver sinais vitais na triagem ou no prontuário, eles aparecerão aqui. Registre a próxima medição no prontuário do paciente.</p>
-            <Button asChild className="mt-4 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button asChild className="mt-4 gap-2 rounded-full">
               <Link to={linkProntuario}><FileText aria-hidden="true" className="h-4 w-4" /> Abrir prontuário</Link>
             </Button>
           </CardContent>
@@ -396,17 +386,12 @@ export default function VitaisGraficos() {
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-              {indicadores.map((item, i) => {
+              {indicadores.map((item) => {
                 const Icon = item.icon;
-                const escuro = i === indiceEscuro;
                 const ativo = item.key !== null && graficoFoco === item.key;
-                const corValor = item.alterado
-                  ? (escuro ? 'text-white' : 'text-destructive')
-                  : (escuro ? 'text-white' : 'text-foreground');
-                const corIcone = item.alterado
-                  ? (escuro ? 'text-white' : 'text-destructive')
-                  : (escuro ? 'text-white' : 'text-[#1080CA]');
-                const superficieIcone = escuro ? 'bg-white/15' : item.alterado ? 'bg-destructive/10' : 'bg-[#1080CA]/10';
+                const corValor = item.alterado ? 'text-destructive' : 'text-foreground';
+                const corIcone = item.alterado ? 'text-destructive' : 'text-primary';
+                const superficieIcone = item.alterado ? 'bg-destructive/10' : 'bg-primary/10';
                 return (
                   <button
                     key={item.label}
@@ -415,13 +400,11 @@ export default function VitaisGraficos() {
                     disabled={item.key === null}
                     onClick={() => item.key && setGraficoFoco(ativo ? null : item.key)}
                     className={cn(
-                      'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                      'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       item.key !== null && 'hover:-translate-y-0.5 hover:shadow-md',
                       item.key === null && 'cursor-default',
-                      escuro && 'border-transparent bg-gradient-primary text-white',
-                      !escuro && item.alterado && 'border-destructive/30',
-                      ativo && !escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                      ativo && escuro && 'ring-2 ring-[#1080CA]/60',
+                      item.alterado && 'border-destructive/30 bg-destructive/5',
+                      ativo && 'border-primary/50 ring-1 ring-primary/30',
                     )}
                   >
                     <div className="flex min-h-[96px] flex-col justify-between gap-2 p-3">
@@ -432,19 +415,19 @@ export default function VitaisGraficos() {
                         {item.alterado && (
                           <Badge variant="outline" className={cn(
                             'rounded-full text-[10px]',
-                            escuro ? 'border-[#1080CA]/40 bg-white/20 text-white' : 'border-destructive/30 bg-destructive/10 text-destructive',
+                            'border-destructive/30 bg-destructive/10 text-destructive',
                           )}>
                             Alterado
                           </Badge>
                         )}
                       </div>
                       <div className="min-w-0">
-                        <h3 className={cn('truncate text-xs font-semibold', escuro ? 'text-white/80' : 'text-foreground')}>{item.label}</h3>
+                        <h3 className="truncate text-xs font-semibold text-foreground">{item.label}</h3>
                         <p className="flex items-baseline gap-1">
                           <span className={cn('text-2xl font-bold tabular-nums', corValor)}>{item.texto}</span>
-                          <span className={cn('text-[11px]', escuro ? 'text-white/60' : 'text-muted-foreground')}>{item.unit}</span>
+                          <span className="text-[11px] text-muted-foreground">{item.unit}</span>
                         </p>
-                        <p className={cn('truncate text-[11px]', escuro ? 'text-white/60' : 'text-muted-foreground')}>
+                        <p className="truncate text-[11px] text-muted-foreground">
                           {item.em ? `em ${formatarDataClinica(item.em, true).replace(',', ' às')}` : 'sem registro'}
                         </p>
                       </div>
@@ -470,8 +453,8 @@ export default function VitaisGraficos() {
                     aria-pressed={ativo}
                     onClick={() => setPeriodo(p.key)}
                     className={cn(
-                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      'min-h-10 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                      ativo ? 'border-transparent bg-primary text-primary-foreground shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                     )}
                   >
                     {p.label}
@@ -493,7 +476,7 @@ export default function VitaisGraficos() {
           {vitais.length === 0 ? (
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className="py-12 text-center">
-                <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <CalendarRange className="h-7 w-7" />
                 </span>
                 <p className="font-medium text-foreground">Nenhuma medição no período selecionado</p>
@@ -509,7 +492,7 @@ export default function VitaisGraficos() {
                 <Card className={classeCardGrafico('pressao')}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2.5 text-base">
-                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Heart className="h-4 w-4" />
                       </span>
                       Pressão Arterial
@@ -534,7 +517,7 @@ export default function VitaisGraficos() {
                           stroke={COR_SERIE_PRIMARIA}
                           name="Sistólica (mmHg)"
                           strokeWidth={2}
-                          dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                          dot={{ r: 3, strokeWidth: 2, fill: 'hsl(var(--card))' }}
                           activeDot={{ r: 5 }}
                           isAnimationActive={true}
                         />
@@ -544,7 +527,8 @@ export default function VitaisGraficos() {
                           stroke={COR_SERIE_SECUNDARIA}
                           name="Diastólica (mmHg)"
                           strokeWidth={2}
-                          dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                          dot={{ r: 3, strokeWidth: 2, fill: 'hsl(var(--card))' }}
+                          strokeDasharray="5 4"
                           activeDot={{ r: 5 }}
                         />
                       </LineChart>
@@ -556,7 +540,7 @@ export default function VitaisGraficos() {
                 <Card className={classeCardGrafico('fc')}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2.5 text-base">
-                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <TrendingUp className="h-4 w-4" />
                       </span>
                       Frequência Cardíaca
@@ -581,7 +565,7 @@ export default function VitaisGraficos() {
                           stroke={COR_SERIE_PRIMARIA}
                           name="FC (bpm)"
                           strokeWidth={2}
-                          dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                          dot={{ r: 3, strokeWidth: 2, fill: 'hsl(var(--card))' }}
                           activeDot={{ r: 5 }}
                         />
                       </LineChart>
@@ -593,7 +577,7 @@ export default function VitaisGraficos() {
                 <Card className={classeCardGrafico('peso')}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2.5 text-base">
-                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Weight className="h-4 w-4" />
                       </span>
                       Evolução de Peso
@@ -607,7 +591,7 @@ export default function VitaisGraficos() {
                         <XAxis dataKey="data" stroke={COR_EIXO} tickLine={false} axisLine={{ stroke: COR_GRADE }} fontSize={11} />
                         <YAxis stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} width={36} />
                         <Tooltip
-                          cursor={{ fill: '#F3F8FC' }}
+                          cursor={{ fill: 'hsl(var(--muted))' }}
                           labelFormatter={formatTooltipLabel}
                           contentStyle={ESTILO_TOOLTIP}
                           labelStyle={ESTILO_ROTULO_TOOLTIP}
@@ -622,7 +606,7 @@ export default function VitaisGraficos() {
                 <Card className={classeCardGrafico('o2')}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2.5 text-base">
-                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Droplets className="h-4 w-4" />
                       </span>
                       Oxigenação e Glicemia
@@ -649,7 +633,7 @@ export default function VitaisGraficos() {
                           stroke={COR_SERIE_PRIMARIA}
                           name="O2 (%)"
                           strokeWidth={2}
-                          dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                          dot={{ r: 3, strokeWidth: 2, fill: 'hsl(var(--card))' }}
                           activeDot={{ r: 5 }}
                         />
                         <Line
@@ -659,7 +643,8 @@ export default function VitaisGraficos() {
                           stroke={COR_SERIE_SECUNDARIA}
                           name="Glicemia (mg/dL)"
                           strokeWidth={2}
-                          dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                          dot={{ r: 3, strokeWidth: 2, fill: 'hsl(var(--card))' }}
+                          strokeDasharray="5 4"
                           activeDot={{ r: 5 }}
                         />
                       </LineChart>
@@ -673,11 +658,11 @@ export default function VitaisGraficos() {
                 <CardHeader>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                      <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Activity className="h-4 w-4" />
                       </span>
                       <CardTitle className="text-base">Últimos Registros</CardTitle>
-                      <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">
+                      <Badge variant="outline" className="h-5 rounded-full border-primary/20 bg-primary/5 text-xs tabular-nums text-primary">
                         {Math.min(10, vitais.length)}
                       </Badge>
                     </div>
@@ -707,11 +692,11 @@ export default function VitaisGraficos() {
                           {vitais.slice(-10).reverse().map((v, index) => {
                             const maisRecente = index === 0;
                             return (
-                              <TableRow key={v.id} className={cn(maisRecente && 'bg-[#F3F8FC]')}>
+                              <TableRow key={v.id} className={cn(maisRecente && 'bg-muted/60')}>
                                 <TableCell>
                                   <span className={cn(
                                     'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-                                    maisRecente ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
+                                    maisRecente ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
                                   )}>
                                     {index + 1}
                                   </span>
@@ -719,7 +704,7 @@ export default function VitaisGraficos() {
                                 <TableCell className="whitespace-nowrap text-xs">
                                   <span className="flex items-center gap-1.5">
                                     {formatarDataClinica(v.created_at, true)}
-                                    {maisRecente && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Mais recente</Badge>}
+                                    {maisRecente && <Badge className="rounded-full border-transparent bg-primary text-[9px] text-primary-foreground">Mais recente</Badge>}
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-right">

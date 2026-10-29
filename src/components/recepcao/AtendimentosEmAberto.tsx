@@ -86,6 +86,7 @@ export function AtendimentosEmAberto() {
   async function finalizar(a: Aberto, diasRetorno: number | null) {
     setOcupado(a.id);
     setAcaoOcupada('finalizar');
+    let finalizado = false;
     try {
       const r = await autoFinalizarAtendimento({
         agendamentoId: a.id,
@@ -112,13 +113,14 @@ export function AtendimentosEmAberto() {
       }
       toast.success(r.message || 'Atendimento finalizado', { description: r.actions.join(' • ') });
       atualizar();
+      finalizado = true;
     } catch (e: any) {
       toast.error('Não foi possível finalizar', { description: e?.message });
     } finally {
       setOcupado(null);
       setAcaoOcupada(null);
-      setFinalizando(null);
     }
+    return finalizado;
   }
 
   async function naoAconteceu(a: Aberto) {
@@ -257,7 +259,8 @@ export function AtendimentosEmAberto() {
         pacienteNome={finalizando?.pacientes?.nome ?? 'Paciente'}
         onClose={() => setFinalizando(null)}
         onConfirm={async dias => {
-          if (finalizando) await finalizar(finalizando, dias);
+          if (finalizando) return finalizar(finalizando, dias);
+          return false;
         }}
       />
     </div>

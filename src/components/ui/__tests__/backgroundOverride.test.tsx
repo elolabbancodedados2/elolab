@@ -17,7 +17,7 @@ describe('overridesBackgroundColor', () => {
   it('ignora classes que não definem cor de fundo', () => {
     expect(overridesBackgroundColor(undefined)).toBe(false);
     expect(overridesBackgroundColor('h-10 px-4 hover:bg-primary/90')).toBe(false);
-    expect(overridesBackgroundColor('bg-gradient-to-r from-violet-500 to-indigo-500 bg-white')).toBe(false);
+    expect(overridesBackgroundColor('bg-gradient-to-r from-violet-500 to-indigo-500')).toBe(false);
     expect(overridesBackgroundColor('bg-[image:var(--gradient-hero)]')).toBe(false);
     expect(overridesBackgroundColor('bg-center bg-cover bg-no-repeat')).toBe(false);
   });
@@ -31,9 +31,10 @@ describe('Badge e Button com cor de fundo própria', () => {
     expect(badge.className).not.toContain('bg-[image:var(--gradient-primary)]');
   });
 
-  it('mantém o gradiente do Badge padrão sem cor própria', () => {
+  it('usa a cor sólida primária do sistema no Badge padrão', () => {
     render(<Badge>Novo</Badge>);
-    expect(screen.getByText('Novo').className).toContain('bg-[image:var(--gradient-primary)]');
+    expect(screen.getByText('Novo').className).toContain('bg-primary');
+    expect(screen.getByText('Novo').className).not.toContain('bg-[image:var(--gradient-primary)]');
   });
 
   it('exibe botão destrutivo sem gradiente da marca', () => {

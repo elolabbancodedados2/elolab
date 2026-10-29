@@ -60,6 +60,7 @@ const horaDaClinica = (dataHora: string | null | undefined) => {
 };
 
 // ─── Manchester Triage Colors ──────────────────────────────
+// Tons selecionados mantêm os matizes Manchester e contraste AA com rótulos brancos.
 const RISCO = {
   vermelho: {
     label: 'Emergência',
@@ -72,7 +73,7 @@ const RISCO = {
   laranja: {
     label: 'Muito Urgente',
     sublabel: '10 min',
-    bg: 'bg-orange-500 text-white',
+    bg: 'bg-orange-700 text-white',
     border: 'border-orange-400',
     light: 'bg-orange-50 border-orange-200',
     dot: 'bg-orange-500',
@@ -88,7 +89,7 @@ const RISCO = {
   verde: {
     label: 'Pouco Urgente',
     sublabel: '120 min',
-    bg: 'bg-green-500 text-white',
+    bg: 'bg-green-700 text-white',
     border: 'border-green-400',
     light: 'bg-green-50 border-green-200',
     dot: 'bg-green-500',
@@ -96,7 +97,7 @@ const RISCO = {
   azul: {
     label: 'Não Urgente',
     sublabel: '240 min',
-    bg: 'bg-blue-500 text-white',
+    bg: 'bg-blue-700 text-white',
     border: 'border-blue-400',
     light: 'bg-blue-50 border-blue-200',
     dot: 'bg-blue-400',
@@ -549,9 +550,6 @@ export default function TriagemPage() {
   const urgentesHoje = stats.filter(s => s.risco === 'vermelho' || s.risco === 'laranja').reduce((total, s) => total + s.count, 0);
   const listaAgendaDisponivel = !erroTriagens && !agendamentosQuery.isError && !filaQuery.isError;
   const carregandoAgenda = isLoading || agendamentosQuery.isLoading || filaQuery.isLoading;
-  const proximoATriar = listaAgendaDisponivel && !carregandoAgenda ? aguardandoTriagem[0] : undefined;
-  const proximoPaciente = (proximoATriar as any)?.pacientes;
-  const proximoNome = proximoPaciente?.nome_social || proximoPaciente?.nome || 'Paciente';
   const temFiltro = filterRisco !== 'todos' || search.trim() !== '';
   const limparFiltros = () => { setSearch(''); setFilterRisco('todos'); };
 
@@ -561,8 +559,6 @@ export default function TriagemPage() {
     listaAgendaDisponivel && !carregandoAgenda ? `${pendingTriagemCount} aguardando` : null,
     !erroTriagens && !isLoading ? `${triagemHoje.length} triado${triagemHoje.length === 1 ? '' : 's'} hoje` : null,
   ].filter(Boolean).join(' · ');
-
-  const kpiBase = 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200';
 
   // IMC live preview
   const imcLive = formData.peso && formData.altura ? calcularIMC(formData.peso, formData.altura) : null;
@@ -594,7 +590,7 @@ export default function TriagemPage() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
-            {podeRegistrarTriagem && <Button className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => handleOpenDialog()}>
+            {podeRegistrarTriagem && <Button className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={() => handleOpenDialog()}>
               <Plus className="h-4 w-4" /> Nova Triagem
             </Button>}
           </>
@@ -620,87 +616,6 @@ export default function TriagemPage() {
         </div>
       )}
 
-      {/* Indicadores do dia */}
-      <section aria-label="Indicadores da triagem" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div aria-live="polite" className={cn(kpiBase, 'col-span-2 border-transparent bg-gradient-primary text-white sm:col-span-1')}>
-          <div className="flex min-h-[96px] items-center gap-3 p-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 text-white">
-              <Clock aria-hidden="true" className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-2">
-                <h3 className="truncate text-xs font-semibold text-white/80">Aguardando triagem</h3>
-                <span className="text-2xl font-bold tabular-nums">{listaAgendaDisponivel && !carregandoAgenda ? pendingTriagemCount : '—'}</span>
-              </div>
-              <p className="truncate text-[11px] text-white/70">Com check-in e sem triagem</p>
-            </div>
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-pressed={filterRisco === 'todos'}
-          onClick={() => setFilterRisco('todos')}
-          className={cn(kpiBase, 'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]', filterRisco === 'todos' && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30')}
-        >
-          <div className="flex min-h-[96px] items-center gap-3 p-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10">
-              <CheckCircle2 aria-hidden="true" className="h-5 w-5 text-success" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-2">
-                <h3 className="truncate text-xs font-semibold text-foreground">Triados hoje</h3>
-                <span className="text-2xl font-bold tabular-nums text-success">{erroTriagens || isLoading ? '—' : triagemHoje.length}</span>
-              </div>
-              <p className="truncate text-[11px] text-muted-foreground">Ver todas as classificações</p>
-            </div>
-          </div>
-        </button>
-        <div className={kpiBase}>
-          <div className="flex min-h-[96px] items-center gap-3 p-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10">
-              <AlertTriangle aria-hidden="true" className="h-5 w-5 text-destructive" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-2">
-                <h3 className="truncate text-xs font-semibold text-foreground">Urgentes</h3>
-                <span className="text-2xl font-bold tabular-nums text-destructive">{erroTriagens || isLoading ? '—' : urgentesHoje}</span>
-              </div>
-              <p className="truncate text-[11px] text-muted-foreground">Emergência e muito urgente hoje</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Destaque: próximo paciente a triar */}
-      {proximoATriar && (
-        <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
-          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
-                <Activity className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Próximo a triar</p>
-                <p className="truncate text-lg font-bold text-foreground">{proximoNome}</p>
-                <p className="text-xs tabular-nums text-muted-foreground">
-                  {String(proximoATriar.hora_inicio || '').slice(0, 5)} · {proximoATriar.tipo || 'consulta'}
-                  {(proximoATriar as any).medicos?.nome && ` · ${(proximoATriar as any).medicos.nome}`}
-                </p>
-              </div>
-            </div>
-            {podeRegistrarTriagem && (
-              <Button
-                className="h-10 gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
-                aria-label={`Triar agora ${proximoNome}`}
-                onClick={() => handleOpenDialog(proximoATriar.paciente_id, proximoATriar.id)}
-              >
-                <Activity aria-hidden="true" className="h-4 w-4" /> Triar agora
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {listaAgendaDisponivel && (
         <PendentesTriagem
           loading={carregandoAgenda}
@@ -709,13 +624,43 @@ export default function TriagemPage() {
         />
       )}
 
+      {/* Indicadores do dia */}
+      <section aria-label="Indicadores da triagem" className="grid grid-cols-1 divide-y divide-border border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <div className="min-w-0 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Aguardando triagem</p>
+          <p className="mt-1 flex items-baseline gap-2">
+            <span aria-live="polite" className="text-2xl font-semibold tabular-nums text-foreground">{listaAgendaDisponivel && !carregandoAgenda ? pendingTriagemCount : '—'}</span>
+            <span className="text-xs text-muted-foreground">com check-in e sem triagem</span>
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-pressed={filterRisco === 'todos'}
+          onClick={() => setFilterRisco('todos')}
+          className={cn('min-w-0 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset', filterRisco === 'todos' && 'bg-primary/5')}
+        >
+          <span className="block text-xs font-medium text-muted-foreground">Triados hoje</span>
+          <span className="mt-1 flex items-baseline gap-2">
+            <span aria-live="polite" className="text-2xl font-semibold tabular-nums text-foreground">{erroTriagens || isLoading ? '—' : triagemHoje.length}</span>
+            <span className="text-xs text-muted-foreground">todas as classificações</span>
+          </span>
+        </button>
+        <div className="min-w-0 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Urgentes</p>
+          <p className="mt-1 flex items-baseline gap-2">
+            <span aria-live="polite" className={cn('text-2xl font-semibold tabular-nums', urgentesHoje > 0 ? 'text-destructive' : 'text-foreground')}>{erroTriagens || isLoading ? '—' : urgentesHoje}</span>
+            <span className="text-xs text-muted-foreground">emergência e muito urgente</span>
+          </p>
+        </div>
+      </section>
+
       {/* Lista de triagens do dia */}
-      <Card className="rounded-2xl border-border/60 shadow-xs">
+      <Card className="rounded-xl border-border shadow-none">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:w-72">
               <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="h-10 w-full rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Buscar paciente..." aria-label="Buscar triagem por paciente" value={search} onChange={e => setSearch(e.target.value)} />
+              <Input className="h-10 w-full rounded-lg pl-9 focus-visible:ring-primary" placeholder="Buscar paciente..." aria-label="Buscar triagem por paciente" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             {!erroTriagens && !isLoading && (
               <p className="text-xs tabular-nums text-muted-foreground sm:ml-auto">
@@ -732,10 +677,10 @@ export default function TriagemPage() {
                 aria-pressed={filterRisco === 'todos'}
                 onClick={() => setFilterRisco('todos')}
                 className={cn(
-                  'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'h-9 rounded-md border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   filterRisco === 'todos'
-                    ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-                    : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground',
                 )}
               >
                 Todos <span className="ml-1 tabular-nums">{triagemHoje.length}</span>
@@ -747,8 +692,8 @@ export default function TriagemPage() {
                   aria-pressed={filterRisco === s.risco}
                   onClick={() => setFilterRisco(filterRisco === s.risco ? 'todos' : s.risco)}
                   className={cn(
-                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                    filterRisco === s.risco ? cn(s.cfg.bg, 'border-transparent shadow-sm') : cn(s.cfg.light, s.cfg.border),
+                    'inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                    filterRisco === s.risco ? cn(s.cfg.bg, 'border-transparent') : cn(s.cfg.light, s.cfg.border),
                     s.count === 0 && filterRisco !== s.risco && 'opacity-60',
                   )}
                 >
@@ -781,20 +726,17 @@ export default function TriagemPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
-                <Activity aria-hidden="true" className="h-7 w-7" />
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Activity aria-hidden="true" className="h-5 w-5" />
               </div>
               {triagemHoje.length === 0 ? (
                 <>
                   <p className="font-semibold text-foreground">Nenhuma triagem registrada hoje</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {pendingTriagemCount > 0
-                      ? 'Comece pelo próximo paciente aguardando triagem.'
-                      : 'Os pacientes aparecem aqui depois do check-in na recepção.'}
+                      ? 'Os pacientes aguardando triagem estão listados acima, em ordem de horário.'
+                      : 'Os registros aparecerão aqui depois de salvar uma triagem.'}
                   </p>
-                  {podeRegistrarTriagem && <Button className="mt-4 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => proximoATriar ? handleOpenDialog(proximoATriar.paciente_id, proximoATriar.id) : handleOpenDialog()}>
-                    <Plus className="h-4 w-4" /> Registrar Triagem
-                  </Button>}
                 </>
               ) : (
                 <>
@@ -809,7 +751,7 @@ export default function TriagemPage() {
             <div className="overflow-hidden rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-[#F3F8FC] hover:bg-[#F3F8FC]">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
                     <TableHead>Paciente</TableHead>
                     <TableHead>Risco</TableHead>
                     <TableHead className="hidden md:table-cell">PA</TableHead>
@@ -826,11 +768,11 @@ export default function TriagemPage() {
                     const risco = t.classificacao_risco as Risco;
                     const cfg = RISCO[risco] ?? RISCO.verde;
                     return (
-                      <TableRow key={t.id} className="border-b border-border/40 transition-colors hover:bg-[#F3F8FC]/60">
+                      <TableRow key={t.id} className="border-b border-border/40 transition-colors hover:bg-muted/40">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1080CA]/10">
-                              <User className="h-3.5 w-3.5 text-[#1080CA]" />
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                              <User className="h-3.5 w-3.5 text-primary" />
                             </div>
                             <span className="font-medium text-sm">{getPacienteNome(t)}</span>
                           </div>
@@ -894,7 +836,7 @@ export default function TriagemPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-[#1080CA]" />
+              <Activity className="h-5 w-5 text-primary" />
               Registrar Triagem
             </DialogTitle>
             <DialogDescription>Classifique o risco e registre os sinais vitais do paciente.</DialogDescription>
@@ -1003,7 +945,7 @@ export default function TriagemPage() {
                     className={cn(
                       'flex items-center gap-2 rounded-xl border-2 px-3 py-2 transition-all text-sm font-semibold',
                       formData.classificacao_risco === key
-                        ? cn(cfg.bg, 'border-current shadow-md scale-105')
+                        ? cn(cfg.bg, 'border-current ring-2 ring-current ring-offset-1 scale-[1.02]')
                         : cn(cfg.light, cfg.border, 'hover:scale-102'),
                     )}
                   >
@@ -1038,7 +980,7 @@ export default function TriagemPage() {
 
           <DialogFooter>
             <Button variant="outline" className="rounded-full" disabled={isSaving} onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button onClick={handleSave} disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Registrar Triagem
             </Button>

@@ -151,7 +151,8 @@ const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } }
 export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { profile } = useSupabaseAuth();
+  const { profile, hasAnyRole } = useSupabaseAuth();
+  const podeRegistrarTriagem = hasAnyRole(['admin', 'medico', 'enfermagem']);
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
     const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
@@ -164,6 +165,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   const [marcandoFalta, setMarcandoFalta] = useState<{ agId: string; nome: string } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingCheckinId, setProcessingCheckinId] = useState<string | null>(null);
    const [showPagamento, setShowPagamento] = useState(false);
    const [selectedLancamento, setSelectedLancamento] = useState<any>(null);
    const [selectedPacienteBalcao, setSelectedPacienteBalcao] = useState<any>(null);
@@ -241,7 +243,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   // Data
   // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
   // consulta a cada mudança na agenda — antes era a tabela inteira, com joins.
-  const agendaHojeQuery = useAgendamentosPeriodo(today, today, { resumoPaciente: true });
+  const agendaHojeQuery = useAgendamentosPeriodo(today, today, { resumoPaciente: true, suppressGlobalErrorToast: true });
   const { data: agendamentos = [], isLoading: loadingAg } = agendaHojeQuery;
   const {
     data: pacienteEncaixe,
@@ -249,12 +251,13 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     isError: erroPacienteEncaixe,
     refetch: recarregarPacienteEncaixe,
   } = usePacienteResumo(encaixePacienteId);
-  const medicosQuery = useMedicos();
+  const medicosQuery = useMedicos({ suppressGlobalErrorToast: true });
   const { data: medicos = [] } = medicosQuery;
   const { data: salas = [] } = useSalas();
 
   const filaRecepcaoQuery = useQuery({
     queryKey: ['fila_atendimento', profile?.id ?? null, profile?.clinica_id ?? null],
+    meta: { suppressGlobalErrorToast: true },
     queryFn: async () => {
       if (!profile?.clinica_id) {
         console.warn('Clinic ID not found - cannot fetch fila_atendimento');
@@ -279,6 +282,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     error: erroLancamentos,
   } = useQuery({
     queryKey: ['lancamentos_hoje', profile?.id ?? null, profile?.clinica_id ?? null, today, agendamentoIdsHoje],
+    meta: { suppressGlobalErrorToast: true },
     queryFn: async () => {
       if (!profile?.clinica_id || agendamentoIdsHoje.length === 0) {
         return [];
@@ -297,6 +301,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   // Check if caixa is open — single source of truth: caixa_diario table
   const { refetch: refetchCaixa } = useQuery({
     queryKey: ['caixa-estado-recepcao', profile?.clinica_id],
+    meta: { suppressGlobalErrorToast: true },
     initialData: () => Boolean(readCaixaEstadoLocal(profile?.id, profile?.clinica_id)),
     queryFn: async () => {
       if (!profile?.clinica_id) return false;
@@ -359,6 +364,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   // check-in pelo createAutoBilling, igual ao fluxo agendado).
   const tiposConsultaQuery = useQuery({
     queryKey: ['tipos-consulta-encaixe', profile?.clinica_id],
+    meta: { suppressGlobalErrorToast: true },
     enabled: !!profile?.clinica_id && encaixeOpen,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -384,6 +390,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fila_atendimento' }, () => {
         queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
+        if (clinicaId) queryClient.invalidateQueries({ queryKey: ['recepcao-triagens-registradas', clinicaId] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, () => {
         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
@@ -415,6 +424,24 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       .sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio)),
     [agendamentos, today]
   );
+
+  // A RPC retorna somente IDs e é autorizada para os mesmos perfis clínicos
+  // que podem registrar a triagem. Assim o atalho acompanha a chegada e some
+  // quando outra pessoa já registrou a ficha.
+  const agendamentoIdsDoDia = useMemo(() => todayAgendamentos.map(ag => ag.id), [todayAgendamentos]);
+  const triagensRegistradasQuery = useQuery<string[]>({
+    queryKey: ['recepcao-triagens-registradas', profile?.clinica_id, agendamentoIdsDoDia],
+    meta: { suppressGlobalErrorToast: true },
+    enabled: podeRegistrarTriagem && Boolean(profile?.clinica_id) && agendamentoIdsDoDia.length > 0,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('listar_agendamentos_com_triagem', {
+        p_agendamento_ids: agendamentoIdsDoDia,
+      });
+      if (error) throw error;
+      return (data ?? []).map((row: { agendamento_id: string }) => row.agendamento_id);
+    },
+  });
 
   const enriched = useMemo(() =>
     todayAgendamentos.map((ag: any) => {
@@ -509,6 +536,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
   // ─── Actions ──────────────────────────────────────────
   async function handleCheckin(agId: string, itemForcado?: { ag: any; pac: any; med: any }) {
+      setProcessingCheckinId(agId);
       setIsProcessing(true);
       try {
         // O encaixe passa o item na mão: o agendamento acabou de ser criado e
@@ -557,8 +585,10 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
        }
      } catch (err: any) {
        toast.error('Erro ao realizar check-in', { description: mensagemDeErro(err) });
+     } finally {
+       setProcessingCheckinId(null);
+       setIsProcessing(false);
      }
-     setIsProcessing(false);
    }
 
   async function handleChamar(filaId: string) {
@@ -607,6 +637,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
   async function handleFinalizarAtendimento(agId: string, filaId: string, diasRetorno: number | null) {
     setIsProcessing(true);
+    let finalizado = false;
     try {
       const item = enriched.find(e => e.ag.id === agId);
       if (!item) throw new Error('Agendamento não encontrado');
@@ -632,6 +663,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      finalizado = true;
 
       toast.success('Atendimento finalizado!', {
         description: result.actions.join(' • '),
@@ -641,6 +673,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       toast.error('Erro ao finalizar: ' + (err?.message || 'Erro desconhecido'));
     }
     setIsProcessing(false);
+    return finalizado;
   }
 
    async function openPagamento(lanc: any, pac: any) {
@@ -1003,9 +1036,6 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         navigate(`/triagem?${new URLSearchParams({ buscarPaciente: pacienteId }).toString()}`);
         return;
       }
-      toast.success('Paciente encaminhado para triagem!', {
-        description: 'A ficha será aberta com o paciente e o agendamento selecionados.',
-      });
       navigate(`/triagem?${new URLSearchParams({ paciente: pacienteId, agendamento: agId }).toString()}`);
     } catch (e) {
       toast.error('Erro ao encaminhar', { description: mensagemDeErro(e) });
@@ -1182,21 +1212,33 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
       {/* Search + Tabs */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col gap-2 lg:flex-row lg:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            placeholder="Buscar paciente ou médico... ( / )"
-            aria-label="Buscar paciente ou médico na recepção"
-            aria-keyshortcuts="/ Escape"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
-          />
+        <div className="flex min-w-0 gap-2 lg:flex-1">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              placeholder="Buscar paciente ou médico... ( / )"
+              aria-label="Buscar paciente ou médico na recepção"
+              aria-keyshortcuts="/ Escape"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-10 rounded-full pl-9 focus-visible:ring-primary"
+            />
+          </div>
+          <Button
+            ref={encaixeTriggerRef}
+            size="sm" className="h-10 shrink-0 gap-1.5 rounded-full bg-primary px-3 text-primary-foreground shadow-sm hover:bg-primary/90 sm:px-4"
+            onClick={(event) => abrirEncaixe(event.currentTarget)}
+            aria-label="Encaixe sem agendamento"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span className="sm:hidden">Encaixe</span>
+            <span className="hidden sm:inline">Encaixe sem agendamento</span>
+          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={medicoFiltro} onValueChange={setMedicoFiltro}>
-            <SelectTrigger aria-label="Filtrar por médico" className="h-10 w-full rounded-full sm:w-[190px]">
+            <SelectTrigger aria-label="Filtrar por médico" className="h-10 w-[calc(50%_-_0.25rem)] rounded-full sm:w-[190px]">
               <Stethoscope className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <SelectValue placeholder="Todos os médicos" />
             </SelectTrigger>
@@ -1208,7 +1250,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             </SelectContent>
           </Select>
           <Select value={ordenacao} onValueChange={(v) => setOrdenacao(v as 'horario' | 'espera')}>
-            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 w-full rounded-full sm:w-[170px]">
+            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 w-[calc(50%_-_0.25rem)] rounded-full sm:w-[170px]">
               <ArrowUpDown className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -1228,13 +1270,6 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
               <Hourglass className="h-3.5 w-3.5" /> Espera média {esperaMediaMin} min
             </span>
           )}
-          <Button
-            ref={encaixeTriggerRef}
-            size="sm" className="h-10 shrink-0 gap-1.5 rounded-full bg-gradient-primary px-4 text-white shadow-md hover:brightness-110"
-            onClick={(event) => abrirEncaixe(event.currentTarget)}
-          >
-            <UserPlus className="h-4 w-4" /> Encaixe sem agendamento
-          </Button>
         </div>
       </motion.div>
 
@@ -1268,8 +1303,17 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         </div>
 
         <div className="mt-0">
+          {podeRegistrarTriagem && triagensRegistradasQuery.isError && (
+            <ErrorState
+              compact
+              title="Não foi possível confirmar quais pacientes já foram triados"
+              description="O atalho de triagem fica oculto até a lista ser atualizada. Check-in e atendimento continuam disponíveis."
+              error={triagensRegistradasQuery.error}
+              onRetry={() => void triagensRegistradasQuery.refetch()}
+            />
+          )}
           {agendaHojeQuery.isError ? (
-            <ErrorState title="Não foi possível carregar a agenda de hoje" error={agendaHojeQuery.error} onRetry={() => void agendaHojeQuery.refetch()} />
+            <ErrorState compact title="Não foi possível carregar a agenda de hoje" description="A agenda de hoje não carregou. Tente novamente." error={agendaHojeQuery.error} onRetry={() => void agendaHojeQuery.refetch()} />
           ) : filaRecepcaoQuery.isError ? (
             <ErrorState title="Não foi possível carregar a fila da recepção" description="O fluxo foi pausado para evitar registrar check-in ou pagamento com o estado errado." error={filaRecepcaoQuery.error} onRetry={() => void filaRecepcaoQuery.refetch()} />
           ) : lancamentosErro ? (
@@ -1295,12 +1339,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                   actionLabel={search.trim()
                     ? 'Limpar busca'
                     : activeTab === 'todos'
-                      ? 'Criar encaixe'
+                      ? undefined
                       : 'Ver todos os pacientes'}
                   onAction={search.trim()
                     ? () => setSearch('')
                     : activeTab === 'todos'
-                      ? (event) => abrirEncaixe(event.currentTarget)
+                      ? undefined
                       : () => setActiveTab('todos')}
                   actionIcon={search.trim() ? XCircle : activeTab === 'todos' ? UserPlus : Users}
                   secondaryLabel={!search.trim() && activeTab !== 'todos' ? 'Criar encaixe' : undefined}
@@ -1315,6 +1359,12 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                 {filtered.map(({ ag, pac, med, sala, fila, lanc, step }) => {
                   const horaMin = minutosDaHora(ag.hora_inicio);
                   const atrasado = step === 0 && horaMin !== null && horaMin < minutosAgora;
+                  const triagemRegistrada = triagensRegistradasQuery.data?.includes(ag.id) ?? false;
+                  const podeAbrirTriagem = podeRegistrarTriagem
+                    && (step === 1 || step === 2)
+                    && ag.status !== 'em_atendimento'
+                    && triagensRegistradasQuery.isSuccess
+                    && !triagemRegistrada;
                   const linkACaminho = atrasado
                     ? linkWhatsApp((pac as any)?.telefone, `Olá, ${((pac as any)?.nome_social || pac?.nome || '').split(' ')[0]}! Sua consulta estava marcada para ${ag.hora_inicio?.slice(0, 5)}. Está a caminho?`)
                     : null;
@@ -1326,14 +1376,14 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                     exit={{ opacity: 0, x: 20, transition: { duration: 0.2 } }}
                     layout
                   >
-                    <Card className={cn(
+                    <Card data-testid="reception-appointment-card" className={cn(
                      'overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
                        step === 1 && 'border-warning/40',
-                       step === 2 && 'border-[#1080CA]/40',
-                       step === 3 && 'border-[#1080CA]/50',
+                       step === 2 && 'border-primary/40',
+                       step === 3 && 'border-primary/50',
                        step === 4 && 'opacity-60',
                        ag.status === 'faltou' && 'opacity-75',
-                       ehProximo && 'ring-2 ring-[#1080CA]/40 shadow-[0_6px_18px_rgba(16,128,202,0.18)]',
+                       ehProximo && 'ring-2 ring-primary/40 shadow-sm',
                      )}>
                        <CardContent className="p-0">
                          <div className="flex items-stretch">
@@ -1342,8 +1392,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                              'w-1.5 shrink-0',
                              step === 0 && (atrasado ? 'bg-destructive' : 'bg-warning'),
                              step === 1 && 'bg-warning',
-                             step === 2 && 'bg-gradient-primary',
-                             step === 3 && 'bg-[#1080CA]',
+                             step === 2 && 'bg-primary',
+                             step === 3 && 'bg-primary',
                              step === 4 && 'bg-success',
                              ag.status === 'faltou' && 'bg-muted-foreground/50',
                            )} />
@@ -1357,7 +1407,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                     {(pac as any)?.nome_social || pac?.nome || 'Paciente'}
                                   </h3>
                                   {ehProximo && (
-                                    <Badge className="border-transparent bg-gradient-primary text-[10px] text-white hover:bg-gradient-primary">
+                                    <Badge className="border-transparent bg-primary text-[10px] text-primary-foreground hover:bg-primary">
                                       <Bell className="mr-0.5 h-2.5 w-2.5" /> Próximo a chamar
                                     </Badge>
                                   )}
@@ -1400,8 +1450,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                     <div key={i} className="flex items-center gap-1">
                                       <div className={cn(
                                         'h-6 px-2.5 rounded-full flex items-center text-[10px] font-semibold transition-colors',
-                                        i < step && 'bg-gradient-primary text-white',
-                                        i === step && 'bg-gradient-primary text-white shadow-sm',
+                                        i < step && 'bg-primary text-primary-foreground',
+                                        i === step && 'bg-primary text-primary-foreground shadow-sm',
                                         i > step && 'bg-muted text-muted-foreground',
                                       )}>
                                         {i < step ? <Check className="h-3 w-3" /> : label}
@@ -1431,21 +1481,15 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                       size="sm"
                                       onClick={() => handleCheckin(ag.id)}
                                       disabled={isProcessing}
-                                      className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
+                                      aria-busy={processingCheckinId === ag.id}
+                                      className="gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                                     >
-                                      <UserCheck className="h-3.5 w-3.5" /> Check-in
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
-                                      disabled={isProcessing}
-                                      className="gap-1 rounded-full"
-                                    >
-                                      <Activity className="h-3.5 w-3.5" /> Triagem
+                                      {processingCheckinId === ag.id
+                                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Registrando…</>
+                                        : <><UserCheck className="h-3.5 w-3.5" /> Check-in</>}
                                     </Button>
                                     {linkACaminho && (
-                                      <Button asChild size="sm" variant="outline" className="gap-1 rounded-full border-[#1080CA]/40 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                                      <Button asChild size="sm" variant="outline" className="gap-1 rounded-full border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
                                         <a href={linkACaminho} target="_blank" rel="noopener noreferrer" aria-label={`Perguntar no WhatsApp se ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} está a caminho`}>
                                           <MessageCircle className="h-3.5 w-3.5" /> Está a caminho?
                                         </a>
@@ -1469,6 +1513,19 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                 {/* Step 1: Balcão — patient pays before consultation */}
                                 {step === 1 && (
                                   <div className="flex flex-wrap gap-1.5">
+                                    {podeAbrirTriagem && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
+                                        disabled={isProcessing}
+                                        className="gap-1 rounded-full"
+                                        aria-label={`Abrir triagem de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
+                                      >
+                                        <Activity className="h-3.5 w-3.5" /> Triagem
+                                      </Button>
+                                    )}
+                                    {podeRegistrarTriagem && triagemRegistrada && <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Triagem registrada</Badge>}
                                     {lancamentosErro && (
                                       <Button
                                         size="sm"
@@ -1505,7 +1562,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                         size="sm"
                                         onClick={() => openPagamento(lanc, pac)}
                                         disabled={isProcessing}
-                                        className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                                        className="gap-1.5 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                                       >
                                         <DollarSign className="h-3.5 w-3.5" />
                                         Receber {formatCurrency(calcularSaldoPagamento(
@@ -1521,7 +1578,20 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
 
                                 {/* Step 2: Paid, waiting/in consultation */}
                                 {step === 2 && (
-                                  <div className="flex gap-1.5">
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {podeAbrirTriagem && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
+                                        disabled={isProcessing}
+                                        className="gap-1 rounded-full"
+                                        aria-label={`Abrir triagem de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
+                                      >
+                                        <Activity className="h-3.5 w-3.5" /> Triagem
+                                      </Button>
+                                    )}
+                                    {podeRegistrarTriagem && triagemRegistrada && <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Triagem registrada</Badge>}
                                     {lanc?.status === 'pago' && (
                                       <Badge className="bg-success/10 text-success border-0 mr-1">
                                         <CheckCircle2 className="h-3 w-3 mr-1" /> Pago
@@ -1542,7 +1612,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                           size="sm"
                                           onClick={() => handleIniciarAtendimento(ag.id, fila.id)}
                                           disabled={isProcessing}
-                                          className="gap-1 rounded-full bg-gradient-primary text-white hover:brightness-110"
+                                          className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                                         >
                                           <Play className="h-3.5 w-3.5" /> Atender
                                         </Button>
@@ -1558,7 +1628,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
                                           nome: (pac as any)?.nome_social || pac?.nome || 'Paciente',
                                         })}
                                         disabled={isProcessing}
-                                        className="gap-1 rounded-full bg-gradient-primary text-white hover:brightness-110"
+                                        className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                                       >
                                         <Check className="h-3.5 w-3.5" /> Finalizar
                                       </Button>
@@ -1923,10 +1993,9 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         pacienteNome={finalizandoRecepcao?.nome ?? ''}
         onClose={() => setFinalizandoRecepcao(null)}
         onConfirm={async dias => {
-          if (!finalizandoRecepcao) return;
+          if (!finalizandoRecepcao) return false;
           const { agId, filaId } = finalizandoRecepcao;
-          setFinalizandoRecepcao(null);
-          await handleFinalizarAtendimento(agId, filaId, dias);
+          return handleFinalizarAtendimento(agId, filaId, dias);
         }}
       />
 

@@ -1,3 +1,14 @@
+const completedAppointmentStatuses = new Set(['finalizado', 'atendimento_finalizado']);
+const closedAppointmentStatuses = new Set([...completedAppointmentStatuses, 'cancelado', 'faltou']);
+
+export function isAppointmentCompleted(status: string) {
+  return completedAppointmentStatuses.has(status);
+}
+
+export function isAppointmentClosed(status: string) {
+  return closedAppointmentStatuses.has(status);
+}
+
 export function formatAppointmentStatus(status: string) {
   const labels: Record<string, string> = {
     agendado: 'Agendado',

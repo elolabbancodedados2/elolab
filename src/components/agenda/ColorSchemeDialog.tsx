@@ -47,12 +47,12 @@ export function ColorSchemeDialog({ open, onOpenChange, scheme, onSave, medicos,
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Personalizar cores da agenda</DialogTitle></DialogHeader>
+        <DialogHeader className="pr-10"><DialogTitle>Personalizar cores da agenda</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label>Colorir por</Label>
+            <Label htmlFor="agenda-color-criterion">Colorir por</Label>
             <Select value={criterion} onValueChange={(v) => setCriterion(v as ColorCriterion)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="agenda-color-criterion"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="status">Status</SelectItem>
                 <SelectItem value="medico">Médico</SelectItem>
@@ -62,25 +62,36 @@ export function ColorSchemeDialog({ open, onOpenChange, scheme, onSave, medicos,
             </Select>
           </div>
           <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-            {options.map(o => (
-              <div key={o.key} className="flex items-center justify-between gap-3 p-2 rounded-md border border-border/60">
-                <span className="text-sm truncate flex-1">{o.label}</span>
-                <div className="flex gap-1">
-                  {PALETTE.map(c => (
+            {options.map(o => {
+              const currentColor = map[o.key];
+              const isLegacyColor = !!currentColor && !PALETTE.some(color => color.value === currentColor);
+              const colors = isLegacyColor
+                ? [{ label: 'Cor atual', value: currentColor }, ...PALETTE]
+                : PALETTE;
+
+              return (
+              <div key={o.key} className="space-y-2 rounded-md border border-border/60 p-2">
+                <span className="block truncate text-sm">{o.label}</span>
+                <div className="grid grid-cols-[repeat(4,minmax(2.75rem,1fr))] gap-1.5">
+                  {colors.map(c => (
                     <button
-                      key={c}
-                      onClick={() => setMap({ ...map, [o.key]: c })}
+                      key={c.value}
+                      type="button"
+                      aria-label={`${c.label === 'Cor atual' ? 'Manter' : 'Usar'} ${c.label === 'Cor atual' ? `cor atual ${c.value}` : c.label} para ${o.label}`}
+                      aria-pressed={currentColor === c.value}
+                      onClick={() => setMap({ ...map, [o.key]: c.value })}
                       className={cn(
-                        'h-5 w-5 rounded-full border-2 transition-transform',
-                        map[o.key] === c ? 'border-foreground scale-110' : 'border-transparent hover:scale-110'
+                        'h-11 w-11 rounded-md border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                        currentColor === c.value ? 'border-foreground' : 'border-transparent hover:border-border'
                       )}
-                      style={{ backgroundColor: c }}
-                      title={c}
+                      style={{ backgroundColor: c.value }}
+                      title={c.label === 'Cor atual' ? `Cor atual: ${c.value}` : c.label}
                     />
                   ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         <DialogFooter>

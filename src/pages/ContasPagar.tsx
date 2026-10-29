@@ -1,7 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
   Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown,
@@ -27,10 +27,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
 import { differenceInCalendarDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
+import { parseAccountFilterStatus, parseFinanceMonth } from '@/lib/financeRouteState';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -108,13 +110,16 @@ const saldoEmAberto = (conta: { valor: number | string; valor_pago?: number | st
   Math.max(0, Number(conta.valor || 0) - Number(conta.desconto || 0)
     + Number(conta.acrescimo || 0) - Number(conta.valor_pago || 0));
 
-const PILL_BASE_P = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]';
-const PILL_ATIVA_P = 'border-transparent bg-gradient-primary text-white shadow-sm';
-const PILL_INATIVA_P = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
+const PILL_BASE_P = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const PILL_ATIVA_P = 'border-primary bg-primary text-primary-foreground';
+const PILL_INATIVA_P = 'border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground';
 
 export default function ContasPagar() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('todos');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
+  const selectedMonthParam = searchParams.get('mes');
+  const selectedMonth = parseFinanceMonth(selectedMonthParam);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -128,6 +133,19 @@ export default function ContasPagar() {
   const navigate = useNavigate();
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
+
+  const setFilterStatus = (status: string) => setSearchParams(current => {
+    const next = new URLSearchParams(current);
+    if (status === 'todos') next.delete('status');
+    else next.set('status', status);
+    return next;
+  });
+  const clearRouteFilters = () => setSearchParams(current => {
+    const next = new URLSearchParams(current);
+    next.delete('status');
+    next.delete('mes');
+    return next;
+  });
 
   const contasQuery = useQuery({
     queryKey: ['lancamentos', 'despesa', user?.id ?? null, profile?.clinica_id ?? null],
@@ -153,41 +171,46 @@ export default function ContasPagar() {
   const contaPagamentoSelecionada = contas.find(conta => conta.id === selectedId);
   const saldoPagamentoSelecionado = contaPagamentoSelecionada ? saldoEmAberto(contaPagamentoSelecionada) : 0;
 
+  const monthFilteredContas = useMemo(() => selectedMonthParam
+    ? contas.filter(c => String(c.data_vencimento || '').startsWith(selectedMonthParam))
+    : contas, [contas, selectedMonthParam]);
+
   const filteredContas = useMemo(() =>
-    contas.filter(c => {
+    monthFilteredContas.filter(c => {
       const term = searchTerm.toLowerCase();
       const matchSearch = c.descricao.toLowerCase().includes(term) ||
         ((c as any).fornecedor || '').toLowerCase().includes(term) ||
         ((c as any).numero_documento || '').toLowerCase().includes(term);
-      const matchStatus = filterStatus === 'todos' || (filterStatus === 'atrasado' ? c.vencida : c.status === filterStatus);
+      const matchStatus = filterStatus === 'todos'
+        || (filterStatus === 'aberto' ? ['pendente', 'parcial', 'atrasado'].includes(c.status) : filterStatus === 'atrasado' ? c.vencida : c.status === filterStatus);
       return matchSearch && matchStatus;
-    }), [contas, searchTerm, filterStatus]);
+    }), [monthFilteredContas, searchTerm, filterStatus]);
 
   const stats = useMemo(() => ({
-    total: contas.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((acc, c) => acc + c.valor, 0),
-    pendente: contas.filter(c => ['pendente', 'parcial'].includes(c.status) && !c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
-    atrasado: contas.filter(c => c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
+    total: monthFilteredContas.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((acc, c) => acc + c.valor, 0),
+    pendente: monthFilteredContas.filter(c => ['pendente', 'parcial'].includes(c.status) && !c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
+    atrasado: monthFilteredContas.filter(c => c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
     // Atraso é um rótulo operacional calculado; uma conta vencida pode continuar
     // tendo uma parte já recebida que deve permanecer no KPI de pagamentos.
-    pago: contas.filter(c => ['pago', 'parcial'].includes(c.status) || Number(c.valor_pago || 0) > 0)
+    pago: monthFilteredContas.filter(c => ['pago', 'parcial'].includes(c.status) || Number(c.valor_pago || 0) > 0)
       .reduce((acc, c) => acc + valorRealizado(c), 0),
-  }), [contas]);
+  }), [monthFilteredContas]);
 
   const destaquePagar = useMemo(() => {
-    const vencidas = contas.filter(c => c.vencida).sort((a, b) => {
+    const vencidas = monthFilteredContas.filter(c => c.vencida).sort((a, b) => {
       const da = parseDateOnly(a.data_vencimento)?.getTime() ?? 0;
       const db = parseDateOnly(b.data_vencimento)?.getTime() ?? 0;
       return da - db;
     });
     if (vencidas.length > 0) return vencidas[0];
-    return contas
+    return monthFilteredContas
       .filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || c.status || ''))
       .sort((a, b) => {
         const da = parseDateOnly(a.data_vencimento)?.getTime() ?? 0;
         const db = parseDateOnly(b.data_vencimento)?.getTime() ?? 0;
         return da - db;
       })[0] ?? null;
-  }, [contas]);
+  }, [monthFilteredContas]);
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -362,7 +385,7 @@ export default function ContasPagar() {
         title="Contas a Pagar"
         description={stats.total === 0
           ? 'Despesas, fornecedores e controle de vencimentos'
-          : `${formatCurrency(stats.total)} total · ${contas.filter(c => c.vencida).length} vencida${contas.filter(c => c.vencida).length === 1 ? '' : 's'} · ${formatCurrency(stats.pendente)} em aberto`}
+          : `${formatCurrency(stats.total)} total${selectedMonth ? ` em ${format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}` : ''} · ${monthFilteredContas.filter(c => c.vencida).length} vencida${monthFilteredContas.filter(c => c.vencida).length === 1 ? '' : 's'} · ${formatCurrency(stats.pendente)} em aberto`}
         icon={<TrendingDown />}
         actions={
           <>
@@ -372,7 +395,7 @@ export default function ContasPagar() {
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/recepcao?tab=caixa')}>
             <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
           </Button>
-          <Button onClick={handleNew} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0">
+          <Button onClick={handleNew} className="gap-2 shrink-0">
             <Plus className="h-4 w-4" /> Nova Conta
           </Button>
           </>
@@ -385,44 +408,40 @@ export default function ContasPagar() {
         </div>
       )}
 
+      {selectedMonth && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3" role="status">
+          <p className="text-sm text-foreground">Vencimentos de <strong>{format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR })}</strong></p>
+          <Button variant="ghost" size="sm" onClick={() => setSearchParams(current => { const next = new URLSearchParams(current); next.delete('mes'); return next; })}>
+            Mostrar todos os meses
+          </Button>
+        </div>
+      )}
+
       {/* Indicadores clicáveis */}
-      <section role="group" aria-label="Resumo das contas a pagar" className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        {[
-          { key: 'todos', label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: `${contas.length} lançamento(s)` },
-          { key: 'pendente', label: 'Pendente', value: stats.pendente, icon: Clock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: `${contas.filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || '') && !c.vencida).length} conta(s)` },
-          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: `${contas.filter(c => c.vencida).length} em atraso` },
-          { key: 'pago', label: 'Pago', value: stats.pago, icon: Check, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${contas.filter(c => ['pago'].includes(c.statusOriginal || '')).length} conta(s)` },
-        ].map(kpi => {
-          const Icon = kpi.icon;
-          const ativo = filterStatus === kpi.key;
-          return (
-            <button
-              key={kpi.key}
-              type="button"
-              aria-pressed={ativo}
-              onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
-              className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
-              )}
-            >
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
-                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
-                  <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{formatCurrency(kpi.value)}</p>
-                  <p className={cn('truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>
-                    {kpi.caption}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <section role="group" aria-label="Resumo das contas a pagar" className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">Resumo de vencimentos</h2>
+          {selectedMonth && <span className="text-xs text-muted-foreground">{format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}</span>}
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-border md:grid-cols-4 md:divide-y-0">
+          {[
+            { key: 'todos', label: 'Total em contas', value: stats.total, color: 'text-foreground', caption: `${monthFilteredContas.length} lançamento(s)` },
+            { key: 'pendente', label: 'A vencer / parcial', value: stats.pendente, color: 'text-warning-foreground', caption: `${monthFilteredContas.filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || '') && !c.vencida).length} conta(s)` },
+            { key: 'atrasado', label: 'Vencidas / em atraso', value: stats.atrasado, color: 'text-destructive', caption: `${monthFilteredContas.filter(c => c.vencida).length} em atraso` },
+            { key: 'pago', label: 'Pago', value: stats.pago, color: 'text-success', caption: `${monthFilteredContas.filter(c => ['pago'].includes(c.statusOriginal || '')).length} conta(s)` },
+          ].map(kpi => {
+            const ativo = filterStatus === kpi.key;
+            return (
+              <button key={kpi.key} type="button" aria-pressed={ativo}
+                onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
+                className={cn('min-h-[84px] min-w-0 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring', ativo && 'bg-primary/5')}>
+                <span className="block truncate text-xs font-medium text-muted-foreground">{kpi.label}</span>
+                <span className={cn('mt-1 block whitespace-nowrap text-xl font-semibold tabular-nums', kpi.color)}>{formatCurrency(kpi.value)}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{kpi.caption}</span>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       {/* Hero: conta mais urgente */}
@@ -432,14 +451,14 @@ export default function ContasPagar() {
         const dataVenc = d.data_vencimento ? parseDateOnly(d.data_vencimento) : null;
         const diasVencidos = dataVenc ? differenceInCalendarDays(parseDateOnly(todaySaoPauloDateOnly())!, dataVenc) : null;
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className={cn('overflow-hidden rounded-xl', d.vencida ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5')}>
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', d.vencida ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning-foreground')}>
                   {d.vencida ? <AlertCircle className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{d.vencida ? 'Despesa vencida há mais tempo' : 'Próxima despesa a vencer'}</p>
+                  <p className={cn('text-[11px] font-semibold uppercase tracking-wide', d.vencida ? 'text-destructive' : 'text-warning-foreground')}>{d.vencida ? 'Despesa vencida há mais tempo' : 'Próxima despesa a vencer'}</p>
                   <h2 className="truncate text-lg font-bold text-foreground">{d.descricao}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {d.fornecedor && <span>{d.fornecedor}</span>}
@@ -456,12 +475,16 @@ export default function ContasPagar() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <span className="text-lg font-bold tabular-nums text-foreground">{formatCurrency(d.valor)}</span>
+                <span className="flex flex-col items-start sm:items-end">
+                  <span className="text-[11px] text-muted-foreground">Saldo em aberto</span>
+                  <span className="text-lg font-bold tabular-nums text-foreground">{formatCurrency(saldoEmAberto(d))}</span>
+                </span>
                 {['pendente', 'atrasado', 'parcial'].includes(d.status) && (
                   <Button
                     size="sm"
                     onClick={() => handlePagamento(d.id)}
-                    className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-md hover:brightness-110"
+                    variant={d.vencida ? 'destructive' : 'default'}
+                    className="h-9 gap-1 text-xs"
                   >
                     <Check aria-hidden="true" className="h-3.5 w-3.5" /> {Number(d.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
                   </Button>
@@ -478,11 +501,11 @@ export default function ContasPagar() {
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-base">
-                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                   <DollarSign className="h-4 w-4" />
                 </span>
                 Despesas
-                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredContas.length} de {contas.length}</Badge>
+                <Badge variant="outline" className="rounded-full border-border text-muted-foreground">{filteredContas.length} de {monthFilteredContas.length}</Badge>
               </CardTitle>
               <div className="relative w-full sm:w-72">
                 <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -491,13 +514,14 @@ export default function ContasPagar() {
                   placeholder="Descrição, fornecedor, NF..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  className="h-10 rounded-full pl-9"
                 />
               </div>
             </div>
             <div role="group" aria-label="Filtrar por status" className="flex flex-wrap items-center gap-1.5">
               {[
                 { key: 'todos', label: 'Todos' },
+                { key: 'aberto', label: 'Em aberto' },
                 { key: 'pendente', label: 'Pendentes' },
                 { key: 'parcial', label: 'Parciais' },
                 { key: 'atrasado', label: 'Vencidos' },
@@ -513,12 +537,12 @@ export default function ContasPagar() {
                   </button>
                 );
               })}
-              {(searchTerm.trim() || filterStatus !== 'todos') && (
-                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={() => { setSearchTerm(''); setFilterStatus('todos'); }}>
+              {(searchTerm.trim() || filterStatus !== 'todos' || selectedMonth) && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={() => { setSearchTerm(''); clearRouteFilters(); }}>
                   <X aria-hidden="true" className="h-3 w-3" /> Limpar
                 </Button>
               )}
-              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {contas.length}</span>
+              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {monthFilteredContas.length}</span>
             </div>
           </div>
         </CardHeader>
@@ -541,7 +565,7 @@ export default function ContasPagar() {
                   <TableRow>
                     <TableCell colSpan={7} className="py-12 text-center">
                       <div className="flex flex-col items-center">
-                        <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                        <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                           <DollarSign className="h-7 w-7" />
                         </span>
                         <p className="font-semibold text-foreground">
@@ -551,11 +575,11 @@ export default function ContasPagar() {
                           {contas.length === 0 ? 'Cadastre uma despesa para acompanhar seus vencimentos.' : 'Limpe a busca e o status para ver outras contas.'}
                         </p>
                         {contas.length === 0 ? (
-                          <Button className="mt-3 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={handleNew}>
+                          <Button className="mt-3 gap-2" size="sm" onClick={handleNew}>
                             <Plus className="h-4 w-4" /> Nova Conta
                           </Button>
                         ) : (
-                          <Button className="mt-3 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); setFilterStatus('todos'); }}>
+                          <Button className="mt-3 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); clearRouteFilters(); }}>
                             Limpar filtros
                           </Button>
                         )}
@@ -563,9 +587,26 @@ export default function ContasPagar() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredContas.map((conta: any) => (
+                  filteredContas.map((conta: any) => {
+                    const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+                    const diasAteVencimento = dataVencimento
+                      ? differenceInCalendarDays(dataVencimento, parseDateOnly(todaySaoPauloDateOnly())!)
+                      : null;
+                    const aberto = ['pendente', 'atrasado', 'parcial'].includes(conta.status);
+                    const diasAtraso = diasAteVencimento === null ? null : Math.abs(diasAteVencimento);
+                    const urgencia = conta.vencida && diasAtraso !== null
+                      ? `Atrasada há ${diasAtraso} ${diasAtraso === 1 ? 'dia' : 'dias'}`
+                      : aberto && diasAteVencimento === 0
+                        ? 'Vence hoje'
+                        : aberto && diasAteVencimento !== null && diasAteVencimento > 0 && diasAteVencimento <= 7
+                          ? `Vence em ${diasAteVencimento} ${diasAteVencimento === 1 ? 'dia' : 'dias'}`
+                          : null;
+                    return (
                     <TableRow key={conta.id} className={cn(conta.vencida && 'bg-destructive/5')}>
                       <TableCell>
+                        <p className={cn('mb-1 text-xs sm:hidden', conta.vencida ? 'font-medium text-destructive' : urgencia ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
+                          {dataVencimento ? `Vencimento ${format(dataVencimento, 'dd/MM/yyyy')}` : 'Vencimento não informado'}{urgencia && ` · ${urgencia}`}
+                        </p>
                         <div>
                           <p className="font-medium line-clamp-2" title={conta.descricao}>{conta.descricao}</p>
                           {conta.numero_documento && (
@@ -604,13 +645,14 @@ export default function ContasPagar() {
                         <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} />
                         {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
                           <Button size="sm" onClick={() => handlePagamento(conta.id)}
-                            className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-md hover:brightness-110">
+                            className="h-9 gap-1 text-xs">
                             <Check className="h-3.5 w-3.5" /> {Number(conta.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
                           </Button>
                         )}
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

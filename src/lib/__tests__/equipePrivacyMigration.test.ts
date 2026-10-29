@@ -56,7 +56,7 @@ describe('Equipe: privacidade de dados pessoais', () => {
     expect(useSupabaseData).not.toContain('medicos(*)');
     expect(useSupabaseData).toMatch(/'id, nome, crm/);
     expect(patientsPage).toMatch(/useSupabaseQuery<any>\('medicos', \{ select: 'id, nome, crm, especialidade'/);
-    expect(reportsPage).toMatch(/select: 'id, nome, crm, especialidade'/);
+    expect(reportsPage).toMatch(/medicosQuery\s*=\s*useMedicos\(/);
     expect(medicosPage).toContain("rpc('listar_medicos_equipe_admin')");
     expect(funcionariosPage).toContain("rpc('listar_funcionarios_equipe_admin')");
     expect(chatPage).toContain("rpc('listar_funcionarios_chat_equipe')");

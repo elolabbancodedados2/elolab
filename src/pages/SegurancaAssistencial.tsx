@@ -52,14 +52,15 @@ const STATUSES: Record<string, string> = {
   monitoring: 'Monitorando', closed: 'Encerrado', reopened: 'Reaberto',
 };
 const STATUS_CLASSES: Record<string, string> = {
-  submitted: 'border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]',
-  triage: 'border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]',
-  investigating: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
-  action_required: 'border-destructive/30 bg-destructive/10 text-destructive',
+  submitted: 'border-info/30 bg-info/10 text-info',
+  triage: 'border-info/30 bg-info/10 text-info',
+  investigating: 'border-primary/30 bg-primary/10 text-primary',
+  action_required: 'border-warning/40 bg-warning/10 text-warning-foreground',
   monitoring: 'border-warning/40 bg-warning/10 text-warning-foreground',
   reopened: 'border-warning/40 bg-warning/10 text-warning-foreground',
-  closed: 'border-border bg-muted text-muted-foreground',
+  closed: 'border-success/30 bg-success/10 text-success',
 };
+const SAFETY_TOAST_OPTIONS = { id: 'seguranca-assistencial', duration: 3500 };
 const EMPTY_FORM: FormState = {
   category: 'near_miss', severity: 'moderate', occurred_at: localDateTime(new Date().toISOString()),
   location_label: '', summary: '', immediate_action: '', reporter_confidential: true,
@@ -142,10 +143,10 @@ export default function SegurancaAssistencial() {
     },
     onSuccess: () => {
       setForm({ ...EMPTY_FORM, occurred_at: localDateTime(new Date().toISOString()) });
-      toast.success('Relato recebido.');
+      toast.success('Relato recebido.', SAFETY_TOAST_OPTIONS);
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-reports'] });
     },
-    onError: (error) => toast.error('Não foi possível registrar o relato.', { description: mensagemDeErro(error) }),
+    onError: (error) => toast.error('Não foi possível registrar o relato.', { ...SAFETY_TOAST_OPTIONS, description: mensagemDeErro(error) }),
   });
 
   const reviewReport = useMutation({
@@ -163,14 +164,14 @@ export default function SegurancaAssistencial() {
       return data;
     },
     onSuccess: (data) => {
-      toast.success('Revisão e ação corretiva registradas.');
+      toast.success('Revisão e ação corretiva registradas.', SAFETY_TOAST_OPTIONS);
       setReviewing((current) => current ? { ...current, ...data.report } : current);
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-reports'] });
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-report'] });
       setReviewNote('');
       setCorrectiveAction('');
     },
-    onError: (error) => toast.error('Não foi possível salvar a revisão.', { description: mensagemDeErro(error) }),
+    onError: (error) => toast.error('Não foi possível salvar a revisão.', { ...SAFETY_TOAST_OPTIONS, description: mensagemDeErro(error) }),
   });
 
   const requestCorrection = useMutation({
@@ -186,12 +187,12 @@ export default function SegurancaAssistencial() {
       return data;
     },
     onSuccess: () => {
-      toast.success('Pedido de retificação enviado para análise.');
+      toast.success('Pedido de retificação enviado para análise.', SAFETY_TOAST_OPTIONS);
       setEditingCorrection(false);
       setCorrectionSummary(''); setCorrectionAction(''); setCorrectionReason('');
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-report'] });
     },
-    onError: (error) => toast.error('Não foi possível enviar o pedido.', { description: mensagemDeErro(error) }),
+    onError: (error) => toast.error('Não foi possível enviar o pedido.', { ...SAFETY_TOAST_OPTIONS, description: mensagemDeErro(error) }),
   });
 
   const resolveCorrection = useMutation({
@@ -207,12 +208,12 @@ export default function SegurancaAssistencial() {
       return data;
     },
     onSuccess: () => {
-      toast.success('Decisão de retificação registrada.');
+      toast.success('Decisão de retificação registrada.', SAFETY_TOAST_OPTIONS);
       setCorrectionReviewNote('');
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-report'] });
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-reports'] });
     },
-    onError: (error) => toast.error('Não foi possível decidir a retificação.', { description: mensagemDeErro(error) }),
+    onError: (error) => toast.error('Não foi possível decidir a retificação.', { ...SAFETY_TOAST_OPTIONS, description: mensagemDeErro(error) }),
   });
 
   const reports = reportsQuery.data?.reports ?? EMPTY_REPORTS;
@@ -295,19 +296,19 @@ export default function SegurancaAssistencial() {
       ? 'Registre eventos, quase incidentes e condições inseguras para análise e melhoria do cuidado.'
       : `${counts.open} ${plural(counts.open, 'relato aberto', 'relatos abertos')} · ${counts.month} neste mês${counts.criticalOpen > 0 ? ` · ${counts.criticalOpen} ${plural(counts.criticalOpen, 'crítico pendente', 'críticos pendentes')}` : ''}${counts.overdue > 0 ? ` · ${counts.overdue} com prazo vencido` : ''}`;
 
-  const indicadores: { key: IndicadorKey; icon: typeof Siren; label: string; caption: string; value: number; color: string; surface: string; escuro: boolean }[] = [
-    { key: 'critical_open', icon: Siren, label: 'Críticos pendentes', caption: 'exigem revisão imediata', value: counts.criticalOpen, color: 'text-white', surface: 'bg-white/15', escuro: true },
-    { key: 'open', icon: Activity, label: 'Em aberto', caption: 'ainda não encerrados', value: counts.open, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-    { key: 'action_required', icon: AlertTriangle, label: 'Ação necessária', caption: counts.overdue > 0 ? `${counts.overdue} com prazo vencido` : 'com responsável e prazo', value: counts.actionRequired, color: 'text-warning', surface: 'bg-warning/10', escuro: false },
-    { key: 'month', icon: CalendarDays, label: 'Neste mês', caption: 'ocorridos no mês atual', value: counts.month, color: 'text-foreground', surface: 'bg-muted', escuro: false },
-    { key: 'closed', icon: CheckCircle2, label: 'Encerrados', caption: `${reports.length} no total`, value: counts.closed, color: 'text-success', surface: 'bg-success/10', escuro: false },
+  const indicadores: { key: IndicadorKey; icon: typeof Siren; label: string; caption: string; value: number; color: string }[] = [
+    { key: 'critical_open', icon: Siren, label: 'Críticos pendentes', caption: 'exigem revisão imediata', value: counts.criticalOpen, color: 'text-destructive' },
+    { key: 'open', icon: Activity, label: 'Em aberto', caption: 'ainda não encerrados', value: counts.open, color: 'text-primary' },
+    { key: 'action_required', icon: AlertTriangle, label: 'Ação necessária', caption: counts.overdue > 0 ? `${counts.overdue} com prazo vencido` : 'com responsável e prazo', value: counts.actionRequired, color: 'text-warning-foreground' },
+    { key: 'month', icon: CalendarDays, label: 'Neste mês', caption: 'ocorridos no mês atual', value: counts.month, color: 'text-muted-foreground' },
+    { key: 'closed', icon: CheckCircle2, label: 'Encerrados', caption: `${reports.length} no total`, value: counts.closed, color: 'text-success' },
   ];
 
   const renderReport = (report: Report) => {
     const atrasado = isOverdue(report, Date.now());
-    const critico = report.severity === 'critical' && isOpen(report);
+    const critico = (report.severity === 'critical' && isOpen(report)) || atrasado;
     return (
-      <Card key={report.id} className={cn('rounded-2xl border-border/60 shadow-xs transition-all duration-200', critico && 'border-destructive/30 shadow-[0_8px_24px_rgba(239,68,68,0.10)]')}>
+      <Card key={report.id} className={cn('rounded-xl border-border/60 shadow-xs', critico && 'border-destructive/30')}>
         <CardContent className="space-y-3 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
@@ -337,9 +338,9 @@ export default function SegurancaAssistencial() {
   const renderGrupo = (id: string, titulo: string, Icon: typeof FolderOpen, lista: Report[]) => lista.length > 0 && (
     <section key={id} aria-labelledby={id} className="space-y-3">
       <div className="flex items-center gap-2.5">
-        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><Icon className="h-4 w-4" /></span>
+        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="h-4 w-4" /></span>
         <h3 id={id} className="text-base font-semibold text-foreground">{titulo}</h3>
-        <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{lista.length}</Badge>
+        <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{lista.length}</Badge>
       </div>
       <div className="space-y-3">{lista.map(renderReport)}</div>
     </section>
@@ -352,7 +353,7 @@ export default function SegurancaAssistencial() {
       icon={<ShieldCheck />}
       actions={<>
         <Button variant="outline" size="icon" className="shrink-0 rounded-full" aria-label="Atualizar relatos" title="Atualizar relatos" onClick={() => void reportsQuery.refetch()} disabled={reportsQuery.isFetching}><RefreshCw className={`h-4 w-4 ${reportsQuery.isFetching ? 'animate-spin' : ''}`} /></Button>
-        <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={irParaFormulario}><Plus className="h-4 w-4" /> Registrar relato</Button>
+        <Button className="shrink-0 gap-2 rounded-full" onClick={irParaFormulario}><Plus className="h-4 w-4" /> Registrar relato</Button>
       </>}
     />
 
@@ -361,7 +362,7 @@ export default function SegurancaAssistencial() {
         <h2 className="text-sm font-semibold text-foreground">Situação agora</h2>
         <p className="text-xs text-muted-foreground">{indicador === 'todos' ? 'Clique em um indicador para filtrar os relatos.' : `Mostrando apenas ${indicadores.find((item) => item.key === indicador)?.label.toLowerCase()}.`}</p>
       </div>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3 xl:grid-cols-5 [&>button:last-child]:col-span-2 sm:[&>button:last-child]:col-span-1">
         {indicadores.map((s) => {
           const Icon = s.icon;
           const ativo = indicador === s.key;
@@ -371,39 +372,38 @@ export default function SegurancaAssistencial() {
               type="button"
               aria-pressed={ativo}
               onClick={() => setIndicador(ativo ? 'todos' : s.key)}
-              className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                s.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
-              )}
+              aria-label={`${s.label}: ${reportsQuery.isLoading ? 'carregando' : s.value}. ${s.caption}`}
+              className={cn('min-w-0 bg-card p-3 text-left transition-colors hover:bg-muted/50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary', ativo && 'bg-primary/5')}
             >
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} /></div>
+              <div className="flex min-h-[72px] items-start gap-2.5">
+                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/70', s.value > 0 ? s.color : 'text-muted-foreground')}><Icon aria-hidden="true" className="h-4 w-4" /></div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
-                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{reportsQuery.isLoading ? '—' : s.value}</span>
+                    <h3 className="text-xs font-semibold leading-5 text-foreground">{s.label}</h3>
+                    <span data-testid={`safety-indicator-value-${s.key}`} className={cn('text-xl font-bold tabular-nums', s.value > 0 ? s.color : 'text-muted-foreground')}>{reportsQuery.isLoading ? '—' : s.value}</span>
                   </div>
-                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{s.caption}</p>
                 </div>
               </div>
             </button>
           );
         })}
       </div>
-      {!!counts.byCategory.length && <div aria-label="Relatos por categoria" className="flex flex-wrap gap-2 pt-1">{counts.byCategory.map((item) => <Badge key={item.key} variant="outline" className="rounded-full border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]">{item.label}: {item.count}</Badge>)}</div>}
+      {!!counts.byCategory.length && <div aria-label="Relatos por categoria" className="flex flex-wrap gap-2 pt-1">{counts.byCategory.map((item) => <Badge key={item.key} variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-primary">{item.label}: {item.count}</Badge>)}</div>}
     </section>
 
     {maisUrgente && (() => {
       const atrasado = isOverdue(maisUrgente, Date.now());
+      const critico = maisUrgente.severity === 'critical';
+      const destaque = atrasado || critico ? 'border-destructive/40' : 'border-warning/40';
+      const tom = atrasado || critico ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning-foreground';
       return (
-        <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+        <Card className={cn('overflow-hidden rounded-xl', destaque)}>
           <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
             <div className="flex min-w-0 flex-1 items-start gap-3">
-              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Siren className="h-5 w-5" /></span>
+              <span aria-hidden="true" className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl', tom)}><Siren className="h-5 w-5" /></span>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Mais urgente agora</p>
+                <p className={cn('text-[11px] font-semibold uppercase tracking-wide', atrasado ? 'text-destructive' : critico ? 'text-destructive' : 'text-warning-foreground')}>{atrasado ? 'Prazo vencido' : critico ? 'Risco crítico em aberto' : 'Risco alto em aberto'}</p>
                 <h2 className="text-lg font-bold text-foreground">{CATEGORIES[maisUrgente.category] || 'Relato assistencial'} · {SEVERITIES[maisUrgente.severity]}</h2>
                 <p className="mt-1 line-clamp-2 text-sm text-foreground/90">{maisUrgente.summary}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -417,7 +417,7 @@ export default function SegurancaAssistencial() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => openReview(maisUrgente)}>
+              <Button className="h-10 gap-1.5 rounded-full" onClick={() => openReview(maisUrgente)}>
                 <ClipboardList aria-hidden="true" className="h-4 w-4" />{isAdmin ? 'Revisar agora' : 'Acompanhar agora'}
               </Button>
             </div>
@@ -429,7 +429,7 @@ export default function SegurancaAssistencial() {
     <Card id="safety-form" className="scroll-mt-4 rounded-2xl border-border/60 shadow-xs">
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="flex items-start gap-2.5">
-          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><FilePlus2 className="h-4 w-4" /></span>
+          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FilePlus2 className="h-4 w-4" /></span>
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-foreground">Registrar ocorrência ou risco</h2>
             <p className="text-sm text-muted-foreground">Não informe nome, CPF, CNS ou outros dados que identifiquem o paciente. O relato fica restrito a esta clínica.</p>
@@ -444,8 +444,8 @@ export default function SegurancaAssistencial() {
         </div>
         <div className="space-y-1.5"><Label htmlFor="safety-summary">O que aconteceu? *</Label><Textarea id="safety-summary" className="rounded-xl" maxLength={4000} rows={4} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} placeholder="Descreva os fatos sem identificar pacientes ou outras pessoas." /><p className="text-right text-xs text-muted-foreground">{form.summary.length}/4000{form.summary.trim().length > 0 && form.summary.trim().length < 20 ? ' · mínimo de 20 caracteres' : ''}</p></div>
         <div className="space-y-1.5"><Label htmlFor="safety-immediate-action">Ação imediata tomada</Label><Textarea id="safety-immediate-action" className="rounded-xl" maxLength={2000} rows={2} value={form.immediate_action} onChange={(event) => setForm({ ...form, immediate_action: event.target.value })} placeholder="Quais medidas foram tomadas para reduzir o risco?" /></div>
-        <div className="flex items-start gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3"><Checkbox id="safety-confidential" checked={form.reporter_confidential} onCheckedChange={(checked) => setForm({ ...form, reporter_confidential: checked === true })} /><div><Label htmlFor="safety-confidential">Proteger minha identidade dos revisores</Label><p className="text-xs text-muted-foreground">{form.reporter_confidential ? 'Ativado por padrão. Seu relato continuará associado à sua conta para permitir que você acompanhe o protocolo.' : 'Seu nome será exibido para os administradores que revisarem este relato.'}</p></div></div>
-        <div className="flex justify-end"><Button className="h-10 rounded-full bg-gradient-primary px-5 text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={!canSubmit || createReport.isPending} onClick={() => createReport.mutate()}>{createReport.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enviar relato</Button></div>
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3"><Checkbox id="safety-confidential" checked={form.reporter_confidential} onCheckedChange={(checked) => setForm({ ...form, reporter_confidential: checked === true })} /><div><Label htmlFor="safety-confidential">Proteger minha identidade dos revisores</Label><p className="text-xs text-muted-foreground">{form.reporter_confidential ? 'Ativado por padrão. Seu relato continuará associado à sua conta para permitir que você acompanhe o protocolo.' : 'Seu nome será exibido para os administradores que revisarem este relato.'}</p></div></div>
+        <div className="flex justify-end"><Button className="h-10 rounded-full px-5" disabled={!canSubmit || createReport.isPending} onClick={() => createReport.mutate()}>{createReport.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enviar relato</Button></div>
       </CardContent>
     </Card>
 
@@ -455,7 +455,7 @@ export default function SegurancaAssistencial() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Buscar relatos" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Descrição, local, categoria, responsável..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Input aria-label="Buscar relatos" className="h-10 rounded-full pl-9" placeholder="Descrição, local, categoria, responsável..." value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger aria-label="Filtrar por status do relato" className="h-10 w-full rounded-full sm:w-48"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -471,14 +471,14 @@ export default function SegurancaAssistencial() {
       <div role="group" aria-label="Filtrar por gravidade" className="flex flex-wrap gap-1.5">
         {[['todas', 'Todas as gravidades'], ...Object.entries(SEVERITIES)].map(([value, label]) => {
           const ativo = severityFilter === value;
-          return <button key={value} type="button" aria-pressed={ativo} onClick={() => setSeverityFilter(value)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground')}>{label}</button>;
+            return <button key={value} type="button" aria-pressed={ativo} onClick={() => setSeverityFilter(value)} className={cn('min-h-11 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', ativo ? 'border-transparent bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground')}>{label}</button>;
         })}
       </div>
 
       {reportsQuery.isLoading ? <div className="space-y-3"><Skeleton className="h-24 w-full rounded-2xl" /><Skeleton className="h-24 w-full rounded-2xl" /></div>
         : reportsQuery.isError ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-8 text-center"><p role="alert" className="text-sm text-destructive">Não foi possível carregar os relatos.</p><Button variant="outline" className="mt-3 rounded-full" onClick={() => void reportsQuery.refetch()}>Tentar novamente</Button></CardContent></Card>
-          : reports.length === 0 ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="flex flex-col items-center py-12 text-center"><span aria-hidden="true" className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ShieldCheck className="h-7 w-7" /></span><p className="font-medium text-foreground">Nenhum relato registrado</p><p className="mt-1 max-w-sm text-sm text-muted-foreground">Ocorrências e condições de risco aparecerão aqui. Registre o primeiro relato no formulário acima.</p><Button className="mt-4 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={irParaFormulario}><Plus className="h-4 w-4" /> Registrar relato</Button></CardContent></Card>
-            : filtrados.length === 0 ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="flex flex-col items-center py-12 text-center"><span aria-hidden="true" className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Search className="h-7 w-7" /></span><p className="font-medium text-foreground">Nenhum relato corresponde aos filtros</p><p className="mt-1 max-w-sm text-sm text-muted-foreground">Ajuste a busca, a gravidade ou o status para ver outros relatos.</p><Button variant="outline" className="mt-4 gap-1.5 rounded-full" onClick={limparFiltros}><X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros</Button></CardContent></Card>
+          : reports.length === 0 ? <Card className="rounded-xl border-border shadow-xs"><CardContent className="flex flex-col items-center py-12 text-center"><span aria-hidden="true" className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="h-6 w-6" /></span><p className="font-medium text-foreground">Nenhum relato registrado</p><p className="mt-1 max-w-sm text-sm text-muted-foreground">Ocorrências e condições de risco aparecerão aqui. Registre o primeiro relato no formulário acima.</p><Button className="mt-4 gap-2" onClick={irParaFormulario}><Plus className="h-4 w-4" /> Registrar relato</Button></CardContent></Card>
+            : filtrados.length === 0 ? <Card className="rounded-xl border-border shadow-xs"><CardContent className="flex flex-col items-center py-12 text-center"><span aria-hidden="true" className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Search className="h-6 w-6" /></span><p className="font-medium text-foreground">Nenhum relato corresponde aos filtros</p><p className="mt-1 max-w-sm text-sm text-muted-foreground">Ajuste a busca, a gravidade ou o status para ver outros relatos.</p><Button variant="outline" className="mt-4 gap-1.5" onClick={limparFiltros}><X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros</Button></CardContent></Card>
               : <>
                 {renderGrupo('safety-group-open', 'Em acompanhamento', FolderOpen, abertosFiltrados)}
                 {renderGrupo('safety-group-closed', 'Encerrados', CheckCircle2, encerradosFiltrados)}
@@ -489,11 +489,11 @@ export default function SegurancaAssistencial() {
       <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-2xl">
         <DialogHeader><DialogTitle>{isAdmin ? 'Revisar relato assistencial' : 'Acompanhar relato'}</DialogTitle><DialogDescription>O histórico não inclui dados do paciente e fica restrito à equipe autorizada desta clínica.</DialogDescription></DialogHeader>
         {reportDetailQuery.isLoading ? <Skeleton className="h-32 w-full rounded-xl" /> : reportDetailQuery.isError ? <p role="alert" className="text-sm text-destructive">Não foi possível abrir o histórico. Feche e tente novamente.</p> : <div className="space-y-4">
-          <div className="rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3"><div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{reviewing && <Badge variant="outline" className={cn('rounded-full', SEVERITY_CLASSES[reviewing.severity] ?? SEVERITY_CLASSES.low)}>{SEVERITIES[reviewing.severity]}</Badge>}<span>{reviewing && CATEGORIES[reviewing.category]} · {reviewing && formatDate(reviewing.occurred_at)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{reportDetailQuery.data?.report.summary}</p><p className="mt-3 text-xs font-semibold">Ação imediata registrada</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{reportDetailQuery.data?.report.immediate_action || 'Nenhuma ação informada.'}</p></div>
-          <div><h3 className="mb-2 text-sm font-semibold">Histórico de revisão</h3>{reportDetailQuery.data?.updates.length ? <ol className="space-y-3 border-l-2 border-[#BFD8EE] pl-4">{reportDetailQuery.data.updates.map((update) => <li key={update.id} className="space-y-1"><p className="text-xs text-muted-foreground">{STATUSES[update.from_status || 'submitted']} → {STATUSES[update.to_status]} · {formatDate(update.created_at)}</p><p className="text-sm">{update.review_note}</p>{update.corrective_action && <p className="text-sm text-muted-foreground">Ação corretiva: {update.corrective_action}</p>}</li>)}</ol> : <p className="text-sm text-muted-foreground">Ainda não há atualizações de revisão.</p>}</div>
+          <div className="rounded-xl border border-border bg-muted/30 p-3"><div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{reviewing && <Badge variant="outline" className={cn('rounded-full', SEVERITY_CLASSES[reviewing.severity] ?? SEVERITY_CLASSES.low)}>{SEVERITIES[reviewing.severity]}</Badge>}<span>{reviewing && CATEGORIES[reviewing.category]} · {reviewing && formatDate(reviewing.occurred_at)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{reportDetailQuery.data?.report.summary}</p><p className="mt-3 text-xs font-semibold">Ação imediata registrada</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{reportDetailQuery.data?.report.immediate_action || 'Nenhuma ação informada.'}</p></div>
+          <div><h3 className="mb-2 text-sm font-semibold">Histórico de revisão</h3>{reportDetailQuery.data?.updates.length ? <ol className="space-y-3 border-l-2 border-border pl-4">{reportDetailQuery.data.updates.map((update) => <li key={update.id} className="space-y-1"><p className="text-xs text-muted-foreground">{STATUSES[update.from_status || 'submitted']} → {STATUSES[update.to_status]} · {formatDate(update.created_at)}</p><p className="text-sm">{update.review_note}</p>{update.corrective_action && <p className="text-sm text-muted-foreground">Ação corretiva: {update.corrective_action}</p>}</li>)}</ol> : <p className="text-sm text-muted-foreground">Ainda não há atualizações de revisão.</p>}</div>
           <div className="space-y-3 border-t pt-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">Pedidos de retificação</h3>{reportDetailQuery.data?.report.is_reporter && !editingCorrection && !reportDetailQuery.data.correctionRequests.some((request) => request.status === 'pending') && <Button variant="outline" className="h-9 rounded-full text-xs" onClick={() => { setCorrectionSummary(reportDetailQuery.data?.report.summary || ''); setCorrectionAction(reportDetailQuery.data?.report.immediate_action || ''); setEditingCorrection(true); }}>Solicitar retificação</Button>}</div>
-            {reportDetailQuery.data?.correctionRequests.length ? reportDetailQuery.data.correctionRequests.map((request) => <div key={request.id} className="space-y-2 rounded-xl border border-border/60 p-3"><div className="flex flex-wrap justify-between gap-2"><Badge variant="outline" className={cn('rounded-full', request.status === 'approved' ? 'border-success/30 bg-success/10 text-success' : request.status === 'pending' ? 'border-warning/40 bg-warning/10 text-warning-foreground' : 'border-destructive/30 bg-destructive/10 text-destructive')}>{request.status === 'pending' ? 'Aguardando análise' : request.status === 'approved' ? 'Aprovada' : 'Recusada'}</Badge><span className="text-xs text-muted-foreground">{formatDate(request.created_at)}</span></div><p className="text-xs font-semibold">Versão anterior preservada</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{request.previous_summary}</p><p className="text-xs font-semibold">Texto proposto</p><p className="whitespace-pre-wrap text-sm">{request.proposed_summary}</p><p className="text-sm"><span className="font-medium">Motivo:</span> {request.reason}</p>{request.review_note && <p className="text-sm text-muted-foreground">Decisão: {request.review_note}</p>}{isAdmin && request.status === 'pending' && <div className="space-y-2 border-t pt-3"><Label htmlFor={`correction-note-${request.id}`}>Nota da decisão *</Label><Textarea id={`correction-note-${request.id}`} value={correctionReviewNote} maxLength={2000} rows={2} onChange={(event) => setCorrectionReviewNote(event.target.value)} placeholder="Explique a aprovação ou recusa." /><div className="flex flex-wrap gap-2"><Button className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={correctionReviewNote.trim().length < 3 || resolveCorrection.isPending} onClick={() => resolveCorrection.mutate({ requestId: request.id, status: 'approved' })}>Aprovar e aplicar retificação</Button><Button variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:text-destructive" disabled={correctionReviewNote.trim().length < 3 || resolveCorrection.isPending} onClick={() => resolveCorrection.mutate({ requestId: request.id, status: 'rejected' })}>Recusar pedido</Button></div></div>}</div>) : <p className="text-sm text-muted-foreground">Não há pedidos de retificação.</p>}
-            {editingCorrection && <div className="space-y-3 rounded-xl border border-[#1080CA]/30 bg-[#F3F8FC] p-3"><p className="text-sm text-muted-foreground">O texto atual permanece preservado até a análise do administrador. Não inclua identificadores de pacientes.</p><div className="space-y-1.5"><Label htmlFor="correction-summary">Texto corrigido *</Label><Textarea id="correction-summary" maxLength={4000} rows={3} value={correctionSummary} onChange={(event) => setCorrectionSummary(event.target.value)} /></div><div className="space-y-1.5"><Label htmlFor="correction-action">Ação imediata corrigida</Label><Textarea id="correction-action" maxLength={2000} rows={2} value={correctionAction} onChange={(event) => setCorrectionAction(event.target.value)} /></div><div className="space-y-1.5"><Label htmlFor="correction-reason">Motivo da retificação *</Label><Textarea id="correction-reason" maxLength={1000} rows={2} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} /></div><div className="flex gap-2"><Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={correctionSummary.trim().length < 20 || correctionReason.trim().length < 3 || requestCorrection.isPending} onClick={() => requestCorrection.mutate()}>{requestCorrection.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enviar pedido</Button><Button variant="outline" className="rounded-full" onClick={() => setEditingCorrection(false)}>Cancelar</Button></div></div>}
+            {reportDetailQuery.data?.correctionRequests.length ? reportDetailQuery.data.correctionRequests.map((request) => <div key={request.id} className="space-y-2 rounded-xl border border-border/60 p-3"><div className="flex flex-wrap justify-between gap-2"><Badge variant="outline" className={cn('rounded-full', request.status === 'approved' ? 'border-success/30 bg-success/10 text-success' : request.status === 'pending' ? 'border-warning/40 bg-warning/10 text-warning-foreground' : 'border-destructive/30 bg-destructive/10 text-destructive')}>{request.status === 'pending' ? 'Aguardando análise' : request.status === 'approved' ? 'Aprovada' : 'Recusada'}</Badge><span className="text-xs text-muted-foreground">{formatDate(request.created_at)}</span></div><p className="text-xs font-semibold">Versão anterior preservada</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{request.previous_summary}</p><p className="text-xs font-semibold">Texto proposto</p><p className="whitespace-pre-wrap text-sm">{request.proposed_summary}</p><p className="text-sm"><span className="font-medium">Motivo:</span> {request.reason}</p>{request.review_note && <p className="text-sm text-muted-foreground">Decisão: {request.review_note}</p>}{isAdmin && request.status === 'pending' && <div className="space-y-2 border-t pt-3"><Label htmlFor={`correction-note-${request.id}`}>Nota da decisão *</Label><Textarea id={`correction-note-${request.id}`} value={correctionReviewNote} maxLength={2000} rows={2} onChange={(event) => setCorrectionReviewNote(event.target.value)} placeholder="Explique a aprovação ou recusa." /><div className="flex flex-wrap gap-2"><Button className="h-9 rounded-full text-xs" disabled={correctionReviewNote.trim().length < 3 || resolveCorrection.isPending} onClick={() => resolveCorrection.mutate({ requestId: request.id, status: 'approved' })}>Aprovar e aplicar retificação</Button><Button variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:text-destructive" disabled={correctionReviewNote.trim().length < 3 || resolveCorrection.isPending} onClick={() => resolveCorrection.mutate({ requestId: request.id, status: 'rejected' })}>Recusar pedido</Button></div></div>}</div>) : <p className="text-sm text-muted-foreground">Não há pedidos de retificação.</p>}
+            {editingCorrection && <div className="space-y-3 rounded-xl border border-primary/20 bg-muted/30 p-3"><p className="text-sm text-muted-foreground">O texto atual permanece preservado até a análise do administrador. Não inclua identificadores de pacientes.</p><div className="space-y-1.5"><Label htmlFor="correction-summary">Texto corrigido *</Label><Textarea id="correction-summary" maxLength={4000} rows={3} value={correctionSummary} onChange={(event) => setCorrectionSummary(event.target.value)} /></div><div className="space-y-1.5"><Label htmlFor="correction-action">Ação imediata corrigida</Label><Textarea id="correction-action" maxLength={2000} rows={2} value={correctionAction} onChange={(event) => setCorrectionAction(event.target.value)} /></div><div className="space-y-1.5"><Label htmlFor="correction-reason">Motivo da retificação *</Label><Textarea id="correction-reason" maxLength={1000} rows={2} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} /></div><div className="flex gap-2"><Button disabled={correctionSummary.trim().length < 20 || correctionReason.trim().length < 3 || requestCorrection.isPending} onClick={() => requestCorrection.mutate()}>{requestCorrection.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enviar pedido</Button><Button variant="outline" onClick={() => setEditingCorrection(false)}>Cancelar</Button></div></div>}
           </div>
           {isAdmin && <div className="space-y-4 border-t pt-4"><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="review-status">Status da revisão</Label><Select value={reviewStatus} onValueChange={setReviewStatus}><SelectTrigger id="review-status" className="h-10 rounded-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(STATUSES).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><Label htmlFor="review-assignee">Responsável</Label><Select value={reviewerId} onValueChange={setReviewerId}><SelectTrigger id="review-assignee" className="h-10 rounded-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sem responsável</SelectItem>{reviewers.map((reviewer) => <SelectItem key={reviewer.id} value={reviewer.id}>{reviewer.nome}</SelectItem>)}</SelectContent></Select></div></div>
             <div className="space-y-1.5"><Label htmlFor="review-due">Prazo da ação</Label><Input id="review-due" type="datetime-local" className="h-10 rounded-full" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></div>
@@ -502,7 +502,7 @@ export default function SegurancaAssistencial() {
             <div className="space-y-1.5"><Label htmlFor="review-action">Ação corretiva ou preventiva</Label><Textarea id="review-action" maxLength={3000} rows={3} value={correctiveAction} onChange={(event) => setCorrectiveAction(event.target.value)} placeholder="Descreva a medida, o controle ou o acompanhamento planejado." /></div>
           </div>}
         </div>}
-        <DialogFooter>{isAdmin && <Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => reviewReport.mutate()} disabled={reviewNote.trim().length < 3 || !canReview || reviewReport.isPending || reportDetailQuery.isLoading}>{reviewReport.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar revisão</Button>}<Button variant="outline" className="rounded-full" onClick={() => setReviewing(null)}>Fechar</Button></DialogFooter>
+        <DialogFooter><div className="flex flex-col-reverse gap-2 sm:flex-row">{isAdmin && <Button onClick={() => reviewReport.mutate()} disabled={reviewNote.trim().length < 3 || !canReview || reviewReport.isPending || reportDetailQuery.isLoading}>{reviewReport.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar revisão</Button>}<Button variant="outline" onClick={() => setReviewing(null)}>Fechar</Button></div></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;

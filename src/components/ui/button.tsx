@@ -11,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary bg-[image:var(--gradient-primary)] text-primary-foreground shadow-glow hover:brightness-110 hover:shadow-lg",
+          "bg-primary text-primary-foreground shadow-glow hover:brightness-110 hover:shadow-lg",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 hover:shadow-md",
         outline:
@@ -23,7 +23,7 @@ const buttonVariants = cva(
         success:
           "bg-success text-success-foreground shadow-sm hover:bg-success/90 hover:shadow-md",
         premium:
-          "bg-[image:var(--gradient-hero)] text-primary-foreground shadow-glow hover:shadow-xl hover:brightness-110 btn-shimmer",
+          "bg-brand-dark text-primary-foreground shadow-glow hover:shadow-xl hover:brightness-110",
         glass:
           "bg-card/60 backdrop-blur-xl border border-border/40 text-foreground shadow-sm hover:bg-card/80 hover:shadow-md hover:border-border/60",
       },

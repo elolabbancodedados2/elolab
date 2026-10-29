@@ -1,35 +1,34 @@
 ---
 name: EloLab
-description: Plataforma clínica com leitura clara, identidade violeta e operação confiável.
+description: Plataforma clínica com leitura clara, identidade azul clínica e operação confiável.
 colors:
-  primary: "hsl(248 71% 58%)"
-  brand: "hsl(248 86% 64%)"
-  highlight: "hsl(36 100% 64%)"
-  background: "hsl(250 47% 97%)"
-  foreground: "hsl(252 41% 12%)"
+  primary: "#1456C0"
+  brand-dark: "#0B2346"
+  accent-cyan: "#06B6D4"
+  background: "#F5F8FC"
+  foreground: "#172B4D"
   card: "hsl(0 0% 100%)"
-  secondary: "hsl(250 45% 94%)"
-  muted: "hsl(250 40% 94%)"
-  muted-foreground: "hsl(250 14% 42%)"
-  border: "hsl(250 26% 88%)"
+  secondary: "#EAF2FF"
+  muted-foreground: "#61748B"
+  border: "#DFE7F0"
   success: "hsl(152 69% 30%)"
   warning: "hsl(34 92% 42%)"
   destructive: "hsl(0 72% 48%)"
   info: "hsl(220 85% 52%)"
-  sidebar: "hsl(252 41% 12%)"
+  sidebar: "#0B2346"
 typography:
   display:
-    fontFamily: "Manrope, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.2
   title:
-    fontFamily: "Manrope, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 700
     lineHeight: 1.375
   body:
-    fontFamily: "Manrope, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.5
@@ -68,52 +67,52 @@ components:
 
 ## Overview
 
-**Creative North Star: “Clínica premium tranquila”**
+**Creative North Star: clínica precisa, clara e confiável.**
 
-EloLab combina uma identidade acolhedora com a precisão de um espaço clínico. Violeta marca ações e foco; âmbar chama atenção para decisões pontuais; o azul-noite dá estrutura à navegação. A interface prioriza leitura rápida e previsível durante o atendimento, sem tirar destaque de dados clínicos ou estados de segurança.
+EloLab usa azul primário para ações e foco, navy para estrutura e ciano para destaques funcionais pontuais. A interface prioriza leitura rápida e previsível durante o atendimento, sem tirar destaque de dados clínicos ou estados de segurança.
 
-O sistema usa Manrope em toda a experiência e componentes familiares de aplicação web. Cabeçalhos compactos, listas operacionais e formulários mantêm a densidade necessária para o trabalho diário. Gradientes fazem parte da marca em poucas superfícies de entrada e ações primárias; cores semânticas continuam reservadas para o significado de estados.
+O sistema usa Inter em toda a experiência e componentes familiares de aplicação web. Cabeçalhos compactos, listas operacionais e formulários mantêm a densidade necessária para o trabalho diário. Superfícies são claras e neutras; cores semânticas continuam reservadas ao significado dos estados. Gradientes decorativos não fazem parte da identidade cromática.
 
 **Key Characteristics:**
 
-- Identidade violeta com acentos âmbar contidos.
+- Identidade azul clínica com navy estrutural e ciano funcional.
 - Navegação estruturada em azul-noite e conteúdo em superfícies claras.
 - Hierarquia compacta, consistente e voltada à leitura operacional.
 - Estados clínicos e financeiros mantêm cores semânticas próprias.
 
 ## Colors
 
-A paleta une violeta de marca, neutros levemente frios e tons semânticos de contraste definido.
+A paleta usa os tokens cromáticos EloLab abaixo e mantém estados semânticos separados da identidade de marca.
 
 ### Primary
 
-- **Violeta EloLab** (`hsl(248 71% 58%)`): ações principais, seleção e foco.
-- **Violeta luminoso** (`hsl(248 86% 64%)`): início de gradientes de marca e destaques de interface.
+- **Azul primário** (`#1456C0`): ações principais, seleção e foco.
+- **Navy** (`#0B2346`): navegação estrutural e superfícies escuras.
+- **Ciano** (`#06B6D4`): destaque funcional pontual; usar texto escuro quando aplicado como fundo.
 
 ### Secondary
 
-- **Âmbar de destaque** (`hsl(36 100% 64%)`): chamadas pontuais e ações que precisam de atenção; combinar com foreground escuro.
+- Ciano não substitui cores semânticas de sucesso, atenção, erro ou informação.
 
 ### Neutral
 
-- **Fundo frio** (`hsl(250 47% 97%)`): fundo geral das páginas.
-- **Azul-noite clínico** (`hsl(252 41% 12%)`): texto principal e fundo da navegação lateral.
-- **Branco de superfície** (`hsl(0 0% 100%)`): cartões, campos e painéis elevados.
-- **Cinza-violeta suave** (`hsl(250 40% 94%)`): regiões secundárias e controles inativos.
-- **Texto auxiliar** (`hsl(250 14% 42%)`): metadados e descrições; manter contraste legível.
-- **Borda fria** (`hsl(250 26% 88%)`): contornos, separadores e limites de campo.
-
+- **Fundo da interface** (`#F5F8FC`): plano geral das páginas.
+- **Texto principal** (`#172B4D`): títulos, dados e conteúdo.
+- **Superfície** (`#FFFFFF`): cartões, campos e painéis elevados.
+- **Superfície selecionada** (`#EAF2FF`): regiões ativas e filtros selecionados.
+- **Texto auxiliar** (`#61748B`): metadados e descrições.
+- **Borda** (`#DFE7F0`): contornos, separadores e limites de campo.
 ### Named Rules
 
-**A Regra do Significado.** Violeta indica ação ou foco; verde, âmbar, vermelho e azul informam estados de sucesso, atenção, erro e informação. Não use uma cor semântica como decoração.
+**A Regra do Significado.** Azul identifica ação primária e foco; navy estrutura; ciano destaca estados ou dados somente quando tiver função. Verde, âmbar e vermelho continuam reservados a sucesso, atenção e erro. Não use cor semântica como decoração.
 
 ## Typography
 
-**Display Font:** Manrope (com system-ui, sans-serif)
-**Body Font:** Manrope (com system-ui, sans-serif)
-**Label/Mono Font:** Manrope; não há família mono de interface.
+**Display Font:** Inter (com system-ui, sans-serif)
+**Body Font:** Inter (com system-ui, sans-serif)
+**Label/Mono Font:** Inter; não há família mono de interface.
 
-**Character:** Manrope mantém uma voz humana e direta sem perder precisão em nomes, tabelas e dados clínicos. Títulos usam peso e escala moderados; rótulos seguem a mesma família para reduzir troca visual.
+**Character:** Inter mantém uma voz humana e direta sem perder precisão em nomes, tabelas e dados clínicos. Títulos usam peso e escala moderados; rótulos seguem a mesma família para reduzir troca visual.
 
 ### Hierarchy
 
@@ -141,7 +140,7 @@ O sistema combina bordas frias com sombras suaves em cartões, menus e diálogos
 - **Superfície de conteúdo** (`var(--shadow-sm)`): cartão em repouso.
 - **Painel flutuante** (`var(--shadow-md)`): menu, popover ou painel sobre a página.
 - **Diálogo** (`var(--shadow-lg)`): camada que requer atenção e foco.
-- **Ênfase violeta** (`var(--shadow-glow)`): ação primária de marca em superfícies de destaque; usar com parcimônia.
+- **Ênfase de marca** (`var(--shadow-glow)`): sombra neutra discreta; não tingir a elevação com a cor primária.
 
 ### Named Rules
 
@@ -158,10 +157,10 @@ Cartões usam cantos arredondados de 16px; campos e ícones usam cerca de 12px. 
 Controles são compactos, familiares e têm foco de teclado visível.
 
 - **Shape:** cápsula (`9999px`).
-- **Primary:** violeta com gradiente curto de marca; texto branco; 40px de altura e padding horizontal de 16px.
+- **Primary:** azul `#1456C0` sólido, com texto branco; 40px de altura e padding horizontal de 16px.
 - **Secondary / Outline:** superfície neutra ou branca com borda; manter texto principal em azul-noite.
 - **Destructive / Success:** fundo semântico sólido e foreground correspondente; não herdar gradiente de marca.
-- **Hover / Focus:** transição de 200ms, anel violeta de 2px e estado desabilitado claramente atenuado.
+- **Hover / Focus:** transição funcional de 200ms, anel azul de 2px e estado desabilitado claramente atenuado.
 
 ### Chips
 
@@ -176,7 +175,7 @@ Chips e badges são compactos e arredondados. Estados usam pares semânticos com
 
 ### Inputs
 
-Campos usam superfície branca, borda fria e cantos de 12px. O foco troca a borda e mostra anel violeta; placeholders e estado desabilitado permanecem discerníveis. Rótulos e instruções devem continuar associados ao campo.
+Campos usam superfície branca, borda fria e cantos de 12px. O foco troca a borda e mostra anel azul; placeholders e estado desabilitado permanecem discerníveis. Rótulos e instruções devem continuar associados ao campo.
 
 ## Do's and Don'ts
 
@@ -184,7 +183,7 @@ Campos usam superfície branca, borda fria e cantos de 12px. O foco troca a bord
 - **Faça** manter navegação e títulos previsíveis entre módulos.
 - **Faça** deixar estados vazios explicarem o próximo passo permitido.
 - **Faça** usar prioridade visual para tarefas clínicas e ações de risco.
-- **Não** use gradiente violeta em confirmação destrutiva ou estado semântico.
+- **Não** use gradientes decorativos para substituir hierarquia, estados ou identidade; não comunique sucesso, alerta ou erro somente pela cor.
 - **Não** comunique sucesso, alerta ou erro somente pela cor.
 - **Não** corte nomes, valores ou horários; prefira quebra de linha ou layout responsivo.
 - **Não** indique que uma automação ou configuração está ativa sem execução confirmada.

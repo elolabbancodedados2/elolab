@@ -15,4 +15,8 @@ describe('atalhos do dashboard por função', () => {
   it('papel clínico médico não herda atalhos administrativos', () => {
     expect(getDashboardLinksForRoles(['medico'])).toEqual([]);
   });
+
+  it('enfermagem não recebe atalhos de laboratório quando o plano não inclui exames', () => {
+    expect(getDashboardLinksForRoles(['enfermagem'], false)).toEqual(['/triagem']);
+  });
 });

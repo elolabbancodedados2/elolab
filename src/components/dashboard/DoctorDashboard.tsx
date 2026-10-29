@@ -6,7 +6,7 @@ import { ptBR } from 'date-fns/locale';
 import { formatWithDatePreference } from '@/lib/datePreference';
 import {
   Calendar, Users, FileText, Pill, Clock, Stethoscope, ClipboardList,
-  ArrowRight, ArrowUpRight, Activity, Target,
+  ArrowRight, Activity, Target,
   Sun, Sunset, Moon, CheckCircle2, AlertTriangle, Eye, UserCheck,
   TestTube, Send, BadgeCheck, Phone, Timer, Zap, ListChecks,
 } from 'lucide-react';
@@ -24,6 +24,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { isAppointmentClosed } from '@/components/dashboard/appointmentStatus';
 
 // ─── Animations ────────────────────────────────────────────
 const fadeUp = {
@@ -65,8 +66,8 @@ interface DoctorDashboardProps {
   userName: string;
 }
 
-export function DoctorDashboardKpiLink({ href, children }: { href: string | null; children: ReactNode }) {
-  return href ? <Link to={href}>{children}</Link> : <div>{children}</div>;
+export function DoctorDashboardKpiLink({ href, children, className }: { href: string | null; children: ReactNode; className?: string }) {
+  return href ? <Link to={href} className={className}>{children}</Link> : <div className={className}>{children}</div>;
 }
 
 export function DoctorDashboardIdentityState({
@@ -130,12 +131,13 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   // Só hoje e amanhã, já com o paciente. Antes o painel baixava a agenda,
   // o cadastro de pacientes, prontuários e prescrições da clínica inteira
   // para filtrar o médico no navegador.
-  const agendamentosQuery = useAgendamentosPeriodo(hoje, amanha, { enabled: !!medicoId });
+  const agendamentosQuery = useAgendamentosPeriodo(hoje, amanha, { enabled: !!medicoId, suppressGlobalErrorToast: true });
   const { data: agendamentos = [] } = agendamentosQuery;
   const { data: minhasTarefas = [] } = useMinhasTarefasPendentes();
 
   const contagensQuery = useQuery({
     queryKey: ['doctor-dashboard-contagens', user?.id ?? null, profile?.clinica_id ?? null, medicoId, inicioMes],
+    meta: { suppressGlobalErrorToast: true },
     enabled: !!medicoId && !!user && !!profile?.clinica_id,
     staleTime: 60_000,
     queryFn: async () => {
@@ -275,18 +277,16 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
   const consultasOrdenadas = [...stats.consultasHoje].sort((a: any, b: any) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
   const linkAtendimento = (ag: any) => `/prontuarios?paciente=${encodeURIComponent(ag.paciente_id)}&agendamento=${encodeURIComponent(ag.id)}`;
   const iniciais = (nome?: string | null) => (nome || 'P').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
-  const encerrado = (status: string) => ['finalizado', 'atendimento_finalizado', 'cancelado', 'faltou'].includes(status);
   const proximoPaciente = stats.proximoPaciente as any;
   const idadeProximo = proximoPaciente ? getAge(proximoPaciente.data_nascimento) : null;
   const produtividade = [
-    { label: 'Atendimentos', value: stats.atendimentosMes, icon: UserCheck },
-    { label: 'Prontuários', value: stats.prontuariosMes, icon: FileText },
-    { label: 'Prescrições', value: stats.prescricoesMes, icon: Pill },
-    { label: 'Atestados', value: stats.atestadosMes, icon: ClipboardList },
-    { label: 'Exames solicitados', value: stats.examesMes, icon: TestTube },
-    { label: 'Encaminhamentos', value: stats.encaminhamentosMes, icon: Send },
+    { label: 'Atendimentos', value: stats.atendimentosMes, icon: UserCheck, href: '/agenda' },
+    { label: 'Prontuários', value: stats.prontuariosMes, icon: FileText, href: '/prontuarios' },
+    { label: 'Prescrições', value: stats.prescricoesMes, icon: Pill, href: '/prescricoes' },
+    { label: 'Atestados', value: stats.atestadosMes, icon: ClipboardList, href: '/atestados' },
+    { label: 'Exames solicitados', value: stats.examesMes, icon: TestTube, href: '/exames' },
+    { label: 'Encaminhamentos', value: stats.encaminhamentosMes, icon: Send, href: '/encaminhamentos' },
   ];
-  const maxProdutividade = Math.max(1, ...produtividade.map(item => item.value));
 
   return (
     <div className="space-y-5 pb-10">
@@ -296,7 +296,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
           <div className="flex items-center gap-4">
             <Avatar className="h-14 w-14 shadow-glow ring-4 ring-card">
               {currentMedico?.foto_url && <StorageAvatarImage bucket="patient-photos" path={currentMedico.foto_url} />}
-              <AvatarFallback className="bg-[image:var(--gradient-primary)] text-lg font-extrabold text-white">
+              <AvatarFallback className="bg-primary text-lg font-extrabold text-primary-foreground">
                 {(currentMedico?.nome || 'DR').slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -323,7 +323,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
 
         <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
           {/* ─── Coluna de pacientes do dia (estilo trilho + lista) ─── */}
-          <motion.aside variants={fadeUp} aria-labelledby="pacientes-hoje-title" className="rounded-[24px] border border-border/60 bg-card p-4 shadow-xs xl:sticky xl:top-24 xl:self-start">
+          <motion.aside variants={fadeUp} aria-labelledby="pacientes-hoje-title" className="order-2 rounded-[24px] border border-border/60 bg-card p-4 shadow-xs xl:order-1 xl:sticky xl:top-24 xl:self-start">
             <div className="mb-3 flex items-center justify-between px-1">
               <h2 id="pacientes-hoje-title" className="text-lg font-extrabold tracking-tight">Pacientes de hoje</h2>
               <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-extrabold text-primary">{stats.totalHoje}</span>
@@ -338,11 +338,11 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                     <>
                       <span className={cn(
                         'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-extrabold',
-                        ativo ? 'bg-[image:var(--gradient-primary)] text-white shadow-glow' : 'bg-accent text-primary',
+                        ativo ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-accent text-primary',
                       )}>{iniciais(paciente?.nome)}</span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
-                          <span className={cn('truncate text-sm font-bold', encerrado(ag.status) && 'text-muted-foreground line-through decoration-1')}>{paciente?.nome || 'Paciente não encontrado'}</span>
+                          <span className={cn('truncate text-sm font-bold', isAppointmentClosed(ag.status) && 'text-muted-foreground line-through decoration-1')}>{paciente?.nome || 'Paciente não encontrado'}</span>
                           {alergico && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" aria-label="Paciente com alergias" />}
                         </span>
                         <span className="block truncate text-[11px] text-muted-foreground">{statusLabel[ag.status] || ag.status}{ag.tipo ? ` · ${ag.tipo}` : ''}</span>
@@ -353,7 +353,7 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                   const classe = cn('flex items-center gap-3 rounded-2xl p-2 transition', ativo ? 'bg-accent' : 'hover:bg-muted/60');
                   return (
                     <li key={ag.id}>
-                      {!encerrado(ag.status) && ag.paciente_id
+                      {!isAppointmentClosed(ag.status) && ag.paciente_id
                         ? <Link to={linkAtendimento(ag)} className={classe}>{conteudo}</Link>
                         : <div className={classe}>{conteudo}</div>}
                     </li>
@@ -373,11 +373,10 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
             </Link>
           </motion.aside>
 
-          <div className="min-w-0 space-y-5">
+          <div className="order-1 min-w-0 space-y-5 xl:order-2">
             {/* ─── Destaque + indicadores ─── */}
-            <motion.div variants={fadeUp} className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto]">
-              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-[24px] bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow lg:row-span-2">
-                <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-60 w-60 rounded-full bg-highlight/40 blur-3xl" />
+            <motion.div variants={fadeUp} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-[24px] bg-brand-dark p-6 text-white shadow-glow lg:row-span-2">
                 <div className="relative flex h-full flex-col">
                   <h2 id="proximo-paciente-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">Próximo paciente</h2>
                   {stats.proximaConsulta && proximoPaciente ? (
@@ -417,84 +416,92 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                   )}
                 </div>
               </section>
-              {[
-                { label: 'Consultas hoje', value: stats.totalHoje, note: stats.canceladasHoje > 0 ? `${stats.canceladasHoje} cancelada(s)` : `${stats.confirmadas} confirmada(s)`, tone: 'border border-border/60 bg-card' },
-                { label: 'Em atendimento', value: stats.emAtendimento, note: 'agora no consultório', tone: 'bg-highlight text-highlight-foreground' },
-                { label: 'Finalizados', value: stats.finalizadas, note: stats.totalHoje > 0 ? `${Math.round(stats.finalizadas / stats.totalHoje * 100)}% do dia` : 'sem atendimentos', tone: 'bg-foreground text-background' },
-                { label: 'Amanhã', value: stats.consultasAmanha, note: 'consultas agendadas', tone: 'bg-accent text-accent-foreground' },
-              ].map(kpi => (
-                <div key={kpi.label} className={cn('flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs', kpi.tone)}>
-                  <p className="text-xs font-semibold opacity-75">{kpi.label}</p>
-                  <p className="mt-3 text-[36px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
-                  <p className="mt-auto pt-3 text-xs opacity-75">{kpi.note}</p>
-                </div>
-              ))}
+              <section aria-labelledby="resumo-agenda-title" className="rounded-[22px] border border-border/70 bg-card p-5">
+                <header className="mb-5 flex items-start justify-between gap-3">
+                  <div>
+                    <h2 id="resumo-agenda-title" className="text-base font-bold">Resumo de hoje</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">Acompanhe o andamento da sua agenda.</p>
+                  </div>
+                  <Link to="/agenda" className="shrink-0 text-xs font-semibold text-primary hover:underline">Abrir agenda</Link>
+                </header>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-5 min-[1360px]:grid-cols-3">
+                  <div className="border-l-2 border-primary pl-3">
+                    <dt className="text-xs text-muted-foreground">Consultas hoje</dt>
+                    <dd className="mt-1 text-2xl font-semibold tabular-nums">{stats.totalHoje}</dd>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {stats.confirmadas} confirmada(s){stats.canceladasHoje > 0 ? ` · ${stats.canceladasHoje} cancelada(s)` : ''}
+                    </p>
+                  </div>
+                  <div className="border-l-2 border-info pl-3">
+                    <dt className="text-xs text-muted-foreground">Em atendimento</dt>
+                    <dd className="mt-1 text-2xl font-semibold tabular-nums">{stats.emAtendimento}</dd>
+                    <p className="mt-1 text-[11px] text-muted-foreground">Agora no consultório</p>
+                  </div>
+                  <div className="border-l-2 border-success pl-3">
+                    <dt className="text-xs text-muted-foreground">Finalizados</dt>
+                    <dd className="mt-1 text-2xl font-semibold tabular-nums">{stats.finalizadas}</dd>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {stats.totalHoje > 0 ? `${Math.round(stats.finalizadas / stats.totalHoje * 100)}% do dia` : 'Sem atendimentos'}
+                    </p>
+                  </div>
+                  <div className="border-l-2 border-border pl-3 min-[1360px]:col-start-2">
+                    <dt className="text-xs text-muted-foreground">Amanhã</dt>
+                    <dd className="mt-1 text-2xl font-semibold tabular-nums">{stats.consultasAmanha}</dd>
+                    <p className="mt-1 text-[11px] text-muted-foreground">Consulta(s) agendada(s)</p>
+                  </div>
+                </dl>
+              </section>
             </motion.div>
 
-            {/* ─── Indicadores do mês ─── */}
-            <div className="grid grid-cols-2 gap-4 min-[1360px]:grid-cols-4">
-              {[
-                { title: 'Meus Pacientes', value: stats.meusPacientes, icon: Users, href: null, subtitle: 'Vinculados à sua agenda' },
-                { title: 'Atendimentos/Mês', value: stats.atendimentosMes, icon: UserCheck, href: '/agenda', subtitle: 'Consultas finalizadas' },
-                { title: 'Prontuários/Mês', value: stats.prontuariosMes, icon: FileText, href: '/prontuarios', subtitle: 'Registros clínicos' },
-                { title: 'Prescrições/Mês', value: stats.prescricoesMes, icon: Pill, href: '/prescricoes', subtitle: 'Receitas emitidas' },
-              ].map((kpi) => (
-                <div key={kpi.title}>
-                  <DoctorDashboardKpiLink href={kpi.href}>
-                    <Card className={cn('group relative h-full overflow-hidden rounded-[22px]', kpi.href && 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md')}>
-                      <CardContent className="p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="min-w-0 text-xs font-semibold leading-tight text-muted-foreground">{kpi.title}</p>
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-primary"><kpi.icon className="h-4 w-4" /></span>
-                        </div>
-                        <p className="mt-2 text-[30px] font-light leading-none tracking-[-0.03em] tabular-nums">{kpi.value}</p>
-                        <p className="mt-2 text-[11px] text-muted-foreground">{kpi.subtitle}</p>
-                      </CardContent>
-                      {kpi.href && <ArrowUpRight className="absolute bottom-4 right-4 h-4 w-4 text-primary opacity-0 transition group-hover:opacity-100" />}
-                    </Card>
-                  </DoctorDashboardKpiLink>
-                </div>
-              ))}
-            </div>
+            <motion.div variants={fadeUp} className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
+              <section aria-labelledby="atividade-mes-title" className="rounded-[22px] border border-border/70 bg-card px-5">
+                <header className="flex flex-wrap items-end justify-between gap-2 border-b border-border/70 py-4">
+                  <div>
+                    <h2 id="atividade-mes-title" className="text-base font-bold">Atividade clínica</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">Registros desde o primeiro dia deste mês.</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{format(parseISO(`${inicioMes}T12:00:00`), 'MMMM yyyy', { locale: ptBR })}</span>
+                </header>
+                <ul aria-label="Contagens da atividade clínica" className="divide-y divide-border/70">
+                  <li>
+                    <DoctorDashboardKpiLink href={null} className="flex min-h-12 items-center justify-between gap-4 py-2">
+                      <span className="text-sm font-medium"><span>Meus Pacientes</span> <span className="text-xs font-normal text-muted-foreground">· Vinculados à sua agenda</span></span>
+                      <span className="shrink-0 text-base font-semibold tabular-nums">{stats.meusPacientes}</span>
+                    </DoctorDashboardKpiLink>
+                  </li>
+                  {produtividade.map(item => (
+                    <li key={item.label}>
+                      <DoctorDashboardKpiLink href={item.href} className="group flex min-h-12 items-center justify-between gap-4 py-2 text-sm transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <item.icon className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
+                          <span className="truncate">{item.label === 'Atendimentos' ? 'Atendimentos/Mês' : item.label === 'Prontuários' ? 'Prontuários/Mês' : item.label === 'Prescrições' ? 'Prescrições/Mês' : item.label}</span>
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums">{item.value}</span>
+                      </DoctorDashboardKpiLink>
+                    </li>
+                  ))}
+                </ul>
+              </section>
 
-            <motion.div variants={fadeUp} className="grid gap-5 lg:grid-cols-2">
               {/* ─── Ações clínicas ─── */}
               <Card className="rounded-[22px]">
                 <CardHeader className="pb-3"><CardTitle className="text-base">Ações rápidas</CardTitle><CardDescription>Documentos e pedidos mais usados no consultório</CardDescription></CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-2 gap-2.5 2xl:grid-cols-3">
                     {[
-                      { icon: FileText, label: 'Prontuário', href: '/prontuarios', tone: 'bg-[image:var(--gradient-primary)] text-white shadow-glow' },
-                      { icon: Pill, label: 'Prescrição', href: '/prescricoes', tone: 'bg-highlight text-highlight-foreground' },
-                      { icon: ClipboardList, label: 'Atestado', href: '/atestados', tone: 'bg-foreground text-background' },
-                      { icon: TestTube, label: 'Exames', href: '/exames', tone: 'bg-accent text-accent-foreground' },
-                      { icon: Send, label: 'Encaminhar', href: '/encaminhamentos', tone: 'bg-accent text-accent-foreground' },
-                      { icon: Eye, label: 'Fila', href: '/fila', tone: 'bg-accent text-accent-foreground' },
+                      { icon: FileText, label: 'Prontuário', href: '/prontuarios' },
+                      { icon: Pill, label: 'Prescrição', href: '/prescricoes' },
+                      { icon: ClipboardList, label: 'Atestado', href: '/atestados' },
+                      { icon: TestTube, label: 'Exames', href: '/exames' },
+                      { icon: Send, label: 'Encaminhar', href: '/encaminhamentos' },
+                      { icon: Eye, label: 'Fila', href: '/fila' },
                     ].map(action => (
-                      <Link key={action.label} to={action.href} className={cn('flex min-h-[84px] flex-col justify-between rounded-2xl p-3 transition hover:-translate-y-0.5 hover:shadow-md', action.tone)}>
-                        <action.icon className="h-5 w-5" />
+                      <Link key={action.label} to={action.href} className="flex min-h-[72px] flex-col justify-between rounded-xl border border-border bg-card p-3 text-foreground transition hover:border-primary/40 hover:bg-muted/40">
+                        <action.icon className="h-5 w-5 text-primary" />
                         <span className="text-xs font-bold">{action.label}</span>
                       </Link>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* ─── Produtividade ─── */}
-              <Card className="rounded-[22px]">
-                <CardHeader className="pb-3"><CardTitle className="text-base">Produtividade do mês</CardTitle><CardDescription>O que você registrou desde o dia 1º</CardDescription></CardHeader>
-                <CardContent className="space-y-3">
-                  {produtividade.map(item => (
-                    <div key={item.label} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2 text-muted-foreground"><item.icon className="h-3.5 w-3.5 text-primary" />{item.label}</span>
-                        <span className="font-extrabold tabular-nums">{item.value}</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-[image:var(--gradient-primary)]" style={{ width: `${Math.max(4, item.value / maxProdutividade * 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
                 </CardContent>
               </Card>
             </motion.div>

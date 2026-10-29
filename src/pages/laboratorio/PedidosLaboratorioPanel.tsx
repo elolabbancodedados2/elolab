@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ClipboardList, Clock3, FilePlus2, History, Loader2, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -171,6 +172,7 @@ export function PedidosLaboratorioPanel() {
   const emAberto = pedidos.filter((pedido) => !['liberado', 'cancelado'].includes(pedido.status)).length;
   const urgentes = pedidos.filter((pedido) => ['urgente', 'stat'].includes(pedido.prioridade) && !['liberado', 'cancelado'].includes(pedido.status)).length;
   const liberados = pedidos.filter((pedido) => pedido.status === 'liberado').length;
+  const temExameValido = exames.some((exame) => exame.nome.trim().length > 0);
 
   return (
     <section className="space-y-5" aria-labelledby="lab-pedidos-heading">
@@ -185,11 +187,22 @@ export function PedidosLaboratorioPanel() {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="border-border/70 bg-gradient-to-br from-primary/[0.07] to-background"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : emAberto}</p></div><span className="rounded-xl bg-primary/10 p-2.5 text-primary"><Activity className="h-5 w-5" /></span></CardContent></Card>
-        <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Prioridade alta</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : urgentes}</p></div><span className="rounded-xl bg-amber-500/10 p-2.5 text-amber-700"><AlertTriangle className="h-5 w-5" /></span></CardContent></Card>
-        <Card className="border-border/70"><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">Liberados</p><p className="mt-1 text-2xl font-semibold">{pedidosQuery.isLoading ? '—' : liberados}</p></div><span className="rounded-xl bg-cyan-500/10 p-2.5 text-cyan-700"><ClipboardList className="h-5 w-5" /></span></CardContent></Card>
-      </div>
+      <section aria-label="Resumo dos pedidos" className="overflow-hidden rounded-xl border border-border/70 bg-card">
+        <dl className="grid grid-cols-3 divide-x divide-border/70">
+          <div className="min-w-0 px-3 py-3 sm:px-4">
+            <dt className="break-words text-xs leading-tight text-muted-foreground">Em andamento</dt>
+            <dd className="mt-1 flex items-center gap-1.5 text-lg font-semibold tabular-nums"><Activity aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />{pedidosQuery.isLoading ? '—' : emAberto}</dd>
+          </div>
+          <div className="min-w-0 px-3 py-3 sm:px-4">
+            <dt className="break-words text-xs leading-tight text-muted-foreground">Prioridade alta</dt>
+            <dd className={cn('mt-1 flex items-center gap-1.5 text-lg font-semibold tabular-nums', urgentes > 0 ? 'text-warning-foreground' : 'text-muted-foreground')}><AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" />{pedidosQuery.isLoading ? '—' : urgentes}</dd>
+          </div>
+          <div className="min-w-0 px-3 py-3 sm:px-4">
+            <dt className="break-words text-xs leading-tight text-muted-foreground">Liberados</dt>
+            <dd className={cn('mt-1 flex items-center gap-1.5 text-lg font-semibold tabular-nums', liberados > 0 ? 'text-success' : 'text-muted-foreground')}><ClipboardList aria-hidden="true" className="h-4 w-4 shrink-0" />{pedidosQuery.isLoading ? '—' : liberados}</dd>
+          </div>
+        </dl>
+      </section>
 
       <Card className="overflow-hidden border-border/70 shadow-sm">
         <CardHeader className="gap-3 border-b bg-muted/20 sm:flex-row sm:items-center sm:justify-between">
@@ -202,7 +215,8 @@ export function PedidosLaboratorioPanel() {
           ) : filtrados.length === 0 ? (
             <div className="flex flex-col items-center px-6 py-14 text-center"><span className="rounded-2xl bg-primary/10 p-3 text-primary"><ClipboardList className="h-6 w-6" /></span><h3 className="mt-4 font-semibold">{termo ? 'Nenhum pedido encontrado' : 'Ainda não há pedidos laboratoriais'}</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">{termo ? 'Tente buscar por outro paciente, código ou exame.' : 'Registre uma solicitação para iniciar o acompanhamento de exames nesta clínica.'}</p>{!termo && <Button onClick={() => setModalAberto(true)} variant="outline" className="mt-4 gap-2"><Plus className="h-4 w-4" /> Registrar primeiro pedido</Button>}</div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="hidden overflow-x-auto xl:block">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-5 py-3 font-medium">Pedido / paciente</th><th className="px-4 py-3 font-medium">Exames</th><th className="px-4 py-3 font-medium">Solicitante / convênio</th><th className="px-4 py-3 font-medium">Prioridade</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Recebido</th><th className="px-5 py-3 text-right font-medium">Histórico</th></tr></thead>
                 <tbody className="divide-y divide-border/70">
@@ -210,14 +224,38 @@ export function PedidosLaboratorioPanel() {
                     <td className="px-5 py-4"><p className="font-mono text-xs text-primary">{pedido.codigo}</p><p className="mt-1 font-medium">{pedido.pacientes?.nome ?? 'Paciente sem nome'}</p></td>
                     <td className="max-w-[240px] px-4 py-4"><p className="line-clamp-2">{pedido.exames?.map((exame) => exame.tipo_exame).join(', ') || 'Sem exames vinculados'}</p><p className="mt-1 text-xs text-muted-foreground">{pedido.exames?.length ?? 0} exame(s)</p></td>
                     <td className="px-4 py-4"><p>{pedido.medicos?.nome ?? 'Solicitante não informado'}</p><p className="mt-1 text-xs text-muted-foreground">{pedido.convenios?.nome ?? 'Particular'}</p></td>
-                    <td className="px-4 py-4"><Badge variant={pedido.prioridade === 'rotina' ? 'secondary' : 'destructive'} className={pedido.prioridade === 'urgente' ? 'bg-amber-500 hover:bg-amber-600' : ''}>{priorityLabel[pedido.prioridade]}</Badge></td>
+                    <td className="px-4 py-4"><Badge variant={pedido.prioridade === 'stat' ? 'destructive' : 'secondary'} className={pedido.prioridade === 'urgente' ? 'border-warning/30 bg-warning/10 text-warning-foreground' : ''}>{priorityLabel[pedido.prioridade]}</Badge></td>
                     <td className="px-4 py-4"><Badge variant="outline">{statusLabel[pedido.status] ?? pedido.status}</Badge></td>
                     <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">{dataHora(pedido.solicitado_em)}</td>
-                    <td className="px-5 py-4 text-right"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setPedidoSelecionado(pedido.id)}><History className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Ver histórico</span></Button></td>
+                    <td className="px-5 py-4 text-right"><Button variant="ghost" size="sm" className="gap-1.5" aria-label={`Ver histórico do pedido ${pedido.codigo}`} onClick={() => setPedidoSelecionado(pedido.id)}><History className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Ver histórico</span></Button></td>
                   </tr>)}
                 </tbody>
               </table>
             </div>
+            <ul className="divide-y divide-border/70 xl:hidden" aria-label="Pedidos laboratoriais">
+              {filtrados.map((pedido) => (
+                <li key={pedido.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-semibold text-primary">{pedido.codigo}</p>
+                      <p className="mt-1 break-words font-semibold">{pedido.pacientes?.nome ?? 'Paciente sem nome'}</p>
+                      <p className="mt-1 break-words text-sm">{pedido.exames?.map((exame) => exame.tipo_exame).join(', ') || 'Sem exames vinculados'}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{pedido.exames?.length ?? 0} exame(s)</p>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={`Ver histórico do pedido ${pedido.codigo}`} onClick={() => setPedidoSelecionado(pedido.id)}>
+                      <History aria-hidden="true" className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={pedido.prioridade === 'stat' ? 'destructive' : 'secondary'} className={pedido.prioridade === 'urgente' ? 'border-warning/30 bg-warning/10 text-warning-foreground' : ''}>{priorityLabel[pedido.prioridade]}</Badge>
+                    <Badge variant={pedido.status === 'liberado' ? 'success' : pedido.status === 'cancelado' ? 'outline' : 'secondary'}>{statusLabel[pedido.status] ?? pedido.status}</Badge>
+                    <span className="text-xs text-muted-foreground">{dataHora(pedido.solicitado_em)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{pedido.medicos?.nome ?? 'Solicitante não informado'} · {pedido.convenios?.nome ?? 'Particular'}</p>
+                </li>
+              ))}
+            </ul>
+            </>
           )}
         </CardContent>
       </Card>
@@ -230,14 +268,14 @@ export function PedidosLaboratorioPanel() {
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>Novo pedido laboratorial</DialogTitle><DialogDescription>Cadastre o paciente e todos os exames solicitados em um único pedido.</DialogDescription></DialogHeader>
           <form id="novo-pedido-lab" className="space-y-5" onSubmit={(event) => { event.preventDefault(); criarPedido.mutate(); }}>
-            <div className="space-y-2"><Label>Paciente *</Label><PacienteCombobox value={pacienteId} onChange={(id) => setPacienteId(id)} disabled={criarPedido.isPending} /></div>
+            <div className="space-y-2"><Label htmlFor="pedido-lab-paciente">Paciente *</Label><PacienteCombobox id="pedido-lab-paciente" value={pacienteId} onChange={(id) => setPacienteId(id)} disabled={criarPedido.isPending} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Médico solicitante</Label><Select value={medicoId} onValueChange={setMedicoId} disabled={medicosQuery.isLoading || criarPedido.isPending}><SelectTrigger><SelectValue placeholder="Selecione o médico" /></SelectTrigger><SelectContent>{(medicosQuery.data ?? []).map((medico) => <SelectItem key={medico.id} value={medico.id}>{medico.nome}{medico.crm ? ` · ${medico.crm}` : ''}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2"><Label>Convênio</Label><Select value={convenioId} onValueChange={setConvenioId} disabled={conveniosQuery.isLoading || criarPedido.isPending}><SelectTrigger><SelectValue placeholder="Particular / selecione" /></SelectTrigger><SelectContent>{(conveniosQuery.data ?? []).map((convenio) => <SelectItem key={convenio.id} value={convenio.id}>{convenio.nome}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Médico solicitante</Label><Select value={medicoId} onValueChange={setMedicoId} disabled={medicosQuery.isLoading || criarPedido.isPending}><SelectTrigger aria-label="Médico solicitante"><SelectValue placeholder="Selecione o médico" /></SelectTrigger><SelectContent>{(medicosQuery.data ?? []).map((medico) => <SelectItem key={medico.id} value={medico.id}>{medico.nome}{medico.crm ? ` · ${medico.crm}` : ''}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Convênio</Label><Select value={convenioId} onValueChange={setConvenioId} disabled={conveniosQuery.isLoading || criarPedido.isPending}><SelectTrigger aria-label="Convênio"><SelectValue placeholder="Particular / selecione" /></SelectTrigger><SelectContent>{(conveniosQuery.data ?? []).map((convenio) => <SelectItem key={convenio.id} value={convenio.id}>{convenio.nome}</SelectItem>)}</SelectContent></Select></div>
             </div>
             <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
-              <div className="space-y-2"><Label>Prioridade *</Label><Select value={prioridade} onValueChange={(value: 'rotina' | 'urgente' | 'stat') => setPrioridade(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rotina">Rotina</SelectItem><SelectItem value="urgente">Urgente</SelectItem><SelectItem value="stat">STAT — imediato</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>Indicação clínica</Label><Input value={indicacao} onChange={(event) => setIndicacao(event.target.value)} maxLength={500} placeholder="Motivo clínico ou informação relevante" /></div>
+              <div className="space-y-2"><Label>Prioridade *</Label><Select value={prioridade} onValueChange={(value: 'rotina' | 'urgente' | 'stat') => setPrioridade(value)}><SelectTrigger aria-label="Prioridade"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rotina">Rotina</SelectItem><SelectItem value="urgente">Urgente</SelectItem><SelectItem value="stat">STAT — imediato</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label htmlFor="pedido-lab-indicacao">Indicação clínica</Label><Input id="pedido-lab-indicacao" value={indicacao} onChange={(event) => setIndicacao(event.target.value)} maxLength={500} placeholder="Motivo clínico ou informação relevante" /></div>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between"><Label>Exames solicitados *</Label><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setExames((lista) => [...lista, { catalogId: '', nome: '' }])} disabled={exames.length >= 40 || criarPedido.isPending}><Plus className="h-3.5 w-3.5" /> Adicionar exame</Button></div>
@@ -253,11 +291,11 @@ export function PedidosLaboratorioPanel() {
                 {exame.catalogId ? <div className="flex min-h-10 items-center rounded-md border bg-muted/20 px-3 text-sm"><span className="truncate">{exame.nome}</span></div> : <Input value={exame.nome} maxLength={160} onChange={(event) => setExames((lista) => lista.map((item, itemIndex) => itemIndex === index ? { ...item, nome: event.target.value } : item))} placeholder={`Nome do exame ${index + 1}`} aria-label={`Nome do exame ${index + 1}`} />}
                 <Button type="button" variant="ghost" size="icon" aria-label={`Remover exame ${index + 1}`} disabled={exames.length === 1 || criarPedido.isPending} onClick={() => setExames((lista) => lista.filter((_, itemIndex) => itemIndex !== index))}>×</Button>
               </div>)}</div>
-              <p className="text-xs text-muted-foreground">Os exames serão vinculados ao cadastro clínico existente e poderão ser processados pela worklist.</p>
+              <p className="text-xs text-muted-foreground" role={!temExameValido ? 'status' : undefined}>{!temExameValido ? 'Informe pelo menos um exame para habilitar o registro.' : 'Os exames serão vinculados ao cadastro clínico existente e poderão ser processados pela worklist.'}</p>
             </div>
             <div className="flex items-start gap-2 rounded-lg border border-primary/15 bg-primary/[0.04] p-3 text-xs text-muted-foreground"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p>O status do pedido acompanha os status dos exames vinculados; alterações são registradas no histórico.</p></div>
           </form>
-          <DialogFooter><Button type="button" variant="outline" onClick={limparFormulario} disabled={criarPedido.isPending}>Cancelar</Button><Button type="submit" form="novo-pedido-lab" disabled={criarPedido.isPending || !pacienteId} className="gap-2">{criarPedido.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Registrar pedido</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="outline" onClick={limparFormulario} disabled={criarPedido.isPending}>Cancelar</Button><Button type="submit" form="novo-pedido-lab" disabled={criarPedido.isPending || !pacienteId || !temExameValido} className="gap-2">{criarPedido.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Registrar pedido</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -50,10 +50,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_DOT: Record<string, string> = {
-  agendado: 'bg-[#1080CA]',
+  agendado: 'bg-primary',
   confirmado: 'bg-success',
   aguardando: 'bg-warning',
-  em_atendimento: 'bg-[#1080CA] animate-pulse',
+  em_atendimento: 'bg-primary animate-pulse',
   finalizado: 'bg-muted-foreground/30',
   cancelado: 'bg-destructive/70',
   faltou: 'bg-warning/70',
@@ -144,7 +144,6 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     left: 3,
     right: 3,
     borderLeft: `4px solid ${color}`,
-    background: `linear-gradient(to right, ${color}14, hsl(var(--card)) 45%)`,
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 50 : 10,
@@ -310,6 +309,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
    */
   const finalizarAtendimento = async (diasRetorno: number | null) => {
     setOcupado(true);
+    let finalizado = false;
     try {
       const { data: item } = await supabase
         .from('fila_atendimento')
@@ -338,12 +338,13 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      finalizado = true;
     } catch (e: any) {
       toast.error('Não foi possível finalizar', { description: mensagemDeErro(e) });
     } finally {
       setOcupado(false);
-      setFinalizandoCard(false);
     }
+    return finalizado;
   };
   const remove = async () => {
     if (ocupado) return;
@@ -403,9 +404,9 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           listeners?.onKeyDown?.(e);
         }}
       className={cn(
-        'group rounded-lg bg-card shadow-xs border border-border/60 hover:shadow-md hover:border-[#1080CA]/40',
+        'group rounded-lg bg-card shadow-xs border border-border/60 hover:shadow-md hover:border-primary/40',
         'cursor-grab active:cursor-grabbing overflow-hidden transition-all',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
         compact ? 'px-1.5 py-0 text-[11px] leading-none' : 'px-1.5 py-1 text-xs',
         cancelled && 'opacity-60 line-through',
         done && 'opacity-70',
@@ -420,8 +421,9 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       ) : (
       <div className="flex items-start gap-1.5 min-w-0">
         <div
-          className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white shadow-sm"
-          style={{ backgroundColor: color }}
+          data-testid="appointment-color-marker"
+          className="shrink-0 h-6 w-6 rounded-full border-2 bg-muted text-foreground flex items-center justify-center text-[10px] font-semibold"
+          style={{ borderColor: color }}
           title={patientName}
         >
           {initials(patientName)}
@@ -484,7 +486,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         {onNovaConsulta && agendamento.paciente_id && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={agendarRetorno}><CalendarPlus className="mr-2 h-4 w-4 text-[#1080CA]" /> Agendar retorno (+{DIAS_RETORNO_PADRAO} dias)</ContextMenuItem>
+            <ContextMenuItem onSelect={agendarRetorno}><CalendarPlus className="mr-2 h-4 w-4 text-primary" /> Agendar retorno (+{DIAS_RETORNO_PADRAO} dias)</ContextMenuItem>
             <ContextMenuItem onSelect={duplicarConsulta}><Copy className="mr-2 h-4 w-4" /> Duplicar consulta</ContextMenuItem>
           </>
         )}
@@ -507,7 +509,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
             title={linkConfirmacao ? undefined : 'Paciente sem telefone cadastrado'}
             onSelect={() => { if (linkConfirmacao) window.open(linkConfirmacao, '_blank', 'noopener,noreferrer'); }}
           >
-            <MessageCircle className="mr-2 h-4 w-4 text-[#1080CA]" /> Confirmar pelo WhatsApp
+            <MessageCircle className="mr-2 h-4 w-4 text-primary" /> Confirmar pelo WhatsApp
           </ContextMenuItem>
         )}
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('aguardando')}>Enviar para a fila</ContextMenuItem>

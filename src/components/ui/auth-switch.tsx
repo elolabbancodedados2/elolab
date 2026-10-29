@@ -7,10 +7,10 @@ interface AuthSwitchProps {
 }
 export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
   return (
-    <div role="group" aria-label="Modo de acesso" className="relative flex w-full rounded-2xl bg-muted/50 p-1 border border-border/40">
+    <div role="group" aria-label="Modo de acesso" className="relative flex w-full rounded-xl border border-border bg-muted p-1">
       {/* Animated pill background */}
       <motion.div
-        className="absolute top-1 bottom-1 rounded-xl bg-card shadow-sm border border-border/30"
+        className="absolute top-1 bottom-1 rounded-lg border border-primary/20 bg-primary/5"
         layout
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
         style={{
@@ -24,9 +24,9 @@ export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
         onClick={() => onTabChange("login")}
         aria-pressed={activeTab === "login"}
         className={cn(
-          "relative z-10 flex-1 py-2.5 text-sm font-semibold rounded-xl transition-colors duration-200",
+          "relative z-10 flex min-h-11 flex-1 items-center justify-center rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
           activeTab === "login"
-            ? "text-foreground"
+            ? "text-primary"
             : "text-muted-foreground hover:text-foreground/70"
         )}
       >
@@ -37,9 +37,9 @@ export function AuthSwitch({ activeTab, onTabChange }: AuthSwitchProps) {
         onClick={() => onTabChange("signup")}
         aria-pressed={activeTab === "signup"}
         className={cn(
-          "relative z-10 flex-1 py-2.5 text-sm font-semibold rounded-xl transition-colors duration-200",
+          "relative z-10 flex min-h-11 flex-1 items-center justify-center rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
           activeTab === "signup"
-            ? "text-foreground"
+            ? "text-primary"
             : "text-muted-foreground hover:text-foreground/70"
         )}
       >

@@ -17,7 +17,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -38,7 +37,7 @@ type EventType = TimelineEventType;
 interface TimelineEvent {
   id: string;
   type: EventType;
-  date: Date;
+  date: Date | null;
   title: string;
   description?: string;
   status?: string;
@@ -47,19 +46,23 @@ interface TimelineEvent {
   financeTipo?: string;
 }
 
-const TYPE_META: Record<EventType, { label: string; color: string; icon: JSX.Element }> = {
-  prontuario:      { label: 'Consulta',       color: 'bg-blue-500',    icon: <FileText className="h-4 w-4" /> },
-  prescricao:      { label: 'Prescrição',     color: 'bg-green-500',   icon: <Pill className="h-4 w-4" /> },
-  exame:           { label: 'Exame',          color: 'bg-purple-500',  icon: <TestTube className="h-4 w-4" /> },
-  atestado:        { label: 'Atestado',       color: 'bg-amber-500',   icon: <FileCheck className="h-4 w-4" /> },
-  encaminhamento:  { label: 'Encaminhamento', color: 'bg-orange-500',  icon: <ArrowRight className="h-4 w-4" /> },
-  agendamento:     { label: 'Agendamento',    color: 'bg-sky-500',     icon: <CalendarCheck className="h-4 w-4" /> },
-  pagamento:       { label: 'Pagamento',      color: 'bg-emerald-600', icon: <DollarSign className="h-4 w-4" /> },
-  triagem:         { label: 'Triagem',        color: 'bg-rose-500',    icon: <Activity className="h-4 w-4" /> },
-  anexo:           { label: 'Anexo',          color: 'bg-slate-500',   icon: <Paperclip className="h-4 w-4" /> },
-  retorno:         { label: 'Retorno',        color: 'bg-indigo-500',  icon: <RefreshCw className="h-4 w-4" /> },
-  comorbidade:     { label: 'Comorbidade',    color: 'bg-red-500',     icon: <AlertCircle className="h-4 w-4" /> },
+const TYPE_META: Record<EventType, { label: string; icon: JSX.Element }> = {
+  prontuario:      { label: 'Consulta',       icon: <FileText className="h-4 w-4" /> },
+  prescricao:      { label: 'Prescrição',     icon: <Pill className="h-4 w-4" /> },
+  exame:           { label: 'Exame',          icon: <TestTube className="h-4 w-4" /> },
+  atestado:        { label: 'Atestado',       icon: <FileCheck className="h-4 w-4" /> },
+  encaminhamento:  { label: 'Encaminhamento', icon: <ArrowRight className="h-4 w-4" /> },
+  agendamento:     { label: 'Agendamento',    icon: <CalendarCheck className="h-4 w-4" /> },
+  pagamento:       { label: 'Pagamento',      icon: <DollarSign className="h-4 w-4" /> },
+  triagem:         { label: 'Triagem',        icon: <Activity className="h-4 w-4" /> },
+  anexo:           { label: 'Anexo',          icon: <Paperclip className="h-4 w-4" /> },
+  retorno:         { label: 'Retorno',        icon: <RefreshCw className="h-4 w-4" /> },
+  comorbidade:     { label: 'Comorbidade',    icon: <AlertCircle className="h-4 w-4" /> },
 };
+
+function validTimelineDate(date: Date | null | undefined): Date | null {
+  return date && Number.isFinite(date.getTime()) ? date : null;
+}
 
 export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
   const { user, profile } = useSupabaseAuth();
@@ -91,7 +94,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: p.id,
           type: 'prontuario',
-          date: parseDateOnly(p.data)!,
+          date: validTimelineDate(parseDateOnly(p.data)),
           title: 'Consulta Médica',
           description: p.queixa_principal || p.hipotese_diagnostica || p.conduta || 'Atendimento realizado',
           medicoNome: (p.medicos as any)?.nome,
@@ -111,7 +114,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: p.id,
           type: 'prescricao',
-          date: parseDateOnly(p.data_emissao) || new Date(),
+          date: validTimelineDate(parseDateOnly(p.data_emissao)),
           title: 'Prescrição',
           description: `${p.medicamento}${p.dosagem ? ` - ${p.dosagem}` : ''}${p.posologia ? ` (${p.posologia})` : ''}`,
           status: p.tipo || 'simples',
@@ -132,7 +135,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: e.id,
           type: 'exame',
-          date: parseDateOnly(e.data_realizacao || e.data_solicitacao) || new Date(),
+          date: validTimelineDate(parseDateOnly(e.data_realizacao || e.data_solicitacao)),
           title: 'Exame',
           description: `${e.tipo_exame}${e.resultado ? ' • Resultado disponível' : ''}`,
           status: e.status || 'solicitado',
@@ -153,7 +156,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: a.id,
           type: 'atestado',
-          date: parseDateOnly(a.data_emissao) || new Date(),
+          date: validTimelineDate(parseDateOnly(a.data_emissao)),
           title: 'Atestado',
           description: a.dias ? `${a.dias} dia(s) - ${a.motivo || a.tipo}` : a.motivo || a.tipo || 'Emitido',
           medicoNome: (a.medicos as any)?.nome,
@@ -173,7 +176,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: e.id,
           type: 'encaminhamento',
-          date: parseDateOnly(e.data_encaminhamento) || new Date(),
+          date: validTimelineDate(parseDateOnly(e.data_encaminhamento)),
           title: 'Encaminhamento',
           description: `${e.especialidade_destino} - ${e.motivo}`,
           status: e.status || 'pendente',
@@ -195,7 +198,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `ag-${a.id}`,
           type: 'agendamento',
-          date: new Date(`${a.data}T${a.hora_inicio || '00:00'}`),
+          date: validTimelineDate(new Date(`${a.data}T${a.hora_inicio || '00:00'}`)),
           title: `Agendamento - ${a.tipo || 'Consulta'}`,
           description: a.observacoes || `Horário: ${a.hora_inicio || '—'}`,
           status: a.status,
@@ -218,7 +221,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `lan-${l.id}`,
           type: 'pagamento',
-          date: parseDateOnly(l.data_pagamento || l.data) || new Date(),
+          date: validTimelineDate(parseDateOnly(l.data_pagamento || l.data)),
           title: `${l.tipo === 'receita' ? 'Receita' : 'Despesa'} - ${valorFmt}`,
           description: `${l.descricao || l.categoria || '-'}${l.forma_pagamento ? ` • ${l.forma_pagamento}` : ''}`,
           status: statusLabel,
@@ -250,7 +253,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `tr-${t.id}`,
           type: 'triagem',
-          date: new Date(t.data_hora),
+          date: validTimelineDate(t.data_hora ? new Date(t.data_hora) : null),
           title: 'Triagem / Sinais Vitais',
           description: vitals || t.queixa_principal || 'Triagem realizada',
         });
@@ -270,7 +273,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `anx-${a.id}`,
           type: 'anexo',
-          date: new Date(a.created_at),
+          date: validTimelineDate(a.created_at ? new Date(a.created_at) : null),
           title: a.nome_arquivo || 'Anexo',
           description: a.descricao || a.tipo_arquivo || 'Documento anexado',
         });
@@ -291,7 +294,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `ret-${r.id}`,
           type: 'retorno',
-          date: parseDateOnly(r.data_retorno_prevista)!,
+          date: validTimelineDate(parseDateOnly(r.data_retorno_prevista)),
           title: 'Retorno agendado',
           description: r.motivo || 'Retorno do paciente',
           status: r.status,
@@ -312,13 +315,18 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         allEvents.push({
           id: `co-${c.id}`,
           type: 'comorbidade',
-          date: parseDateOnly(c.data_diagnostico) || new Date(),
+          date: validTimelineDate(parseDateOnly(c.data_diagnostico)),
           title: `${c.codigo_cid || 'CID'} - ${c.descricao}`,
           description: c.ativo ? 'Condição ativa' : 'Condição inativa',
         });
       });
 
-      return allEvents.sort((a, b) => b.date.getTime() - a.date.getTime());
+      // Registros sem data ficam no fim e são identificados como não informados.
+      return allEvents.sort((a, b) => {
+        if (!a.date) return b.date ? 1 : 0;
+        if (!b.date) return -1;
+        return b.date.getTime() - a.date.getTime();
+      });
     },
     enabled: !!pacienteId && !!user && !!profile?.clinica_id,
   });
@@ -376,7 +384,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       doc.text(`Emitido em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 52);
 
       const rows = events.map(e => [
-        format(e.date, 'dd/MM/yyyy HH:mm', { locale: ptBR }),
+        e.date ? format(e.date, 'dd/MM/yyyy HH:mm', { locale: ptBR }) : 'Data não informada',
         TYPE_META[e.type].label,
         e.title,
         [e.description, e.medicoNome && `${nomeMedico(e.medicoNome)}`, e.status].filter(Boolean).join(' | '),
@@ -387,7 +395,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         body: rows,
         startY: 58,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [16, 185, 129] },
+      headStyles: { fillColor: [20, 86, 192] },
         columnStyles: { 3: { cellWidth: 80 } },
       });
 
@@ -474,10 +482,11 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5" />
-          Histórico Completo do Paciente
-          <Badge variant="outline" className="ml-auto">
-            {events?.length || 0} eventos
+          <Badge variant="outline" aria-label={`${events?.length || 0} eventos`} className="order-1 shrink-0 whitespace-nowrap sm:order-last sm:ml-auto">
+            <span className="sm:hidden">{events?.length || 0}</span>
+            <span className="hidden sm:inline">{events?.length || 0} eventos</span>
           </Badge>
+          <span className="order-2 min-w-0 flex-1 sm:order-none">Histórico Completo do Paciente</span>
         </CardTitle>
         <div className="mt-3 space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -493,17 +502,20 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              aria-label="Buscar no histórico do paciente"
               placeholder="Buscar por título, descrição, médico, status..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar histórico por tipo">
             <Button
               size="sm"
               variant={activeFilter === 'todos' ? 'default' : 'outline'}
               onClick={() => setActiveFilter('todos')}
+              aria-pressed={activeFilter === 'todos'}
+              className="shrink-0"
             >
               Todos ({events?.length || 0})
             </Button>
@@ -514,7 +526,8 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
                   size="sm"
                   variant={activeFilter === t ? 'default' : 'outline'}
                   onClick={() => setActiveFilter(t)}
-                  className="gap-1"
+                  aria-pressed={activeFilter === t}
+                  className="gap-1 shrink-0"
                 >
                   {TYPE_META[t].icon}
                   {TYPE_META[t].label} ({counts[t]})
@@ -525,12 +538,29 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         </div>
       </CardHeader>
       <CardContent>
+        <p className="sr-only" role="status" aria-live="polite">
+          {filtered.length} {filtered.length === 1 ? 'evento encontrado' : 'eventos encontrados'}
+        </p>
         {filtered.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">
-            Nenhum evento encontrado.
-          </p>
+          events?.length ? (
+            <div className="py-8 text-center">
+              <p className="text-sm font-medium">Nenhum evento corresponde a esta busca.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Ajuste o texto ou remova o filtro para ver outros registros.</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-3"
+                onClick={() => { setSearch(''); setActiveFilter('todos'); }}
+              >
+                Limpar busca e filtros
+              </Button>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">Este paciente ainda não possui eventos no histórico.</p>
+          )
         ) : (
-          <ScrollArea className="h-[500px] pr-4">
+          <ScrollArea className="h-[min(60vh,500px)] pr-2 sm:pr-4">
             <div className="relative">
               <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
               <div className="space-y-6">
@@ -539,12 +569,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
                   const action = timelineEventAction(event, profile?.roles ?? [], pacienteId);
                   return (
                     <div key={`${event.type}-${event.id}`} className="relative flex gap-4">
-                      <div
-                        className={cn(
-                          'relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-white shrink-0',
-                          meta.color
-                        )}
-                      >
+                      <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
                         {meta.icon}
                       </div>
                       <div className="flex-1 pb-2">
@@ -561,7 +586,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {formatDateTimePreference(event.date)}
+                            {event.date ? formatDateTimePreference(event.date) : 'Data não informada'}
                           </span>
                           {event.medicoNome && <span>• {nomeMedico(event.medicoNome)}</span>}
                         </p>

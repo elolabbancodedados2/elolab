@@ -12,29 +12,34 @@ export interface ColorScheme {
 const DEFAULT_SCHEME: ColorScheme = {
   criterion: 'status',
   map: {
-    agendado: '#1080CA',
-    confirmado: '#10b981',
-    aguardando: '#f59e0b',
-    aguardando_triagem: '#eab308',
-    em_triagem: '#eab308',
-    fila_atendimento: '#f59e0b',
-    em_atendimento: '#2ED5E7',
-    finalizado: '#8a8f99',
-    atendimento_finalizado: '#8a8f99',
-    aguardando_pagamento: '#d97706',
-    aguardando_pagamento_adicional: '#d97706',
-    pago: '#059669',
-    cancelado: '#ef4444',
-    faltou: '#f97316',
+    agendado: 'hsl(var(--primary))',
+    confirmado: 'hsl(var(--success))',
+    aguardando: 'hsl(var(--warning))',
+    aguardando_triagem: 'hsl(var(--warning))',
+    em_triagem: 'hsl(var(--highlight))',
+    fila_atendimento: 'hsl(var(--warning))',
+    em_atendimento: 'hsl(var(--primary))',
+    finalizado: 'hsl(var(--muted-foreground))',
+    atendimento_finalizado: 'hsl(var(--muted-foreground))',
+    aguardando_pagamento: 'hsl(var(--warning))',
+    aguardando_pagamento_adicional: 'hsl(var(--destructive))',
+    pago: 'hsl(var(--success))',
+    cancelado: 'hsl(var(--destructive))',
+    faltou: 'hsl(var(--warning))',
   },
 };
 
 export const PALETTE = [
-  '#1080CA', '#2ED5E7', '#10b981', '#f59e0b', '#ef4444', '#111111',
-  '#06b6d4', '#f97316', '#84cc16', '#14b8a6', '#6366f1', '#8a8f99',
-];
+  { label: 'Azul primário', value: 'hsl(var(--primary))' },
+  { label: 'Azul-marinho', value: 'hsl(var(--sidebar-background))' },
+  { label: 'Ciano EloLab', value: 'hsl(var(--highlight))' },
+  { label: 'Sucesso', value: 'hsl(var(--success))' },
+  { label: 'Aviso', value: 'hsl(var(--warning))' },
+  { label: 'Erro', value: 'hsl(var(--destructive))' },
+  { label: 'Neutro', value: 'hsl(var(--muted-foreground))' },
+] as const;
 
-const FALLBACK_COLOR = '#1080CA';
+const FALLBACK_COLOR = 'hsl(var(--primary))';
 
 const KEY = 'agenda_color_scheme';
 

@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   updates: [] as Array<Record<string, unknown>>,
   audits: [] as Array<Record<string, unknown>>,
   pendingUpdateIds: [] as string[],
+  readError: false,
+  readDelay: null as Promise<void> | null,
   roles: ['recepcao'] as string[],
 }));
 
@@ -35,6 +37,8 @@ vi.mock('@/integrations/supabase/client', () => ({
         },
         order: () => chain,
         range: async () => {
+          if (mocks.readDelay) await mocks.readDelay;
+          if (mocks.readError) return { data: null, error: new Error('Falha sintética de leitura') };
           for (const id of mocks.pendingUpdateIds) {
             const task = mocks.rows.find((row) => row.id === id);
             if (task) task.status = 'concluida';
@@ -83,6 +87,8 @@ describe('Minha fila de trabalho', () => {
     mocks.updates = [];
     mocks.audits = [];
     mocks.pendingUpdateIds = [];
+    mocks.readError = false;
+    mocks.readDelay = null;
     mocks.roles = ['recepcao'];
   });
 
@@ -145,5 +151,25 @@ describe('Minha fila de trabalho', () => {
     mocks.rows = [makeTask({ status: 'concluida' })];
     renderPage();
     expect(await screen.findByText('Tudo em dia: suas atribuições estão concluídas ou canceladas.')).toBeInTheDocument();
+  });
+
+  it('apresenta carregamento e substitui o skeleton após receber as tarefas', async () => {
+    let liberarLeitura!: () => void;
+    mocks.readDelay = new Promise<void>(resolve => { liberarLeitura = resolve; });
+    renderPage();
+
+    expect(await screen.findByLabelText('Carregando fila de tarefas')).toBeInTheDocument();
+    liberarLeitura();
+    expect((await screen.findAllByText('Confirmar retorno')).length).toBeGreaterThan(0);
+  });
+
+  it('oferece retry após erro de leitura e recupera a fila', async () => {
+    mocks.readError = true;
+    renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível carregar sua fila');
+    mocks.readError = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect((await screen.findAllByText('Confirmar retorno')).length).toBeGreaterThan(0);
   });
 });

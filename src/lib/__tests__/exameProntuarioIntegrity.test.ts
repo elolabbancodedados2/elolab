@@ -5,10 +5,13 @@ const migrationPath = 'supabase/migrations/20261011470000_exame_vinculo_prontuar
 
 describe('vínculo de solicitação de exame ao prontuário', () => {
   it('grava o prontuário de origem e usa o médico autenticado, sem fallback', () => {
-    const page = readFileSync('src/pages/Prontuarios.tsx', 'utf8');
-    expect(page).toMatch(/medico_solicitante_id:\s*medicoId/);
-    expect(page).toMatch(/prontuario_id:\s*currentProntuario\.id/);
-    expect(page).not.toMatch(/medicos\.find\(m => m\.ativo !== false\)/);
+    const prontuarios = readFileSync('src/pages/Prontuarios.tsx', 'utf8');
+    const exames = readFileSync('src/pages/Exames.tsx', 'utf8');
+    expect(prontuarios).toMatch(/new URLSearchParams\([\s\S]*?prontuario:\s*currentProntuario\.id/);
+    expect(exames).toMatch(/prontuario_id:\s*prontuarioFonteId\s*\?\s*prontuarioFonteQuery\.data!\.id\s*:\s*null/);
+    expect(exames).toMatch(/medico_solicitante_id:\s*formData\.medico_solicitante_id\s*\|\|\s*null/);
+    expect(exames).toMatch(/isMedicoOnly\s*&&\s*formData\.medico_solicitante_id\s*!==\s*medicoId/);
+    expect(exames).not.toMatch(/medicos\.find\(m => m\.ativo !== false\)/);
   });
 
   it('valida clínica e paciente antes de aceitar a referência', () => {

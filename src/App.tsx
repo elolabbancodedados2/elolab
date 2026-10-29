@@ -135,7 +135,8 @@ const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
   // o usuário recebe uma mensagem clara (uma única vez por erro).
   queryCache: new QueryCache({
-    onError: (error) => {
+    onError: (error, query) => {
+      if (query.meta?.suppressGlobalErrorToast === true) return;
       toast.error(friendlyErrorMessage(error), { id: `query-error-${friendlyErrorMessage(error)}` });
     },
   }),

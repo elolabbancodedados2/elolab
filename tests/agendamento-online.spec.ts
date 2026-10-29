@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Agendamento online', () => {
-  test('conclui o pedido de consulta depois do consentimento do paciente', async ({ page }) => {
+  test('conclui o pedido de consulta depois do consentimento do paciente', async ({ page }, testInfo) => {
     let pedidoEnviado: Record<string, unknown> | undefined;
     let tokenReservado: string | undefined;
 
@@ -201,9 +201,16 @@ test.describe('Agendamento online', () => {
     });
 
     await page.goto('/agendar/00000000-0000-4000-8000-000000000001');
-    await page.getByRole('button', { name: /Dra\. Ana/ }).click();
-    await page.getByTestId('online-booking-day').nth(0).click();
-    await page.getByRole('button', { name: /10:30/ }).click();
+    const professional = page.getByRole('button', { name: /Dra\. Ana/ });
+    await professional.focus();
+    await page.keyboard.press('Enter');
+    const firstDay = page.getByTestId('online-booking-day').nth(0);
+    await firstDay.focus();
+    await page.keyboard.press('Enter');
+    const firstSlot = page.getByRole('button', { name: /10:30/ });
+    await firstSlot.focus();
+    await page.keyboard.press('Enter');
+    await expect(firstSlot).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'Solicitar agendamento' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Próximos dias' }).click();
@@ -341,7 +348,7 @@ test.describe('Agendamento online', () => {
     expect(chamadasHorarios).toBe(2);
   });
 
-  test('mostra as duas semanas completas sem rolagem lateral no celular', async ({ page }) => {
+  test('mostra as duas semanas completas sem rolagem lateral no celular', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.route('**/functions/v1/public-booking', async (route) => {
       const body = route.request().postDataJSON();
@@ -367,5 +374,33 @@ test.describe('Agendamento online', () => {
     await expect(dias.nth(13)).toBeInViewport();
     expect(await page.getByTestId('online-booking-days').evaluate((el) => el.scrollWidth === el.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    for (const viewport of [{ width: 375, height: 812 }, { width: 320, height: 740 }]) {
+      await page.setViewportSize(viewport);
+      const dayLayout = await page.getByTestId('online-booking-days').evaluate((grid) => {
+        const viewportBounds = grid.parentElement!.getBoundingClientRect();
+        const gridBounds = grid.getBoundingClientRect();
+        return [...grid.querySelectorAll<HTMLElement>('[data-testid="online-booking-day"]')].map((day) => {
+          const dayBounds = day.getBoundingClientRect();
+          return dayBounds.left >= viewportBounds.left && dayBounds.right <= viewportBounds.right
+            && gridBounds.left >= viewportBounds.left && gridBounds.right <= viewportBounds.right;
+        });
+      });
+      expect(dayLayout.every(Boolean), `todos os dias precisam caber em ${viewport.width}px`).toBe(true);
+    }
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.screenshot({ path: testInfo.outputPath('public-booking-320.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await dias.nth(0).focus();
+    await page.keyboard.press('Enter');
+    const firstSlot = page.getByRole('button', { name: /10:30/ });
+    await firstSlot.focus();
+    await page.keyboard.press('Enter');
+    await expect(firstSlot).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByLabel('Nome completo *')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('public-booking-mobile.png'), fullPage: true, animations: 'disabled' });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('public-booking-desktop.png'), fullPage: true, animations: 'disabled' });
   });
 });

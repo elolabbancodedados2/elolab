@@ -10,7 +10,7 @@ import {
   Printer, BookOpen, ShieldCheck, FileCheck, X, Clipboard,
   Phone, Mail, Building2, CreditCard, Baby, Shield, Lock, PenLine,
   TestTube, ArrowRight, UserCheck, BadgeCheck, Share2, MessageCircle, ExternalLink,
-  Hash, MapPin, Fingerprint, FileEdit, ScrollText,
+  Hash, MapPin, Fingerprint, ScrollText,
 } from 'lucide-react';
 
 import { ptBR } from 'date-fns/locale';
@@ -49,7 +49,7 @@ import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dat
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { PatientSearchResult } from '@/components/clinical/PatientSearchResult';
 import { mensagemDeErro } from '@/lib/erros';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { autorizarLeituraHistoricoPaciente, registrarAcessoProntuario, registrarExportacaoProntuarios } from '@/lib/prontuarioAudit';
 import { obterIdentificacaoAssinante } from '@/lib/prontuarioSigner';
 import { lerConfigsClinica } from '@/lib/configClinica';
@@ -80,6 +80,14 @@ interface RascunhoNaFila {
   assinado: boolean | null;
   pacientes?: { nome?: string | null; nome_social?: string | null } | Array<{ nome?: string | null; nome_social?: string | null }> | null;
   [key: string]: unknown;
+}
+
+interface ContextoAgendamentoProntuario {
+  id: string;
+  data: string;
+  hora_inicio: string | null;
+  tipo: string | null;
+  medico_id: string | null;
 }
 
 interface SinaisVitais {
@@ -259,7 +267,7 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
     <div className="space-y-4">
       {/* Header strip */}
       <div className="rounded-[24px] overflow-hidden border border-border/60 bg-card shadow-xs">
-        <div className="relative overflow-hidden bg-[image:var(--gradient-hero)] p-5 text-white">
+        <div className="relative overflow-hidden bg-brand-dark p-5 text-white">
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-highlight/40 blur-3xl" />
           <div className="relative flex items-start gap-4">
             <PatientPhoto
@@ -581,8 +589,9 @@ function ProntuarioAuditLog({ prontuarioId, clinicaId }: { prontuarioId: string;
 }
 
 // ─── Related Records ───────────────────────────────────────
-function RelatedRecords({ pacienteId }: { pacienteId: string }) {
+function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizacao, tentarAutorizarNovamente }: { pacienteId: string; clinicaId?: string | null; acessoAutorizado: boolean; erroAutorizacao?: unknown; tentarAutorizarNovamente: () => void }) {
   const [exames, setExames] = useState<any[]>([]);
+  const [resultadosLab, setResultadosLab] = useState<any[]>([]);
   const [atestados, setAtestados] = useState<any[]>([]);
   const [encaminhamentos, setEncaminhamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -590,23 +599,40 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (!pacienteId) return;
+    if (!pacienteId || !clinicaId) {
+      setLoading(false);
+      setErro(new Error('Clínica não identificada para carregar os registros clínicos.'));
+      return;
+    }
+    if (erroAutorizacao) {
+      setLoading(false);
+      setErro(erroAutorizacao);
+      return;
+    }
+    if (!acessoAutorizado) {
+      setLoading(true);
+      return;
+    }
     setLoading(true);
     setErro(null);
     let active = true;
     Promise.all([
       supabase.from('exames').select('id, tipo_exame, status, data_solicitacao').eq('paciente_id', pacienteId).order('data_solicitacao', { ascending: false }).limit(15),
+      supabase.from('resultados_laboratorio')
+        .select('id, parametro, resultado, unidade, critico, numero_versao, data_liberacao, valor_referencia_min, valor_referencia_max, valor_referencia_texto, coleta_id, coletas_laboratorio(id, codigo_amostra), exames(tipo_exame)')
+        .eq('paciente_id', pacienteId).eq('clinica_id', clinicaId).eq('liberado', true)
+        .order('data_liberacao', { ascending: false }).limit(20),
       supabase.from('atestados').select('id, tipo, data_emissao, dias').eq('paciente_id', pacienteId).order('data_emissao', { ascending: false }).limit(15),
       supabase.from('encaminhamentos').select('id, especialidade_destino, status, urgencia').eq('paciente_id', pacienteId).order('data_encaminhamento', { ascending: false }).limit(15),
-    ]).then(([ex, at, en]) => {
+    ]).then(([ex, res, at, en]) => {
       if (!active) return;
-      if (ex.error || at.error || en.error) {
-        setErro(ex.error || at.error || en.error);
-        setExames([]); setAtestados([]); setEncaminhamentos([]);
+      if (ex.error || res.error || at.error || en.error) {
+        setErro(ex.error || res.error || at.error || en.error);
+        setExames([]); setResultadosLab([]); setAtestados([]); setEncaminhamentos([]);
         setLoading(false);
         return;
       }
-      setExames(ex.data || []); setAtestados(at.data || []); setEncaminhamentos(en.data || []);
+      setExames(ex.data || []); setResultadosLab(res.data || []); setAtestados(at.data || []); setEncaminhamentos(en.data || []);
       setLoading(false);
     }).catch(error => {
       if (!active) return;
@@ -614,10 +640,10 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
       setLoading(false);
     });
     return () => { active = false; };
-  }, [pacienteId, reload]);
+  }, [pacienteId, clinicaId, acessoAutorizado, erroAutorizacao, reload]);
 
-  if (loading) return <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-10" />)}</div>;
-  if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os registros relacionados" onRetry={() => { setLoading(true); setReload(value => value + 1); }} />;
+  if (loading) return <div role="status" aria-label="Carregando registros relacionados" className="space-y-2"><span className="sr-only">Carregando registros relacionados</span>{[1, 2, 3].map(i => <Skeleton key={i} className="h-10" />)}</div>;
+  if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os registros relacionados" description={erroAutorizacao ? 'Não consultamos os dados do paciente porque a confirmação de acesso falhou. Tente novamente.' : undefined} onRetry={() => { if (erroAutorizacao) tentarAutorizarNovamente(); else { setLoading(true); setReload(value => value + 1); } }} />;
 
   const sc = (s: string) => {
     if (s === 'laudo_disponivel' || s === 'concluido') return 'bg-success/10 text-success';
@@ -657,6 +683,41 @@ function RelatedRecords({ pacienteId }: { pacienteId: string }) {
         {exames.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum exame</p> : exames.map(e => (
           <RecordItem key={e.id} icon={TestTube} label={e.tipo_exame} sub={e.data_solicitacao ? format(parseDateOnly(e.data_solicitacao)!, 'dd/MM/yy') : ''} badge={e.status?.replace(/_/g, ' ')} badgeClass={sc(e.status)} href={`/exames?paciente=${pacienteId}`} />
         ))}
+        <div className="pt-2">
+          <h5 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground"><FileCheck className="h-3.5 w-3.5 text-primary" />Resultados laboratoriais liberados</h5>
+          {resultadosLab.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">Nenhum resultado liberado para este paciente.</p>
+          ) : (
+            <ul className="space-y-2">
+              {resultadosLab.map((resultado) => {
+                const coleta = Array.isArray(resultado.coletas_laboratorio) ? resultado.coletas_laboratorio[0] : resultado.coletas_laboratorio;
+                const exame = Array.isArray(resultado.exames) ? resultado.exames[0] : resultado.exames;
+                const referencia = resultado.valor_referencia_texto || (
+                  resultado.valor_referencia_min != null || resultado.valor_referencia_max != null
+                    ? `${resultado.valor_referencia_min ?? '—'} a ${resultado.valor_referencia_max ?? '—'}`
+                    : null
+                );
+                return (
+                  <li key={`${resultado.id}-${resultado.numero_versao}`} className="rounded-md border border-border/70 px-3 py-2.5">
+                    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground">{resultado.parametro}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">{exame?.tipo_exame || 'Exame laboratorial'}{coleta?.codigo_amostra ? ` · Amostra ${coleta.codigo_amostra}` : ''}</p>
+                      </div>
+                      <p className="text-sm font-semibold tabular-nums text-foreground">{resultado.resultado}{resultado.unidade ? <span className="text-xs font-normal text-muted-foreground">{' '}{resultado.unidade}</span> : null}</p>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                      {referencia && <span>Referência: {referencia}{resultado.unidade ? ` ${resultado.unidade}` : ''}</span>}
+                      {resultado.data_liberacao && <span>Liberado em {format(new Date(resultado.data_liberacao), 'dd/MM/yy HH:mm')}</span>}
+                      {resultado.critico && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Resultado crítico</Badge>}
+                      {coleta?.id && <Link to={`/laudos-lab?coleta=${encodeURIComponent(coleta.id)}`} className="inline-flex items-center gap-1 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">Abrir laudo <ExternalLink className="h-3 w-3" /></Link>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
@@ -770,6 +831,7 @@ export default function Prontuarios() {
   const routeAgendamentoId = searchParams.get('agendamento');
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
+  const [contextoAgendamento, setContextoAgendamento] = useState<ContextoAgendamentoProntuario | null>(null);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
   const [pendingPatientContextChange, setPendingPatientContextChange] = useState<{
     pacienteId: string;
@@ -791,14 +853,12 @@ export default function Prontuarios() {
   const [erroPrescricoes, setErroPrescricoes] = useState<unknown>(null);
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
-  const [showExamSolicitation, setShowExamSolicitation] = useState(false);
-  const [examForm, setExamForm] = useState({ tipo_exame: '', descricao: '', observacoes: '' });
-  const [isRequestingExam, setIsRequestingExam] = useState(false);
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveInProgressRef = useRef(false);
   const changeVersionRef = useRef(0);
   const prescricoesRequestRef = useRef(0);
   const { profile: user } = useSupabaseAuth();
+  const navigate = useNavigate();
 
   const pacientesBuscaQuery = useBuscaPacientes(searchTerm, { limite: 50 });
   const pacientesBusca = pacientesBuscaQuery.data?.pacientes ?? [];
@@ -956,6 +1016,7 @@ export default function Prontuarios() {
   // ─── Handlers ────────────────────────────────────────────
   const handleNovoProntuario = useCallback((agendamentoId?: string | null, medicoResponsavelId?: string | null) => {
     if (!selectedPacienteId) return false;
+    setContextoAgendamento(null);
     if (isMedicoOnly && !medicoId) {
       toast.error('Usuário médico não vinculado', {
         description: 'Vincule esta conta ao cadastro do médico antes de abrir o prontuário.',
@@ -1023,7 +1084,10 @@ export default function Prontuarios() {
     }
   };
 
-  const handleViewProntuario = async (prontuario: Record<string, any>) => {
+  const handleViewProntuario = async (
+    prontuario: Record<string, any>,
+    contextoDoAgendamento: ContextoAgendamentoProntuario | null = null,
+  ) => {
     const requestId = ++prescricoesRequestRef.current;
     try {
       await registrarAcessoProntuario(prontuario.id, 'visualizacao');
@@ -1041,6 +1105,7 @@ export default function Prontuarios() {
     const prescriptionsLoaded = await carregarPrescricoes(prontuario.id, requestId);
     if (requestId !== prescricoesRequestRef.current) return false;
     if (!prescriptionsLoaded) {
+      setContextoAgendamento(contextoDoAgendamento);
       setPrescricoes([]);
       setHasUnsavedChanges(false);
       setAutoSaveError(null);
@@ -1057,6 +1122,7 @@ export default function Prontuarios() {
     setAutoSaveError(null);
     setAutoSaveTime(null);
     setIsEditing(false);
+    setContextoAgendamento(contextoDoAgendamento);
     setIsProntuarioOpen(true);
     // Registro de acesso ao prontuário — CFM Res. 1.821/2007.
     //
@@ -1076,6 +1142,7 @@ export default function Prontuarios() {
     if (routeKeyRef.current !== routeKey) {
       routeKeyRef.current = routeKey;
       routeOpenedRef.current = false;
+      if (routeAgendamentoId) setContextoAgendamento(null);
     }
   }, [routePacienteId, routeAgendamentoId]);
 
@@ -1088,17 +1155,22 @@ export default function Prontuarios() {
     // O atalho vem da URL e pode estar desatualizado ou alterado. Confirme no
     // servidor que o agendamento pertence ao paciente e à clínica antes de
     // abrir ou criar uma evolução vinculada a ele.
-    routeOpenedRef.current = true;
     let active = true;
     const abrirAtendimentoDoAtalho = async () => {
       const { data: agendamento, error } = await supabase
         .from('agendamentos')
-        .select('id, paciente_id, medico_id')
+        .select('id, paciente_id, medico_id, data, hora_inicio, tipo')
         .eq('id', routeAgendamentoId)
         .eq('clinica_id', user.clinica_id)
         .maybeSingle();
 
       if (!active) return;
+      // Marque a rota como consumida apenas quando a resposta ainda pertence
+      // ao efeito ativo. O carregamento do histórico pode alterar as
+      // dependências deste efeito enquanto a consulta do agendamento aguarda;
+      // se marcar antes, o cleanup cancela a abertura e a nova execução acha
+      // que o atalho já foi atendido.
+      routeOpenedRef.current = true;
       const limparAtalho = () => {
         const params = new URLSearchParams(searchParams);
         params.delete('paciente');
@@ -1114,11 +1186,20 @@ export default function Prontuarios() {
         return;
       }
 
+      const contexto: ContextoAgendamentoProntuario = {
+        id: agendamento.id,
+        data: agendamento.data,
+        hora_inicio: agendamento.hora_inicio,
+        tipo: agendamento.tipo,
+        medico_id: agendamento.medico_id,
+      };
       const existing = pacienteProntuarios.find((p: any) => p.agendamento_id === routeAgendamentoId);
       if (existing) {
-        void handleViewProntuarioRef.current(existing);
+        void handleViewProntuarioRef.current(existing, contexto);
       } else {
-        handleNovoProntuario(routeAgendamentoId, agendamento.medico_id);
+        if (handleNovoProntuario(routeAgendamentoId, agendamento.medico_id)) {
+          setContextoAgendamento(contexto);
+        }
       }
       limparAtalho();
     };
@@ -1426,6 +1507,7 @@ export default function Prontuarios() {
       if (id) {
         if (changeVersionRef.current === versaoAntesDeSalvar) {
           setIsProntuarioOpen(false);
+          setContextoAgendamento(null);
           toast.success('Prontuário salvo', { description: 'Registro salvo com sucesso.' });
         } else {
           toast.warning('O prontuário foi salvo, mas houve novas alterações.', {
@@ -1452,6 +1534,7 @@ export default function Prontuarios() {
     setHasUnsavedChanges(false);
     setPendingPatientContextChange(null);
     setIsProntuarioOpen(false);
+    setContextoAgendamento(null);
   };
 
   const handleSaveAndChangePatient = async () => {
@@ -1520,6 +1603,7 @@ export default function Prontuarios() {
       return;
     }
     setIsProntuarioOpen(open);
+    if (!open) setContextoAgendamento(null);
   };
 
   // Reset auto-save time when dialog closes
@@ -1542,42 +1626,19 @@ export default function Prontuarios() {
   };
 
   // ─── Exam solicitation ───
-  const handleSolicitarExame = async () => {
-    if (isRequestingExam) return;
-    if (!examForm.tipo_exame) {
-      toast.error('Erro', { description: 'Informe o tipo do exame.' });
-      return;
-    }
+  const handleSolicitarExame = () => {
     if (!currentProntuario.id || !medicoId || !selectedPacienteId) {
-      toast.error('Não foi possível identificar o paciente ou médico solicitante.');
+      toast.error('N?o foi poss?vel identificar o paciente, o m?dico ou salvar a evolu??o antes de solicitar exames.');
       return;
     }
-    if (!user?.clinica_id) {
-      toast.error('Clínica não identificada. Atualize a sessão antes de solicitar o exame.');
-      return;
-    }
-    setIsRequestingExam(true);
-    try {
-      const { error } = await supabase.from('exames').insert({
-        paciente_id: selectedPacienteId,
-        medico_solicitante_id: medicoId,
-        prontuario_id: currentProntuario.id,
-        tipo_exame: examForm.tipo_exame,
-        descricao: examForm.descricao || null,
-        observacoes: examForm.observacoes || null,
-        status: 'solicitado',
-        data_solicitacao: todaySaoPauloDateOnly(),
-        clinica_id: user.clinica_id,
-      });
-      if (error) throw error;
-      toast.success('Exame solicitado', { description: `${examForm.tipo_exame} registrado.` });
-      setExamForm({ tipo_exame: '', descricao: '', observacoes: '' });
-      setShowExamSolicitation(false);
-    } catch (error) {
-      toast.error('Erro ao solicitar exame.', { description: mensagemDeErro(error) });
-    } finally {
-      setIsRequestingExam(false);
-    }
+    const params = new URLSearchParams({
+      paciente: selectedPacienteId,
+      prontuario: currentProntuario.id,
+      novo: '1',
+      voltar: 'prontuario',
+    });
+    if (contextoAgendamento?.id) params.set('agendamento', contextoAgendamento.id);
+    navigate(`/exames?${params.toString()}`);
   };
 
   const handleApplyProtocol = (protocol: any) => {
@@ -1683,54 +1744,6 @@ export default function Prontuarios() {
         </div>
       )}
 
-      {/* Indicator strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-2xl border-transparent bg-gradient-primary p-4 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-              <FileEdit className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold tabular-nums text-white">{rascunhosAbertos.length}</p>
-              <p className="text-[11px] text-white/70">Rascunhos abertos</p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <CalendarCheck className="h-5 w-5 text-[#1080CA]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold tabular-nums text-foreground">{agendaHoje.length}</p>
-              <p className="text-[11px] text-muted-foreground">Pacientes hoje</p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-success/10 flex items-center justify-center flex-shrink-0">
-              <BadgeCheck className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold tabular-nums text-foreground">{pacienteProntuarios.filter(p => p.assinado).length || (selectedPacienteId ? 0 : '—')}</p>
-              <p className="text-[11px] text-muted-foreground">Assinados</p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-[#1080CA]/10 flex items-center justify-center flex-shrink-0">
-              <ClipboardList className="h-5 w-5 text-[#1080CA]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold tabular-nums text-foreground">{selectedPacienteId ? pacienteProntuarios.length : '—'}</p>
-              <p className="text-[11px] text-muted-foreground">Evoluções</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Main layout: patient list + content */}
       <div className="grid gap-5 lg:grid-cols-12">
         {/* ─── Patient List (Left column) ─── */}
@@ -1798,7 +1811,7 @@ export default function Prontuarios() {
                               }}
                               className={`flex min-h-11 w-full items-center gap-2.5 rounded-2xl p-2 text-left transition ${ativo ? 'bg-accent' : 'hover:bg-muted/60'}`}
                             >
-                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-extrabold ${ativo ? 'bg-[image:var(--gradient-primary)] text-white shadow-glow' : 'bg-accent text-primary'}`}>
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-extrabold ${ativo ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-accent text-primary'}`}>
                                 {nome.split(' ').filter(Boolean).map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()}
                               </span>
                               <span className="min-w-0 flex-1">
@@ -1922,7 +1935,7 @@ export default function Prontuarios() {
             <Card className="relative overflow-hidden rounded-[24px] border-dashed border-border/70">
               <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
               <CardContent className="relative flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground lg:py-20">
-                <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[image:var(--gradient-primary)] text-white shadow-glow">
+                <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-glow">
                   <FileText className="h-7 w-7" />
                 </span>
                 <p className="text-lg font-extrabold text-foreground">Escolha um paciente para começar</p>
@@ -1983,7 +1996,7 @@ export default function Prontuarios() {
                         <ErrorState compact error={erroProntuarios} title="Histórico indisponível" onRetry={() => { void refetchProntuarios(); }} />
                       ) : pacienteProntuarios.length === 0 ? (
                         <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 px-4 py-12 text-center">
-                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[image:var(--gradient-primary)] text-white shadow-glow"><FileText className="h-5 w-5" /></span>
+                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-glow"><FileText className="h-5 w-5" /></span>
                           <p className="text-sm font-bold text-foreground">Nenhuma evolução registrada</p>
                           <p className="max-w-sm text-xs text-muted-foreground">O primeiro atendimento deste paciente aparecerá aqui, com queixa, exame físico, conduta e prescrições.</p>
                           <Button size="sm" className="mt-1" onClick={() => handleNovoProntuario()} disabled={!!erroMedicos || !!erroProntuarios}><Plus className="h-3.5 w-3.5" />Iniciar primeiro atendimento</Button>
@@ -2027,7 +2040,13 @@ export default function Prontuarios() {
                     </TabsContent>
 
                     <TabsContent value="solicitacoes" className="mt-0">
-                      <RelatedRecords pacienteId={selectedPacienteId!} />
+                      <RelatedRecords
+                        pacienteId={selectedPacienteId!}
+                        clinicaId={user?.clinica_id}
+                        acessoAutorizado={historicoAuditadoPacienteId === selectedPacienteId}
+                        erroAutorizacao={erroHistorico}
+                        tentarAutorizarNovamente={() => { setLoadingHistorico(true); setReloadHistorico(value => value + 1); }}
+                      />
                     </TabsContent>
 
                     <TabsContent value="timeline" className="mt-0">
@@ -2246,6 +2265,26 @@ export default function Prontuarios() {
               <Badge className="ml-auto bg-success/10 text-success border-success/20 text-xs rounded-full px-2">
                 <ShieldCheck className="h-2.5 w-2.5 mr-0.5" />LGPD
               </Badge>
+            </div>
+          )}
+
+          {contextoAgendamento && (
+            <div
+              role="note"
+              aria-label="Agendamento atual"
+              data-testid="prontuario-agendamento-context"
+              className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"
+            >
+              <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                <CalendarCheck aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+                Agendamento atual
+              </span>
+              <span>{formatDate(contextoAgendamento.data)}{contextoAgendamento.hora_inicio ? ` às ${contextoAgendamento.hora_inicio.slice(0, 5)}` : ''}</span>
+              <span>{contextoAgendamento.tipo || 'Atendimento'}</span>
+              {contextoAgendamento.medico_id && (() => {
+                const profissional = medicos.find((medico: any) => medico.id === contextoAgendamento.medico_id);
+                return profissional?.nome ? <span>{profissional.nome}</span> : null;
+              })()}
             </div>
           )}
 
@@ -2643,6 +2682,7 @@ export default function Prontuarios() {
                               return;
                             }
                             setIsProntuarioOpen(false);
+                            setContextoAgendamento(null);
                             setTimeout(() => handleViewProntuario(ev), 150);
                           }}
                         >
@@ -2756,7 +2796,7 @@ export default function Prontuarios() {
                 )}
               </div>
               <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(true)} disabled={!currentProntuario.id || !medicoId || isRequestingExam} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
+                <Button variant="outline" size="sm" onClick={handleSolicitarExame} disabled={!currentProntuario.id || !medicoId} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
                   <TestTube className="h-3.5 w-3.5" />Solicitar Exame
                 </Button>
                 <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="rounded-xl text-xs">Cancelar</Button>
@@ -2780,6 +2820,7 @@ export default function Prontuarios() {
                   prontuarioAposDescartarRef.current = null;
                   setPerguntandoDescartar(false);
                   setIsProntuarioOpen(false);
+                  setContextoAgendamento(null);
                   if (proximoProntuario) {
                     window.setTimeout(() => void handleViewProntuario(proximoProntuario), 150);
                   }
@@ -2831,37 +2872,6 @@ export default function Prontuarios() {
 
       <DischargeReport isOpen={showDischargeReport} onClose={() => setShowDischargeReport(false)} data={getDischargeReportData()} />
 
-      {/* Exam Solicitation Dialog */}
-      <Dialog open={showExamSolicitation} onOpenChange={setShowExamSolicitation}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <TestTube className="h-4 w-4 text-primary" />Solicitar Exame
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="solicitacao-exame-tipo" className="text-xs">Tipo do Exame *</Label>
-              <Input id="solicitacao-exame-tipo" aria-label="Nome do exame" placeholder="Ex: Hemograma, Glicemia, TSH..." value={examForm.tipo_exame} onChange={e => setExamForm(f => ({ ...f, tipo_exame: e.target.value }))} className="h-10 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="solicitacao-exame-descricao" className="text-xs">Descrição</Label>
-              <Input id="solicitacao-exame-descricao" aria-label="Detalhes do exame" placeholder="Detalhes adicionais" value={examForm.descricao} onChange={e => setExamForm(f => ({ ...f, descricao: e.target.value }))} className="h-10 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="solicitacao-exame-observacoes" className="text-xs">Observações</Label>
-              <Textarea id="solicitacao-exame-observacoes" aria-label="Orientações e preparo do exame" placeholder="Jejum, preparo..." value={examForm.observacoes} onChange={e => setExamForm(f => ({ ...f, observacoes: e.target.value }))} rows={2} className="text-sm" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setShowExamSolicitation(false)} className="text-xs">Cancelar</Button>
-            <Button size="sm" onClick={handleSolicitarExame} disabled={isRequestingExam} className="gap-1.5 text-xs">
-              {isRequestingExam ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
-              {isRequestingExam ? 'Solicitando…' : 'Solicitar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

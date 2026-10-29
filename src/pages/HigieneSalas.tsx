@@ -138,11 +138,11 @@ export default function HigieneSalas() {
   if (query.isLoading) return <main className="space-y-5"><PageHeader title="Higienização de salas" description="Checklists, inspeções e liberação segura de ambientes" icon={<SprayCan />} /><div className="grid grid-cols-2 gap-2 md:grid-cols-4">{[0, 1, 2, 3].map((i) => <Card key={i} className="h-24 animate-pulse rounded-2xl border-border/60" />)}</div><div className="grid gap-3 lg:grid-cols-2"><Card className="h-36 animate-pulse rounded-2xl border-border/60" /><Card className="h-36 animate-pulse rounded-2xl border-border/60" /></div></main>;
   if (query.error) return <ErrorState title="Não foi possível carregar a higienização" description="A operação foi pausada para evitar liberar uma sala com estado desatualizado." error={query.error} onRetry={() => void query.refetch()} />;
 
-  const indicadores: Array<{ key: Etapa; icon: typeof SprayCan; label: string; caption: string; color: string; surface: string; escuro: boolean }> = [
-    { key: 'aguardando', icon: SprayCan, label: 'Aguardando limpeza', caption: 'marcadas como limpeza em Salas e leitos', color: 'text-white', surface: 'bg-white/15', escuro: true },
-    { key: 'executando', icon: Timer, label: 'Em execução', caption: 'checklist em andamento', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-    { key: 'inspecao', icon: Clock3, label: 'Aguardando inspeção', caption: 'bloqueadas até revisão', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
-    { key: 'liberadas', icon: CheckCircle2, label: 'Liberadas hoje', caption: 'aprovadas na inspeção', color: 'text-success', surface: 'bg-success/10', escuro: false },
+  const indicadores: Array<{ key: Etapa; icon: typeof SprayCan; label: string; caption: string; color: string; surface: string }> = [
+    { key: 'aguardando', icon: SprayCan, label: 'Aguardando limpeza', caption: 'marcadas como limpeza em Salas e leitos', color: 'text-info', surface: 'bg-info/10' },
+    { key: 'executando', icon: Timer, label: 'Em execução', caption: 'checklist em andamento', color: 'text-primary', surface: 'bg-primary/10' },
+    { key: 'inspecao', icon: Clock3, label: 'Aguardando inspeção', caption: 'bloqueadas até revisão', color: 'text-warning', surface: 'bg-warning/10' },
+    { key: 'liberadas', icon: CheckCircle2, label: 'Liberadas hoje', caption: 'aprovadas na inspeção', color: 'text-success', surface: 'bg-success/10' },
   ];
 
   return <main className="space-y-6">
@@ -157,7 +157,7 @@ export default function HigieneSalas() {
         <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void refresh()} aria-label="Atualizar higienização" title="Atualizar higienização">
           <RefreshCw className={cn('h-4 w-4', query.isFetching && 'animate-spin')} />
         </Button>
-        {data.canConfigure && <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => setConfigAberta((current) => !current)} aria-expanded={configAberta} aria-controls="hygiene-config">
+        {data.canConfigure && <Button className="shrink-0 gap-2 rounded-full" onClick={() => setConfigAberta((current) => !current)} aria-expanded={configAberta} aria-controls="hygiene-config">
           <Plus className="h-4 w-4" /> {activeChecklist ? 'Nova versão do checklist' : 'Configurar checklist'}
         </Button>}
       </>}
@@ -174,40 +174,38 @@ export default function HigieneSalas() {
           const ativo = filtro === s.key;
           return <button key={s.key} type="button" aria-pressed={ativo} onClick={() => setFiltro(ativo ? 'todos' : s.key)}
             className={cn(
-              'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-              s.escuro && 'border-transparent bg-gradient-primary text-white',
-              ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-              ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+              'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+              ativo && 'border-primary ring-1 ring-primary/30',
             )}>
             <div className="flex min-h-[96px] items-center gap-3 p-3">
               <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                  <h3 className="truncate text-xs font-semibold text-foreground">{s.label}</h3>
                   <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{stats[s.key]}</span>
                 </div>
-                <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{s.caption}</p>
               </div>
             </div>
           </button>;
         })}
       </div>
       {stats.aguardando > 0 && <p className="text-xs text-muted-foreground">
-        {plural(stats.aguardando, 'sala marcada', 'salas marcadas')} como limpeza em <Link to="/gestao-fluxo" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Salas e leitos</Link> ainda sem checklist iniciado.
+        {plural(stats.aguardando, 'sala marcada', 'salas marcadas')} como limpeza em <Link to="/gestao-fluxo" className="font-medium text-primary underline-offset-2 hover:underline">Salas e leitos</Link> ainda sem checklist iniciado.
       </p>}
     </section>
 
-    {proximaInspecao && <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+    {proximaInspecao && <Card className="overflow-hidden rounded-2xl border-warning/30">
       <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ShieldCheck className="h-5 w-5" /></span>
+          <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-warning/10 text-warning"><ShieldCheck className="h-5 w-5" /></span>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Próxima inspeção</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Próxima inspeção</p>
             <h2 className="truncate text-lg font-bold text-foreground">{proximaInspecaoSala?.nome || 'Sala'}</h2>
             <p className="mt-1 text-xs text-muted-foreground">Enviada {fmt(proximaInspecao.submitted_at!)} · {plural(pendingReview.length, 'sala aguarda', 'salas aguardam')} liberação</p>
           </div>
         </div>
-        <Button asChild className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"><a href="#review-heading">Ir para inspeção</a></Button>
+        <Button asChild className="h-10 gap-1.5 rounded-full"><a href="#review-heading">Ir para inspeção</a></Button>
       </CardContent>
     </Card>}
 
@@ -215,19 +213,19 @@ export default function HigieneSalas() {
       <CardContent className="space-y-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><ClipboardCheck className="h-4 w-4" /></span>
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><ClipboardCheck className="h-4 w-4" /></span>
             <h2 className="text-base font-semibold text-foreground">Checklist vigente</h2>
-            {activeChecklist && <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">v{activeChecklist.version}</Badge>}
+            {activeChecklist && <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">v{activeChecklist.version}</Badge>}
           </div>
           <p className="text-xs text-muted-foreground">{activeChecklist ? `${activeChecklist.title} · ${plural(activeChecklist.items.length, 'item obrigatório', 'itens obrigatórios')}. Alterar os itens cria uma nova versão; execuções anteriores preservam o checklist usado.` : 'Configure a primeira versão antes de iniciar uma higienização.'}</p>
         </div>
-        {activeChecklist && <ul className="grid gap-2 sm:grid-cols-2">{activeChecklist.items.map((item) => <li key={item.id} className="flex items-center gap-2 text-sm"><CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-[#1080CA]" />{item.label}{item.required && <Badge variant="outline" className="ml-1 rounded-full text-[10px]">Obrigatório</Badge>}</li>)}</ul>}
-        {(configAberta || !activeChecklist) && <form className="grid gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3 md:grid-cols-[1fr_2fr_auto]" onSubmit={(event) => { event.preventDefault(); createChecklist.mutate(); }}>
-          <div className="space-y-2"><Label htmlFor="hygiene-title">Nome do checklist</Label><Input id="hygiene-title" className="rounded-full focus-visible:ring-[#1080CA]" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></div>
-          <div className="space-y-2"><Label htmlFor="hygiene-items">Um item obrigatório por linha</Label><Textarea id="hygiene-items" className="rounded-xl focus-visible:ring-[#1080CA]" value={itemText} onChange={(event) => setItemText(event.target.value)} rows={4} maxLength={5000} /></div>
+        {activeChecklist && <ul className="grid gap-2 sm:grid-cols-2">{activeChecklist.items.map((item) => <li key={item.id} className="flex items-center gap-2 text-sm"><CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />{item.label}{item.required && <Badge variant="outline" className="ml-1 rounded-full text-[10px]">Obrigatório</Badge>}</li>)}</ul>}
+        {(configAberta || !activeChecklist) && <form className="grid gap-3 rounded-xl border border-border bg-muted/40 p-3 md:grid-cols-[1fr_2fr_auto]" onSubmit={(event) => { event.preventDefault(); createChecklist.mutate(); }}>
+          <div className="space-y-2"><Label htmlFor="hygiene-title">Nome do checklist</Label><Input id="hygiene-title" className="rounded-full focus-visible:ring-primary" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></div>
+          <div className="space-y-2"><Label htmlFor="hygiene-items">Um item obrigatório por linha</Label><Textarea id="hygiene-items" className="rounded-xl focus-visible:ring-primary" value={itemText} onChange={(event) => setItemText(event.target.value)} rows={4} maxLength={5000} /></div>
           <div className="flex items-end gap-2">
             {activeChecklist && <Button type="button" variant="outline" className="h-9 rounded-full text-xs" onClick={() => setConfigAberta(false)}>Cancelar</Button>}
-            <Button type="submit" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={createChecklist.isPending || !title.trim() || !itemText.trim()}>{createChecklist.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Versionar</Button>
+            <Button type="submit" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={createChecklist.isPending || !title.trim() || !itemText.trim()}>{createChecklist.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Versionar</Button>
           </div>
         </form>}
       </CardContent>
@@ -236,13 +234,13 @@ export default function HigieneSalas() {
     <section className="space-y-3" aria-labelledby="rooms-heading">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><DoorOpen className="h-4 w-4" /></span>
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><DoorOpen className="h-4 w-4" /></span>
           <h2 id="rooms-heading" className="text-base font-semibold text-foreground">Salas</h2>
-          <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{data.rooms.length}</Badge>
+          <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{data.rooms.length}</Badge>
         </div>
         <div className="relative w-full sm:ml-2 sm:w-72">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Buscar sala por nome ou local" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Buscar sala..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Input aria-label="Buscar sala por nome ou local" className="h-10 rounded-full pl-9 focus-visible:ring-primary" placeholder="Buscar sala..." value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         {temFiltro && <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}><X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros</Button>}
         <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">{salasFiltradas.length} de {plural(data.rooms.length, 'sala', 'salas')}</p>
@@ -250,11 +248,11 @@ export default function HigieneSalas() {
 
       {salasFiltradas.length === 0 ? <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardContent className="py-16 text-center text-muted-foreground">
-          <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><SprayCan className="h-7 w-7" /></span>
+          <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><SprayCan className="h-7 w-7" /></span>
           <p className="font-medium text-foreground">{data.rooms.length === 0 ? 'Nenhuma sala cadastrada nesta unidade.' : 'Nenhuma sala corresponde aos filtros'}</p>
           <p className="mt-1 text-sm">{data.rooms.length === 0 ? 'Cadastre salas e leitos para iniciar o controle de higienização.' : 'Limpe a busca ou o indicador selecionado para ver todas as salas.'}</p>
           {data.rooms.length === 0
-            ? <Button asChild className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm"><Link to="/gestao-fluxo">Ir para Salas e leitos</Link></Button>
+            ? <Button asChild className="mt-4 rounded-full" size="sm"><Link to="/gestao-fluxo">Ir para Salas e leitos</Link></Button>
             : <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>}
         </CardContent>
       </Card> : <div className="grid gap-3 lg:grid-cols-2">{salasFiltradas.map((room) => {
@@ -270,7 +268,7 @@ export default function HigieneSalas() {
         })();
         const pct = progresso && progresso.total > 0 ? Math.round((progresso.done / progresso.total) * 100) : 0;
         const podeIniciar = Boolean(activeChecklist) && room.status !== 'ocupado' && room.status !== 'manutencao' && !pendingReviewRoomIds.has(room.id) && !mutation.isPending;
-        return <Card key={room.id} className={cn('overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200', etapa === 'aguardando' && 'border-info/40 ring-1 ring-info/20', etapa === 'inspecao' && 'border-warning/40 ring-1 ring-warning/20', etapa === 'executando' && 'border-[#1080CA]/40 ring-1 ring-[#1080CA]/20')}>
+        return <Card key={room.id} className={cn('overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200', etapa === 'aguardando' && 'border-info/40 ring-1 ring-info/20', etapa === 'inspecao' && 'border-warning/40 ring-1 ring-warning/20', etapa === 'executando' && 'border-primary/40 ring-1 ring-primary/20')}>
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -279,21 +277,21 @@ export default function HigieneSalas() {
               </div>
               <Badge variant="outline" className={cn('shrink-0 rounded-full', STATUS_BADGE[room.status] ?? '')}>{STATUS_LABEL[room.status] ?? 'Indisponível'}</Badge>
             </div>
-            {etapa === 'aguardando' && <p className="text-xs text-muted-foreground">Marcada para limpeza em <Link to="/gestao-fluxo" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Salas e leitos</Link>. Inicie o checklist para registrar a higienização.</p>}
+            {etapa === 'aguardando' && <p className="text-xs text-muted-foreground">Marcada para limpeza em <Link to="/gestao-fluxo" className="font-medium text-primary underline-offset-2 hover:underline">Salas e leitos</Link>. Inicie o checklist para registrar a higienização.</p>}
             {progresso && progresso.total > 0 && <div className="space-y-1">
               <div className="flex items-center justify-between text-[11px] text-muted-foreground"><span>Itens obrigatórios</span><span className="tabular-nums">{progresso.done} de {progresso.total}</span></div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`Checklist de ${room.nome}`} aria-valuemin={0} aria-valuemax={progresso.total} aria-valuenow={progresso.done}>
-                <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-gradient-primary' : 'bg-[#1080CA]')} style={{ width: `${pct}%` }} />
+                <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-success' : 'bg-primary')} style={{ width: `${pct}%` }} />
               </div>
             </div>}
-            {!open && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110 disabled:opacity-50" disabled={!podeIniciar} onClick={() => mutation.mutate({ action: 'start', room_id: room.id })}><SprayCan className="mr-2 h-4 w-4" />Iniciar higienização</Button>}
+            {!open && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground disabled:opacity-50" disabled={!podeIniciar} onClick={() => mutation.mutate({ action: 'start', room_id: room.id })}><SprayCan className="mr-2 h-4 w-4" />Iniciar higienização</Button>}
             {!open && !activeChecklist && !pendingReviewRoomIds.has(room.id) && <p className="text-xs text-muted-foreground">Configure o checklist vigente para liberar o início.</p>}
             {pendingReviewRoomIds.has(room.id) && <p className="text-sm font-medium text-warning">Higienização enviada; sala bloqueada até revisão.</p>}
-            {open && checklist && <div className="space-y-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
+            {open && checklist && <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-3">
               <p className="text-sm font-medium">Checklist v{checklist.version} · iniciado {fmt(open.started_at)}</p>
               {checklist.items.map((item) => <label key={item.id} className="flex cursor-pointer items-start gap-2 text-sm"><Checkbox checked={marcados[item.id] ?? false} disabled={Boolean(open.submitted_at)} onCheckedChange={(checked) => setCompleted((current) => ({ ...current, [open.id]: { ...(current[open.id] ?? {}), [item.id]: checked === true } }))} /><span>{item.label}{item.required && <span className="text-destructive"> *</span>}</span></label>)}
-              <div className="space-y-1"><Label htmlFor={`notes-${open.id}`}>Observação da execução</Label><Textarea id={`notes-${open.id}`} className="rounded-xl bg-white focus-visible:ring-[#1080CA]" maxLength={1000} rows={2} value={executionNotes[open.id] ?? ''} disabled={Boolean(open.submitted_at)} onChange={(event) => setExecutionNotes((current) => ({ ...current, [open.id]: event.target.value }))} /></div>
-              {!open.submitted_at && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={mutation.isPending || checklist.items.some((item) => item.required && !(marcados[item.id] ?? false))} onClick={() => mutation.mutate({ action: 'submit', execution_id: open.id, completed_items: checklist.items.map((item) => ({ ...item, completed: marcados[item.id] ?? false })), notes: executionNotes[open.id] ?? '' })}>Enviar para revisão</Button>}
+              <div className="space-y-1"><Label htmlFor={`notes-${open.id}`}>Observação da execução</Label><Textarea id={`notes-${open.id}`} className="rounded-xl bg-card focus-visible:ring-primary" maxLength={1000} rows={2} value={executionNotes[open.id] ?? ''} disabled={Boolean(open.submitted_at)} onChange={(event) => setExecutionNotes((current) => ({ ...current, [open.id]: event.target.value }))} /></div>
+              {!open.submitted_at && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={mutation.isPending || checklist.items.some((item) => item.required && !(marcados[item.id] ?? false))} onClick={() => mutation.mutate({ action: 'submit', execution_id: open.id, completed_items: checklist.items.map((item) => ({ ...item, completed: marcados[item.id] ?? false })), notes: executionNotes[open.id] ?? '' })}>Enviar para revisão</Button>}
               {open.submitted_at && <p className="text-sm text-muted-foreground">Enviado para revisão em {fmt(open.submitted_at)}. A sala permanece bloqueada.</p>}
             </div>}
           </CardContent>
@@ -303,9 +301,9 @@ export default function HigieneSalas() {
 
     {data.canReview && pendingReview.length > 0 && <section className="space-y-3 scroll-mt-4" aria-labelledby="review-heading">
       <div className="flex items-center gap-2.5">
-        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><ShieldCheck className="h-4 w-4" /></span>
+        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="h-4 w-4" /></span>
         <h2 id="review-heading" className="text-base font-semibold text-foreground">Inspeção e liberação</h2>
-        <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{pendingReview.length}</Badge>
+        <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{pendingReview.length}</Badge>
       </div>
       <div className="grid gap-3 lg:grid-cols-2">{pendingReview.map((execution, index) => {
         const room = data.rooms.find((item) => item.id === execution.room_id);
@@ -314,17 +312,17 @@ export default function HigieneSalas() {
         return <Card key={execution.id} className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start gap-3">
-              <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums', index === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-foreground')}>{index + 1}</span>
+              <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums', index === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')}>{index + 1}</span>
               <div className="min-w-0">
                 <h3 className="font-semibold text-foreground">{room?.nome || 'Sala'} · revisão</h3>
                 <p className="text-xs text-muted-foreground">Enviado {fmt(execution.submitted_at!)} · checklist v{checklist?.version ?? '?'}</p>
               </div>
             </div>
             <ul className="space-y-1 text-sm">{(execution.completed_items || []).map((item) => <li key={item.id} className="flex items-center gap-2">{item.completed ? <CheckCircle2 aria-hidden="true" className="h-4 w-4 text-success" /> : <span aria-hidden="true" className="h-4 w-4 rounded-full border" />}{item.label}</li>)}</ul>
-            {execution.notes && <p className="rounded-xl bg-[#F3F8FC] p-2 text-sm">{execution.notes}</p>}
-            <div className="space-y-1"><Label htmlFor={`review-${execution.id}`}>Observação da inspeção *</Label><Textarea id={`review-${execution.id}`} className="rounded-xl focus-visible:ring-[#1080CA]" minLength={3} maxLength={1000} rows={2} value={reviewNotes[execution.id] || ''} onChange={(event) => setReviewNotes((current) => ({ ...current, [execution.id]: event.target.value }))} /></div>
+            {execution.notes && <p className="rounded-xl bg-muted/40 p-2 text-sm">{execution.notes}</p>}
+            <div className="space-y-1"><Label htmlFor={`review-${execution.id}`}>Observação da inspeção *</Label><Textarea id={`review-${execution.id}`} className="rounded-xl focus-visible:ring-primary" minLength={3} maxLength={1000} rows={2} value={reviewNotes[execution.id] || ''} onChange={(event) => setReviewNotes((current) => ({ ...current, [execution.id]: event.target.value }))} /></div>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={mutation.isPending || !notaOk} onClick={() => mutation.mutate({ action: 'review', execution_id: execution.id, decision: 'approved', note: reviewNotes[execution.id] })}><ShieldCheck className="mr-2 h-4 w-4" />Aprovar e liberar sala</Button>
+              <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={mutation.isPending || !notaOk} onClick={() => mutation.mutate({ action: 'review', execution_id: execution.id, decision: 'approved', note: reviewNotes[execution.id] })}><ShieldCheck className="mr-2 h-4 w-4" />Aprovar e liberar sala</Button>
               <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={mutation.isPending || !notaOk} onClick={() => mutation.mutate({ action: 'review', execution_id: execution.id, decision: 'rejected', note: reviewNotes[execution.id] })}>Reprovar e manter bloqueada</Button>
             </div>
           </CardContent>
@@ -334,9 +332,9 @@ export default function HigieneSalas() {
 
     <section className="space-y-3" aria-labelledby="history-heading">
       <div className="flex items-center gap-2.5">
-        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><Clock3 className="h-4 w-4" /></span>
+        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><Clock3 className="h-4 w-4" /></span>
         <h2 id="history-heading" className="text-base font-semibold text-foreground">Histórico recente</h2>
-        <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{Math.min(data.executions.length, 15)}</Badge>
+        <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{Math.min(data.executions.length, 15)}</Badge>
       </div>
       {data.executions.length === 0
         ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="p-6 text-sm text-muted-foreground">As execuções e inspeções aparecerão aqui. Nenhuma alteração foi feita nas salas.</CardContent></Card>
@@ -349,7 +347,7 @@ export default function HigieneSalas() {
               ? { label: 'Reprovada · segue bloqueada', className: 'border-destructive/30 bg-destructive/10 text-destructive' }
               : execution.submitted_at
                 ? { label: 'Aguardando inspeção', className: 'border-warning/30 bg-warning/10 text-warning' }
-                : { label: 'Em execução', className: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]' };
+                : { label: 'Em execução', className: 'border-primary/30 bg-primary/10 text-primary' };
           return <div key={execution.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
             <span><strong>{room?.nome || 'Sala'}</strong> · {fmt(execution.started_at)}{review && <span className="text-muted-foreground"> · inspeção {fmt(review.created_at)}</span>}</span>
             <Badge variant="outline" className={cn('rounded-full', badge.className)}>{badge.label}</Badge>

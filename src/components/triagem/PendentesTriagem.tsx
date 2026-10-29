@@ -18,8 +18,8 @@ type Props = {
 export function PendentesTriagem({ loading, appointments, onTriage }: Props) {
   if (loading) {
     return (
-      <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-2xl border border-[#DCE6F2] bg-white p-4 text-sm text-muted-foreground shadow-xs">
-        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin text-[#1080CA]" />
+      <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-14 items-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
         Carregando pacientes aguardando triagem
       </div>
     );
@@ -27,60 +27,61 @@ export function PendentesTriagem({ loading, appointments, onTriage }: Props) {
 
   if (appointments.length === 0) {
     return (
-      <div role="status" className="flex items-start gap-3 rounded-2xl border border-success/30 bg-success/5 p-4 text-sm text-foreground">
-        <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+      <div role="status" className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-sm text-foreground">
+        <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <CheckCircle2 className="h-4 w-4" />
         </span>
         <div>
           <p className="font-medium">Nenhum paciente aguardando triagem</p>
-          <p className="mt-0.5 text-muted-foreground">Os pacientes com check-in e sem triagem aparecerão aqui.</p>
+          <p className="mt-0.5 text-muted-foreground">Pacientes com check-in e sem triagem aparecerão aqui.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <section aria-label="Pacientes aguardando triagem" className="space-y-2 rounded-2xl border border-[#BFD8EE] bg-[#F3F8FC] p-4 shadow-xs">
-      <div className="flex items-center gap-2.5">
-        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
-          <Activity className="h-4 w-4" />
+    <section aria-labelledby="triagem-pendentes-titulo" className="overflow-hidden rounded-lg border border-border bg-card">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <h2 id="triagem-pendentes-titulo" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Activity aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+            Pacientes aguardando triagem
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Em ordem de horário do atendimento</p>
+        </div>
+        <span className="shrink-0 font-mono text-sm tabular-nums text-muted-foreground" aria-label={`${appointments.length} pacientes aguardando triagem`}>
+          {appointments.length}
         </span>
-        <p className="text-sm font-semibold text-foreground">
-          {appointments.length === 1
-            ? '1 paciente aguardando triagem'
-            : `${appointments.length} pacientes aguardando triagem`}
-        </p>
-      </div>
-      <div className="space-y-1.5 pt-1">
-        {appointments.slice(0, 12).map((appointment, index) => {
+      </header>
+      <ol aria-label="Fila de pacientes aguardando triagem" className="divide-y divide-border">
+        {appointments.map((appointment, index) => {
           const patient = appointment.pacientes;
+          const patientName = patient?.nome_social || patient?.nome || 'Paciente';
           return (
-            <div key={appointment.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#DCE6F2] bg-white px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span aria-hidden="true" className={index === 0
-                  ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-primary text-xs font-bold text-white'
-                  : 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground'}>
+            <li key={appointment.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 font-mono text-xs tabular-nums text-muted-foreground">
                   {index + 1}
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">{patient?.nome_social || patient?.nome || 'Paciente'}</p>
-                  <p className="text-[11px] tabular-nums text-muted-foreground">
+                  <p className="truncate text-sm font-medium text-foreground">{patientName}</p>
+                  <p className="text-xs tabular-nums text-muted-foreground">
                     {String(appointment.hora_inicio).slice(0, 5)} · {appointment.tipo || 'consulta'}
                   </p>
                 </div>
               </div>
-              <Button size="sm" className="h-9 shrink-0 gap-1 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" aria-label={`Triar ${patient?.nome_social || patient?.nome || 'paciente'}`} onClick={() => onTriage(appointment.paciente_id, appointment.id)}>
-                <Activity aria-hidden="true" className="h-3 w-3" /> Triar
+              <Button
+                size="sm"
+                className="min-h-11 w-full gap-1.5 rounded-md bg-primary text-xs text-primary-foreground shadow-none hover:bg-primary/90 sm:w-auto"
+                aria-label={`Triar ${patientName}`}
+                onClick={() => onTriage(appointment.paciente_id, appointment.id)}
+              >
+                <Activity aria-hidden="true" className="h-3.5 w-3.5" /> Triar
               </Button>
-            </div>
+            </li>
           );
         })}
-        {appointments.length > 12 && (
-          <p className="px-3 text-[11px] text-muted-foreground">
-            e mais {appointments.length - 12}…
-          </p>
-        )}
-      </div>
+      </ol>
     </section>
   );
 }

@@ -87,15 +87,12 @@ const EQUIPAMENTOS_SUGERIDOS = [
   'Desfibrilador', 'Laringoscópio', 'Negatoscópio', 'Balança', 'Oftalmoscópio',
 ];
 
-const CORES = [
-  '#1080CA', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
-];
-const NOMES_CORES: Record<string, string> = {
-  '#1080CA': 'Azul', '#ef4444': 'Vermelho', '#22c55e': 'Verde',
-  '#f59e0b': 'Âmbar', '#8b5cf6': 'Roxo', '#ec4899': 'Rosa',
-  '#06b6d4': 'Ciano', '#f97316': 'Laranja', '#14b8a6': 'Turquesa', '#6366f1': 'Índigo',
-};
+const CORES_IDENTIFICACAO = {
+  '#1456C0': 'Azul primário',
+  '#0B2346': 'Azul-marinho',
+  '#06B6D4': 'Ciano',
+  '#61748B': 'Cinza-azulado',
+} as const;
 
 const isLeito = (tipo: string) => tipo.startsWith('leito_');
 
@@ -119,7 +116,7 @@ interface SalaForm {
 const initialForm: SalaForm = {
   nome: '', tipo: 'consultorio', capacidade: 1, status: 'disponivel',
   medico_responsavel: '', equipamentos: [], setor: '', andar: '',
-  horario_inicio: '07:00', horario_fim: '19:00', cor: '#1080CA',
+  horario_inicio: '07:00', horario_fim: '19:00', cor: '#1456C0',
   genero: '', numero_cama: '', observacoes: '',
 };
 
@@ -158,6 +155,7 @@ export default function Salas() {
     },
     enabled: !!profile?.clinica_id,
     refetchInterval: 10000, // auto-refresh every 10s
+    meta: { suppressGlobalErrorToast: true },
   });
   const ocupacoes = ocupacoesQuery.data ?? [];
 
@@ -189,7 +187,7 @@ export default function Salas() {
         status: sala.status || 'disponivel', medico_responsavel: sala.medico_responsavel || '',
         equipamentos: sala.equipamentos || [], setor: sala.setor || '', andar: sala.andar || '',
         horario_inicio: sala.horario_inicio || '07:00', horario_fim: sala.horario_fim || '19:00',
-        cor: sala.cor || '#1080CA', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
+        cor: sala.cor || '#1456C0', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
         observacoes: sala.observacoes || '',
       });
     } else {
@@ -341,7 +339,38 @@ export default function Salas() {
   };
 
   if (isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading) {
-    return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+    return (
+      <section role="status" aria-label="Carregando salas" aria-busy="true" className="space-y-5 py-2">
+        <div className="flex min-h-10 items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+          <span>Carregando salas…</span>
+        </div>
+        <div aria-hidden="true" className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          {['Disponíveis', 'Em atendimento', 'Reservadas', 'Em limpeza', 'Em manutenção'].map(label => (
+            <div key={label} className="space-y-3 rounded-xl border border-border bg-card p-3">
+              <span className="block min-h-8 text-xs font-medium text-muted-foreground">{label}</span>
+              <Skeleton className="h-5 w-12" />
+            </div>
+          ))}
+        </div>
+        <div aria-hidden="true" className="space-y-3 rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-4">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 border-t border-border/70 pt-3">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/5" />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+              <Skeleton className="h-8 w-20 shrink-0" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
   }
   if (salasQuery.isError) {
     return <ErrorState title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} />;
@@ -378,7 +407,7 @@ export default function Salas() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar salas" title="Atualizar salas">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full">
               <Plus className="h-4 w-4" /> Nova Sala / Leito
             </Button>
           </>
@@ -396,7 +425,7 @@ export default function Salas() {
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
           {([
             { key: 'ocupado' as EstadoSala, icon: Users, label: 'Em atendimento', caption: 'com paciente agora', color: 'text-white', surface: 'bg-white/15', escuro: true },
-            { key: 'reservada' as EstadoSala, icon: Clock, label: 'Reservadas', caption: 'paciente chamado ou na fila', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+            { key: 'reservada' as EstadoSala, icon: Clock, label: 'Reservadas', caption: 'paciente chamado ou na fila', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
             { key: 'disponivel' as EstadoSala, icon: CheckCircle2, label: 'Disponíveis', caption: 'prontas para uso', color: 'text-success', surface: 'bg-success/10', escuro: false },
             { key: 'limpeza' as EstadoSala, icon: Paintbrush, label: 'Limpeza', caption: 'aguardando higienização', color: 'text-info', surface: 'bg-info/10', escuro: false },
             { key: 'manutencao' as EstadoSala, icon: Wrench, label: 'Manutenção', caption: 'fora de operação', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
@@ -410,22 +439,22 @@ export default function Salas() {
                 aria-pressed={ativo}
                 onClick={() => setFilterEstado(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  s.escuro && 'border-transparent bg-primary text-primary-foreground',
+                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && s.escuro && 'ring-2 ring-primary/60',
                 )}
               >
-                <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className="flex min-h-[88px] items-center gap-3 p-3 xl:min-h-[96px]">
                   <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
                     <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                    <h3 className={cn('text-xs font-semibold leading-tight', s.escuro ? 'text-primary-foreground/90' : 'text-foreground')}>{s.label}</h3>
                       <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{stats[s.key]}</span>
                     </div>
-                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  <p className={cn('text-[11px] leading-snug', s.escuro ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{s.caption}</p>
                   </div>
                 </div>
               </button>
@@ -435,7 +464,7 @@ export default function Salas() {
         {foraDeOperacao > 0 && (
           <p className="text-xs text-muted-foreground">
             {foraDeOperacao} espaço{foraDeOperacao === 1 ? '' : 's'} fora de operação no momento.
-            {stats.limpeza > 0 && <> <Link to="/higiene-salas" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Acompanhar higienização</Link>.</>}
+            {stats.limpeza > 0 && <> <Link to="/higiene-salas" className="font-medium text-primary underline-offset-2 hover:underline">Acompanhar higienização</Link>.</>}
           </p>
         )}
       </section>
@@ -444,7 +473,7 @@ export default function Salas() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Buscar salas, leitos ou equipamentos" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Sala, cama, setor, equipamento..." value={search}
+          <Input aria-label="Buscar salas, leitos ou equipamentos" className="h-10 rounded-full pl-9" placeholder="Sala, cama, setor, equipamento..." value={search}
             onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
@@ -470,11 +499,11 @@ export default function Salas() {
         return (
           <section key={tipo} aria-labelledby={`salas-tipo-${tipo}`} className="space-y-3">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                 <Icon className="h-4 w-4" />
               </span>
               <h2 id={`salas-tipo-${tipo}`} className="text-base font-semibold text-foreground">{TIPO_LABELS[tipo] || tipo}</h2>
-              <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{salasDoTipo.length}</Badge>
+              <Badge variant="outline" className="h-5 rounded-full border-primary/25 bg-primary/5 text-xs tabular-nums text-primary">{salasDoTipo.length}</Badge>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {salasDoTipo.map((sala: any) => {
@@ -487,13 +516,14 @@ export default function Salas() {
                 return (
                   <Card
                     key={sala.id}
+                    data-testid={`room-card-${sala.id}`}
                     className={cn(
                       'relative overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
-                      statusExibido === 'ocupado' && 'border-destructive/30 shadow-[0_8px_24px_rgba(239,68,68,0.10)]',
-                      statusExibido === 'reservada' && 'border-[#1080CA]/40 ring-1 ring-[#1080CA]/20',
+                      statusExibido === 'ocupado' && 'border-destructive/40',
+                      statusExibido === 'reservada' && 'border-primary/40 ring-1 ring-primary/20',
                     )}
                   >
-                    <div className="absolute left-0 right-0 top-0 h-1.5" style={{ backgroundColor: sala.cor || '#1080CA' }} />
+                    <div aria-hidden="true" className="absolute left-0 right-0 top-0 h-1.5" style={{ backgroundColor: sala.cor || '#1456C0' }} />
                     <CardContent className="space-y-3 p-4 pt-5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -524,7 +554,7 @@ export default function Salas() {
                           className={cn(
                             'shrink-0 gap-1 rounded-full text-[10px]',
                             statusExibido === 'ocupado' && 'border-destructive/30 bg-destructive/10 text-destructive',
-                            statusExibido === 'reservada' && 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
+                            statusExibido === 'reservada' && 'border-primary/30 bg-primary/10 text-primary',
                             statusExibido === 'disponivel' && 'border-success/30 bg-success/10 text-success',
                             statusExibido === 'limpeza' && 'border-info/30 bg-info/10 text-info',
                             statusExibido === 'manutencao' && 'border-warning/40 bg-warning/10 text-warning-foreground',
@@ -541,7 +571,7 @@ export default function Salas() {
                           'space-y-1.5 rounded-xl border p-2.5',
                           statusExibido === 'ocupado'
                             ? 'border-destructive/20 bg-destructive/5'
-                            : 'border-[#1080CA]/20 bg-[#F3F8FC]',
+                            : 'border-primary/20 bg-primary/5',
                         )}>
                           {ocupacoesSala.map((oc: any) => {
                             const ag = oc.agendamentos;
@@ -553,27 +583,27 @@ export default function Salas() {
                               <div key={oc.id} className="flex flex-col gap-0.5">
                                 {pacNome && (
                                   <span className="flex items-center gap-1 text-xs font-medium text-foreground">
-                                    <User aria-hidden="true" className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-destructive' : 'text-[#1080CA]')} />
+                                    <User aria-hidden="true" className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-destructive' : 'text-primary')} />
                                     {pacNome}
                                   </span>
                                 )}
                                 {medNome && (
                                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                    <Users aria-hidden="true" className="h-3 w-3 text-[#1080CA]" />
+                                    <Users aria-hidden="true" className="h-3 w-3 text-primary" />
                                     {nomeMedico(medNome)}{medEsp ? ` — ${medEsp}` : ''}
                                   </span>
                                 )}
                                 <Badge
                                   className={cn(
                                     'w-fit rounded-full border-transparent text-[9px]',
-                                    oc.status === 'em_atendimento' ? 'bg-gradient-primary text-white hover:bg-gradient-primary' : 'bg-gradient-primary text-white hover:bg-gradient-primary',
+                                    'bg-primary text-primary-foreground',
                                   )}
                                 >
                                   {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
                                 </Badge>
                                 {dataOcupacaoAntiga && <div className="flex flex-wrap items-center gap-2 text-[10px] text-warning-foreground">
                                   <span>Registro de {dataOcupacaoAntiga}; confira a fila antes de liberar a sala.</span>
-                                  <Link className="inline-flex min-h-11 items-center font-medium text-[#1080CA] underline" to="/fila">Abrir fila</Link>
+                                  <Link className="inline-flex min-h-11 items-center font-medium text-primary underline" to="/fila">Abrir fila</Link>
                                 </div>}
                               </div>
                             );
@@ -596,7 +626,7 @@ export default function Salas() {
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
                           <div
-                            className={cn('h-full rounded-full transition-all', resumoOcupacao.overCapacity ? 'bg-destructive' : statusExibido === 'ocupado' ? 'bg-gradient-primary' : 'bg-[#1080CA]')}
+                            className={cn('h-full rounded-full transition-all', resumoOcupacao.overCapacity ? 'bg-destructive' : statusExibido === 'ocupado' ? 'bg-primary' : 'bg-primary/70')}
                             style={{ width: `${percentualOcupado}%` }}
                           />
                         </div>
@@ -628,7 +658,7 @@ export default function Salas() {
 
                       <div className="flex items-center gap-1.5 pt-1">
                         {statusExibido === 'disponivel' && (
-                          <Button size="sm" className="h-9 rounded-full bg-gradient-primary px-4 text-xs text-white hover:brightness-110"
+                          <Button size="sm" className="h-9 rounded-full px-4 text-xs"
                             onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null}>
                             {updatingSalaId === sala.id ? 'Salvando...' : 'Ocupar'}
                           </Button>
@@ -640,7 +670,7 @@ export default function Salas() {
                           </Button>
                         )}
                         {(statusExibido === 'ocupado' || statusExibido === 'reservada') && ocupacoesSala.length > 0 && (
-                          <Button asChild size="sm" variant="outline" className="h-9 gap-1 rounded-full border-[#1080CA]/30 px-4 text-xs text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                          <Button asChild size="sm" variant="outline" className="h-9 gap-1 rounded-full border-primary/30 px-4 text-xs text-primary hover:bg-primary/10 hover:text-primary">
                             <Link to="/fila" aria-label={`Ver ${sala.nome} na fila de atendimento`}>
                               <ListChecks aria-hidden="true" className="h-3 w-3" /> Ver na fila
                             </Link>
@@ -676,13 +706,13 @@ export default function Salas() {
       {filtradasPorEstado.length === 0 && (
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
               <DoorOpen className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">{totalSalas === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde aos filtros'}</p>
             <p className="mt-1 text-sm">{totalSalas === 0 ? 'Cadastre uma sala ou leito para começar.' : 'Limpe a busca, o tipo ou a situação para ver todas as salas.'}</p>
             {totalSalas === 0 ? (
-              <Button className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={() => handleOpen()}>Nova Sala / Leito</Button>
+              <p className="mt-4 text-xs">Use “Nova Sala / Leito” no topo para cadastrar o primeiro espaço.</p>
             ) : (
               <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>
                 Limpar filtros
@@ -852,12 +882,18 @@ export default function Salas() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label id="sala-cor-label" className="text-xs flex items-center gap-1"><Paintbrush className="h-3 w-3" />Cor de Identificação</Label>
-                <div role="group" aria-labelledby="sala-cor-label" className="flex gap-2 flex-wrap">
-                  {CORES.map(c => (
-                    <button key={c} type="button" aria-label={`Selecionar cor ${NOMES_CORES[c] || c}`} aria-pressed={form.cor === c} onClick={() => setForm(p => ({ ...p, cor: c }))}
+                <div role="group" aria-labelledby="sala-cor-label" className="flex flex-wrap items-center gap-2">
+                  {form.cor && !Object.keys(CORES_IDENTIFICACAO).includes(form.cor) && /^#[0-9A-Fa-f]{6}$/.test(form.cor) && (
+                    <div className="flex items-center gap-1.5" title="A cor personalizada será mantida ao salvar">
+                      <span aria-hidden="true" className="h-7 w-7 rounded-lg border-2 border-foreground ring-2 ring-ring/30" style={{ backgroundColor: form.cor }} />
+                      <span className="text-xs text-muted-foreground">Cor salva</span>
+                    </div>
+                  )}
+                  {Object.entries(CORES_IDENTIFICACAO).map(([c, label]) => (
+                    <button key={c} type="button" aria-label={`Selecionar cor ${label}`} aria-pressed={form.cor === c} onClick={() => setForm(p => ({ ...p, cor: c }))}
                       className={cn(
-                        'h-7 w-7 rounded-lg border-2 transition-all',
-                        form.cor === c ? 'border-foreground scale-110' : 'border-transparent',
+                        'h-7 w-7 rounded-lg border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        form.cor === c ? 'border-foreground ring-2 ring-ring/30' : 'border-transparent',
                       )}
                       style={{ backgroundColor: c }} />
                   ))}

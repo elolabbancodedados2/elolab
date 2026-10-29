@@ -431,10 +431,19 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
     <Dialog open={!!coletaId} onOpenChange={(open) => { if (open || !isBusy) onClose(); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary" />
-            Laudo — {coleta?.codigo_amostra ?? '...'}
-            {coleta?.urgente && <Badge variant="destructive" className="text-[10px]">Urgente</Badge>}
+          <DialogTitle className="flex min-w-0 flex-col items-start gap-2 pr-10 sm:flex-row sm:items-center sm:pr-0">
+            <span className="flex min-w-0 items-start gap-2">
+              <FileText className="h-5 w-5 shrink-0 text-primary" />
+              <span className="min-w-0 break-words">
+                Laudo — {coleta?.codigo_amostra ?? '...'}
+                {coleta?.pacientes && (
+                  <span className="mt-1 block max-w-full truncate text-xs font-medium text-muted-foreground sm:hidden">
+                    Paciente: {coleta.pacientes.nome_social?.trim() || coleta.pacientes.nome || '—'}
+                  </span>
+                )}
+              </span>
+            </span>
+            {coleta?.urgente && <Badge variant="destructive" className="shrink-0 text-[10px]">Urgente</Badge>}
           </DialogTitle>
         </DialogHeader>
 
@@ -505,18 +514,18 @@ function LaudoDetalheModal({ coletaId, onClose, onUpdate }: {
                     res.liberado ? 'border-success/30 bg-success/5' : '',
                     (isAltered || res.critico) && !res.liberado ? 'border-destructive/30 bg-destructive/5' : '',
                   )}>
-                    <div className="flex items-center justify-between">
-                      <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div data-testid="laudo-result-title" className="min-w-0">
                         <p className="font-semibold text-sm">{res.parametro ?? '—'}</p>
                         <p className="text-[11px] text-muted-foreground">{res.exames?.tipo_exame ?? '—'}</p>
                         <p className="text-[11px] text-muted-foreground">
                           {procedenciaResultadoLaudo({ metodo: res.metodo, equipamento: res.equipamento, laboratorio: res.exames?.laboratorios?.nome ?? 'própria clínica' })}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isAltered && <Badge variant="destructive" className="text-[10px] gap-1 rounded-full"><AlertTriangle className="h-2.5 w-2.5" />Alterado</Badge>}
-                        {res.critico && <Badge variant="destructive" className="text-[10px] gap-1 rounded-full"><AlertCircle className="h-2.5 w-2.5" />Crítico · revisão prioritária</Badge>}
-                        {res.critico && <Badge variant={cienciaCriticaPendente ? 'destructive' : 'secondary'} className="text-[10px] rounded-full">
+                      <div data-testid="laudo-result-badges" className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                        {isAltered && <Badge variant="destructive" className="max-w-full whitespace-normal text-left text-[10px] gap-1 rounded-full"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />Alterado</Badge>}
+                        {res.critico && <Badge variant="destructive" className="max-w-full whitespace-normal text-left text-[10px] gap-1 rounded-full"><AlertCircle className="h-2.5 w-2.5 shrink-0" />Crítico · revisão prioritária</Badge>}
+                        {res.critico && <Badge variant={cienciaCriticaPendente ? 'destructive' : 'secondary'} className="max-w-full whitespace-normal text-left text-[10px] rounded-full">
                           {cienciaCriticaPendente ? 'Aguardando ciência e conduta' : 'Ciência registrada'}
                         </Badge>}
                         {res.liberado ? (
@@ -930,7 +939,7 @@ export default function LaudosLab() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button asChild className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button asChild className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
               <Link to="/exames"><TestTube aria-hidden="true" className="h-4 w-4" /> Exames</Link>
             </Button>
           </>
@@ -949,8 +958,8 @@ export default function LaudosLab() {
               value: totalPendentes,
               icon: Clock,
               escuro: true,
-              color: 'text-white',
-              surface: 'bg-white/15',
+              color: 'text-primary',
+              surface: 'bg-primary/10',
               caption: 'aguardando laudo',
             },
             {
@@ -989,8 +998,8 @@ export default function LaudosLab() {
               value: coletas.length,
               icon: FileText,
               escuro: false,
-              color: 'text-[#1080CA]',
-              surface: 'bg-[#1080CA]/10',
+              color: 'text-primary',
+              surface: 'bg-primary/10',
               caption: 'na worklist',
             },
           ] as const).map(s => {
@@ -1003,22 +1012,22 @@ export default function LaudosLab() {
                 aria-pressed={ativo}
                 onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                  'group rounded-2xl border border-border/60 bg-card text-left transition-colors duration-200 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  s.escuro && ativo && 'border-primary bg-primary text-primary-foreground',
+                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && s.escuro && 'ring-2 ring-primary/30',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
-                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro && ativo ? 'bg-primary-foreground/15' : s.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.escuro && ativo ? 'text-primary-foreground' : s.color)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                      <h3 className={cn('truncate text-xs font-semibold', s.escuro && ativo ? 'text-primary-foreground' : 'text-foreground')}>{s.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', s.escuro && ativo ? 'text-primary-foreground' : s.color)}>{s.value}</span>
                     </div>
-                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                    <p className={cn('truncate text-[11px]', s.escuro && ativo ? 'text-primary-foreground' : 'text-muted-foreground')}>{s.caption}</p>
                   </div>
                 </div>
               </button>
@@ -1030,16 +1039,16 @@ export default function LaudosLab() {
       {/* ─── Próximo a Laudar ─── */}
       {proximoALaudar && (
         <div
-          className="rounded-2xl border border-[#1080CA]/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]"
+          className="rounded-2xl border border-primary/30 bg-card p-4"
           aria-label="Próxima coleta a laudar"
         >
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                 <FileSearch className="h-6 w-6" />
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-wide text-[#1080CA] font-semibold">Próximo a laudar</p>
+                <p className="text-[11px] uppercase tracking-wide text-primary font-semibold">Próximo a laudar</p>
                 <p className="text-lg font-bold truncate">
                   {proximoALaudar.pacientes?.nome_social?.trim() || proximoALaudar.pacientes?.nome || '—'}
                 </p>
@@ -1065,7 +1074,7 @@ export default function LaudosLab() {
                     asChild
                     variant="outline"
                     size="sm"
-                    className="h-9 gap-1.5 rounded-full border-[#25D366]/40 text-[#25D366] hover:bg-[#25D366]/10 hover:text-[#25D366]"
+                    className="h-9 gap-1.5 rounded-full border-border text-primary hover:bg-primary/10 hover:text-primary"
                   >
                     <a href={waLink} target="_blank" rel="noopener noreferrer" aria-label="Contatar paciente via WhatsApp">
                       <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
@@ -1075,7 +1084,7 @@ export default function LaudosLab() {
               })()}
               <Button
                 size="sm"
-                className="h-9 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
+                className="h-9 gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                 onClick={() => setViewingId(proximoALaudar.id)}
               >
                 <Eye className="h-3.5 w-3.5" /> Abrir Laudo
@@ -1091,7 +1100,7 @@ export default function LaudosLab() {
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             aria-label="Buscar laudos por paciente, CPF, telefone, código ou exame"
-            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+            className="h-10 rounded-full pl-9 focus-visible:ring-ring"
             placeholder="Nome, CPF, código ou exame..."
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -1114,10 +1123,10 @@ export default function LaudosLab() {
               aria-pressed={statusFilter === f.key}
               onClick={() => setStatusFilter(f.key)}
               className={cn(
-                'h-8 rounded-full border px-3 text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 statusFilter === f.key
-                  ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-                  : 'border-border bg-background text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                  ? 'border-transparent bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
               )}
             >
               {f.label}
@@ -1140,7 +1149,7 @@ export default function LaudosLab() {
         <CardContent className="p-0">
           {filtradas.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
                 <FileText className="h-7 w-7" />
               </span>
               <p className="font-medium text-foreground">
@@ -1163,7 +1172,7 @@ export default function LaudosLab() {
                 </Button>
               )}
               {coletas.length === 0 && !hasOlderLaudos && (
-                <Button asChild size="sm" className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110">
+                <Button asChild size="sm" className="mt-4 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
                   <Link to="/laboratorio"><FlaskConical className="h-4 w-4" /> Ir para Laboratório</Link>
                 </Button>
               )}
@@ -1208,12 +1217,12 @@ export default function LaudosLab() {
                         <td className="px-4 py-2.5">
                           <span className={cn(
                             'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
-                            idx === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
+                            idx === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
                           )}>
                             {idx + 1}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-[#1080CA] font-semibold">{c.codigo_amostra ?? '—'}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-primary font-semibold">{c.codigo_amostra ?? '—'}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             {c.urgente && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
@@ -1237,7 +1246,7 @@ export default function LaudosLab() {
                         <td className="px-4 py-2.5 text-center">
                           <div className="flex items-center gap-1.5 justify-center">
                             <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div className="h-full bg-[#1080CA] rounded-full transition-all"
+                              <div className="h-full bg-primary rounded-full transition-[width]"
                                 style={{ width: `${total > 0 ? (liberados.length / total) * 100 : 0}%` }} />
                             </div>
                             <span className="text-[10px] text-muted-foreground tabular-nums">{liberados.length}/{total}</span>
@@ -1262,7 +1271,7 @@ export default function LaudosLab() {
                                 asChild
                                 variant="ghost"
                                 size="sm"
-                                className="h-9 w-9 rounded-full p-0 text-[#25D366] hover:bg-[#25D366]/10"
+                                className="h-9 w-9 rounded-full p-0 text-primary hover:bg-primary/10"
                                 aria-label={`Contatar ${c.pacientes?.nome || 'paciente'} via WhatsApp`}
                               >
                                 <a href={waLink} target="_blank" rel="noopener noreferrer">

@@ -28,7 +28,7 @@ type SectionKey = keyof Pick<PersonalTaskGroups, 'overdue' | 'today' | 'upcoming
 const sectionConfig: Array<{ key: SectionKey; title: string; icon: typeof Circle; tone: string; chip: string }> = [
   { key: 'overdue', title: 'Atrasadas', icon: AlertTriangle, tone: 'text-destructive', chip: 'bg-destructive/10 text-destructive' },
   { key: 'today', title: 'Para hoje', icon: Clock3, tone: 'text-warning-foreground', chip: 'bg-warning/10 text-warning-foreground' },
-  { key: 'upcoming', title: 'Próximas', icon: CalendarClock, tone: 'text-[#1080CA]', chip: 'bg-[#1080CA]/10 text-[#1080CA]' },
+  { key: 'upcoming', title: 'Próximas', icon: CalendarClock, tone: 'text-primary', chip: 'bg-primary/10 text-primary' },
   { key: 'noDeadline', title: 'Sem prazo', icon: Circle, tone: 'text-muted-foreground', chip: 'bg-muted text-muted-foreground' },
   { key: 'completed', title: 'Concluídas e canceladas', icon: Check, tone: 'text-success', chip: 'bg-success/10 text-success' },
 ];
@@ -43,7 +43,7 @@ const statusLabel: Record<string, string> = {
 const prioridadeInfo: Record<string, { label: string; stripe: string; badge: string; ordem: number }> = {
   urgente: { label: 'Urgente', stripe: 'border-l-destructive', badge: 'bg-destructive/10 text-destructive', ordem: 0 },
   alta: { label: 'Alta', stripe: 'border-l-warning', badge: 'bg-warning/10 text-warning-foreground', ordem: 1 },
-  media: { label: 'Média', stripe: 'border-l-[#1080CA]', badge: 'bg-[#1080CA]/10 text-[#1080CA]', ordem: 2 },
+  media: { label: 'Média', stripe: 'border-l-primary', badge: 'bg-primary/10 text-primary', ordem: 2 },
   baixa: { label: 'Baixa', stripe: 'border-l-muted-foreground/40', badge: 'bg-muted text-muted-foreground', ordem: 3 },
 };
 
@@ -148,7 +148,12 @@ export default function MinhaFilaTarefas() {
   const metaDoDia = concluidasHoje + groups.today.length + groups.overdue.length;
   const progresso = metaDoDia > 0 ? Math.round((concluidasHoje / metaDoDia) * 100) : 0;
 
-  const irParaSecao = (key: SectionKey) => document.getElementById(`fila-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const irParaSecao = (key: SectionKey) => {
+    const target = document.getElementById(`fila-${key}`);
+    if (!target) return;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  };
 
   return (
     <div className="space-y-5 pb-8">
@@ -157,7 +162,7 @@ export default function MinhaFilaTarefas() {
         description="Tarefas atribuídas a você, organizadas por prazo."
         icon={<ListTodo />}
         actions={(
-          <Button asChild className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
+          <Button asChild className="h-11 gap-2 rounded-full px-5">
             <Link to="/tarefas">Abrir quadro da equipe <ArrowUpRight aria-hidden="true" className="h-4 w-4" /></Link>
           </Button>
         )}
@@ -184,13 +189,12 @@ export default function MinhaFilaTarefas() {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
-            <section aria-labelledby="fila-proxima-title" className="relative overflow-hidden rounded-[24px] bg-gradient-primary p-6 text-white shadow-lg">
-              <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-gradient-primary opacity-40 blur-3xl" />
+            <section aria-labelledby="fila-proxima-title" className="rounded-2xl bg-brand-dark p-6 text-white">
               <div className="relative">
                 <div className="flex items-center justify-between gap-3">
                   <h2 id="fila-proxima-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/70">Próxima tarefa</h2>
                   {proxima && (
-                    <span className={cn('rounded-full px-3 py-1 text-[11px] font-bold', groups.overdue.includes(proxima) ? 'bg-destructive text-white' : 'bg-gradient-primary text-white')}>
+                    <span className={cn('rounded-full px-3 py-1 text-[11px] font-bold', groups.overdue.includes(proxima) ? 'bg-destructive text-destructive-foreground' : 'bg-white/10 text-white')}>
                       {groups.overdue.includes(proxima) ? 'Atrasada' : groups.today.includes(proxima) ? 'Para hoje' : prioridadeInfo[proxima.prioridade]?.label ?? 'Próxima'}
                     </span>
                   )}
@@ -210,7 +214,7 @@ export default function MinhaFilaTarefas() {
                           <Play aria-hidden="true" className="h-4 w-4" /> Iniciar
                         </Button>
                       )}
-                      <Button type="button" disabled={atualizar.isPending} onClick={() => concluir(proxima)} aria-label={`Concluir próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-[0_6px_18px_rgba(16,128,202,0.4)] hover:brightness-110">
+                      <Button type="button" disabled={atualizar.isPending} onClick={() => concluir(proxima)} aria-label={`Concluir próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full bg-white px-5 text-primary hover:bg-white/90">
                         {atualizar.isPending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Check aria-hidden="true" className="h-4 w-4" />} Concluir
                       </Button>
                       <Button type="button" variant="ghost" disabled={atualizar.isPending} onClick={() => adiar(proxima)} aria-label={`Adiar próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full px-4 text-white/80 hover:bg-white/10 hover:text-white">
@@ -228,19 +232,19 @@ export default function MinhaFilaTarefas() {
               </div>
             </section>
 
-            <section aria-labelledby="fila-progresso-title" className="rounded-[22px] border border-border/60 bg-card p-5 shadow-xs">
+            <section aria-labelledby="fila-progresso-title" className="rounded-2xl border border-border/60 bg-card p-5">
               <h2 id="fila-progresso-title" className="text-base font-bold text-foreground">Progresso do dia</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">{concluidasHoje} de {metaDoDia} tarefas do dia concluídas</p>
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Progresso do dia" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progresso}>
-                <div className="h-full rounded-full bg-gradient-primary transition-[width] duration-500" style={{ width: `${progresso}%` }} />
+                <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progresso}%` }} />
               </div>
               <p className="mt-2 text-3xl font-light tabular-nums tracking-tight text-foreground">{progresso}%</p>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-2xl bg-muted/60 p-3">
+              <div className="mt-4 grid grid-cols-2 divide-x border-t border-border text-xs">
+                <div className="py-3 pr-3">
                   <p className="text-muted-foreground">Em andamento</p>
-                  <p className="mt-0.5 text-lg font-bold tabular-nums text-[#1080CA]">{tarefas.filter(t => t.status === 'em_andamento').length}</p>
+                  <p className="mt-0.5 text-lg font-bold tabular-nums text-primary">{tarefas.filter(t => t.status === 'em_andamento').length}</p>
                 </div>
-                <div className="rounded-2xl bg-muted/60 p-3">
+                <div className="py-3 pl-3">
                   <p className="text-muted-foreground">Abertas</p>
                   <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">{activeCount}</p>
                 </div>
@@ -248,7 +252,7 @@ export default function MinhaFilaTarefas() {
             </section>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Resumo da fila">
+          <nav aria-label="Ir para seção da fila" className="grid grid-cols-2 lg:grid-cols-5">
             {sectionConfig.map(({ key, title, icon: Icon, chip }) => {
               const destaque = key === 'overdue' && groups.overdue.length > 0;
               return (
@@ -257,21 +261,21 @@ export default function MinhaFilaTarefas() {
                   type="button"
                   onClick={() => irParaSecao(key)}
                   className={cn(
-                    'flex min-h-[92px] items-center gap-3 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md',
-                    destaque ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
+                    'flex min-h-[68px] items-center justify-between gap-3 border-b border-border px-3 py-3 text-left transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    destaque ? 'border-b-2 border-destructive bg-destructive/5 text-destructive' : 'hover:bg-muted/40',
                   )}
                 >
-                  <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', chip, destaque && 'bg-white/15 text-white')}>
-                    <Icon aria-hidden="true" className="h-5 w-5" />
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', chip, destaque && 'bg-destructive/10 text-destructive')}>
+                      <Icon aria-hidden="true" className="h-4 w-4" />
+                    </span>
+                    <span className={cn('text-sm', destaque ? 'font-semibold text-destructive' : 'text-muted-foreground')}>{title}</span>
                   </span>
-                  <span>
-                    <span className="block text-xl font-bold tabular-nums">{groups[key].length}</span>
-                    <span className={cn('text-xs', destaque ? 'text-white/70' : 'text-muted-foreground')}>{title}</span>
-                  </span>
+                  <span className={cn('text-lg font-bold tabular-nums', destaque ? 'text-destructive' : 'text-foreground')}>{groups[key].length}</span>
                 </button>
               );
             })}
-          </div>
+          </nav>
 
           {showingCompletedOnly && (
             <p className="rounded-xl border border-success/20 bg-success/5 px-4 py-3 text-sm text-foreground" role="status">
@@ -310,7 +314,7 @@ export default function MinhaFilaTarefas() {
                       const pi = prioridadeInfo[task.prioridade] ?? prioridadeInfo.media;
                       const aberta = isOpen(task);
                       return (
-                        <Card key={task.id} className={cn('rounded-2xl border-border/60 border-l-4 shadow-xs transition hover:border-[#1080CA]/40 hover:shadow-md', pi.stripe, key === 'overdue' && 'ring-1 ring-destructive/25', !aberta && 'opacity-70')}>
+                        <Card key={task.id} className={cn('rounded-xl border-border/60 border-l-4 transition-colors hover:border-primary/30', pi.stripe, key === 'overdue' && 'ring-1 ring-destructive/25', !aberta && 'opacity-70')}>
                           <CardContent className="space-y-3 p-4">
                             <div className="flex items-start justify-between gap-3">
                               <p className={cn('text-sm font-semibold leading-snug text-foreground', task.status === 'concluida' && 'text-muted-foreground line-through')}>
@@ -320,13 +324,13 @@ export default function MinhaFilaTarefas() {
                             </div>
                             {task.descricao && <p className="text-xs leading-relaxed text-muted-foreground">{task.descricao}</p>}
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
-                              <Badge variant="outline" className={cn(task.status === 'em_andamento' && 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]', task.status === 'concluida' && 'border-success/30 bg-success/10 text-success')}>{statusLabel[task.status] ?? task.status}</Badge>
+                              <Badge variant="outline" className={cn(task.status === 'em_andamento' && 'border-primary/30 bg-primary/10 text-primary', task.status === 'concluida' && 'border-success/30 bg-success/10 text-success')}>{statusLabel[task.status] ?? task.status}</Badge>
                               {task.data_vencimento && <span className="inline-flex items-center gap-1"><CalendarClock aria-hidden="true" className="h-3.5 w-3.5" /> {format(parseDateOnly(task.data_vencimento), 'dd/MM/yyyy')}</span>}
                               {task.categoria && <span>{task.categoria}</span>}
                               {task.paciente_id && (canOpenPatient ? (
                                 <Link
                                   to={`/pacientes?paciente=${encodeURIComponent(task.paciente_id)}`}
-                                  className="inline-flex min-h-11 items-center gap-1 text-[#1080CA] hover:underline"
+                                  className="inline-flex min-h-11 items-center gap-1 text-primary hover:underline"
                                 >
                                   <UserRound aria-hidden="true" className="h-3.5 w-3.5" /> Abrir paciente
                                 </Link>
@@ -339,7 +343,7 @@ export default function MinhaFilaTarefas() {
                                     <Play aria-hidden="true" className="h-4 w-4" /> Iniciar
                                   </Button>
                                 )}
-                                <Button type="button" size="sm" className="min-h-10 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={atualizar.isPending} onClick={() => concluir(task)} aria-label={`Concluir tarefa ${task.titulo}`}>
+                                <Button type="button" size="sm" className="min-h-10 gap-2 rounded-full" disabled={atualizar.isPending} onClick={() => concluir(task)} aria-label={`Concluir tarefa ${task.titulo}`}>
                                   {atualizar.isPending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Check aria-hidden="true" className="h-4 w-4" />} Concluir
                                 </Button>
                                 <Button type="button" variant="ghost" size="sm" className="min-h-10 gap-2 rounded-full text-muted-foreground" disabled={atualizar.isPending} onClick={() => adiar(task)} aria-label={`Adiar tarefa ${task.titulo} para amanhã`}>

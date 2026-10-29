@@ -136,7 +136,7 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GitMerge className="h-5 w-5 text-[#1080CA]" />
+            <GitMerge className="h-5 w-5 text-primary" />
             Revisar cadastros duplicados
           </DialogTitle>
           <DialogDescription>
@@ -174,7 +174,7 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <Badge variant="outline" className="rounded-full border-[#BFD8EE] tabular-nums text-[#1080CA]">{item.pontuacao} pts</Badge>
+                      <Badge variant="outline" className="rounded-full border-border tabular-nums text-primary">{item.pontuacao} pts</Badge>
                       <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={ocupado} onClick={() => void abrirPar(item)}>
                         Revisar
                       </Button>
@@ -197,7 +197,7 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
                     type="button"
                     aria-pressed={destinoIndex === index}
                     onClick={() => { setDestinoIndex(index as 0 | 1); setUsarOrigem(new Set()); }}
-                    className={`rounded-xl border p-3 text-left text-sm transition-colors ${destinoIndex === index ? 'border-[#1080CA] bg-[#F3F8FC] ring-1 ring-[#1080CA]/30' : 'border-border/60 hover:border-[#9CC7EC]'}`}
+                    className={`rounded-xl border p-3 text-left text-sm transition-colors ${destinoIndex === index ? 'border-primary bg-selected ring-1 ring-primary/30' : 'border-border/60 hover:border-primary/50'}`}
                   >
                     <span className="block font-medium">{ficha.nome}</span>
                     <span className="block text-[11px] text-muted-foreground">
@@ -217,11 +217,11 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
                   <legend className="sr-only">{d.rotulo}</legend>
                   <span className="text-xs font-medium">{d.rotulo}</span>
                   <label className="flex items-center gap-2 text-xs">
-                    <input type="radio" name={`campo-${d.campo}`} checked={!usarOrigem.has(d.campo)} onChange={() => alternarCampo(d.campo, false)} className="accent-[#1080CA]" />
+                    <input type="radio" name={`campo-${d.campo}`} checked={!usarOrigem.has(d.campo)} onChange={() => alternarCampo(d.campo, false)} className="accent-primary" />
                     <span>Manter: {valorLegivel(d.campo, d.destino)}</span>
                   </label>
                   <label className="flex items-center gap-2 text-xs">
-                    <input type="radio" name={`campo-${d.campo}`} checked={usarOrigem.has(d.campo)} onChange={() => alternarCampo(d.campo, true)} className="accent-[#1080CA]" />
+                    <input type="radio" name={`campo-${d.campo}`} checked={usarOrigem.has(d.campo)} onChange={() => alternarCampo(d.campo, true)} className="accent-primary" />
                     <span>Usar do duplicado: {valorLegivel(d.campo, d.origem)}</span>
                   </label>
                 </fieldset>
@@ -246,7 +246,7 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
                 <Button variant="outline" className="rounded-full" onClick={() => void descartar(par)} disabled={ocupado}>
                   <UserX className="mr-1 h-4 w-4" /> São pessoas diferentes
                 </Button>
-                <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => void mesclar()} disabled={ocupado || !motivoValido}>
+                <Button className="rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90" onClick={() => void mesclar()} disabled={ocupado || !motivoValido}>
                   {ocupado ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <GitMerge className="mr-1 h-4 w-4" />}
                   Mesclar cadastros
                 </Button>

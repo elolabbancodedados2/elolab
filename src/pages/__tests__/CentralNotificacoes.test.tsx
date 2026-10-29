@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const state = vi.hoisted(() => ({
@@ -52,9 +52,10 @@ const item = (overrides: Record<string, unknown> = {}) => ({
 describe('CentralNotificacoes — leitura em lote', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    state.queryResult = { isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
     state.data = [
       item(),
-      item({ source_type: 'pagamento', source_id: '00000000-0000-4000-8000-000000000102', category: 'pagamentos', title: 'Pagamento vencido' }),
+      item({ source_type: 'pagamento', source_id: '00000000-0000-4000-8000-000000000102', category: 'pagamentos', severity: 'error', title: 'Pagamento vencido' }),
       item({ source_id: '00000000-0000-4000-8000-000000000103', title: 'Tarefa já lida', is_read: true }),
     ];
     state.upsert.mockResolvedValue({ error: null });
@@ -90,6 +91,41 @@ describe('CentralNotificacoes — leitura em lote', () => {
 
     expect(screen.getByRole('button', { name: /Marcar 0/ })).toBeDisabled();
     expect(state.upsert).not.toHaveBeenCalled();
+  });
+
+  it('mantém filtros rápidos explícitos e aplica o filtro crítico', () => {
+    render(<CentralNotificacoes />);
+    const indicators = screen.getByRole('group', { name: 'Indicadores e filtros rápidos de notificações' });
+    const all = within(indicators).getByRole('button', { name: /Todas/ });
+    const critical = within(indicators).getByRole('button', { name: /Críticas/ });
+    expect(all).toHaveAttribute('aria-pressed', 'true');
+    expect(critical).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(critical);
+    expect(critical).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('1 de 3 notificações')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Pagamento vencido/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Tarefa pendente/ })).not.toBeInTheDocument();
+  });
+
+  it('apresenta carregamento, erro com retry e estado vazio', () => {
+    state.queryResult.isLoading = true;
+    const loading = render(<CentralNotificacoes />);
+    expect(screen.getByLabelText('Carregando notificações')).toBeInTheDocument();
+    loading.unmount();
+
+    state.queryResult.isLoading = false;
+    state.queryResult.isError = true;
+    const failure = render(<CentralNotificacoes />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível abrir a central');
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(state.queryResult.refetch).toHaveBeenCalledOnce();
+    failure.unmount();
+
+    state.queryResult.isError = false;
+    state.data = [];
+    render(<CentralNotificacoes />);
+    expect(screen.getByText('Nenhuma notificação por enquanto')).toBeInTheDocument();
   });
 
   it('mostra contagem agrupada e abre a origem do evento sem duplicar a leitura', async () => {

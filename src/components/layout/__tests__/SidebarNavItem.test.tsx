@@ -44,19 +44,18 @@ describe('SidebarNavItem', () => {
     expect(screen.getByRole('link', { name: 'Visão geral' })).toBeInTheDocument();
   });
 
-  it('tints the selected destination with the group color', () => {
+  it('marks the selected destination with the shared navigation tokens', () => {
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
         <SidebarNavItem
           item={{ label: 'Overview', icon: Home, href: '/dashboard' }}
           collapsed={false}
-          groupColor="#7C3AED"
         />
       </MemoryRouter>,
     );
 
     const link = screen.getByRole('link', { name: 'Overview' });
     expect(link).toHaveClass('font-semibold');
-    expect(link).toHaveStyle({ color: 'rgb(124, 58, 237)' });
+    expect(link).toHaveClass('bg-sidebar-accent', 'text-sidebar-accent-foreground');
   });
 });

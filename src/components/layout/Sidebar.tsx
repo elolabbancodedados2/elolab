@@ -161,7 +161,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/80 bg-sidebar text-sidebar-accent-foreground shadow-sm transition-all duration-300 ease-out',
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-200 ease-out',
         isCollapsed ? 'w-[72px]' : 'w-[286px]'
       )}
     >
@@ -184,7 +184,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             size="icon"
             onClick={() => setCollapsed(true)}
             aria-label="Recolher menu lateral"
-            className="h-9 w-9 rounded-xl text-sidebar-accent-foreground/55 hover:text-sidebar-accent-foreground hover:bg-black/[0.04]"
+            className="h-9 w-9 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
@@ -210,10 +210,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               className={cn(
                 'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
                 navigationMode === 'app'
-                  ? 'text-white shadow-md'
-                  : 'text-sidebar-accent-foreground/65 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               )}
-              style={navigationMode === 'app' ? { background: 'var(--gradient-primary)' } : undefined}
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" />
               {!isCollapsed && <span>App</span>}
@@ -240,10 +239,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             className={cn(
               'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
               navigationMode === 'platform'
-                ? 'text-white shadow-md'
-                : 'text-sidebar-accent-foreground/65 hover:bg-black/[0.04] hover:text-sidebar-accent-foreground',
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             )}
-            style={navigationMode === 'platform' ? { background: 'var(--gradient-primary)' } : undefined}
           >
             <ShieldCheck className="h-4 w-4 shrink-0" />
             {!isCollapsed && <span>Painel Admin</span>}
@@ -254,7 +252,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {!isCollapsed && (
         <div className="px-4 pb-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-accent-foreground/45" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               ref={searchInputRef}
               aria-label="Buscar no menu"
@@ -270,7 +268,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
                   setSearch('');
                 }
               }}
-              className="h-10 rounded-full border-black/[0.08] bg-white/70 pl-10 text-sm text-sidebar-accent-foreground placeholder:text-sidebar-accent-foreground/45 focus-visible:bg-white focus-visible:ring-sidebar-accent-foreground/20"
+              className="h-10 rounded-lg border-sidebar-border bg-white pl-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:bg-white focus-visible:ring-sidebar-ring"
             />
           </div>
         </div>
@@ -286,7 +284,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
                 size="icon"
                 onClick={() => setCollapsed(false)}
                 aria-label="Expandir menu lateral"
-                className="h-10 w-full rounded-xl text-sidebar-accent-foreground/50 hover:text-sidebar-accent-foreground hover:bg-black/[0.04]"
+                className="h-10 w-full rounded-lg text-sidebar-foreground/70 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent"
               >
                 <PanelLeftOpen className="h-3.5 w-3.5" />
               </Button>
@@ -315,16 +313,16 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             />
           ))}
           {normalizedSearch && searchedGroups.length === 0 && (
-            <div className="mx-1 my-4 rounded-2xl border border-black/[0.07] bg-white/65 px-4 py-4 text-center">
-              <p role="status" className="text-sm font-medium text-[#171717]">Nenhuma tela encontrada</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#171717]/60">Tente outro nome de módulo ou limpe a busca.</p>
+            <div className="mx-1 my-4 rounded-xl border border-sidebar-border bg-sidebar-accent px-4 py-4 text-center">
+              <p role="status" className="text-sm font-medium text-sidebar-accent-foreground">Nenhuma tela encontrada</p>
+              <p className="mt-1 text-xs leading-relaxed text-sidebar-foreground/75">Tente outro nome de módulo ou limpe a busca.</p>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 aria-label="Limpar busca do menu"
                 onClick={() => setSearch('')}
-                className="mt-2 h-8 rounded-full px-3 text-xs text-[#171717]/75 hover:bg-black/[0.05] hover:text-[#171717]"
+                className="mt-2 h-8 rounded-lg px-3 text-xs text-sidebar-accent-foreground hover:bg-sidebar/70 hover:text-white"
               >
                 Limpar busca
               </Button>
@@ -336,9 +334,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {/* ─── Footer ─── */}
       {!isCollapsed && (
         <div className="shrink-0 px-3 pb-4 pt-2">
-          <div className="rounded-xl bg-white/60 px-4 py-2.5 flex items-center justify-between">
-            <p className="text-[12px] font-semibold text-sidebar-accent-foreground/70">EloLab</p>
-            <p className="text-[11px] text-sidebar-accent-foreground/45">v2.0</p>
+          <div className="flex items-center justify-between rounded-lg bg-sidebar-accent px-4 py-2.5">
+            <p className="text-[12px] font-semibold text-sidebar-accent-foreground">EloLab</p>
+            <p className="text-[11px] text-sidebar-foreground/70">v2.0</p>
           </div>
         </div>
       )}
@@ -372,32 +370,21 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             aria-label={collapsed ? `Expandir menu: ${group.label}` : group.label}
             aria-expanded={!collapsed && isOpen}
             aria-controls={!collapsed && isOpen ? groupPanelId : undefined}
-            whileHover={{ x: collapsed ? 0 : 2 }}
-            whileTap={{ scale: 0.97 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className={cn(
-              'w-full flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
+              'w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
               collapsed && 'justify-center',
-              'text-white hover:text-white hover:brightness-105',
+              hasActiveChild ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground',
             )}
-            style={{
-              background: `linear-gradient(135deg, ${group.color} 0%, color-mix(in srgb, ${group.color} 55%, white) 100%)`,
-              boxShadow: hasActiveChild
-                ? `0 4px 14px ${group.color}66`
-                : `0 2px 6px ${group.color}2e`,
-            }}
           >
             {collapsed ? (
-              <motion.div
-                whileHover={{ scale: 1.12 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                className="h-9 w-9 rounded-full flex items-center justify-center bg-white/20 text-white transition-all"
+              <div
+                className={cn('flex h-9 w-9 items-center justify-center rounded-lg transition-colors', hasActiveChild ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'bg-sidebar-accent text-sidebar-foreground')}
               >
                 <GroupIcon className="h-4 w-4" />
-              </motion.div>
+              </div>
             ) : (
               <>
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white transition-all">
+                <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors', hasActiveChild ? 'bg-sidebar-primary/15 text-sidebar-primary' : 'bg-sidebar-accent text-sidebar-foreground')}>
                   <GroupIcon className="h-3.5 w-3.5" />
                 </div>
                 <span className="flex-1 text-left">{group.label}</span>
@@ -428,7 +415,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="flex flex-col gap-0.5 py-1 pl-3 border-l-2 ml-3" style={{ borderColor: `${group.color}30` }}>
+            <div className="ml-3 flex flex-col gap-0.5 border-l border-sidebar-border py-1 pl-3">
               {group.items.map((item, idx) => (
                 <motion.div
                   key={item.href}
@@ -436,7 +423,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.03, duration: 0.2 }}
                 >
-                  <SidebarNavItem item={item} collapsed={collapsed} groupColor={group.color} onNavigate={onNavigate} />
+                  <SidebarNavItem item={item} collapsed={collapsed} onNavigate={onNavigate} />
                 </motion.div>
               ))}
             </div>
@@ -444,13 +431,6 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
         )}
       </AnimatePresence>
 
-      {collapsed && (
-        <div className="space-y-px mt-0.5">
-          {group.items.map((item) => (
-            <SidebarNavItem key={item.href} item={item} collapsed={collapsed} groupColor={group.color} onNavigate={onNavigate} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

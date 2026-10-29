@@ -349,16 +349,11 @@ export default function TiposConsulta() {
       ) : tipos.length === 0 ? (
         <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
               <Stethoscope className="h-7 w-7" />
             </span>
             <p className="font-bold text-foreground">Nenhum tipo de consulta cadastrado</p>
-            <p className="text-sm text-muted-foreground mt-1">Clique em "Novo Tipo" para começar.</p>
-            {isAdmin() && (
-              <Button className="mt-4 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={openCreate}>
-                <Plus className="h-4 w-4" /> Novo Tipo
-              </Button>
-            )}
+            <p className="text-sm text-muted-foreground mt-1">Use “Novo Tipo” no topo para cadastrar o primeiro atendimento.</p>
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (

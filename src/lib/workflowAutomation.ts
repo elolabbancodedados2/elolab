@@ -13,7 +13,6 @@ import { formatCurrency } from '@/lib/formatters';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveExamPrice } from '@/lib/autoBilling';
 import { format } from 'date-fns';
-import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import type { Database } from '@/integrations/supabase/types';
 
 // ─── Types ──────────────────────────────────────────────
@@ -878,47 +877,6 @@ export async function autoProgressExame(params: {
         actions: [...actions, `Atenção: ${e?.message || 'uma automação complementar falhou'}`],
       };
     }
-    return { success: false, message: e.message, actions };
-  }
-}
-
-// ─── 13. Vincular Resultado ao Prontuário ───────────────
-/** Auto-attach exam result to patient's latest prontuario */
-export async function autoVincularResultadoProntuario(params: {
-  exameId: string;
-  pacienteId: string;
-  tipoExame: string;
-  resultado: string;
-}): Promise<WorkflowResult> {
-  const actions: string[] = [];
-
-  try {
-    // Find the latest prontuario for this patient
-    await autorizarLeituraHistoricoPaciente(params.pacienteId);
-    const { data: prontuario } = await supabase
-      .from('prontuarios')
-      .select('id, observacoes_internas')
-      .eq('paciente_id', params.pacienteId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (prontuario) {
-      const novaObs = (prontuario.observacoes_internas || '') +
-        `\n\n--- Resultado de Exame (${format(new Date(), 'dd/MM/yyyy HH:mm')}) ---\n` +
-        `Exame: ${params.tipoExame}\n${params.resultado}`;
-
-      await must(supabase.from('prontuarios').update({
-        observacoes_internas: novaObs,
-      }).eq('id', prontuario.id));
-
-      actions.push(`Resultado vinculado ao prontuário ${prontuario.id.slice(0, 8)}`);
-    } else {
-      actions.push('Nenhum prontuário encontrado — resultado não vinculado');
-    }
-
-    return { success: true, message: 'Resultado vinculado ao prontuário', actions };
-  } catch (e: any) {
     return { success: false, message: e.message, actions };
   }
 }

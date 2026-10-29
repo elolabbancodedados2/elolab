@@ -194,7 +194,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       </Button>
 
       {/* Left: Search */}
-      <div className="min-w-0 flex-1 sm:max-w-md sm:flex-none">
+      <div className="min-w-0 flex-1 sm:max-w-[280px]">
         <GlobalSearch />
       </div>
 
@@ -206,7 +206,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       )}
 
       {/* Agenda de hoje (ocupa o espaço livre do cabeçalho) */}
-      <div className="hidden min-w-0 max-w-[640px] flex-1 px-2 md:block">
+      <div className="hidden min-w-0 max-w-[640px] flex-[2] px-2 lg:block">
         <BarraHorario />
       </div>
 
@@ -400,7 +400,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
           <DropdownMenuTrigger asChild>
             <button className="flex min-h-11 min-w-11 items-center justify-center gap-2.5 rounded-full px-1 py-1 outline-none transition-all hover:bg-card focus-visible:ring-2 focus-visible:ring-ring md:justify-start md:pr-3">
               <Avatar className="h-10 w-10 ring-2 ring-card shadow-glow">
-                <AvatarFallback className="bg-[image:var(--gradient-primary)] text-primary-foreground text-xs font-bold">
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                   {profile?.nome ? getInitials(profile.nome) : 'U'}
                 </AvatarFallback>
               </Avatar>
@@ -416,7 +416,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
           <DropdownMenuContent align="end" className="w-64 rounded-2xl p-2">
             <div className="flex items-center gap-3 px-2 py-3 mb-1 rounded-xl bg-accent/30">
               <Avatar className="h-10 w-10 ring-2 ring-primary/20">
-                <AvatarFallback className="bg-[image:var(--gradient-primary)] text-primary-foreground text-sm font-bold">
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
                   {profile?.nome ? getInitials(profile.nome) : 'U'}
                 </AvatarFallback>
               </Avatar>

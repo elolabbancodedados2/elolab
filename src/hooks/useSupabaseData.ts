@@ -28,6 +28,8 @@ export function useSupabaseQuery<T>(
     page?: number;
     /** Mantém os dados anteriores enquanto um novo filtro carrega (evita piscar a tela inteira). */
     keepPrevious?: boolean;
+    /** A tela já apresenta um estado de erro contextual e uma ação de recuperação. */
+    suppressGlobalErrorToast?: boolean;
   }
 ) {
   const { user, profile } = useSupabaseAuth();
@@ -39,6 +41,7 @@ export function useSupabaseQuery<T>(
     // já estavam em andamento. Incluir o escopo na chave impede que a resposta
     // antiga seja reutilizada ou sobrescreva a consulta da clínica atual.
     queryKey: [tableName, user?.id ?? null, profile?.clinica_id ?? null, options],
+    meta: options?.suppressGlobalErrorToast ? { suppressGlobalErrorToast: true } : undefined,
     queryFn: async () => {
       const montar = () => {
         let query = supabase
@@ -188,7 +191,7 @@ async function logAudit(
 
 // Specific hooks for each table
 
-export function usePacientes(enabled = true) {
+export function usePacientes(enabled = true, options?: { suppressGlobalErrorToast?: boolean }) {
   return useSupabaseQuery<{
     id: string;
     nome: string;
@@ -221,10 +224,11 @@ export function usePacientes(enabled = true) {
   }>('pacientes', {
     orderBy: { column: 'nome', ascending: true },
     enabled,
+    suppressGlobalErrorToast: options?.suppressGlobalErrorToast,
   });
 }
 
-export function useMedicos() {
+export function useMedicos(options?: { enabled?: boolean; suppressGlobalErrorToast?: boolean }) {
   return useSupabaseQuery<{
     id: string;
     nome: string | null;
@@ -239,6 +243,8 @@ export function useMedicos() {
   }>('medicos', {
     select: 'id, nome, crm, tipo_registro, crm_uf, rqe, especialidade, intervalo_consulta, ativo, clinica_id',
     orderBy: { column: 'nome', ascending: true },
+    enabled: options?.enabled,
+    suppressGlobalErrorToast: options?.suppressGlobalErrorToast,
   });
 }
 
@@ -289,7 +295,7 @@ export function useAgendamentos(date?: string, options?: { enabled?: boolean }) 
  * Agendamentos entre duas datas (inclusive). Use no lugar de
  * `useAgendamentos()` sem data, que traz o histórico inteiro da clínica.
  */
-export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean; resumoPaciente?: boolean }) {
+export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean; resumoPaciente?: boolean; suppressGlobalErrorToast?: boolean }) {
   const camposPaciente = options?.resumoPaciente
     ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, alergias, ativo'
     : '*';
@@ -302,6 +308,7 @@ export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { 
     ],
     enabled: options?.enabled,
     keepPrevious: options?.keepPrevious,
+    suppressGlobalErrorToast: options?.suppressGlobalErrorToast,
   });
 }
 
@@ -336,7 +343,7 @@ export function useLancamentos() {
   });
 }
 
-export function useEstoque() {
+export function useEstoque(options?: { suppressGlobalErrorToast?: boolean }) {
   return useSupabaseQuery<{
     id: string;
     nome: string;
@@ -354,6 +361,7 @@ export function useEstoque() {
     updated_at: string;
   }>('estoque', {
     orderBy: { column: 'nome', ascending: true },
+    suppressGlobalErrorToast: options?.suppressGlobalErrorToast,
   });
 }
 
@@ -373,7 +381,7 @@ export function useSalas() {
   });
 }
 
-export function useFilaAtendimento(options?: { enabled?: boolean }) {
+export function useFilaAtendimento(options?: { enabled?: boolean; suppressGlobalErrorToast?: boolean }) {
   return useSupabaseQuery<{
     id: string;
     agendamento_id: string;
@@ -398,6 +406,7 @@ export function useFilaAtendimento(options?: { enabled?: boolean }) {
     orderBy: { column: 'posicao', ascending: true },
     staleTime: 1000 * 15, // 15 seconds for real-time queue
     enabled: options?.enabled,
+    suppressGlobalErrorToast: options?.suppressGlobalErrorToast,
   });
 }
 
@@ -406,13 +415,14 @@ export function useFilaAtendimento(options?: { enabled?: boolean }) {
  * (admin, médico ou operacional) mostrava isso: a única forma de saber era
  * abrir a tela de Tarefas por conta própria.
  */
-export function useMinhasTarefasPendentes(options?: { enabled?: boolean }) {
+export function useMinhasTarefasPendentes(options?: { enabled?: boolean; suppressGlobalErrorToast?: boolean }) {
   const { user, profile } = useSupabaseAuth();
   return useQuery({
     queryKey: ['minhas-tarefas-pendentes', user?.id ?? null, profile?.id ?? null, profile?.clinica_id ?? null],
     enabled: (options?.enabled ?? true) && !!profile?.id && !!profile?.clinica_id,
     staleTime: 60_000,
     refetchInterval: 60_000,
+    meta: options?.suppressGlobalErrorToast ? { suppressGlobalErrorToast: true } : undefined,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarefas')

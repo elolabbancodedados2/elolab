@@ -532,9 +532,9 @@ export default function MapaColeta() {
 
     return (
       <tr className={cn(
-        'border-b border-border/50 transition-colors last:border-0 hover:bg-[#F3F8FC]/70',
-        eProxima && 'bg-[#F3F8FC]',
-        isUrgent && 'bg-destructive/5',
+        'border-b border-border/50 transition-colors last:border-0 hover:bg-muted/50',
+        eProxima && 'bg-muted/30',
+        isUrgent && 'bg-warning/5',
         isSLABreach && !isUrgent && 'bg-warning/5',
       )}>
         <td className="px-3 py-2">
@@ -548,23 +548,23 @@ export default function MapaColeta() {
         <td className="px-2 py-2">
           <span className={cn(
             'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-            eProxima ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
+            eProxima ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
           )}>
             {idx + 1}
           </span>
         </td>
         <td className="px-3 py-2">
-          <button type="button" aria-label={`Ver detalhes da coleta ${item.codigo_amostra || ''}`} className="font-mono text-xs font-semibold text-[#1080CA] hover:underline" onClick={() => setDetailId(item.id)}>
+          <button type="button" aria-label={`Ver detalhes da coleta ${item.codigo_amostra || ''}`} className="font-mono text-xs font-semibold text-primary hover:underline" onClick={() => setDetailId(item.id)}>
             {item.codigo_amostra}
           </button>
         </td>
         <td className="px-3 py-2">
           <div className="flex items-center gap-1.5">
-            {isUrgent && <Zap aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 text-destructive" />}
+            {isUrgent && <Zap aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 text-warning-foreground" />}
             <div className="min-w-0">
-              <p className={cn('flex items-center gap-1.5 text-sm font-medium', isUrgent && 'text-destructive')}>
+              <p className={cn('flex items-center gap-1.5 text-sm font-medium', isUrgent && 'text-warning-foreground')}>
                 <span className="truncate">{nomePaciente(item.pacientes)}</span>
-                {eProxima && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Próxima</Badge>}
+                {eProxima && <Badge className="rounded-full border-transparent bg-primary text-[9px] text-primary-foreground hover:bg-primary">Próxima</Badge>}
               </p>
               <p className="text-[11px] text-muted-foreground">{age !== null ? `${age}a` : '?'} · {sexo}{item.pacientes?.cpf ? ` · ${item.pacientes.cpf}` : ''}</p>
             </div>
@@ -598,14 +598,14 @@ export default function MapaColeta() {
         <td className="px-3 py-2 text-right">
           <div className="flex items-center justify-end gap-1">
             {showActions && aguardaColeta(item) && (
-              <Button size="sm" className="h-9 gap-1 rounded-full bg-gradient-primary px-4 text-xs text-white hover:brightness-110" disabled={processando || bulkProcessing} onClick={() => handleColetar(item.id)}>
+              <Button size="sm" className="h-9 gap-1 rounded-full bg-primary px-4 text-xs text-primary-foreground hover:bg-primary/90" disabled={processando || bulkProcessing} onClick={() => handleColetar(item.id)}>
                 {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                 {processando ? 'Salvando…' : 'Coletar'}
               </Button>
             )}
             {item.status === 'coletado' && (
               <>
-                <Button size="sm" className="h-9 gap-1 rounded-full bg-gradient-primary px-4 text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={processando || bulkProcessing} onClick={() => handleEncaminharAnalise(item.id)}>
+                <Button size="sm" className="h-9 gap-1 rounded-full bg-primary px-4 text-xs text-primary-foreground shadow-sm hover:bg-primary/90" disabled={processando || bulkProcessing} onClick={() => handleEncaminharAnalise(item.id)}>
                   {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
                   {processando ? 'Salvando…' : 'Análise'}
                 </Button>
@@ -634,7 +634,7 @@ export default function MapaColeta() {
     const allSelected = items.length > 0 && selectedCount === items.length;
     return (
     <thead>
-      <tr className="border-b border-border/60 bg-[#F3F8FC]">
+      <tr className="border-b border-border/60 bg-muted/30">
         <th className="w-8 px-3 py-2.5"><Checkbox checked={allSelected ? true : selectedCount > 0 ? 'indeterminate' : false} disabled={bulkProcessing} aria-label={`Selecionar todas as coletas: ${label}`} onCheckedChange={() => toggleAll(items)} /></th>
         <th className="w-8 px-2 py-2.5 text-xs font-medium text-muted-foreground">#</th>
         <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Código</th>
@@ -669,7 +669,7 @@ export default function MapaColeta() {
                   <Printer aria-hidden="true" className="h-4 w-4" /> Etiquetas ({selected.size})
                 </Button>
                 {selectedColetaveis > 0 && (
-                  <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={bulkProcessing} onClick={handleBulkColetar}>
+                  <Button className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90" disabled={bulkProcessing} onClick={handleBulkColetar}>
                     {bulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Coletar {selectedColetaveis}
                   </Button>
                 )}
@@ -720,12 +720,12 @@ export default function MapaColeta() {
             {filtroRapido === 'todos' ? 'Clique em um indicador para filtrar as coletas.' : `Mostrando apenas ${FILTRO_LABELS[filtroRapido]}.`}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-6">
           {([
             { key: 'pendente' as FiltroRapido, icon: Clock, label: 'Pendentes', caption: 'aguardando coleta', color: 'text-white', surface: 'bg-white/15', escuro: true },
             { key: 'recoleta' as FiltroRapido, icon: RotateCcw, label: 'Recoleta', caption: 'nova amostra necessária', color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
             { key: 'coletados' as FiltroRapido, icon: CheckCircle2, label: 'Coletados', caption: 'aguardando ou em análise', color: 'text-success', surface: 'bg-success/10', escuro: false },
-            { key: 'urgente' as FiltroRapido, icon: Zap, label: 'Urgentes', caption: 'pendentes com prioridade', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+            { key: 'urgente' as FiltroRapido, icon: Zap, label: 'Urgentes', caption: 'pendentes com prioridade', color: 'text-warning-foreground', surface: 'bg-warning/10', escuro: false },
             { key: 'sla' as FiltroRapido, icon: AlertTriangle, label: 'SLA crítico', caption: `acima de ${SLA_CRITICAL} min`, color: 'text-warning-foreground', surface: 'bg-warning/10', escuro: false },
             { key: 'rejeitada' as FiltroRapido, icon: XCircle, label: 'Rejeitadas', caption: 'amostras recusadas', color: 'text-muted-foreground', surface: 'bg-muted', escuro: false },
           ]).map(s => {
@@ -738,10 +738,10 @@ export default function MapaColeta() {
                 aria-pressed={ativo}
                 onClick={() => setFiltroRapido(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                  s.escuro && 'border-transparent bg-primary text-primary-foreground',
+                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && s.escuro && 'ring-2 ring-primary/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -768,21 +768,21 @@ export default function MapaColeta() {
         const whatsapp = linkWhatsApp(proximaColeta.pacientes?.telefone, mensagemWhatsApp(proximaColeta));
         const processando = processingIds.has(proximaColeta.id);
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-sm">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
                   <TestTubes className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Próxima coleta</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Próxima coleta</p>
                   <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold text-foreground">
                     <span className="truncate">{nomePaciente(proximaColeta.pacientes)}</span>
-                    {proximaColeta.urgente && <Badge className="gap-1 rounded-full border-transparent bg-destructive text-[10px] text-destructive-foreground hover:bg-destructive"><Zap aria-hidden="true" className="h-3 w-3" />Urgente</Badge>}
+                    {proximaColeta.urgente && <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-[10px] text-warning-foreground"><Zap aria-hidden="true" className="h-3 w-3" />Urgente</Badge>}
                     <StatusBadge status={proximaColeta.status} />
                   </h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span className="font-mono font-semibold text-[#1080CA]">{proximaColeta.codigo_amostra}</span>
+                    <span className="font-mono font-semibold text-primary">{proximaColeta.codigo_amostra}</span>
                     <span className="inline-flex items-center gap-1">
                       <span aria-hidden="true" className={cn('h-3.5 w-2 rounded-sm', tuboColor(proximaColeta.tubo))} />{tuboNome(proximaColeta.tubo)}
                     </span>
@@ -799,7 +799,7 @@ export default function MapaColeta() {
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp && (
-                  <Button aria-label={`Chamar ${nomePaciente(proximaColeta.pacientes)} no WhatsApp`} asChild variant="outline" size="icon" className="h-10 w-10 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <Button aria-label={`Chamar ${nomePaciente(proximaColeta.pacientes)} no WhatsApp`} asChild variant="outline" size="icon" className="h-10 w-10 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${nomePaciente(proximaColeta.pacientes)} no WhatsApp`} title="Chamar no WhatsApp">
                       <MessageCircle className="h-4 w-4" />
                     </a>
@@ -816,7 +816,7 @@ export default function MapaColeta() {
                   <Eye aria-hidden="true" className="h-4 w-4" /> Detalhes
                 </Button>
                 <Button
-                  className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
+                  className="h-10 gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                   disabled={processando || bulkProcessing}
                   onClick={() => handleColetar(proximaColeta.id)}
                 >
@@ -834,7 +834,7 @@ export default function MapaColeta() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:w-72">
             <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input aria-label="Buscar por paciente, CPF, telefone, código ou exame" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Nome, CPF, telefone, código ou exame..." value={search} onChange={e => setSearch(e.target.value)} />
+            <Input aria-label="Buscar por paciente, CPF, telefone, código ou exame" className="h-10 rounded-full pl-9 focus-visible:ring-primary" placeholder="Nome, CPF, telefone, código ou exame..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <Select value={tuboFiltro} onValueChange={setTuboFiltro}>
             <SelectTrigger aria-label="Filtrar por tubo" className="h-10 w-full rounded-full sm:w-48"><SelectValue /></SelectTrigger>
@@ -848,7 +848,7 @@ export default function MapaColeta() {
             </SelectContent>
           </Select>
           {selected.size > 0 && (
-            <Badge variant="outline" className="h-8 gap-1 rounded-full border-[#BFD8EE] text-xs text-[#1080CA]">
+            <Badge variant="outline" className="h-8 gap-1 rounded-full border-border text-xs text-primary">
               {selected.size} selecionado(s)
               <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}>✕</button>
             </Badge>
@@ -874,8 +874,8 @@ export default function MapaColeta() {
                   aria-pressed={ativo}
                   onClick={() => setSetorFiltro(ativo ? 'todos' : setor.chave)}
                   className={cn(
-                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                    ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                    ativo ? 'border-transparent bg-primary text-primary-foreground shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                   )}
                 >
                   <DoorOpen aria-hidden="true" className="h-3 w-3" />
@@ -891,7 +891,7 @@ export default function MapaColeta() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16" role="status" aria-label="Carregando coletas"><Loader2 className="h-8 w-8 animate-spin text-[#1080CA]" /></div>
+        <div className="flex justify-center py-16" role="status" aria-label="Carregando coletas"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
       ) : (
         <div className="space-y-6">
           {grupos.map(grupo => {
@@ -900,11 +900,11 @@ export default function MapaColeta() {
             return (
               <section key={grupo.chave} aria-labelledby={idGrupo} className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                     <DoorOpen className="h-4 w-4" />
                   </span>
                   <h2 id={idGrupo} className="text-base font-semibold text-foreground">{grupo.nome}</h2>
-                  <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{grupo.itens.length}</Badge>
+                  <Badge variant="outline" className="h-5 rounded-full border-border bg-white text-xs tabular-nums text-primary">{grupo.itens.length}</Badge>
                   <span className="text-xs text-muted-foreground">
                     {pendentesGrupo > 0 ? `${pendentesGrupo} aguardando coleta` : 'nenhuma pendente'}
                   </span>
@@ -926,7 +926,7 @@ export default function MapaColeta() {
           {filtrado.length === 0 && !loading && (
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
                   <Beaker className="h-7 w-7" />
                 </span>
                 <p className="font-medium text-foreground">
@@ -944,7 +944,7 @@ export default function MapaColeta() {
                     Limpar filtros
                   </Button>
                 ) : itens.length === 0 ? (
-                  <Button asChild size="sm" className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110">
+                  <Button asChild size="sm" className="mt-4 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
                     <Link to="/laboratorio">Abrir painel do laboratório</Link>
                   </Button>
                 ) : null}
@@ -959,13 +959,13 @@ export default function MapaColeta() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FlaskConical className="h-5 w-5 text-[#1080CA]" />
+              <FlaskConical className="h-5 w-5 text-primary" />
               Detalhes da Coleta — {detailItem?.codigo_amostra}
             </DialogTitle>
           </DialogHeader>
           {detailItem && (
             <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/60 bg-[#F3F8FC] p-3">
+              <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/60 bg-muted/30 p-3">
                 <div><p className="text-[11px] text-muted-foreground">Paciente</p><p className="font-semibold">{nomePaciente(detailItem.pacientes)}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">CPF</p><p>{detailItem.pacientes?.cpf || '—'}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">Solicitada em</p><p>{detailItem.created_at ? dataHoraClinica(new Date(detailItem.created_at)) : '—'}</p></div>
@@ -991,7 +991,7 @@ export default function MapaColeta() {
               )}
               <div className="flex flex-wrap gap-2 pt-2">
                 <StatusBadge status={detailItem.status} />
-                {detailItem.urgente && <Badge variant="destructive" className="gap-1 rounded-full"><Zap aria-hidden="true" className="h-3 w-3" />Urgente</Badge>}
+                {detailItem.urgente && <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-warning-foreground"><Zap aria-hidden="true" className="h-3 w-3" />Urgente</Badge>}
                 {detailItem.jejum_necessario && <Badge variant="outline" className="rounded-full">Jejum {detailItem.jejum_horas}h</Badge>}
               </div>
               {detailItem.local_atual && <p className="text-xs text-muted-foreground">Local atual: <span className="font-medium text-foreground">{detailItem.local_atual}</span></p>}
@@ -1000,7 +1000,7 @@ export default function MapaColeta() {
               <section className="space-y-3 rounded-xl border p-3" aria-label="Histórico de rastreabilidade">
                 <div><p className="text-sm font-semibold">Rastreabilidade da amostra</p><p className="text-xs text-muted-foreground">Cada movimentação fica registrada com data e responsável.</p></div>
                 {eventosAmostraQuery.isError ? <ErrorState compact title="Não foi possível carregar o histórico" error={eventosAmostraQuery.error} onRetry={() => void eventosAmostraQuery.refetch()} /> : eventosAmostraQuery.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : eventosAmostraQuery.data?.length ? (
-                  <ol className="max-h-48 space-y-3 overflow-y-auto">{eventosAmostraQuery.data.map((evento: any) => <li key={evento.id} className="flex gap-2 border-l-2 border-[#1080CA]/30 pl-3"><div className="min-w-0"><p className="text-xs font-medium capitalize">{String(evento.tipo).replace(/_/g, ' ')}{evento.status_novo ? ` · ${evento.status_novo}` : ''}</p><p className="text-[11px] text-muted-foreground">{dataHoraClinica(new Date(evento.created_at))}{evento.profiles?.nome ? ` · ${evento.profiles.nome}` : ''}{evento.local ? ` · ${evento.local}` : ''}</p>{evento.detalhes?.motivo && <p className="mt-0.5 text-xs">{evento.detalhes.motivo}</p>}</div></li>)}</ol>
+                  <ol className="max-h-48 space-y-3 overflow-y-auto">{eventosAmostraQuery.data.map((evento: any) => <li key={evento.id} className="flex gap-2 border-l-2 border-primary/30 pl-3"><div className="min-w-0"><p className="text-xs font-medium capitalize">{String(evento.tipo).replace(/_/g, ' ')}{evento.status_novo ? ` · ${evento.status_novo}` : ''}</p><p className="text-[11px] text-muted-foreground">{dataHoraClinica(new Date(evento.created_at))}{evento.profiles?.nome ? ` · ${evento.profiles.nome}` : ''}{evento.local ? ` · ${evento.local}` : ''}</p>{evento.detalhes?.motivo && <p className="mt-0.5 text-xs">{evento.detalhes.motivo}</p>}</div></li>)}</ol>
                 ) : <p className="text-xs text-muted-foreground">Nenhuma movimentação registrada.</p>}
               </section>
 
@@ -1040,7 +1040,7 @@ export default function MapaColeta() {
                   {['transporte', 'armazenamento'].includes(eventoTipo) && <div className="space-y-1"><Label htmlFor="lab-amostra-local">Local</Label><Input id="lab-amostra-local" value={eventoLocal} onChange={(event) => setEventoLocal(event.target.value)} maxLength={120} placeholder="Ex.: setor de bioquímica" /></div>}
                   {eventoTipo === 'observacao' && <div className="space-y-1 sm:col-span-2"><Label htmlFor="lab-amostra-motivo">Observação</Label><Input id="lab-amostra-motivo" value={eventoMotivo} onChange={(event) => setEventoMotivo(event.target.value)} maxLength={500} placeholder="Descreva a ocorrência" /></div>}
                 </div>
-                <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
+                <div className="flex justify-end"><Button size="sm" onClick={() => void registrarEventoAmostra()} disabled={savingEvento} className="gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">{savingEvento && <Loader2 className="h-4 w-4 animate-spin" />} Registrar evento</Button></div>
               </section>
             </div>
           )}

@@ -12,11 +12,10 @@ import {
 interface SidebarNavItemProps {
   item: MenuItem;
   collapsed: boolean;
-  groupColor?: string;
   onNavigate?: () => void;
 }
 
-export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: SidebarNavItemProps) {
+export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemProps) {
   const Icon = item.icon;
   const location = useLocation();
   const targetUrl = new URL(item.href, window.location.origin);
@@ -38,38 +37,25 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
         const itemIsActive = isItemActive(isActive);
         return cn(
           'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
-          'text-[#171717]/80 hover:text-[#171717] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]/50 focus-visible:ring-offset-1',
+          'text-sidebar-foreground/75 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
           itemIsActive && !item.external && 'font-semibold',
+          itemIsActive && !item.external && 'bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         );
-      }}
-      style={({ isActive: routeIsActive }) => {
-        const isActive = isItemActive(routeIsActive);
-        if (!isActive || item.external) return {};
-        const color = groupColor ?? '#1080CA';
-        return {
-          backgroundColor: `${color}14`,
-          color: color,
-        };
       }}
     >
       {({ isActive: routeIsActive }) => {
         const isActive = isItemActive(routeIsActive);
         return (
         <>
-          {/* Icon with hover glow */}
-          <motion.div
+          <div
             aria-hidden="true"
             tabIndex={-1}
-            whileHover={{ scale: 1.15, rotate: isActive ? 0 : 6 }}
-            whileTap={{ scale: 0.9 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200"
-            style={isActive && !item.external ? { backgroundColor: `${groupColor ?? '#1080CA'}22` } : undefined}
+            className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150', isActive && !item.external && 'bg-sidebar-primary/15 text-sidebar-primary')}
           >
             <Icon className="h-[17px] w-[17px] shrink-0 transition-colors duration-200" />
-          </motion.div>
+          </div>
 
           {/* Label */}
           {!collapsed && (
@@ -88,11 +74,10 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
                 'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold tabular-nums ring-1',
                 typeof item.badge === 'number'
                   ? isActive
-                    ? 'min-w-[18px] text-white ring-transparent'
-                    : 'min-w-[18px] bg-[#171717] text-white ring-transparent'
-                  : 'bg-black/[0.04] text-[#171717]/70 ring-black/[0.08] uppercase tracking-wide'
+                    ? 'min-w-[18px] bg-sidebar-primary text-sidebar-primary-foreground ring-transparent'
+                    : 'min-w-[18px] bg-sidebar-muted text-sidebar-foreground ring-transparent'
+                  : 'bg-sidebar-muted text-sidebar-foreground/80 ring-sidebar-border uppercase tracking-wide'
               )}
-              style={isActive && typeof item.badge === 'number' ? { backgroundColor: groupColor ?? '#1080CA' } : undefined}
             >
               {item.badge}
             </motion.span>
@@ -116,7 +101,7 @@ export function SidebarNavItem({ item, collapsed, groupColor, onNavigate }: Side
           >
             {item.label}
             {item.badge != null && item.badge !== 0 && item.badge !== '' && (
-              <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-black/5 px-1 text-[9px] font-bold text-[#171717]">
+              <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-sidebar-muted px-1 text-[9px] font-bold text-sidebar-foreground">
                 {item.badge}
               </span>
             )}

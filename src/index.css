@@ -6,10 +6,8 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background:
-    radial-gradient(ellipse at 50% 42%, rgba(16, 128, 202, 0.08), transparent 34%),
-    #ededf3;
-  color: #1b1b1f;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
   text-align: center;
 }
 
@@ -42,7 +40,7 @@
   margin: 27px auto 21px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(23, 18, 43, 0.12);
+  background: hsl(var(--border));
 }
 
 .brand-loader__progress span {
@@ -50,13 +48,13 @@
   inset: 0 auto 0 0;
   width: 38%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #1080CA, #2ED5E7);
+  background: hsl(var(--primary));
   animation: brand-loader-glide 1.35s ease-in-out infinite;
 }
 
 .brand-loader__message {
   margin: 0;
-  color: #1b1b1f;
+  color: hsl(var(--foreground));
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 16px;
   font-weight: 600;
@@ -65,7 +63,7 @@
 
 .brand-loader__detail {
   margin: 7px 0 0;
-  color: #6b6a63;
+  color: hsl(var(--muted-foreground));
   font-size: 13px;
   line-height: 1.55;
 }
@@ -77,17 +75,17 @@
   justify-content: center;
   margin-top: 19px;
   padding: 0 16px;
-  border: 1px solid rgba(17, 17, 17, 0.16);
+  border: 1px solid hsl(var(--border));
   border-radius: 11px;
   background: #fff;
-  color: #111111;
+  color: hsl(var(--foreground));
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
 }
 
 .brand-loader__retry:focus-visible {
-  outline: 3px solid rgba(17, 17, 17, 0.3);
+  outline: 3px solid hsl(var(--ring) / 0.5);
   outline-offset: 3px;
 }
 
@@ -110,48 +108,49 @@
   :root {
     --button-ripple-color: rgba(17, 17, 17, 0.06);
 
-    /* EloLab v2 — "Intellecta": preto/branco/cinza + acento azul→ciano da logo */
-    --brand: 215 52% 42%;
+    /* EloLab: azul clínico, navy estrutural e ciano funcional. */
+    --brand: 217 81% 41.6%;
     --brand-foreground: 0 0% 100%;
-    --brand-light: 215 35% 95%;
-    --brand-hover: 215 52% 34%;
-    --brand-glow: 215 38% 58%;
+    --brand-light: 217 100% 96%;
+    --brand-hover: 217 81% 34%;
+    --brand-glow: 217 81% 41.6%;
+    --brand-dark: 217 73% 16%;
 
     /* Primary — ação primária no azul da marca (preto removido em 2026-10-18) */
-    --primary: 215 52% 42%;
+    --primary: 217 81% 41.6%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 215 52% 42%;
+    --primary-glow: 217 81% 41.6%;
 
-    /* Destaque (verde-limão) para blocos "em andamento" e confirmações pontuais */
-    --highlight: 215 24% 90%;
-    --highlight-foreground: 215 32% 20%;
+    /* Ciano é destaque funcional; texto escuro mantém contraste legível. */
+    --highlight: 188 95% 42%;
+    --highlight-foreground: 217 54% 20%;
 
     /* Success — mantém o significado semântico, não muda */
     --success: 152 69% 30%;
     --success-foreground: 0 0% 100%;
 
-    /* Background & Surfaces — branco gelo: branco puro com leve toque frio */
-    --background: 210 25% 98%;
-    --foreground: 240 10% 12%;
+    /* Fundo claro e texto navy da identidade EloLab. */
+    --background: 216 55% 98%;
+    --foreground: 217 54% 20%;
 
     /* Cards — branco puro para contrastar com o fundo gelo */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 12%;
+    --card-foreground: 217 54% 20%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 12%;
+    --popover-foreground: 217 54% 20%;
 
     /* Secondary */
     --secondary: 210 18% 96%;
-    --secondary-foreground: 240 10% 14%;
+    --secondary-foreground: 217 54% 20%;
 
     /* Muted */
-    --muted: 210 18% 96%;
-    --muted-foreground: 240 6% 40%;
+    --muted: 216 55% 98%;
+    --muted-foreground: 213 17% 46%;
 
     /* Accent */
     --accent: 210 18% 96%;
-    --accent-foreground: 240 10% 14%;
+    --accent-foreground: 217 54% 20%;
 
     /* Destructive — mantém o significado semântico, não muda */
     --destructive: 0 72% 48%;
@@ -166,9 +165,9 @@
     --info-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 210 15% 90%;
-    --input: 210 15% 86%;
-    --ring: 215 52% 42%;
+    --border: 211 33% 90%;
+    --input: 211 33% 86%;
+    --ring: 217 81% 41.6%;
 
     --radius: 1rem;
 
@@ -178,33 +177,33 @@
     --shadow-md: 0 6px 16px -6px hsl(240 20% 10% / 0.12), 0 2px 4px -2px hsl(240 20% 10% / 0.05);
     --shadow-lg: 0 16px 32px -12px hsl(240 20% 10% / 0.18), 0 4px 8px -4px hsl(240 20% 10% / 0.06);
     --shadow-xl: 0 28px 56px -16px hsl(240 20% 10% / 0.22), 0 8px 16px -6px hsl(240 20% 10% / 0.07);
-    --shadow-glow: 0 12px 28px -12px hsl(var(--brand) / 0.5);
-    --shadow-glow-success: 0 12px 28px -12px hsl(var(--success) / 0.45);
+    --shadow-glow: var(--shadow-sm);
+    --shadow-glow-success: var(--shadow-sm);
 
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(215 52% 42%) 0%, hsl(215 52% 42%) 100%);
-    --gradient-hero: linear-gradient(140deg, hsl(215 52% 34%) 0%, hsl(215 52% 42%) 100%);
-    --gradient-highlight: linear-gradient(135deg, hsl(215 24% 90%) 0%, hsl(215 24% 90%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(240 20% 99%) 100%);
-    --gradient-sidebar: linear-gradient(180deg, #F3F3F6 0%, #F3F3F6 55%, #BFD8EE 100%);
-    --gradient-surface: linear-gradient(135deg, #f5f8fb 0%, #edf1f7 100%);
+    /* Solid legacy aliases kept for compatibility. */
+    --gradient-primary: hsl(var(--primary));
+    --gradient-hero: hsl(var(--brand-dark));
+    --gradient-highlight: hsl(var(--highlight));
+    --gradient-card: hsl(var(--card));
+    --gradient-sidebar: hsl(var(--sidebar-background));
+    --gradient-surface: hsl(var(--background));
 
     /* Rail de navegação — branco gelo */
-    --sidebar-background: 210 25% 98%;
-    --sidebar-foreground: 240 6% 40%;
-    --sidebar-primary: 240 6% 10%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 14% 92%;
-    --sidebar-accent-foreground: 240 10% 12%;
-    --sidebar-border: 240 10% 88%;
-    --sidebar-ring: 215 52% 42%;
-    --sidebar-muted: 240 10% 90%;
+    --sidebar-background: 217 73% 16%;
+    --sidebar-foreground: 216 55% 98%;
+    --sidebar-primary: 188 95% 42%;
+    --sidebar-primary-foreground: 217 54% 20%;
+    --sidebar-accent: 217 60% 24%;
+    --sidebar-accent-foreground: 216 55% 98%;
+    --sidebar-border: 217 42% 28%;
+    --sidebar-ring: 188 95% 42%;
+    --sidebar-muted: 217 42% 28%;
 
     /* Charts */
-    --chart-1: 215 52% 42%;
-    --chart-2: 215 30% 58%;
-    --chart-3: 195 24% 52%;
-    --chart-4: 215 18% 72%;
+    --chart-1: 217 81% 41.6%;
+    --chart-2: 188 95% 42%;
+    --chart-3: 217 73% 16%;
+    --chart-4: 213 17% 46%;
     --chart-5: 0 72% 58%;
     --chart-6: 34 92% 55%;
   }
@@ -225,11 +224,11 @@ html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
 }
 
 html[data-contrast='high'] {
-  --foreground: 252 60% 8%;
-  --muted-foreground: 252 30% 24%;
-  --border: 250 25% 58%;
-  --input: 250 25% 52%;
-  --ring: 215 52% 30%;
+  --foreground: 217 54% 12%;
+  --muted-foreground: 217 38% 26%;
+  --border: 217 28% 48%;
+  --input: 217 28% 42%;
+  --ring: 217 81% 30%;
 }
 
 html[data-text-size='large'] {
@@ -324,7 +323,7 @@ html[data-text-size='large'] {
     @apply border-primary/15;
   }
 
-  /* ─── Gradient classes ─── */
+  /* ─── Solid compatibility classes ─── */
   .gradient-primary { background: var(--gradient-primary); }
   .gradient-hero { background: var(--gradient-hero); }
   .gradient-sidebar { background: var(--gradient-sidebar); }
@@ -391,19 +390,6 @@ html[data-text-size='large'] {
   }
   .input-focus-ring:focus-within::after {
     @apply opacity-100;
-  }
-
-  /* ─── Shimmer button ─── */
-  .btn-shimmer {
-    @apply relative overflow-hidden;
-  }
-  .btn-shimmer::before {
-    content: '';
-    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent;
-    animation: shimmer 2.5s infinite;
-  }
-  @keyframes shimmer {
-    100% { transform: translateX(100%); }
   }
 
   /* ─── Icon containers ─── */
@@ -706,11 +692,6 @@ html[data-text-size='large'] {
 @keyframes countUp {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
 }
 
 @keyframes pulseGlow {

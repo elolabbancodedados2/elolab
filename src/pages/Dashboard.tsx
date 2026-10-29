@@ -2,7 +2,7 @@ import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { DoctorDashboard } from '@/components/dashboard/DoctorDashboard';
 import { AdminDashboardOverview } from '@/components/dashboard/AdminDashboardOverview';
-import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
+import { formatAppointmentStatus, isAppointmentClosed, isAppointmentCompleted } from '@/components/dashboard/appointmentStatus';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -15,6 +15,7 @@ import { MAX_LINHAS_AUTO, useAgendamentosPeriodo, useSupabaseQuery, useEstoque, 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
+import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 import {
   Users, Calendar, Clock, UserPlus, CalendarPlus, ArrowRight, ArrowUpRight,
   Activity, Stethoscope, Package, FileText, TrendingUp, TrendingDown,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import dashboardBanner from '@/assets/dashboard-banner-elolab.png';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 import { format, parseISO } from 'date-fns';
@@ -227,9 +228,12 @@ const roleWorkspaces = {
 
 const dashboardRolePriority = ['admin', 'recepcao', 'enfermagem', 'financeiro'] as const;
 
-export function getDashboardLinksForRoles(roles: string[]): string[] {
+export function getDashboardLinksForRoles(roles: string[], hasExamFeature = true): string[] {
   const role = dashboardRolePriority.find(item => roles.includes(item));
-  return role ? roleWorkspaces[role].actions.map(action => action.href) : [];
+  if (!role) return [];
+  return roleWorkspaces[role].actions
+    .filter(action => hasExamFeature || role !== 'enfermagem' || !['/mapa-coleta', '/laboratorio'].includes(action.href))
+    .map(action => action.href);
 }
 
 const roleTips = {
@@ -240,7 +244,7 @@ const roleTips = {
 } as const;
 
 const workspaceTones = [
-  'bg-[image:var(--gradient-primary)] text-white shadow-glow',
+  'bg-primary text-primary-foreground shadow-glow',
   'border border-border/60 bg-card text-foreground hover:bg-accent',
   'border border-border/60 bg-accent/50 text-foreground hover:bg-accent',
 ];
@@ -257,8 +261,6 @@ function RoleWorkspace({ roles }: { roles: string[] }) {
   </section>;
 }
 
-const statusFinalizado = ['finalizado', 'atendimento_finalizado', 'pago'];
-
 function minutosDesde(valor?: string | null, agora = new Date()) {
   if (!valor) return null;
   const data = new Date(valor);
@@ -270,7 +272,7 @@ function iniciaisDe(nome: string) {
   return nome.split(' ').filter(Boolean).map(parte => parte[0]).slice(0, 2).join('').toUpperCase();
 }
 
-function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string | null }) {
+function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]; nome?: string | null; hasExamFeature: boolean }) {
   const agora = useClinicClock();
   const hora = Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23',
@@ -281,6 +283,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
   const horaAgora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(agora);
   const role = dashboardRolePriority.find(item => roles.includes(item));
   const workspace = role ? roleWorkspaces[role] : null;
+  const visibleLinks = new Set(getDashboardLinksForRoles(roles, hasExamFeature));
   const tips = role ? roleTips[role] : [];
 
   const agendaQuery = useAgendamentosPeriodo(hoje, hoje);
@@ -296,10 +299,10 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
     .sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)), [filaQuery.data]);
 
   const confirmadas = agenda.filter(item => item.status === 'confirmado').length;
-  const finalizadas = agenda.filter(item => statusFinalizado.includes(item.status)).length;
+  const finalizadas = agenda.filter(item => isAppointmentCompleted(item.status)).length;
   const esperas = fila.map(item => minutosDesde(item.horario_chegada || item.created_at, agora)).filter((m): m is number => m !== null);
   const esperaMedia = esperas.length ? Math.round(esperas.reduce((total, m) => total + m, 0) / esperas.length) : null;
-  const pendentes = agenda.filter(item => !statusFinalizado.includes(item.status));
+  const pendentes = agenda.filter(item => !isAppointmentClosed(item.status));
   const proxima = pendentes.find(item => (item.hora_inicio || '') >= horaAgora) ?? pendentes[0];
 
   const kpis = [
@@ -315,8 +318,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
     </header>
 
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
-      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-[24px] bg-[image:var(--gradient-hero)] p-6 text-white shadow-glow">
-        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-highlight/40 blur-3xl" />
+      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-[24px] bg-brand-dark p-6 text-white shadow-glow">
         <div className="relative">
           <h2 id="turno-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">{workspace?.title ?? 'Seu espaço de trabalho'}</h2>
           {proxima ? <>
@@ -324,7 +326,7 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
             <p className="mt-2 truncate text-base font-bold">{proxima.pacientes?.nome || 'Paciente'}</p>
             <p className="truncate text-xs text-white/75">{proxima.tipo || 'Consulta'}{proxima.medicos?.nome ? ` · ${nomeMedico(proxima.medicos.nome)}` : ''}</p>
           </> : <p className="mt-3 max-w-xs text-sm text-white/80">{workspace?.description ?? 'Os atalhos exibidos respeitam as permissões do seu perfil. Se precisar de outro acesso, fale com o administrador.'}</p>}
-          {workspace && <div className="mt-5 flex flex-wrap gap-2">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', index === 0 ? 'bg-white text-primary' : 'border border-white/30 text-white hover:bg-white/10')}><Icon className="h-4 w-4" />{label}</Link>)}</div>}
+          {workspace && <div className="mt-5 flex flex-wrap gap-2">{workspace.actions.filter(action => visibleLinks.has(action.href)).map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', index === 0 ? 'bg-white text-primary' : 'border border-white/30 text-white hover:bg-white/10')}><Icon className="h-4 w-4" />{label}</Link>)}</div>}
         </div>
       </section>
       {kpis.map(kpi => <Link key={kpi.label} to={kpi.href} className={cn('group relative flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs transition hover:-translate-y-0.5 hover:shadow-md', kpi.tone)}>
@@ -399,8 +401,15 @@ function OperationalDashboard({ roles, nome }: { roles: string[]; nome?: string 
 
 // ─── Main Dashboard ────────────────────────────────────────
 export default function Dashboard() {
-  const { profile: user, isAdmin } = useSupabaseAuth();
+  const { profile: user, isAdmin, isPlatformAdmin } = useSupabaseAuth();
   const { isMedicoOnly } = useCurrentMedico();
+  const { hasFeature, isLoading: isPlanLoading, isError: isPlanError } = useUserPlan();
+
+  if (isPlatformAdmin && !user?.clinica_id) {
+    return <Navigate to="/painel-admin" replace />;
+  }
+
+  const hasExamFeature = !isPlanLoading && !isPlanError && hasFeature('exames');
 
   // Decide o painel ANTES de carregar dados. Antes, médico e recepção baixavam
   // pacientes, agenda, lançamentos e estoque da clínica inteira só para depois
@@ -409,7 +418,7 @@ export default function Dashboard() {
     return <DoctorDashboard userName={user?.nome || 'Doutor(a)'} />;
   }
   if (!isAdmin()) {
-    return <OperationalDashboard roles={user?.roles || []} nome={user?.nome} />;
+    return <OperationalDashboard roles={user?.roles || []} nome={user?.nome} hasExamFeature={hasExamFeature} />;
   }
   return <AdminDashboard />;
 }
@@ -445,15 +454,17 @@ function AdminDashboard() {
   daquiA60Date.setUTCDate(daquiA60Date.getUTCDate() + 60);
   const daquiA60 = daquiA60Date.toISOString().slice(0, 10);
 
-  const agendamentosQuery = useAgendamentosPeriodo(seisMeses, daquiA60);
+  const agendamentosQuery = useAgendamentosPeriodo(seisMeses, daquiA60, { suppressGlobalErrorToast: true });
   const { data: agendamentos = [], isLoading: loadingAgendamentos } = agendamentosQuery;
   const lancamentosQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data', ascending: false },
     filters: [{ column: 'data', operator: 'gte', value: seisMeses }],
+    suppressGlobalErrorToast: true,
   });
   const lancamentosPorPagamentoQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data_pagamento', ascending: false },
     filters: [{ column: 'data_pagamento', operator: 'gte', value: seisMeses }],
+    suppressGlobalErrorToast: true,
   });
   const lancamentosPorVencimentoQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data_vencimento', ascending: false },
@@ -461,6 +472,7 @@ function AdminDashboard() {
       { column: 'data_vencimento', operator: 'gte', value: primeiroDiaMesAtual },
       { column: 'data_vencimento', operator: 'lte', value: ultimoDiaMesAtual },
     ],
+    suppressGlobalErrorToast: true,
   });
   const lancamentos = useMemo(() => {
     const porId = new Map<string, any>();
@@ -477,6 +489,7 @@ function AdminDashboard() {
     .map(lancamento => lancamento.id), [lancamentos]);
   const pagamentosQuery = useQuery({
     queryKey: ['dashboard-admin-pagamentos', user?.clinica_id ?? null, seisMeses, hoje, idsLancamentosRealizados],
+    meta: { suppressGlobalErrorToast: true },
     enabled: !!user?.clinica_id && !loadingLancamentos,
     staleTime: 60_000,
     queryFn: async () => {
@@ -523,17 +536,18 @@ function AdminDashboard() {
       };
     },
   });
-  const medicosQuery = useMedicos();
+  const medicosQuery = useMedicos({ suppressGlobalErrorToast: true });
   const { data: medicos = [], isLoading: loadingMedicos } = medicosQuery;
-  const estoqueQuery = useEstoque();
+  const estoqueQuery = useEstoque({ suppressGlobalErrorToast: true });
   const { data: estoque = [], isLoading: loadingEstoque } = estoqueQuery;
-  const filaQuery = useFilaAtendimento();
+  const filaQuery = useFilaAtendimento({ suppressGlobalErrorToast: true });
   const { data: fila = [], isLoading: loadingFila } = filaQuery;
-  const tarefasQuery = useMinhasTarefasPendentes();
+  const tarefasQuery = useMinhasTarefasPendentes({ suppressGlobalErrorToast: true });
   const { data: minhasTarefas = [] } = tarefasQuery;
   const tarefasAtrasadas = useMemo(() => minhasTarefas.filter(t => t.data_vencimento && t.data_vencimento < hoje).length, [minhasTarefas, hoje]);
   const aniversariantesQuery = useQuery({
     queryKey: ['dashboard-aniversariantes', user?.clinica_id ?? null, hoje],
+    meta: { suppressGlobalErrorToast: true },
     enabled: !!user?.clinica_id,
     staleTime: 60 * 60_000,
     queryFn: async () => {
@@ -555,6 +569,7 @@ function AdminDashboard() {
 
   const resumoQuery = useQuery({
     queryKey: ['dashboard-admin-resumo', user?.clinica_id, seisMeses],
+    meta: { suppressGlobalErrorToast: true },
     enabled: !!user?.clinica_id,
     staleTime: 60_000,
     queryFn: async () => {

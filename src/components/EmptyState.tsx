@@ -46,7 +46,7 @@ export function EmptyState({
       />
       <div className="relative flex flex-col items-center justify-center text-center space-y-6">
         <div className="relative">
-          <div className="h-20 w-20 rounded-3xl bg-[image:var(--gradient-primary)] shadow-glow flex items-center justify-center rotate-[-4deg]">
+          <div className="h-20 w-20 rounded-3xl bg-primary shadow-glow flex items-center justify-center rotate-[-4deg]">
             <Icon className="h-9 w-9 text-white rotate-[4deg]" />
           </div>
           <div className="absolute -right-2 -bottom-2 h-7 w-7 rounded-full bg-highlight text-highlight-foreground ring-4 ring-card flex items-center justify-center">

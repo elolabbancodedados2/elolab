@@ -20,7 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Calendar, FlaskConical, CreditCard, User, ExternalLink, Lock,
   Star, MessageSquare, CheckCircle2, HeartHandshake, Clock,
-  Activity, FileText, Phone, Shield, Sparkles, ChevronRight,
+  FileText, Phone, Shield,
   Heart, Pill, AlertTriangle, Download, RefreshCw, ClipboardCheck,
   LogOut,
 } from 'lucide-react';
@@ -28,20 +28,21 @@ import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
+import { cn } from '@/lib/utils';
 
 // ─── Status helpers ────────────────────────────────────────
 const statusConfig: Record<string, { bg: string; label: string }> = {
-  agendado: { bg: 'bg-blue-500/10 text-blue-700 border-blue-200', label: 'Agendado' },
-  confirmado: { bg: 'bg-green-500/10 text-green-700 border-green-200', label: 'Confirmado' },
+  agendado: { bg: 'bg-info/10 text-info-foreground border-info/30', label: 'Agendado' },
+  confirmado: { bg: 'bg-success/10 text-success border-success/30', label: 'Confirmado' },
   finalizado: { bg: 'bg-muted text-muted-foreground', label: 'Finalizado' },
   cancelado: { bg: 'bg-destructive/10 text-destructive', label: 'Cancelado' },
   faltou: { bg: 'bg-destructive/10 text-destructive', label: 'Faltou' },
-  aprovado: { bg: 'bg-green-500/10 text-green-700', label: 'Aprovado' },
-  pendente: { bg: 'bg-amber-500/10 text-amber-700', label: 'Pendente' },
-  solicitado: { bg: 'bg-blue-500/10 text-blue-700', label: 'Solicitado' },
-  laudo_disponivel: { bg: 'bg-green-500/10 text-green-700', label: 'Laudo Disponível' },
-  em_andamento: { bg: 'bg-blue-500/10 text-blue-700', label: 'Em Andamento' },
-  pago: { bg: 'bg-green-500/10 text-green-700', label: 'Pago' },
+  aprovado: { bg: 'bg-success/10 text-success border-success/30', label: 'Aprovado' },
+  pendente: { bg: 'bg-warning/10 text-warning-foreground border-warning/30', label: 'Pendente' },
+  solicitado: { bg: 'bg-info/10 text-info-foreground border-info/30', label: 'Solicitado' },
+  laudo_disponivel: { bg: 'bg-success/10 text-success border-success/30', label: 'Laudo Disponível' },
+  em_andamento: { bg: 'bg-info/10 text-info-foreground border-info/30', label: 'Em Andamento' },
+  pago: { bg: 'bg-success/10 text-success border-success/30', label: 'Pago' },
 };
 
 /** "2099-10-15" → "15/10/2099", sem passar por Date (evita deslocamento de fuso). */
@@ -55,6 +56,15 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className={`text-[11px] ${cfg.bg}`}>{cfg.label}</Badge>;
 }
 
+function PortalSectionUnavailable({ section }: { section: string }) {
+  return (
+    <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-foreground">
+      <p className="font-medium">Não foi possível carregar {section}.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Use “Tentar novamente” para atualizar o portal.</p>
+    </div>
+  );
+}
+
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
@@ -65,38 +75,19 @@ function calcularIdade(dn: string | null) {
   return ageFromDateOnly(dn, hoje);
 }
 
-// ─── Animated counter ──────────────────────────────────────
-function AnimatedNumber({ value }: { value: number }) {
-  return (
-    <span
-      key={value}
-      className="tabular-nums font-bold text-2xl animate-in fade-in slide-in-from-bottom-1 duration-300"
-    >
-      {value}
-    </span>
-  );
-}
-
 // ─── Login Screen ──────────────────────────────────────────
-function LoginScreen({ token, setToken, onLogin, loading, error }: {
+function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
   token: string; setToken: (v: string) => void;
+  clearError: () => void;
   onLogin: () => void; loading: boolean; error: string;
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background pattern */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10" />
-      <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-primary/5 blur-3xl -translate-y-1/2 translate-x-1/2" />
-      <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-primary/8 blur-3xl translate-y-1/2 -translate-x-1/2" />
-
-      <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <Card className="backdrop-blur-xl border-border/50 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground">
+      <div className="w-full max-w-md">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto mb-4 relative animate-in zoom-in duration-500 delay-150">
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
-                <HeartHandshake className="h-10 w-10 text-primary" />
-              </div>
-              <div className="absolute inset-0 rounded-2xl border-2 border-dashed border-primary/20 animate-[spin_20s_linear_infinite]" />
+            <div aria-hidden="true" className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-primary/10 text-primary">
+              <HeartHandshake className="h-7 w-7" />
             </div>
 
             <CardTitle className="text-2xl font-display">Portal do Paciente</CardTitle>
@@ -106,46 +97,65 @@ function LoginScreen({ token, setToken, onLogin, loading, error }: {
           </CardHeader>
 
           <CardContent className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  aria-label="Código de acesso do paciente"
-                  name="patient-access-token"
-                  autoComplete="off"
-                  placeholder="Digite seu código de acesso"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && onLogin()}
-                  className="pl-10 h-12 text-base"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Código fornecido pela clínica EloLab
-              </p>
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
-                {error}
-              </p>
-            )}
-
-            <Button
-              className="w-full h-12 text-base gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110"
-              onClick={onLogin}
-              disabled={loading || !token.trim()}
+            <form
+              className="space-y-4"
+              aria-busy={loading}
+              onSubmit={(event) => {
+                event.preventDefault();
+                onLogin();
+              }}
             >
-              {loading ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              {loading ? 'Verificando…' : 'Acessar Portal'}
-            </Button>
+              <div className="space-y-2">
+                <label htmlFor="patient-access-code" className="text-sm font-medium">Código de acesso do paciente</label>
+                <div className="relative">
+                  <Lock aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="patient-access-code"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? 'patient-access-code-hint patient-portal-access-error' : 'patient-access-code-hint'}
+                    name="patient-access-token"
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    required
+                    placeholder="Digite seu código de acesso"
+                    value={token}
+                    onChange={(e) => {
+                      setToken(e.target.value);
+                      if (error) clearError();
+                    }}
+                    disabled={loading}
+                    className="h-12 pl-10 text-base focus-visible:ring-primary"
+                  />
+                </div>
+                <p id="patient-access-code-hint" className="text-xs text-muted-foreground">
+                  Código fornecido pela clínica EloLab
+                </p>
+              </div>
 
-            <div className="flex items-center gap-2 justify-center text-xs text-muted-foreground pt-2">
-              <Shield className="h-3.5 w-3.5" />
+              {error && (
+                <p id="patient-portal-access-error" role="alert" className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                className="h-12 w-full gap-2 rounded-full bg-primary text-base text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
+                disabled={loading || !token.trim()}
+              >
+                {loading ? (
+                  <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lock aria-hidden="true" className="h-4 w-4" />
+                )}
+                {loading ? 'Verificando…' : 'Acessar Portal'}
+              </Button>
+            </form>
+
+            <div className="flex items-center justify-center gap-2 border-t border-border pt-4 text-xs text-muted-foreground">
+              <Shield aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
               <span>Acesso seguro — Dados protegidos pela LGPD</span>
             </div>
           </CardContent>
@@ -176,25 +186,25 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 bg-white shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+      <Card className="overflow-hidden rounded-xl border-primary/20 bg-card shadow-none">
         <CardContent className="relative p-5 sm:p-7">
-          <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-primary" aria-hidden="true" />
+          <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:pl-1">
             <div className="flex min-w-0 items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#EEF4FA] text-[#1080CA] sm:h-14 sm:w-14">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary sm:h-14 sm:w-14">
                 <Calendar className="h-6 w-6" aria-hidden="true" />
               </div>
               <div className="min-w-0 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-[#1080CA]">Sua próxima consulta</h3>
-                  {isHoje && <Badge className="border-[#BFD8EE] bg-[#EEF4FA] text-[#1080CA]">Hoje</Badge>}
+                  <h3 className="text-sm font-semibold text-primary">Sua próxima consulta</h3>
+                  {isHoje && <Badge className="border-primary/20 bg-primary/10 text-primary">Hoje</Badge>}
                 </div>
                 <p className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
                   {dataConsultaLabel}
                 </p>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
-                    <Clock className="h-4 w-4 text-[#1080CA]" aria-hidden="true" />
+                    <Clock className="h-4 w-4 text-primary" aria-hidden="true" />
                     {proxima.hora_inicio?.slice(0, 5)}
                   </span>
                   <span>{proxima.tipo || 'Consulta'}</span>
@@ -204,8 +214,8 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
             </div>
 
             {!isHoje && diasRestantes > 0 && (
-              <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#EEF4FA] px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
-                <p className="text-2xl font-bold tabular-nums text-[#1080CA]">{diasRestantes}</p>
+              <div className="flex shrink-0 items-center gap-3 rounded-xl bg-primary/5 px-4 py-3 sm:min-w-32 sm:flex-col sm:gap-0 sm:px-5 sm:py-4 sm:text-center">
+                <p className="text-2xl font-bold tabular-nums text-primary">{diasRestantes}</p>
                 <p className="text-sm text-muted-foreground">dia{diasRestantes > 1 ? 's' : ''}</p>
               </div>
             )}
@@ -272,9 +282,9 @@ function NPSSurvey({ token }: { token: string }) {
               aria-pressed={nota === n}
               className={`w-9 h-9 rounded-full text-sm font-semibold transition-[background-color,color,box-shadow,transform] hover:scale-110 active:scale-95 ${
                 nota === n
-                  ? 'bg-gradient-primary text-white shadow-md'
+                  ? 'bg-primary text-primary-foreground'
                   : nota !== null && n <= nota
-                    ? 'bg-[#EEF4FA] text-[#1080CA]'
+                    ? 'bg-primary/10 text-primary'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
@@ -318,7 +328,9 @@ export default function PortalPaciente() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [portalDataLoading, setPortalDataLoading] = useState(false);
+  const [portalDataReady, setPortalDataReady] = useState(false);
   const [portalDataError, setPortalDataError] = useState('');
+  const [portalUnavailableActions, setPortalUnavailableActions] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
@@ -335,6 +347,17 @@ export default function PortalPaciente() {
   const [contactForm, setContactForm] = useState({ telefone: '', email: '' });
   const [contactSaving, setContactSaving] = useState(false);
   const [contactMessage, setContactMessage] = useState('');
+  const [portalTab, setPortalTab] = useState('consultas');
+  const portalTabRefs = useRef<Record<'consultas' | 'exames', HTMLButtonElement | null>>({ consultas: null, exames: null });
+
+  const abrirSecaoPortal = (section: 'consultas' | 'exames') => {
+    setPortalTab(section);
+    window.requestAnimationFrame(() => {
+      const trigger = portalTabRefs.current[section];
+      trigger?.focus({ preventScroll: true });
+      trigger?.scrollIntoView({ block: 'start' });
+    });
+  };
 
   // Scheduling form state
   const [medicos, setMedicos] = useState<any[]>([]);
@@ -457,6 +480,12 @@ export default function PortalPaciente() {
         fetchData(accessToken, 'get_documentos'),
       ]);
       if (sessionId !== portalSessionRef.current) return;
+      const portalActions = [
+        'get_agendamentos', 'get_exames', 'get_pagamentos', 'get_prescricoes',
+        'get_medicos', 'get_retornos', 'get_waitlist_offers', 'get_documentos',
+      ];
+      setPortalUnavailableActions(portalActions.filter((_, index) => results[index].status === 'rejected'));
+      setPortalDataReady(true);
       const valueOrEmpty = (result: PromiseSettledResult<any>) =>
         result.status === 'fulfilled' ? result.value || [] : [];
 
@@ -801,6 +830,8 @@ export default function PortalPaciente() {
     setOfertasEspera([]);
     setPortalHasMore({ agendamentos: false, exames: false, pagamentos: false, prescricoes: false });
     setPortalDataLoading(false);
+    setPortalDataReady(false);
+    setPortalUnavailableActions([]);
     setError('');
     setPortalDataError('');
   };
@@ -925,12 +956,25 @@ export default function PortalPaciente() {
 
   // ─── Login ────────────────────────────────────────────────
   if (!authenticated) {
-    return <LoginScreen token={token} setToken={setToken} onLogin={handleLogin} loading={loading} error={error} />;
+    return <LoginScreen token={token} setToken={setToken} clearError={() => setError('')} onLogin={handleLogin} loading={loading} error={error} />;
+  }
+
+  if (!portalDataReady && portalDataLoading) {
+    return (
+      <main aria-label="Portal do paciente" className="flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground">
+        <div className="w-full max-w-md space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm">
+          <div role="status" aria-live="polite" className="flex items-center gap-3 text-sm text-muted-foreground">
+            <RefreshCw aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-primary" />
+            <span>Carregando suas consultas, exames e documentos…</span>
+          </div>
+          <Button type="button" variant="outline" onClick={handleLogout} className="w-full">Sair do portal</Button>
+        </div>
+      </main>
+    );
   }
 
   // Stats
   const hojeNaClinica = todaySaoPauloDateOnly();
-  const totalConsultas = agendamentos.length;
   const consultasFuturas = agendamentos.filter(a =>
     ['agendado', 'confirmado'].includes(a.status) && !appointmentStartHasPassed(a.data, a.hora_inicio)
   ).length;
@@ -943,7 +987,7 @@ export default function PortalPaciente() {
     : undefined;
 
   return (
-    <div className="min-h-screen bg-[#F3F8FC] text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <AlertDialog
         open={agendamentoParaCancelar !== null}
         onOpenChange={(open) => {
@@ -1014,10 +1058,10 @@ export default function PortalPaciente() {
         </DialogContent>
       </Dialog>
       {/* ─── Header ─── */}
-      <header className="sticky top-0 z-50 border-b border-[#DCE6F2] bg-white/95 px-4 py-3 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border bg-card px-4 py-3">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-[#EEF4FA] p-2.5 text-[#1080CA]">
+            <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
               <HeartHandshake className="h-5 w-5" />
             </div>
             <div>
@@ -1051,14 +1095,14 @@ export default function PortalPaciente() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1.5">
               <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                Olá, {profile?.nome?.split(' ')[0]} 👋
+                Olá, {profile?.nome?.split(' ')[0]}
               </h2>
               <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
                 Acompanhe suas consultas, exames e pagamentos.
               </p>
             </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#DCE6F2] bg-white px-3 py-2 text-xs font-medium text-foreground">
-              <Shield className="h-4 w-4 text-[#1080CA]" aria-hidden="true" />
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-foreground">
+              <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
               Seus dados em ambiente seguro
             </div>
           </div>
@@ -1087,25 +1131,56 @@ export default function PortalPaciente() {
             <NextAppointmentHero agendamentos={agendamentos} />
 
             {/* ─── Resumo do paciente ─── */}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {[
-              { icon: Calendar, label: 'Consultas', value: totalConsultas, accent: 'text-[#1080CA] bg-[#EEF4FA]' },
-              { icon: Clock, label: 'Agendadas', value: consultasFuturas, accent: 'text-[#1080CA] bg-[#DCE6F2]' },
-              { icon: FlaskConical, label: 'Exames pendentes', value: examesPendentes, accent: 'text-[#8b6710] bg-[#fff6db]' },
-              { icon: FileText, label: 'Laudos prontos', value: laudosDisponiveis, accent: 'text-[#14744d] bg-[#e8f7ef]' },
-              ].map(stat => (
-                <Card key={stat.label} className="rounded-2xl border-[#DCE6F2] bg-white shadow-none transition-colors hover:border-[#9CC7EC]">
-                  <CardContent className="flex min-h-[92px] items-center gap-3 p-4 sm:gap-4 sm:p-5">
-                    <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${stat.accent}`}>
-                      <stat.icon className="h-[18px] w-[18px]" aria-hidden="true" />
+            <div role="group" aria-label="Atalhos para seus registros" className="grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-card sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              {([
+                { section: 'consultas', icon: Calendar, label: 'Consultas futuras', value: consultasFuturas, more: portalHasMore.agendamentos, action: 'get_agendamentos', moreLabel: 'consultas' },
+                { section: 'exames', icon: FlaskConical, label: 'Exames pendentes', value: examesPendentes, more: portalHasMore.exames, action: 'get_exames', moreLabel: 'exames' },
+                { section: 'exames', icon: FileText, label: 'Laudos prontos', value: laudosDisponiveis, more: portalHasMore.exames, action: 'get_exames', moreLabel: 'exames' },
+              ] as const).map((stat, index) => {
+                const indisponivel = portalUnavailableActions.includes(stat.action);
+                const value = indisponivel ? '—' : stat.more && stat.value === 0 ? 'Ver lista' : `${stat.value}${stat.more ? '+' : ''}`;
+                const descricao = indisponivel
+                  ? 'Falha ao carregar'
+                  : stat.more
+                    ? `Há mais ${stat.moreLabel} no histórico`
+                    : stat.section === 'consultas'
+                      ? 'Confirmadas ou agendadas'
+                      : 'Na lista do portal';
+                const nomeAcessivel = indisponivel
+                  ? `Abrir ${stat.label.toLocaleLowerCase('pt-BR')}; dados indisponíveis`
+                  : stat.more && stat.value > 0
+                    ? `Abrir ${stat.label.toLocaleLowerCase('pt-BR')}; pelo menos ${stat.value} na lista carregada`
+                    : `Abrir ${stat.label.toLocaleLowerCase('pt-BR')}`;
+                const Icon = stat.icon;
+                return (
+                  <button
+                    key={stat.label}
+                    type="button"
+                    aria-label={nomeAcessivel}
+                    onClick={() => abrirSecaoPortal(stat.section)}
+                    className={cn(
+                      'min-w-0 border-border px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-4',
+                      index < 2 ? 'border-b sm:border-b-0' : '',
+                      index % 2 === 0 ? 'border-r sm:border-r-0' : '',
+                      (index === 0 || index === 1) && 'sm:border-r',
+                      index === 2 && 'col-span-2 sm:col-span-1',
+                    )}
+                  >
+                    <div className="flex min-h-12 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                          <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+                          <span className="truncate text-[11px] tracking-tight sm:text-xs">{stat.label}</span>
+                        </span>
+                        <span className="mt-1 block text-[11px] leading-tight text-muted-foreground">{descricao}</span>
+                      </div>
+                      <span className={cn('text-xl font-semibold tabular-nums', indisponivel ? 'text-muted-foreground' : 'text-foreground')}>
+                        {value}
+                      </span>
                     </div>
-                    <div>
-                      <AnimatedNumber value={stat.value} />
-                      <p className="text-xs text-muted-foreground">{stat.label}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </section>
 
@@ -1121,17 +1196,17 @@ export default function PortalPaciente() {
 
           {/* ─── Tabs ─── */}
           <div>
-            <Tabs defaultValue="consultas" className="w-full">
-              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-2xl border border-[#DCE6F2] bg-white p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
+            <Tabs value={portalTab} onValueChange={setPortalTab} className="w-full">
+              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-xl border border-border bg-card p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
                 <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Agendar</span>
                 </TabsTrigger>
-                <TabsTrigger value="consultas" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
+                <TabsTrigger ref={element => { portalTabRefs.current.consultas = element; }} value="consultas" className="h-12 flex-col gap-1 rounded-lg text-muted-foreground md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Consultas</span>
                 </TabsTrigger>
-                <TabsTrigger value="exames" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
+                <TabsTrigger ref={element => { portalTabRefs.current.exames = element; }} value="exames" className="h-12 flex-col gap-1 rounded-lg text-muted-foreground md:flex-row md:gap-1.5">
                   <FlaskConical className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Exames</span>
                 </TabsTrigger>
@@ -1269,7 +1344,9 @@ export default function PortalPaciente() {
 
               {/* ─── Consultas Tab ─── */}
               <TabsContent value="consultas" className="mt-4 space-y-3">
-                {!agendamentos.length ? (
+                {portalUnavailableActions.includes('get_agendamentos') ? (
+                  <PortalSectionUnavailable section="suas consultas" />
+                ) : !agendamentos.length ? (
                   <EmptyState icon={Calendar} text="Nenhuma consulta encontrada" />
                 ) : (
                   agendamentos.map((a: any, i: number) => {
@@ -1389,61 +1466,58 @@ export default function PortalPaciente() {
 
               {/* ─── Exames Tab ─── */}
               <TabsContent value="exames" className="mt-4 space-y-3">
-                {!exames.length ? (
+                {portalUnavailableActions.includes('get_exames') ? (
+                  <PortalSectionUnavailable section="seus exames e laudos" />
+                ) : !exames.length ? (
                   <EmptyState icon={FlaskConical} text="Nenhum exame encontrado" />
                 ) : (
-                  exames.map((e: any, i: number) => {
-                    const isLaudo = e.status === 'laudo_disponivel';
-                    return (
-                      <div key={e.id} className="animate-in fade-in slide-in-from-left-1 duration-300">
-                        <Card className={`transition-[background-color,border-color,box-shadow,transform] hover:shadow-md ${isLaudo ? 'border-green-300' : ''}`}>
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-start gap-3">
-                                <div className={`p-2.5 rounded-xl ${isLaudo ? 'bg-green-500/10' : 'bg-muted'}`}>
-                                  <FlaskConical className={`h-4 w-4 ${isLaudo ? 'text-green-600' : 'text-muted-foreground'}`} />
-                                </div>
-                                <div className="space-y-0.5">
-                                  <p className="font-semibold text-sm flex items-center gap-2">
-                                    {e.tipo_exame}
-                                    {isLaudo && (
-                                      <Badge className="bg-green-500/10 text-green-700 text-[9px] border-green-200">
-                                        ✓ Laudo pronto
-                                      </Badge>
-                                    )}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Solicitado: {e.data_solicitacao ? format(parseISO(e.data_solicitacao), 'dd/MM/yyyy') : 'N/A'}
-                                    {e.data_realizacao && ` • Realizado: ${format(parseISO(e.data_realizacao), 'dd/MM/yyyy')}`}
-                                  </p>
-                                  {e.resultado && (
-                                    <p className="text-xs text-foreground mt-1 bg-muted/50 px-2 py-1 rounded">
-                                      {e.resultado.length > 120 ? e.resultado.slice(0, 120) + '…' : e.resultado}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <StatusBadge status={e.status} />
-                                {e.arquivo_resultado_indisponivel && <span className="text-xs text-muted-foreground" role="status">Solicite o laudo à clínica</span>}
-                                {e.arquivo_resultado && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 gap-1 text-xs"
-                                    onClick={() => abrirUrlSegura(e.arquivo_resultado, storageUrlSeguro)}
-                                  >
-                                    <Download className="h-3 w-3" />
-                                    PDF
-                                  </Button>
-                                )}
-                              </div>
+                  <div role="list" aria-label="Exames e laudos" className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border">
+                    {exames.map((e: any) => {
+                      const isLaudo = e.status === 'laudo_disponivel';
+                      return (
+                        <article
+                          key={e.id}
+                          role="listitem"
+                          className={cn('flex items-start justify-between gap-2 px-3 py-3 transition-colors sm:items-center sm:px-4', isLaudo && 'bg-success/5')}
+                        >
+                          <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
+                            <div className={cn('shrink-0 rounded-lg p-2', isLaudo ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground')}>
+                              <FlaskConical aria-hidden="true" className="h-4 w-4" />
                             </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    );
-                  })
+                            <div className="min-w-0 space-y-1">
+                              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                                {e.tipo_exame}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Solicitado: {e.data_solicitacao ? format(parseISO(e.data_solicitacao), 'dd/MM/yyyy') : 'N/A'}
+                                {e.data_realizacao && ` • Realizado: ${format(parseISO(e.data_realizacao), 'dd/MM/yyyy')}`}
+                              </p>
+                              {e.resultado && (
+                                <p className="mt-1 rounded bg-background/80 px-2 py-1 text-xs text-foreground">
+                                  {e.resultado.length > 120 ? e.resultado.slice(0, 120) + '…' : e.resultado}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <StatusBadge status={e.status} />
+                            {e.arquivo_resultado_indisponivel && <span className="text-xs text-muted-foreground" role="status">Solicite o laudo à clínica</span>}
+                            {e.arquivo_resultado && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1 text-xs"
+                                onClick={() => abrirUrlSegura(e.arquivo_resultado, storageUrlSeguro)}
+                              >
+                                <Download aria-hidden="true" className="h-3 w-3" />
+                                PDF
+                              </Button>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
                 )}
                 {portalHasMore.exames && <div className="flex justify-center pt-2"><Button variant="outline" disabled={loadingMore !== null} onClick={() => void loadMorePortalList('get_exames', 'exames', exames, setExames, 30)}>{loadingMore === 'get_exames' ? 'Carregando...' : 'Carregar mais exames'}</Button></div>}
 </TabsContent>
@@ -1484,7 +1558,9 @@ export default function PortalPaciente() {
 
               {/* ─── Prescrições Tab ─── */}
               <TabsContent value="prescricoes" className="mt-4 space-y-3">
-                {!prescricoes.length ? (
+                {portalUnavailableActions.includes('get_prescricoes') ? (
+                  <PortalSectionUnavailable section="suas receitas" />
+                ) : !prescricoes.length ? (
                   <EmptyState icon={Pill} text="Nenhuma prescrição encontrada" />
                 ) : (
                   prescricoes.map((p: any, i: number) => (
@@ -1604,38 +1680,6 @@ export default function PortalPaciente() {
                   </CardContent>
                 </Card>
 
-                {/* Resumo de saúde */}
-                <Card>
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Activity className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold">Resumo de Saúde</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div className="text-center p-3 rounded-xl bg-muted/50">
-                        <p className="text-2xl font-bold text-primary tabular-nums">{agendamentos.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Consultas carregadas</p>
-                      </div>
-                      <div className="text-center p-3 rounded-xl bg-muted/50">
-                        <p className="text-2xl font-bold text-primary tabular-nums">{exames.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Exames carregados</p>
-                      </div>
-                      <div className="text-center p-3 rounded-xl bg-muted/50">
-                        <p className="text-2xl font-bold text-primary tabular-nums">
-                          {exames.filter(e => e.status === 'laudo_disponivel').length}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">Laudos Prontos</p>
-                      </div>
-                      <div className="text-center p-3 rounded-xl bg-muted/50">
-                        <p className="text-2xl font-bold text-primary tabular-nums">
-                          {agendamentos.filter(a => a.status === 'finalizado').length}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">Atendimentos carregados</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
                 {/* Prescrições recentes - from agendamentos finalizados */}
                 <Card>
                   <CardContent className="p-4 space-y-3">
@@ -1643,7 +1687,9 @@ export default function PortalPaciente() {
                       <Pill className="h-4 w-4 text-primary" />
                       <span className="text-sm font-semibold">Últimas Consultas Finalizadas</span>
                     </div>
-                    {agendamentos.filter(a => a.status === 'finalizado').length === 0 ? (
+                    {portalUnavailableActions.includes('get_agendamentos') ? (
+                      <PortalSectionUnavailable section="seu histórico de consultas" />
+                    ) : agendamentos.filter(a => a.status === 'finalizado').length === 0 ? (
                       <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma consulta finalizada ainda</p>
                     ) : (
                       <div className="space-y-2">
@@ -1679,7 +1725,9 @@ export default function PortalPaciente() {
 
               {/* ─── Financeiro Tab ─── */}
               <TabsContent value="financeiro" className="mt-4 space-y-3">
-                {!pagamentos.length ? (
+                {portalUnavailableActions.includes('get_pagamentos') ? (
+                  <PortalSectionUnavailable section="seus pagamentos" />
+                ) : !pagamentos.length ? (
                   <EmptyState icon={CreditCard} text="Nenhum pagamento encontrado" />
                 ) : (
                   pagamentos.map((p: any, i: number) => (

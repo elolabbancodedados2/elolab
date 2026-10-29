@@ -2,7 +2,6 @@ import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Edit, Trash2, Eye, Tag, Link, Loader2, MapPin,
   Phone, Mail, Calendar, Filter, Users, UserCheck, Baby, Heart,
@@ -1297,51 +1296,42 @@ export default function Pacientes() {
       {conveniosError && <ErrorState compact error={conveniosError} title="Convênios indisponíveis" description="A lista de convênios não carregou. Você pode continuar consultando pacientes, mas não deve alterar o convênio até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
       {medicosError && <ErrorState compact error={medicosError} title="Médicos indisponíveis" description="A lista de médicos não carregou. Atualize os dados antes de agendar consultas ou solicitar exames nesta ficha." onRetry={() => { void refetchMedicos(); }} />}
       {/* Header */}
-      <motion.div
-        className="min-w-0"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
+      <div className="min-w-0">
         <PageHeader
           title="Pacientes"
-          description="Gestão completa do cadastro de pacientes"
+          description="Busque pacientes, confira pendências e abra uma ficha para continuar o atendimento."
           actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-3">
-          <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
             <Button
               variant="outline"
               size="lg"
               onClick={() => setIsEtiquetaOpen(true)}
-              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs transition-all duration-200 hover:border-[#1080CA]/40 hover:shadow-md sm:w-auto sm:px-5"
+              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs transition-colors hover:border-primary/40 hover:shadow-sm sm:w-auto sm:px-5"
             >
               <Tag className="h-4 w-4" />
               Etiquetas da página
             </Button>
-          </motion.div>
           {isAdmin() && (
             <Button
               variant="outline"
               size="lg"
               onClick={() => setIsDuplicidadesOpen(true)}
-              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs hover:border-[#1080CA]/40 sm:w-auto sm:px-5"
+              className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs transition-colors hover:border-primary/40 sm:w-auto sm:px-5"
             >
               <GitMerge className="h-4 w-4" />
               Revisar duplicidades
             </Button>
           )}
-          <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
             <Button
               size="lg"
               onClick={handleNew}
-              className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:brightness-110 hover:shadow-lg sm:w-auto sm:px-6"
+              className="h-11 w-full gap-2 rounded-full bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:w-auto sm:px-6"
             >
               <Plus className="h-5 w-5" />
               Novo Paciente
             </Button>
-          </motion.div>
           </div>}
         />
-      </motion.div>
+      </div>
 
       {/* Stats */}
       {erroDeepLink && <ErrorState compact error={erroDeepLink} title="Não foi possível abrir o paciente do link" onRetry={() => { void refazerDeepLink(); }} />}
@@ -1361,11 +1351,11 @@ export default function Pacientes() {
               <div className="relative flex-1 sm:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  aria-label="Buscar pacientes por nome, CPF ou telefone"
+                  aria-label="Buscar pacientes por nome, CPF, telefone ou e-mail"
                   placeholder="Buscar nome, CPF, telefone, email..."
                   value={searchTerm}
                   onChange={(e) => { setPaginaPacientes(0); setSearchTerm(e.target.value); }}
-                  className="h-11 rounded-full pl-9 pr-10 focus-visible:ring-[#1080CA]"
+                  className="h-11 rounded-full pl-9 pr-10 focus-visible:ring-ring"
                 />
                 {searchTerm && (
                   <Button
@@ -1384,7 +1374,7 @@ export default function Pacientes() {
                 variant={showFilters ? 'default' : 'outline'}
                 size="icon"
                 onClick={() => setShowFilters(!showFilters)}
-                className={cn('relative h-11 w-11 shrink-0 rounded-full', showFilters && 'bg-gradient-primary text-white hover:brightness-110')}
+                className={cn('relative h-11 w-11 shrink-0 rounded-full', showFilters && 'hover:bg-primary/90')}
                 aria-label={showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
                 aria-expanded={showFilters}
                 aria-controls="filtros-pacientes"
@@ -1927,7 +1917,7 @@ export default function Pacientes() {
           {selectedPaciente && (
             <div className="flex-1 overflow-hidden flex flex-col">
               {/* Patient header summary */}
-              <div className="flex items-center gap-3 px-1 py-2 flex-shrink-0">
+              <div className="flex flex-wrap items-center gap-3 px-1 py-2 flex-shrink-0 sm:flex-nowrap">
                 <PatientPhoto
                   pacienteId={selectedPaciente.id}
                   pacienteNome={selectedPaciente.nome}
@@ -1935,7 +1925,7 @@ export default function Pacientes() {
                   size="md"
                   editable={false}
                 />
-                <div className="flex-1 min-w-0">
+                <div className="min-w-[180px] flex-1">
                   <h3 className="text-base font-bold truncate">{(selectedPaciente as any).nome_social || selectedPaciente.nome}</h3>
                   <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                     <span>{selectedPaciente.data_nascimento
@@ -1954,7 +1944,7 @@ export default function Pacientes() {
                 {(() => {
                   const whatsapp = linkWhatsApp(selectedPaciente.telefone, `Olá, ${String((selectedPaciente as any).nome_social || selectedPaciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
                   return whatsapp ? (
-                    <Button asChild variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                    <Button asChild variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
                       <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${selectedPaciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
                     </Button>
                   ) : null;
@@ -1962,8 +1952,8 @@ export default function Pacientes() {
               </div>
 
               <Tabs value={viewTab} onValueChange={setViewTab} className="flex-1 overflow-hidden flex flex-col">
-                <div className="flex-shrink-0 overflow-x-auto">
-                  <TabsList className="inline-flex w-auto min-w-full h-auto p-0.5 bg-muted/40 rounded-xl">
+                <div className="flex-shrink-0">
+                  <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/40 p-1 md:grid-cols-5 lg:flex lg:w-auto lg:flex-nowrap lg:justify-start">
                     <TabsTrigger value="dados" className="text-[11px] gap-1 py-1.5 rounded-lg"><User2 className="h-3 w-3" />Dados</TabsTrigger>
                     <TabsTrigger value="consultas" className="text-[11px] gap-1 py-1.5 rounded-lg"><Calendar className="h-3 w-3" />Consultas</TabsTrigger>
                     <TabsTrigger value="exames" className="text-[11px] gap-1 py-1.5 rounded-lg"><TestTube className="h-3 w-3" />Exames</TabsTrigger>
@@ -2249,7 +2239,7 @@ export default function Pacientes() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {agendamentosList.map((a, idx) => {
+                        {agendamentosList.map((a) => {
                           const statusColors: Record<string, string> = {
                             agendado: 'bg-info/10 text-info',
                             confirmado: 'bg-success/10 text-success',
@@ -2258,8 +2248,7 @@ export default function Pacientes() {
                             em_atendimento: 'bg-warning/10 text-warning',
                           };
                           return (
-                            <motion.div key={a.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.02 }}
-                              className="border border-border/40 rounded-xl p-3 hover:border-primary/30 transition-all">
+                            <div key={a.id} className="border border-border/40 rounded-xl p-3 hover:border-primary/30 transition-colors">
                               <div className="flex justify-between items-start">
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -2275,7 +2264,7 @@ export default function Pacientes() {
                                   {a.observacoes && <p className="text-[11px] text-muted-foreground line-clamp-1">{a.observacoes}</p>}
                                 </div>
                               </div>
-                            </motion.div>
+                            </div>
                           );
                         })}
                       </div>
@@ -2386,7 +2375,7 @@ export default function Pacientes() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {examesList.map((ex, idx) => {
+                        {examesList.map((ex) => {
                           const exStatusColors: Record<string, string> = {
                             solicitado: 'bg-info/10 text-info',
                             agendado: 'bg-warning/10 text-warning',
@@ -2395,8 +2384,7 @@ export default function Pacientes() {
                             cancelado: 'bg-destructive/10 text-destructive',
                           };
                           return (
-                            <motion.div key={ex.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.02 }}
-                              className="border border-border/40 rounded-xl p-3 hover:border-primary/30 transition-all">
+                            <div key={ex.id} className="border border-border/40 rounded-xl p-3 hover:border-primary/30 transition-colors">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <Badge className={cn("text-[10px] px-1.5 py-0", exStatusColors[ex.status] || 'bg-muted text-muted-foreground')}>
@@ -2411,7 +2399,7 @@ export default function Pacientes() {
                                 {ex.resultado && <p className="text-[11px] text-success">Resultado: {ex.resultado.substring(0, 80)}...</p>}
                                 {ex.observacoes && <p className="text-[11px] text-muted-foreground line-clamp-1">{ex.observacoes}</p>}
                               </div>
-                            </motion.div>
+                            </div>
                           );
                         })}
                       </div>
@@ -2454,13 +2442,11 @@ export default function Pacientes() {
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {prontuarioList.map((p, idx) => (
-                              <motion.div
+                            {prontuarioList.map((p) => (
+                              <button
                                 key={p.id}
-                                initial={{ opacity: 0, y: 4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.02 }}
-                                className="group border border-border/40 rounded-xl p-3.5 hover:border-primary/30 cursor-pointer transition-all hover:bg-primary/[0.02]"
+                                type="button"
+                                className="group w-full rounded-xl border border-border/40 p-3.5 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                 onClick={() => handleOpenProntuario(p)}
                               >
                                 <div className="flex justify-between items-start">
@@ -2481,7 +2467,7 @@ export default function Pacientes() {
                                   </div>
                                   <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0 mt-1" />
                                 </div>
-                              </motion.div>
+                              </button>
                             ))}
                           </div>
                         )}

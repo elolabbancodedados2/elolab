@@ -45,3 +45,40 @@ test('não permite criar conta com intenção para um plano indisponível', asyn
   await expect(page.getByRole('button', { name: 'Criar conta', exact: true })).toBeDisabled();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('entrada mantém identidade EloLab e alternância acessível em celular e desktop', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { authenticated: false });
+
+  for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/auth');
+
+    await expect(page.getByRole('heading', { name: 'Acesse sua conta' })).toBeVisible();
+    await expect(page.getByRole('img', { name: 'EloLab — tecnologia que cuida' })).toHaveCount(1);
+    await expect(page.locator('canvas')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    const login = page.getByRole('button', { name: 'Entrar', exact: true });
+    const signup = page.getByRole('button', { name: 'Criar Conta' });
+    await login.focus();
+    await page.keyboard.press('Tab');
+    await expect(signup).toBeFocused();
+    await expect.poll(() => signup.evaluate((button) => getComputedStyle(button).boxShadow)).not.toBe('none');
+
+    await signup.click();
+    await expect(signup).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('heading', { name: 'Crie sua conta' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Nome completo' })).toBeVisible();
+    await expect.poll(() => page.locator('form').evaluate((form) => Number.parseFloat(getComputedStyle(form.parentElement ?? form).opacity))).toBe(1);
+    await page.screenshot({ path: testInfo.outputPath(`auth-cadastro-${viewport.width}.png`), fullPage: true });
+
+    await login.click();
+    await expect(login).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('heading', { name: 'Acesse sua conta' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Senha', exact: true })).toBeVisible();
+    await expect.poll(() => page.locator('form').evaluate((form) => Number.parseFloat(getComputedStyle(form.parentElement ?? form).opacity))).toBe(1);
+    await page.screenshot({ path: testInfo.outputPath(`auth-login-${viewport.width}.png`), fullPage: true });
+  }
+
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});

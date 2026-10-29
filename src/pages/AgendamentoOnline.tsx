@@ -14,9 +14,9 @@ import { cn } from '@/lib/utils';
 import { formatCPF, formatPhone, validateCPF } from '@/lib/formatters';
 import Logo from '@/components/landing-v2/Logo';
 
-const CARD = 'rounded-2xl border-[#DCE6F2] shadow-[0_4px_16px_rgba(16,128,202,0.06)]';
-const INPUT = 'h-11 rounded-xl focus-visible:ring-[#1080CA]';
-const BTN_PRIMARY = 'rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110';
+const CARD = 'rounded-xl border-border bg-card shadow-none';
+const INPUT = 'h-11 rounded-lg focus-visible:ring-primary';
+const BTN_PRIMARY = 'rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90';
 
 interface Medico { id: string; nome: string; especialidade: string | null }
 interface Info {
@@ -235,7 +235,7 @@ export default function AgendamentoOnline() {
     return (
       <Shell>
         <Card className={CARD}><CardContent className="py-12 text-center">
-          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF4FA] text-[#1080CA]"><CalendarCheck className="h-7 w-7" aria-hidden="true" /></span>
+          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary"><CalendarCheck className="h-7 w-7" aria-hidden="true" /></span>
           <p role="alert" className="font-medium">{erroInfo}</p>
           <p className="mt-1 text-sm text-muted-foreground">Entre em contato com a clínica por telefone ou WhatsApp.</p>
           <Button className={cn('mt-4 h-11 px-6', BTN_PRIMARY)} onClick={() => { setErroInfo(''); setRecarregarInfo((n) => n + 1); }}>Tentar novamente</Button>
@@ -254,7 +254,7 @@ export default function AgendamentoOnline() {
     return (
       <Shell titulo={info.clinica.nome}>
         <Card className={CARD}><CardContent ref={sucessoRef} tabIndex={-1} role="status" aria-live="polite" className="py-12 text-center">
-          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><CheckCircle2 className="h-8 w-8" aria-hidden="true" /></span>
+          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-success text-success-foreground"><CheckCircle2 className="h-8 w-8" aria-hidden="true" /></span>
           <p className="text-lg font-semibold">{concluido}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             {medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}
@@ -285,7 +285,7 @@ export default function AgendamentoOnline() {
       {info.horarios_funcionamento && (
         <Card className={CARD}>
           <CardContent className="flex items-start gap-3 py-4">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EEF4FA] text-[#1080CA]"><Clock className="h-4 w-4" aria-hidden="true" /></span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Clock className="h-4 w-4" aria-hidden="true" /></span>
             <div className="space-y-1 text-sm">
               <p className="font-medium">Funcionamento geral da clínica</p>
               {info.horarios_funcionamento.dias.length > 0 && <p className="text-muted-foreground">
@@ -307,9 +307,9 @@ export default function AgendamentoOnline() {
           {info.medicos.length === 0 && <p className="text-sm text-muted-foreground">Nenhum profissional com agenda online no momento.</p>}
           {info.medicos.map((m) => (
             <button key={m.id} type="button" aria-pressed={medico?.id === m.id} onClick={() => { liberarReserva(); setMedico(m); setData(''); setSlots(null); setHora(''); setErro(''); }}
-              className={cn('flex min-h-14 items-center gap-3 rounded-xl border border-[#DCE6F2] p-3 text-left transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]',
-                medico?.id === m.id && 'border-[#1080CA] bg-[#F3F8FC] ring-1 ring-[#1080CA]')}>
-              <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF4FA] text-[#1080CA]', medico?.id === m.id && 'bg-gradient-primary text-white')}>
+              className={cn('flex min-h-14 items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted',
+                medico?.id === m.id && 'border-primary bg-primary/10 ring-1 ring-primary/50')}>
+              <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary', medico?.id === m.id && 'bg-primary text-primary-foreground')}>
                 <Stethoscope className="h-5 w-5" aria-hidden="true" />
               </span>
               <span className="min-w-0"><span className="block truncate font-medium">{m.nome}</span>
@@ -364,8 +364,8 @@ export default function AgendamentoOnline() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
-            <div data-testid="online-booking-days" role="group" aria-label="Seleção de dias" className="grid min-w-[314px] grid-cols-7 gap-1 sm:gap-2">
+            <div className="w-full min-w-0 pb-1">
+            <div data-testid="online-booking-days" role="group" aria-label="Seleção de dias" className="grid w-full min-w-0 grid-cols-7 gap-1 sm:gap-2">
               {dias.map((d) => {
                 const dt = parseISO(d);
                 const diaCurto = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][dt.getDay()];
@@ -373,8 +373,8 @@ export default function AgendamentoOnline() {
                   <button key={d} type="button" data-testid="online-booking-day"
                     aria-label={format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}
                     aria-pressed={data === d} onClick={() => { liberarReserva(); setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
-                    className={cn('flex min-w-0 flex-col items-center rounded-xl border border-[#DCE6F2] px-0.5 py-2 text-[10px] transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC] sm:text-xs',
-                      data === d && 'border-transparent bg-gradient-primary text-white shadow-sm hover:bg-transparent')}>
+                    className={cn('flex min-w-0 flex-col items-center rounded-lg border border-border px-0.5 py-2 text-[10px] transition-colors hover:border-primary/50 hover:bg-muted sm:text-xs',
+                      data === d && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90')}>
                     <span className="uppercase">{diaCurto}</span>
                     <span className="text-base font-semibold leading-tight sm:text-lg">{format(dt, 'd')}</span>
                     <span>{format(dt, 'MMM', { locale: ptBR })}</span>
@@ -395,14 +395,14 @@ export default function AgendamentoOnline() {
             ) : (
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
                 {slots?.map((h) => (
-                  <Button key={h} type="button" aria-pressed={hora === h} variant={hora === h ? 'default' : 'outline'} size="sm" className={cn('h-10 rounded-full px-2 tabular-nums', hora === h && 'border-transparent bg-gradient-primary text-white shadow-sm hover:brightness-110')} disabled={reservandoHora} onClick={() => { void selecionarHorario(h); }}>
+                  <Button key={h} type="button" aria-pressed={hora === h} variant={hora === h ? 'default' : 'outline'} size="sm" className={cn('h-10 rounded-lg px-2 tabular-nums', hora === h && 'border-primary bg-primary text-primary-foreground shadow-none hover:bg-primary/90')} disabled={reservandoHora} onClick={() => { void selecionarHorario(h); }}>
                     <Clock className="mr-1 h-3.5 w-3.5" />{h}
                   </Button>
                 ))}
               </div>
             ))}
             {reservandoHora && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Reservando este horário por até cinco minutos…</p>}
-            {!!holdToken && <p role="status" className="rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] px-3 py-2 text-sm text-[#1080CA]">Horário reservado por até cinco minutos enquanto você preenche seus dados.</p>}
+            {!!holdToken && <p role="status" className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">Horário reservado por até cinco minutos enquanto você preenche seus dados.</p>}
           </CardContent>
         </Card>
       )}
@@ -432,7 +432,7 @@ export default function AgendamentoOnline() {
               <label className="flex items-start gap-2 text-sm sm:col-span-2">
                 <Checkbox checked={aceite} onCheckedChange={(v) => setAceite(v === true)} className="mt-0.5" />
                 <span>Autorizo a clínica a usar estes dados para o agendamento e contato, conforme a{' '}
-                  <Link to="/politica-privacidade" target="_blank" className="text-[#1080CA] underline">política de privacidade</Link>.</span>
+                  <Link to="/politica-privacidade" target="_blank" className="text-primary underline">política de privacidade</Link>.</span>
               </label>
               {erro && <p className="text-sm text-destructive sm:col-span-2" role="alert">{erro}</p>}
               <Button type="submit" className={cn('h-12 sm:col-span-2', BTN_PRIMARY)} disabled={enviando || !aceite || !holdToken}>
@@ -451,15 +451,15 @@ export default function AgendamentoOnline() {
 
 function Shell({ titulo, subtitulo, children }: { titulo?: string; subtitulo?: string; children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#F3F8FC] to-white">
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-2xl space-y-4 px-4 py-6 sm:py-10">
         {titulo && (
-          <header className="mb-2 rounded-2xl bg-gradient-primary p-5 text-white shadow-md sm:p-6">
-            <p className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-medium tracking-wide">
+          <header className="mb-2 border-b border-border pb-4">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
               <CalendarCheck className="h-3.5 w-3.5" aria-hidden="true" />Agendamento online
             </p>
-            <h1 className="mt-2 text-2xl font-bold">{titulo}</h1>
-            {subtitulo && <p className="mt-1 text-sm text-white/90">{subtitulo}</p>}
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{titulo}</h1>
+            {subtitulo && <p className="mt-1 text-sm leading-6 text-muted-foreground">{subtitulo}</p>}
           </header>
         )}
         {children}

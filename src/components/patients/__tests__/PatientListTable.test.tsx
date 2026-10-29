@@ -40,6 +40,21 @@ describe('PatientListTable empty state', () => {
 });
 
 describe('PatientListTable portal access actions', () => {
+  it('opens a patient row with Enter and Space when it has keyboard focus', () => {
+    const onView = vi.fn();
+    const patient = { id: 'patient-keyboard', nome: 'Ana Silva', data_nascimento: null, convenio_id: null };
+    render(<PatientListTable {...baseProps} pacientes={[patient]} totalPacientes={1} onView={onView} />);
+
+    const row = screen.getByRole('row', { name: /Ana Silva/ });
+    expect(row).toHaveAttribute('tabindex', '0');
+
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: ' ' });
+
+    expect(onView).toHaveBeenNthCalledWith(1, patient);
+    expect(onView).toHaveBeenNthCalledWith(2, patient);
+  });
+
   it('keeps the edit action when no status-change handler is supplied', () => {
     render(
       <PatientListTable

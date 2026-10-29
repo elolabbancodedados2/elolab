@@ -73,7 +73,7 @@ const ocorreuNoDiaDaClinica = (dataHora: string | null | undefined, data: string
 
 const STATUS_CONFIG = {
   aguardando: { label: 'Aguardando', color: 'bg-warning/10 text-warning-foreground border-warning/20' },
-  em_atendimento: { label: 'Em Atendimento', color: 'bg-[#1080CA]/10 text-[#1080CA] border-[#1080CA]/20' },
+  em_atendimento: { label: 'Em Atendimento', color: 'bg-primary/10 text-primary border-primary/20' },
   finalizado: { label: 'Finalizado', color: 'bg-success/10 text-success border-success/20' },
   chamado: { label: 'Chamado', color: 'bg-info/10 text-info border-info/20' },
 };
@@ -124,15 +124,15 @@ const FilaCard = forwardRef<HTMLDivElement, {
     <motion.div ref={ref} variants={cardAnim} layout initial={false} data-testid="fila-card">
       <div aria-busy={isBusy} className={cn(
         'rounded-2xl border border-border/60 bg-card shadow-xs transition-all duration-200',
-        status === 'em_atendimento' && 'border-[#1080CA]/40 shadow-[0_8px_24px_rgba(16,128,202,0.16)] ring-1 ring-[#1080CA]/25',
-        status === 'aguardando' && pos === 1 && 'border-[#1080CA]/30',
+        status === 'em_atendimento' && 'border-primary/40 ring-1 ring-primary/20',
+        status === 'aguardando' && pos === 1 && 'border-primary/30',
         status === 'finalizado' && 'opacity-60',
       )}>
         <div className="flex flex-wrap items-center gap-3 p-4 sm:flex-nowrap sm:gap-4">
           {/* Position badge */}
           <div className={cn(
             'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 text-xl font-bold',
-            status === 'em_atendimento' ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)]' : pos === 1 && status !== 'finalizado' ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
+            status === 'em_atendimento' ? 'bg-primary text-primary-foreground' : pos === 1 && status !== 'finalizado' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
           )}>
             {pos}
           </div>
@@ -142,7 +142,7 @@ const FilaCard = forwardRef<HTMLDivElement, {
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold text-base truncate">{pacienteNome}</p>
               {pos === 1 && (status === 'aguardando' || status === 'chamado') && (
-                <Badge className="border-transparent bg-gradient-primary text-[10px] text-white hover:bg-gradient-primary">Próximo</Badge>
+                <Badge className="border-transparent bg-primary text-[10px] text-primary-foreground hover:bg-primary/90">Próximo</Badge>
               )}
               {onAlterarPrioridade ? (
                 <Select value={prioridade} onValueChange={onAlterarPrioridade} disabled={actionsDisabled}>
@@ -192,13 +192,13 @@ const FilaCard = forwardRef<HTMLDivElement, {
 
         {/* Actions */}
         {status !== 'finalizado' && (
-          <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-2 border-t border-border/50">
+          <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-2 border-t border-border/50 lg:pr-20">
             {status === 'aguardando' && (
               <>
                 <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-full px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
                   <Bell className="h-3.5 w-3.5" /> Chamar
                 </Button>
-                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110 sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
+                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
                   <Play className="h-3.5 w-3.5" /> Iniciar
                 </Button>
               </>
@@ -208,7 +208,7 @@ const FilaCard = forwardRef<HTMLDivElement, {
                 <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-full px-3 text-xs sm:h-9" onClick={onChamar} disabled={actionsDisabled}>
                   <Bell className="h-3.5 w-3.5" /> Chamar novamente
                 </Button>
-                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110 sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
+                <Button size="sm" className="h-11 gap-1.5 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 sm:h-9" onClick={onIniciar} disabled={actionsDisabled}>
                   <Play className="h-3.5 w-3.5" /> Iniciar Atendimento
                 </Button>
               </>
@@ -219,7 +219,7 @@ const FilaCard = forwardRef<HTMLDivElement, {
               </Button>
             )}
             {status === 'em_atendimento' && (
-              <Button size="sm" className="h-11 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110 sm:h-9" onClick={onFinalizar} disabled={actionsDisabled}>
+              <Button size="sm" className="h-11 gap-1.5 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 sm:h-9" onClick={onFinalizar} disabled={actionsDisabled}>
                 <CheckCircle2 className="h-3.5 w-3.5" /> Finalizar
               </Button>
             )}
@@ -632,15 +632,15 @@ export default function Fila() {
    * ser criado, então o "sim" aqui é uma promessa que o banco cumpre ou
    * cancela inteira.
    */
-  const confirmarFinalizacao = async (dias: number | null) => {
-    if (!finalizando) return;
+  const confirmarFinalizacao = async (dias: number | null): Promise<boolean> => {
+    if (!finalizando) return false;
     const { filaId, agendamentoId } = finalizando;
     const ag = agendamentos.find(a => a.id === agendamentoId);
     if (!ag) {
       setFinalizando(null);
       refresh();
       toast.warning('O agendamento não está mais disponível. A fila foi atualizada.');
-      return;
+      return false;
     }
 
     const pac = (ag as any).pacientes;
@@ -663,7 +663,7 @@ export default function Fila() {
 
     if (!result.success) {
       toast.error('Não foi possível finalizar o atendimento', { description: result.message });
-      return;
+      return false;
     }
     setFinalizando(null);
     toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
@@ -671,6 +671,7 @@ export default function Fila() {
       duration: 8000,
       action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') },
     });
+    return true;
   };
 
   const performStatusUpdate = async (id: string, status: string, agendamentoId?: string) => {
@@ -954,14 +955,14 @@ export default function Fila() {
     },
     {
       id: 'triagem', label: 'Triagem', value: filaAguardandoTriagem.length,
-      icon: Stethoscope, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10',
+      icon: Stethoscope, color: 'text-info', surface: 'bg-info/10',
       elapsed: maiorEspera(filaAguardandoTriagem, item => item.horario_chegada),
       overdue: acimaDeTrinta(filaAguardandoTriagem, item => item.horario_chegada),
       caption: 'aguardando avaliação',
     },
     {
       id: 'atendimento', label: 'Em atendimento', value: emAtendimentoJornada.length,
-      icon: Play, color: 'text-white', surface: 'bg-white/15', escuro: true,
+      icon: Play, color: 'text-primary-foreground', surface: 'bg-primary-foreground/15', escuro: true,
       elapsed: maiorEspera(emAtendimentoJornada, item => item.updated_at || item.created_at),
       overdue: 0,
       caption: 'com profissional',
@@ -1021,17 +1022,19 @@ export default function Fila() {
           <>
             <Button
               variant="outline"
-              className="shrink-0 gap-2 rounded-full"
+              aria-label="Passagem de turno"
+              className="h-10 w-10 shrink-0 gap-2 rounded-full p-0 sm:w-auto sm:px-3"
               onClick={() => setIsHandoffOpen(true)}
               disabled={isLoading || filaQuery.isError || agendamentosQuery.isError}
             >
               <ClipboardCopy aria-hidden="true" className="h-4 w-4" />
-              Passagem de turno
+              <span className="hidden sm:inline">Passagem de turno</span>
             </Button>
             <Badge
               variant="outline"
               role="status"
               aria-live="polite"
+              aria-label={filaRealtimeMessage(queueRealtimeState)}
               className={cn(
                 'max-w-[min(18rem,45vw)] whitespace-normal text-left text-[10px] leading-tight sm:text-xs',
                 queueRealtimeState === 'connected' && 'border-success/40 text-success',
@@ -1045,7 +1048,10 @@ export default function Fila() {
                 queueRealtimeState === 'connecting' && 'animate-pulse bg-muted-foreground',
                 queueRealtimeState === 'fallback' && 'bg-warning',
               )} />
-              {filaRealtimeMessage(queueRealtimeState)}
+              <span className="hidden sm:inline">{filaRealtimeMessage(queueRealtimeState)}</span>
+              <span className="sm:hidden">
+                {queueRealtimeState === 'connected' ? 'Ao vivo' : queueRealtimeState === 'connecting' ? 'Conectando' : 'Manual'}
+              </span>
             </Badge>
             {meuMedicoId && (
               <label className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground">
@@ -1065,14 +1071,14 @@ export default function Fila() {
                 </SelectContent>
               </Select>
             )}
-            <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => window.open('/painel-tv', '_blank', 'noopener,noreferrer')} title="Abre o painel de chamadas em outra aba">
-              <MonitorPlay aria-hidden="true" className="h-4 w-4" /> Painel de chamadas
+            <Button variant="outline" aria-label="Painel de chamadas" className="h-10 w-10 shrink-0 gap-2 rounded-full p-0 sm:w-auto sm:px-3" onClick={() => window.open('/painel-tv', '_blank', 'noopener,noreferrer')} title="Abre o painel de chamadas em outra aba">
+              <MonitorPlay aria-hidden="true" className="h-4 w-4" /><span className="hidden sm:inline">Painel de chamadas</span>
             </Button>
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar fila" title="Atualizar fila">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
-              <UserPlus aria-hidden="true" className="h-4 w-4" /> Adicionar à fila
+            <Button className="h-10 shrink-0 gap-2 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90 sm:px-4" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
+              <UserPlus aria-hidden="true" className="h-4 w-4" /> Adicionar<span className="hidden sm:inline"> à fila</span>
             </Button>
           </>
         }
@@ -1107,21 +1113,21 @@ export default function Fila() {
             </p>
           )}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div data-testid="fila-stage-grid" className="grid grid-cols-2 gap-2 xl:grid-cols-4">
           {etapasJornada.map((etapa) => {
             const Icon = etapa.icon;
             return (
-              <Card key={etapa.id} id={`fila-etapa-${etapa.id}`} className={cn('rounded-2xl border-border/60 shadow-xs', 'escuro' in etapa && etapa.escuro && 'border-transparent bg-gradient-primary text-white')}>
-                <CardContent className="flex min-h-[102px] items-center gap-3 p-3">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', etapa.surface)}>
+              <Card key={etapa.id} id={`fila-etapa-${etapa.id}`} className={cn('rounded-2xl border-border/60 shadow-xs', 'escuro' in etapa && etapa.escuro && 'border-primary bg-primary text-primary-foreground')}>
+                <CardContent className="flex min-h-20 items-center gap-3 p-2 sm:min-h-[102px] sm:p-3">
+                  <div className={cn('hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:flex', etapa.surface)}>
                     <Icon aria-hidden="true" className={cn('h-5 w-5', etapa.color)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', 'escuro' in etapa && etapa.escuro ? 'text-white/80' : 'text-foreground')}>{etapa.label}</h3>
+                      <h3 className={cn('truncate text-xs font-semibold', 'escuro' in etapa && etapa.escuro ? 'text-primary-foreground/95' : 'text-foreground')}>{etapa.label}</h3>
                       <span className={cn('text-2xl font-bold tabular-nums', etapa.color)}>{isLoading ? '…' : erroDoResumo ? '—' : etapa.value}</span>
                     </div>
-                    <p className={cn('truncate text-[11px]', 'escuro' in etapa && etapa.escuro ? 'text-white/60' : 'text-muted-foreground')}>{etapa.caption}</p>
+                    <p className={cn('truncate text-[11px]', 'escuro' in etapa && etapa.escuro ? 'text-primary-foreground/90' : 'text-muted-foreground')}>{etapa.caption}</p>
                     {etapa.id === 'triagem' && primeiroPendenteTriagem && (
                       <p className="mt-0.5 truncate text-[10px] font-medium text-foreground" title={getPacienteNome(primeiroPendenteTriagem.agendamento_id)}>
                         {getPacienteNome(primeiroPendenteTriagem.agendamento_id)} · aguardando {formatarEspera(minutosDeEspera(primeiroPendenteTriagem.horario_chegada, now))}
@@ -1133,7 +1139,7 @@ export default function Fila() {
                         {etapa.overdue} acima de 30 min · maior espera {etapa.elapsed} min
                       </p>
                     ) : etapa.elapsed !== null ? (
-                      <p className="mt-1 text-[10px] text-muted-foreground">
+                      <p className={cn('mt-1 text-[10px]', 'escuro' in etapa && etapa.escuro ? 'text-primary-foreground/85' : 'text-muted-foreground')}>
                         {etapa.value > 0 ? `Maior tempo: ${etapa.elapsed} min` : 'Sem pacientes nesta etapa'}
                       </p>
                     ) : etapa.id === 'finalizado' ? (
@@ -1483,12 +1489,12 @@ export default function Fila() {
               </Select>
             </div>
             {validacaoCheckin.length > 0 && (
-              <ul aria-label="Validação do check-in" className="space-y-1.5 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
+              <ul aria-label="Validação do check-in" className="space-y-1.5 rounded-xl border border-border bg-muted/30 p-3">
                 {validacaoCheckin.map((item) => {
                   const Icone = item.ok ? CircleCheck : CircleAlert;
                   return (
                     <li key={item.id} className="flex items-start gap-2 text-xs">
-                      <Icone aria-hidden="true" className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', item.ok ? 'text-[#1080CA]' : 'text-destructive')} />
+                      <Icone aria-hidden="true" className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', item.ok ? 'text-success' : 'text-destructive')} />
                       <span>
                         <span className="font-semibold">{item.rotulo}: {item.ok ? 'ok' : 'pendente'}</span>
                         <span className="text-muted-foreground"> — {item.detalhe}</span>

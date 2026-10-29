@@ -50,6 +50,19 @@ test('checklist concluído exige revisão antes de liberar sala', async ({ page 
 
   await page.goto('/higiene-salas');
   await expect(page.getByRole('heading', { name: 'Higienização de salas' })).toBeVisible();
+  const hygieneMain = page.locator('#main-content main');
+  expect(await hygieneMain.evaluate((main) => /#[0-9a-fA-F]{3,8}|gradient-primary|rgba\(/.test(main.innerHTML))).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('higiene-desktop.png'), fullPage: true });
+  const statusGroup = page.getByRole('group', { name: 'Situação da higienização' });
+  const firstStatus = statusGroup.getByRole('button').first();
+  await firstStatus.focus();
+  await firstStatus.press('Enter');
+  await expect(firstStatus).toHaveAttribute('aria-pressed', 'true');
+  await firstStatus.press('Enter');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('higiene-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole('button', { name: 'Iniciar higienização' }).click();
   await expect(page.getByLabel('Higienizar superfícies de contato')).toBeVisible();
   await page.getByLabel('Higienizar superfícies de contato').check();
@@ -65,5 +78,40 @@ test('checklist concluído exige revisão antes de liberar sala', async ({ page 
   await expect(page.getByText('Disponível', { exact: true })).toBeVisible();
   expect(calls.find((call) => call.action === 'submit')).toMatchObject({ execution_id: executionId });
   expect(calls.find((call) => call.action === 'review')).toMatchObject({ decision: 'approved', note: 'Inspeção visual aprovada.' });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('falha de carregamento oferece tentativa novamente', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'recepcao' });
+
+  await page.route('**/functions/v1/higiene-salas', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body.action).toBe('list');
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'indisponível' }) });
+  });
+
+  await page.goto('/higiene-salas');
+  await expect(page.getByRole('alert')).toContainText('Não foi possível carregar a higienização');
+  await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('estado vazio respeita as permissões de recepção', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'recepcao' });
+
+  await page.route('**/functions/v1/higiene-salas', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body.action).toBe('list');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      rooms: [], activeChecklistId: null, checklists: [], executions: [], reviews: [], canReview: false, canConfigure: false,
+    }) });
+  });
+
+  await page.goto('/higiene-salas');
+  await expect(page.getByText('Nenhuma sala cadastrada nesta unidade.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Configurar checklist' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Inspeção e liberação' })).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

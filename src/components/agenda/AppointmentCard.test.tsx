@@ -72,6 +72,21 @@ describe('AppointmentCard', () => {
     expect(card.getAttribute('aria-label')).not.toContain('ag-ficticio-1');
   });
 
+  it('mantém a cor personalizada como faixa e contorno, sem texto branco sobre a cor escolhida', () => {
+    renderCard({ hora_inicio: '10:00:00', hora_fim: '10:30:00' });
+
+    const card = document.querySelector('[data-agendamento-id="ag-ficticio-1"]') as HTMLElement;
+    const marker = screen.getByTestId('appointment-color-marker');
+
+    expect(card.style.backgroundImage).toBe('');
+    expect(card).toHaveClass('bg-card');
+    expect(card.style.borderLeft).toContain('#7B6CF6');
+    expect(marker).toHaveClass('bg-muted', 'text-foreground');
+    expect(marker).not.toHaveClass('text-white');
+    expect(marker.style.backgroundColor).toBe('');
+    expect(marker.style.borderColor).toBeTruthy();
+  });
+
   it('abre a consulta com Enter sem iniciar o arraste', () => {
     const onDragStart = vi.fn();
     const { onClick } = renderCard({ hora_inicio: '10:00:00', hora_fim: '10:15:00' }, { onDragStart });

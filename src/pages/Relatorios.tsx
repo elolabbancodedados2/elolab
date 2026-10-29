@@ -1,5 +1,5 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -12,6 +12,7 @@ import {
   TrendingDown,
   FileSpreadsheet,
   BarChart2, AlertTriangle, RefreshCw, Package,
+  Download, ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -32,7 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { usePacientes, useAgendamentosPeriodo, useSupabaseQuery, useEstoque } from '@/hooks/useSupabaseData';
+import { usePacientes, useAgendamentosPeriodo, useSupabaseQuery, useEstoque, useMedicos } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
@@ -44,11 +45,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import RelatorioCustomizado from '@/components/relatorios/RelatorioCustomizado';
 import { valorRealizado } from '@/lib/lancamentos';
-import { ErrorState } from '@/components/ErrorState';
+import { friendlyErrorMessage } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { podeAcessarRelatorioCompletoDePacientes, podeExportarFontesCompletas } from '@/lib/reportAccess';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   AreaChart,
   Area,
@@ -65,8 +74,15 @@ import {
   Legend,
 } from 'recharts';
 
-const CHART_COLORS = ['#1080CA', '#2ED5E7', '#0B4F7D', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
-const GRID_COLOR = '#DCE6F2';
+const CHART_COLORS = [
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-5))',
+  'hsl(var(--chart-6))',
+];
+const GRID_COLOR = 'hsl(var(--border))';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 const dateOnlyFromValue = (value: string) => value.includes('T') || value.includes(' ')
   ? dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo')
@@ -74,6 +90,58 @@ const dateOnlyFromValue = (value: string) => value.includes('T') || value.includ
 const saldoEmAberto = (lancamento: { valor: number; valor_pago: number | null; desconto?: number | null; acrescimo?: number | null }) =>
   Math.max(0, Number(lancamento.valor || 0) - Number(lancamento.desconto || 0)
     + Number(lancamento.acrescimo || 0) - Number(lancamento.valor_pago || 0));
+
+function ChartEmptyState({ message }: { message: string }) {
+  return (
+    <div role="status" className="flex min-h-44 items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-4 text-center text-sm text-muted-foreground">
+      {message}
+    </div>
+  );
+}
+
+function ReportDataBoundary({
+  title,
+  loading,
+  error,
+  onRetry,
+  children,
+}: {
+  title: string;
+  loading: boolean;
+  error?: unknown;
+  onRetry: () => void;
+  children: ReactNode;
+}) {
+  if (loading) {
+    return (
+      <div role="status" aria-label={`Carregando ${title.toLowerCase()}`} aria-busy="true" className="space-y-3 py-2">
+        <div className="flex min-h-10 items-center gap-2 text-sm font-medium text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+          <span>Carregando {title.toLowerCase()}…</span>
+        </div>
+        <Skeleton className="h-40 w-full rounded-xl" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div role="alert" className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center">
+        <AlertTriangle aria-hidden="true" className="h-5 w-5 shrink-0 text-destructive" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">Não foi possível carregar {title}</p>
+          <p className="text-sm text-muted-foreground">{friendlyErrorMessage(error)}</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={onRetry} className="shrink-0">
+          <RefreshCw aria-hidden="true" className="mr-2 h-4 w-4" />
+          Tentar novamente
+        </Button>
+      </div>
+    );
+  }
+
+  return children;
+}
 
 interface EventoFinanceiro {
   id: string;
@@ -157,9 +225,13 @@ export default function Relatorios() {
   const { profile } = useSupabaseAuth();
   const podeVerAgenda = !!profile?.roles?.some(role => ['admin', 'medico', 'enfermagem'].includes(role));
   const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
-  const pacientesQuery = usePacientes(podeVerRelatorioPacientes);
+  const pacientesQuery = usePacientes(podeVerRelatorioPacientes, { suppressGlobalErrorToast: true });
   const pacientes = pacientesQuery.data ?? [];
-  const agendamentosQuery = useAgendamentosPeriodo(inicioStr, fimStr, { enabled: podeVerAgenda, keepPrevious: true });
+  const agendamentosQuery = useAgendamentosPeriodo(inicioStr, fimStr, {
+    enabled: podeVerAgenda,
+    keepPrevious: true,
+    suppressGlobalErrorToast: true,
+  });
   const agendamentos = agendamentosQuery.data ?? [];
   const lancamentosEmitidosQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data', ascending: false },
@@ -168,6 +240,7 @@ export default function Relatorios() {
       { column: 'data', operator: 'lte', value: fimStr },
     ],
     keepPrevious: true,
+    suppressGlobalErrorToast: true,
   });
   const lancamentosPagosQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data_pagamento', ascending: false },
@@ -176,6 +249,7 @@ export default function Relatorios() {
       { column: 'data_pagamento', operator: 'lte', value: fimStr },
     ],
     keepPrevious: true,
+    suppressGlobalErrorToast: true,
   });
   const lancamentosVencidosQuery = useSupabaseQuery<any>('lancamentos', {
     orderBy: { column: 'data_vencimento', ascending: false },
@@ -184,6 +258,7 @@ export default function Relatorios() {
       { column: 'data_vencimento', operator: 'lte', value: fimStr },
     ],
     keepPrevious: true,
+    suppressGlobalErrorToast: true,
   });
   const pagamentosQuery = useQuery({
     queryKey: ['pagamentos-relatorios', profile?.clinica_id ?? null, inicioStr, fimStr],
@@ -214,6 +289,7 @@ export default function Relatorios() {
         .map(pagamento => [pagamento.id, pagamento] as const)).values()];
     },
     enabled: !!profile?.clinica_id,
+    meta: { suppressGlobalErrorToast: true },
   });
   const lancamentos = useMemo(() => {
     const porId = new Map<string, any>();
@@ -249,20 +325,44 @@ export default function Relatorios() {
       return { ids: [...idsComHistorico], atingiuLimite };
     },
     enabled: !!profile?.clinica_id && idsLancamentosPagos.length > 0,
+    meta: { suppressGlobalErrorToast: true },
   });
-  const medicosQuery = useSupabaseQuery<any>('medicos', {
-    select: 'id, nome, crm, especialidade',
-    orderBy: { column: 'nome', ascending: true },
-    enabled: podeVerAgenda,
-  });
+  const medicosQuery = useMedicos({ enabled: podeVerAgenda, suppressGlobalErrorToast: true });
   const medicos = medicosQuery.data ?? [];
-  const estoqueQuery = useEstoque();
+  const estoqueQuery = useEstoque({ suppressGlobalErrorToast: true });
   const estoque = estoqueQuery.data ?? [];
 
-  const queries = [pacientesQuery, ...(podeVerAgenda ? [agendamentosQuery, medicosQuery] : []), lancamentosEmitidosQuery, lancamentosPagosQuery, lancamentosVencidosQuery, pagamentosQuery, lancamentosComHistoricoPagamentoQuery, estoqueQuery];
-  const isLoading = queries.some(query => query.isLoading);
+  const financialQueries = [lancamentosEmitidosQuery, lancamentosPagosQuery, lancamentosVencidosQuery, pagamentosQuery, lancamentosComHistoricoPagamentoQuery];
+  const agendaQueries = [agendamentosQuery, medicosQuery];
+  const patientQueries = [pacientesQuery];
+  const stockQueries = [estoqueQuery];
+  const summaryQueries = [...financialQueries, ...(podeVerAgenda ? agendaQueries : [])];
+  const queries = [...patientQueries, ...(podeVerAgenda ? agendaQueries : []), ...financialQueries, ...stockQueries];
   const isFetching = queries.some(query => query.isFetching);
-  const failedQuery = queries.find(query => query.isError);
+  const financialError = financialQueries.find(query => query.isError)?.error;
+  const agendaError = podeVerAgenda ? agendaQueries.find(query => query.isError)?.error : undefined;
+  const patientError = podeVerRelatorioPacientes ? patientQueries.find(query => query.isError)?.error : undefined;
+  const stockError = stockQueries.find(query => query.isError)?.error;
+  const financialLoading = financialQueries.some(query => query.isLoading);
+  const agendaLoading = podeVerAgenda && agendaQueries.some(query => query.isLoading);
+  const patientLoading = podeVerRelatorioPacientes && patientQueries.some(query => query.isLoading);
+  const stockLoading = stockQueries.some(query => query.isLoading);
+  const summaryLoading = summaryQueries.some(query => query.isLoading);
+  const summaryError = podeVerAgenda
+    ? financialError ?? agendaError
+    : financialError;
+  const activeQueries = activeTab === 'financeiro' || activeTab === 'dre'
+    ? financialQueries
+    : activeTab === 'atendimentos' || activeTab === 'medicos'
+      ? agendaQueries
+      : activeTab === 'status'
+        ? [agendamentosQuery]
+        : activeTab === 'pacientes'
+          ? patientQueries
+          : activeTab === 'estoque'
+            ? stockQueries
+            : [];
+  const activeReportFetching = activeQueries.some(query => query.isFetching);
   const fontesNoLimite = [
     { nome: 'pacientes', total: pacientes.length },
     { nome: 'agendamentos', total: agendamentos.length },
@@ -473,6 +573,7 @@ export default function Relatorios() {
       value,
     }));
   }, [eventosFinanceiros]);
+  const categoriasDRE = [...new Set(eventosFinanceiros.map(evento => evento.categoria || 'Outros'))];
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -622,65 +723,66 @@ export default function Relatorios() {
     })));
   }, ['estoque']);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 md:grid-cols-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
-        </div>
-        <Skeleton className="h-96" />
-      </div>
-    );
-  }
-
-  if (failedQuery) {
-    return <ErrorState title="Não foi possível montar os relatórios" description="Uma ou mais fontes de dados falharam. Os números e exportações foram pausados para evitar relatórios incompletos." error={failedQuery.error} onRetry={() => { for (const query of queries) void query.refetch(); }} />;
-  }
-
   const refreshTudo = () => { for (const query of queries) void query.refetch(); };
+  const refreshFinancial = () => { for (const query of financialQueries) void query.refetch(); };
+  const refreshAgenda = () => { for (const query of agendaQueries) void query.refetch(); };
+  const refreshPatients = () => { for (const query of patientQueries) void query.refetch(); };
+  const refreshStock = () => { for (const query of stockQueries) void query.refetch(); };
+  const refreshSummary = () => { for (const query of summaryQueries) void query.refetch(); };
 
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
         title="Relatórios da clínica"
         icon={<FileText />}
-        description={`${obterRotuloPeriodo()} · ${podeVerAgenda
-          ? 'o período se aplica à agenda e ao financeiro; pacientes e estoque mostram o cadastro e o saldo atuais'
-          : 'o período se aplica ao financeiro'}`}
+        description={activeTab === 'customizado'
+          ? 'Monte um relatório escolhendo a fonte de dados, o período e os filtros.'
+          : `${obterRotuloPeriodo()} · ${podeVerAgenda
+            ? 'o período se aplica à agenda e ao financeiro; pacientes e estoque mostram o cadastro e o saldo atuais'
+            : 'o período se aplica ao financeiro'}`}
         actions={
-          <>
+          activeTab !== 'customizado' && <>
             <Button aria-label="Atualizar dados dos relatórios" variant="outline" size="icon" className="rounded-full" onClick={refreshTudo} disabled={isFetching}>
               <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
             </Button>
-            <Button variant="outline" onClick={handleExportPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar financeiro para PDF">
-              <FileText className="h-4 w-4" />
-              PDF
-            </Button>
-            {podeVerRelatorioPacientes && <Button variant="outline" onClick={handleExportPacientesExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['pacientes'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar pacientes para Excel">
-              <Users className="h-4 w-4" />
-              Pacientes
-            </Button>}
-            {podeVerAgenda && (
-              <Button variant="outline" onClick={handleExportAgendamentosExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar agendamentos para Excel">
-                <Calendar className="h-4 w-4" />
-                Agenda
-              </Button>
-            )}
-            <Button variant="outline" onClick={handleExportEstoqueExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['estoque'], fontesNoLimite)} className="gap-2 rounded-full" aria-label="Exportar estoque para Excel">
-              <FileSpreadsheet className="h-4 w-4" />
-              Estoque
-            </Button>
-            <Button onClick={handleExportExcel} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" aria-label="Exportar financeiro para Excel">
-              <FileSpreadsheet className="h-4 w-4" />
-              Exportar Excel
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  disabled={activeReportFetching || !!exportando}
+                  className="gap-2"
+                  aria-label="Exportar relatórios"
+                >
+                  <Download className="h-4 w-4" />
+                  Exportar
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Opções de exportação</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={financialLoading || !!financialError || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} onSelect={handleExportExcel}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" /> Financeiro em Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={financialLoading || !!financialError || !podeExportarFontesCompletas(['lançamentos', 'pagamentos', 'histórico de pagamentos'], fontesNoLimite)} onSelect={handleExportPDF}>
+                  <FileText className="mr-2 h-4 w-4" /> Financeiro em PDF
+                </DropdownMenuItem>
+                {podeVerAgenda && <DropdownMenuItem disabled={agendaLoading || !!agendaError || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} onSelect={handleExportAgendamentosExcel}>
+                  <Calendar className="mr-2 h-4 w-4" /> Agenda em Excel
+                </DropdownMenuItem>}
+                {podeVerRelatorioPacientes && <DropdownMenuItem disabled={patientLoading || !!patientError || !podeExportarFontesCompletas(['pacientes'], fontesNoLimite)} onSelect={handleExportPacientesExcel}>
+                  <Users className="mr-2 h-4 w-4" /> Pacientes em Excel
+                </DropdownMenuItem>}
+                <DropdownMenuItem disabled={stockLoading || !!stockError || !podeExportarFontesCompletas(['estoque'], fontesNoLimite)} onSelect={handleExportEstoqueExcel}>
+                  <Package className="mr-2 h-4 w-4" /> Estoque em Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       />
 
       {/* Pílulas de período */}
-      <div className="flex flex-wrap items-center gap-2">
+      {activeTab !== 'customizado' && <div role="group" aria-label="Filtrar relatórios por período" className="flex flex-wrap items-center gap-2">
         {PERIODO_PILLS.map(pill => (
           <button
             key={pill.value}
@@ -690,8 +792,8 @@ export default function Relatorios() {
             className={cn(
               'h-8 rounded-full border px-3 text-xs font-medium transition-colors',
               periodo === pill.value
-                ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-                : 'border-border/60 bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                ? 'border-transparent bg-primary text-primary-foreground shadow-sm'
+                : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
             )}
           >
             {pill.label}
@@ -704,107 +806,95 @@ export default function Relatorios() {
             <Input type="date" aria-label="Data final" className="h-8 w-36 rounded-full" value={customFim} min={customInicio || undefined} onChange={e => setCustomFim(e.target.value)} />
           </div>
         )}
-      </div>
+      </div>}
 
-      {isFetching && <p role="status" className="text-sm text-muted-foreground">Atualizando dados do relatório…</p>}
+      {activeTab !== 'customizado' && activeReportFetching && <p role="status" className="text-sm text-muted-foreground">Atualizando dados deste relatório…</p>}
       {exportando && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Gerando {exportando}…</p>}
 
-      {fontesNoLimite.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>O limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Indicadores e exportações dessas fontes podem estar incompletos.</p></div>}
+      {activeTab !== 'customizado' && fontesNoLimite.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>O limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Indicadores e exportações dessas fontes podem estar incompletos.</p></div>}
 
-      {/* Faixa de indicadores clicáveis */}
-      <div className={cn('grid gap-3 md:grid-cols-2', podeVerAgenda ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
-        {podeVerAgenda && (
-          <button type="button" aria-pressed={activeTab === 'atendimentos'} onClick={() => setActiveTab('atendimentos')}
-            className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-info/10">
-                <Calendar className="h-5 w-5 text-info" />
-              </div>
-              <div>
-                <p className="text-[11px] text-muted-foreground">Atendimentos</p>
-                <p className="text-2xl font-bold tabular-nums">{estatisticas.totalAtendimentos}</p>
-                <p className="text-[11px] text-muted-foreground">{estatisticas.atendimentosFinalizados} finalizados</p>
-              </div>
-            </div>
+      {activeTab !== 'customizado' && <section aria-label="Resumo do período" className="overflow-hidden rounded-xl border border-border bg-card">
+        <ReportDataBoundary title="o resumo do período" loading={summaryLoading} error={summaryError} onRetry={refreshSummary}>
+        <div className={cn('grid grid-cols-2 md:grid-cols-4', podeVerAgenda ? 'grid-cols-2' : 'md:grid-cols-3')}>
+          {podeVerAgenda && <button
+            type="button"
+            aria-pressed={activeTab === 'atendimentos'}
+            onClick={() => setActiveTab('atendimentos')}
+            className="flex min-h-20 items-center gap-3 border-b border-r border-border px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-pressed:bg-primary/5"
+          >
+            <Calendar className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-xs text-muted-foreground">Atendimentos</span>
+              <span className="block text-xl font-semibold tabular-nums">{estatisticas.totalAtendimentos}</span>
+              <span className="block text-xs text-muted-foreground">{estatisticas.atendimentosFinalizados} finalizados</span>
+            </span>
+          </button>}
+          <button
+            type="button"
+            aria-pressed={activeTab === 'financeiro'}
+            onClick={() => setActiveTab('financeiro')}
+            className="flex min-h-20 items-center gap-3 border-b border-r border-border px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-pressed:bg-primary/5"
+          >
+            <TrendingUp className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-xs text-muted-foreground">Receitas</span>
+              <span className="block text-lg font-semibold tabular-nums text-success">{formatCurrency(estatisticas.receitas)}</span>
+            </span>
           </button>
-        )}
-
-        <button type="button" aria-pressed={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}
-          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10">
-              <TrendingUp className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-[11px] text-muted-foreground">Receitas</p>
-              <p className="text-2xl font-bold tabular-nums text-success">{formatCurrency(estatisticas.receitas)}</p>
-            </div>
+          <button
+            type="button"
+            aria-pressed={activeTab === 'financeiro'}
+            onClick={() => setActiveTab('financeiro')}
+            className="flex min-h-20 items-center gap-3 border-b border-r border-border px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-pressed:bg-primary/5"
+          >
+            <TrendingDown className="h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-xs text-muted-foreground">Despesas</span>
+              <span className="block text-lg font-semibold tabular-nums text-destructive">{formatCurrency(estatisticas.despesas)}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeTab === 'dre'}
+            onClick={() => setActiveTab('dre')}
+            className="flex min-h-20 items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-pressed:bg-primary/5"
+          >
+            <DollarSign className={cn('h-4 w-4 shrink-0', estatisticas.lucro < 0 ? 'text-destructive' : estatisticas.lucro > 0 ? 'text-success' : 'text-muted-foreground')} aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-xs text-muted-foreground">Resultado</span>
+              <span className={cn('block text-lg font-semibold tabular-nums', estatisticas.lucro < 0 ? 'text-destructive' : estatisticas.lucro > 0 ? 'text-success' : 'text-foreground')}>
+                {formatCurrency(estatisticas.lucro)}
+              </span>
+            </span>
+          </button>
+        </div>
+        <dl className={cn('grid grid-cols-2 gap-x-6 gap-y-3 bg-muted/20 px-4 py-3 md:grid-cols-4', !podeVerAgenda && 'md:grid-cols-1')}>
+          {podeVerAgenda && <div>
+            <dt className="text-xs text-muted-foreground">Comparecimento</dt>
+            <dd className="font-semibold tabular-nums">{estatisticas.taxaComparecimento === null ? '—' : `${estatisticas.taxaComparecimento}%`}</dd>
+            <p className="text-xs text-muted-foreground">{estatisticas.atendimentosComDesfecho} desfechos; sem cancelados e futuros</p>
+          </div>}
+          {podeVerAgenda && <div>
+            <dt className="text-xs text-muted-foreground">Ticket médio</dt>
+            <dd className="font-semibold tabular-nums">{estatisticas.ticketMedio === null ? '—' : formatCurrency(estatisticas.ticketMedio)}</dd>
+            <p className="text-xs text-muted-foreground">Por atendimento com recebimento</p>
+          </div>}
+          {podeVerAgenda && <div>
+            <dt className="text-xs text-muted-foreground">Cancelamentos</dt>
+            <dd className="font-semibold tabular-nums text-destructive">{estatisticas.cancelamentos}</dd>
+          </div>}
+          <div>
+            <dt className="text-xs text-muted-foreground">Valores pendentes</dt>
+            <dd className="font-semibold tabular-nums text-destructive">{formatCurrency(estatisticas.pendentes)}</dd>
+            <p className="text-xs text-muted-foreground">Saldo com vencimento no período</p>
           </div>
-        </button>
-
-        <button type="button" aria-pressed={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')}
-          className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
-              <TrendingDown className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-[11px] text-muted-foreground">Despesas</p>
-              <p className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(estatisticas.despesas)}</p>
-            </div>
-          </div>
-        </button>
-
-        <button type="button" aria-pressed={activeTab === 'dre'} onClick={() => setActiveTab('dre')}
-          className="rounded-2xl border border-transparent bg-gradient-primary p-4 text-left text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
-              <DollarSign className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-[11px] text-white/70">Lucro</p>
-              <p className="text-2xl font-bold tabular-nums text-white">{formatCurrency(estatisticas.lucro)}</p>
-            </div>
-          </div>
-        </button>
-      </div>
-
-      {/* KPIs extras */}
-      <div className={cn('grid gap-3', podeVerAgenda ? 'md:grid-cols-4' : 'md:grid-cols-1')}>
-        {podeVerAgenda && <Card className="shadow-xs">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Taxa Comparecimento</p>
-            <p className="text-2xl font-bold tabular-nums text-[#1080CA]">{estatisticas.taxaComparecimento === null ? '—' : `${estatisticas.taxaComparecimento}%`}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Base: {estatisticas.atendimentosComDesfecho} desfechos; exclui cancelados e futuros.</p>
-          </CardContent>
-        </Card>}
-        {podeVerAgenda && <Card className="shadow-xs">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Ticket Médio</p>
-            <p className="text-2xl font-bold tabular-nums">
-              {estatisticas.ticketMedio === null ? '—' : formatCurrency(estatisticas.ticketMedio)}
-            </p>
-            <p className="text-xs text-muted-foreground">Por atendimento com recebimento no período</p>
-          </CardContent>
-        </Card>}
-        {podeVerAgenda && <Card className="shadow-xs">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Cancelamentos</p>
-            <p className="text-2xl font-bold tabular-nums text-destructive">{estatisticas.cancelamentos}</p>
-          </CardContent>
-        </Card>}
-        <Card className="shadow-xs">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Valores Pendentes</p>
-            <p className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(estatisticas.pendentes)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Saldo de contas com vencimento no período</p>
-          </CardContent>
-        </Card>
-      </div>
+        </dl>
+        </ReportDataBoundary>
+      </section>}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="customizado">⚡ Customizado</TabsTrigger>
+        <TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 overflow-visible rounded-xl">
+          <TabsTrigger value="customizado">Relatório customizado</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           <TabsTrigger value="dre">DRE</TabsTrigger>
           {podeVerAgenda && <TabsTrigger value="atendimentos">Atendimentos</TabsTrigger>}
@@ -819,6 +909,7 @@ export default function Relatorios() {
         </TabsContent>
 
         <TabsContent value="financeiro" className="space-y-6">
+          <ReportDataBoundary title="os dados financeiros" loading={financialLoading} error={financialError} onRetry={refreshFinancial}>
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Gráfico de Receitas x Despesas */}
             <Card className="shadow-xs">
@@ -827,7 +918,7 @@ export default function Relatorios() {
                 <CardDescription>Comparativo diário</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                {eventosFinanceiros.length === 0 ? <ChartEmptyState message="Sem movimentações financeiras no período." /> : <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={dadosDiarios}>
                       <defs>
@@ -861,7 +952,7 @@ export default function Relatorios() {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
-                </div>
+                </div>}
               </CardContent>
             </Card>
 
@@ -872,39 +963,34 @@ export default function Relatorios() {
                 <CardDescription>Recebimentos líquidos por forma de pagamento, incluindo estornos na data em que ocorreram.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                {!dadosPorPagamento.some(item => item.value !== 0) ? <ChartEmptyState message="Sem recebimentos líquidos por forma de pagamento no período." /> : <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={dadosPorPagamento}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={5}
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        labelLine={false}
-                      >
-                        {dadosPorPagamento.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                        ))}
-                      </Pie>
+                    <BarChart data={dadosPorPagamento} layout="vertical" margin={{ left: 8, right: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                      <XAxis type="number" fontSize={11} tickFormatter={value => formatCurrency(Number(value))} />
+                      <YAxis type="category" dataKey="name" width={108} fontSize={11} />
                       <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    </PieChart>
+                      <Bar dataKey="value" name="Recebimentos líquidos" barSize={24} radius={[0, 4, 4, 0]}>
+                        {dadosPorPagamento.map(item => (
+                          <Cell key={item.name} fill={item.value < 0 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
-                </div>
+                </div>}
               </CardContent>
             </Card>
           </div>
+          </ReportDataBoundary>
         </TabsContent>
 
         {/* DRE - Demonstrativo de Resultado */}
         <TabsContent value="dre" className="space-y-6">
+          <ReportDataBoundary title="os dados financeiros" loading={financialLoading} error={financialError} onRetry={refreshFinancial}>
           <Card className="shadow-xs">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart2 className="h-5 w-5 text-[#1080CA]" />
+                <BarChart2 className="h-5 w-5 text-primary" />
                 DRE Simplificado
               </CardTitle>
               <CardDescription>Demonstrativo de Resultado do Exercício por Categoria</CardDescription>
@@ -982,7 +1068,7 @@ export default function Relatorios() {
                         )}
                         <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-destructive/10 border border-destructive/20 font-bold">
                           <span className="text-sm">Total Despesas</span>
-                          <span className="tabular-nums text-destructive">-{formatCurrency(totalDespesas)}</span>
+                          <span className="tabular-nums text-destructive">{totalDespesas > 0 ? `-${formatCurrency(totalDespesas)}` : formatCurrency(totalDespesas)}</span>
                         </div>
                       </div>
                     </div>
@@ -990,9 +1076,11 @@ export default function Relatorios() {
                     {/* Resultado */}
                     <div className={cn(
                       'flex items-center justify-between py-3 px-4 rounded-xl border-2 font-bold text-lg',
-                      resultado >= 0
+                      resultado > 0
                         ? 'bg-success/10 border-success/30 text-success'
-                        : 'bg-destructive/10 border-destructive/30 text-destructive'
+                        : resultado < 0
+                          ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                          : 'bg-muted/30 border-border text-muted-foreground'
                     )}>
                       <span className="flex items-center gap-2">
                         <DollarSign className="h-5 w-5" />
@@ -1005,7 +1093,7 @@ export default function Relatorios() {
                     </div>
 
                     {/* Chart */}
-                    <div className="h-[300px]">
+                    {categoriasDRE.length === 0 ? <ChartEmptyState message="Sem receitas ou despesas por categoria no período." /> : <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={(() => {
                           const allCats = new Set([
@@ -1027,17 +1115,19 @@ export default function Relatorios() {
                           <Bar dataKey="despesa" fill="hsl(var(--destructive))" name="Despesa" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
-                    </div>
+                    </div>}
                   </div>
                 );
               })()}
             </CardContent>
           </Card>
+          </ReportDataBoundary>
         </TabsContent>
 
         {podeVerAgenda && <TabsContent value="atendimentos" className="space-y-6">
+          <ReportDataBoundary title="a agenda" loading={agendaLoading} error={agendaError} onRetry={refreshAgenda}>
           <div className="flex justify-end">
-            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={isFetching || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2 rounded-full">
+            <Button variant="outline" onClick={handleExportAtendimentosPDF} disabled={agendaLoading || !!agendaError || !!exportando || !podeExportarFontesCompletas(['agendamentos', 'médicos'], fontesNoLimite)} className="gap-2 rounded-full">
               <FileText className="h-4 w-4" />
               Exportar PDF
             </Button>
@@ -1050,17 +1140,17 @@ export default function Relatorios() {
                 <CardDescription>Por dia</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                {agendamentosFiltrados.length === 0 ? <ChartEmptyState message="Sem atendimentos no período selecionado." /> : <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dadosDiarios}>
                       <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                       <XAxis dataKey="data" fontSize={12} />
                       <YAxis fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="atendimentos" fill="#1080CA" radius={[4, 4, 0, 0]} name="Atendimentos" />
+                      <Bar dataKey="atendimentos" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} name="Atendimentos" />
                     </BarChart>
                   </ResponsiveContainer>
-                </div>
+                </div>}
               </CardContent>
             </Card>
 
@@ -1071,7 +1161,7 @@ export default function Relatorios() {
                 <CardDescription>Distribuição por categoria</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                {dadosPorTipo.length === 0 ? <ChartEmptyState message="Sem tipos de atendimento no período selecionado." /> : <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -1089,13 +1179,15 @@ export default function Relatorios() {
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
-                </div>
+                </div>}
               </CardContent>
             </Card>
           </div>
+          </ReportDataBoundary>
         </TabsContent>}
 
         {podeVerAgenda && <TabsContent value="medicos" className="space-y-6">
+          <ReportDataBoundary title="a agenda" loading={agendaLoading} error={agendaError} onRetry={refreshAgenda}>
           <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Desempenho por Médico</CardTitle>
@@ -1145,9 +1237,11 @@ export default function Relatorios() {
               )}
             </CardContent>
           </Card>
+          </ReportDataBoundary>
         </TabsContent>}
 
         {podeVerRelatorioPacientes && <TabsContent value="pacientes" className="space-y-6">
+          <ReportDataBoundary title="os pacientes" loading={patientLoading} error={patientError} onRetry={refreshPatients}>
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="shadow-xs">
               <CardContent className="pt-6">
@@ -1175,7 +1269,7 @@ export default function Relatorios() {
               <CardTitle>Distribuição por Sexo</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
+              {pacientes.length === 0 ? <ChartEmptyState message="Ainda não há pacientes para esta distribuição." /> : <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -1203,12 +1297,14 @@ export default function Relatorios() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-              </div>
+              </div>}
             </CardContent>
           </Card>
+          </ReportDataBoundary>
         </TabsContent>}
 
         <TabsContent value="estoque" className="space-y-6">
+          <ReportDataBoundary title="o estoque" loading={stockLoading} error={stockError} onRetry={refreshStock}>
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="shadow-xs">
               <CardContent className="pt-6">
@@ -1283,7 +1379,7 @@ export default function Relatorios() {
               <CardTitle>Distribuição por Categoria</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
+              {estoque.length === 0 ? <ChartEmptyState message="Ainda não há itens cadastrados para esta distribuição." /> : <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={(() => {
                     const cats: Record<string, number> = {};
@@ -1296,22 +1392,24 @@ export default function Relatorios() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="quantidade" fill="#1080CA" radius={[4, 4, 0, 0]} name="Itens" />
+                    <Bar dataKey="quantidade" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} name="Itens" />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
+              </div>}
             </CardContent>
           </Card>
+          </ReportDataBoundary>
         </TabsContent>
 
         {podeVerAgenda && <TabsContent value="status" className="space-y-6">
+          <ReportDataBoundary title="a agenda" loading={agendamentosQuery.isLoading} error={agendamentosQuery.error} onRetry={() => { void agendamentosQuery.refetch(); }}>
           <Card className="shadow-xs">
             <CardHeader>
               <CardTitle>Distribuição por Status</CardTitle>
               <CardDescription>Status dos agendamentos no período</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
+              {agendamentosFiltrados.length === 0 ? <ChartEmptyState message="Sem agendamentos no período selecionado." /> : <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={(() => {
                     const statusCount: Record<string, number> = {};
@@ -1328,12 +1426,13 @@ export default function Relatorios() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="quantidade" fill="#1080CA" radius={[4, 4, 0, 0]} name="Quantidade" />
+                    <Bar dataKey="quantidade" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} name="Quantidade" />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
+              </div>}
             </CardContent>
           </Card>
+          </ReportDataBoundary>
         </TabsContent>}
       </Tabs>
     </div>

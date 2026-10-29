@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Search, Edit, Package, AlertTriangle, ArrowDown, ArrowUp, Loader2,
-  Barcode, Calendar, Pill, Building2, ShieldAlert, TrendingDown,
-  History, BarChart3, Trash2, RefreshCw, X, DollarSign,
+  Barcode, Pill, Building2, ShieldAlert, TrendingDown,
+  History, BarChart3, Trash2, RefreshCw, X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -110,7 +110,9 @@ export default function Estoque() {
   const requestedAlert = searchParams.get('alerta');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('todos');
-  const [filterAlerta, setFilterAlerta] = useState<'todos' | 'critico' | 'validade' | 'ponto_pedido'>(requestedAlert === 'critico' ? 'critico' : 'todos');
+  const [filterAlerta, setFilterAlerta] = useState<'todos' | 'critico' | 'vencidos' | 'validade' | 'ponto_pedido'>(
+    requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos',
+  );
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isMovimentacaoOpen, setIsMovimentacaoOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
@@ -135,7 +137,7 @@ export default function Estoque() {
   const { isLoading } = estoqueQuery;
 
   useEffect(() => {
-    setFilterAlerta(requestedAlert === 'critico' ? 'critico' : 'todos');
+    setFilterAlerta(requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos');
   }, [requestedAlert]);
 
   // Movement timeline query
@@ -184,9 +186,13 @@ export default function Estoque() {
       ].some(valor => normalizarBuscaEstoque(valor).includes(q));
       const matchCategoria = filterCategoria === 'todos' || p.categoria === filterCategoria;
       if (filterAlerta === 'critico') return matchSearch && matchCategoria && p.quantidade <= (p.quantidade_minima || 0);
+      if (filterAlerta === 'vencidos') {
+        const info = getValidadeInfo(p.validade);
+        return matchSearch && matchCategoria && Number(p.quantidade) > 0 && info !== null && info.dias < 0;
+      }
       if (filterAlerta === 'validade') {
         const info = getValidadeInfo(p.validade);
-        return matchSearch && matchCategoria && Number(p.quantidade) > 0 && info !== null;
+        return matchSearch && matchCategoria && Number(p.quantidade) > 0 && info !== null && info.dias >= 0;
       }
       if (filterAlerta === 'ponto_pedido') return matchSearch && matchCategoria && p.ponto_pedido && p.quantidade <= p.ponto_pedido;
       return matchSearch && matchCategoria;
@@ -195,6 +201,8 @@ export default function Estoque() {
 
   const getStatus = (produto: any) => {
     if (produto.quantidade <= 0) return { label: 'Sem estoque', variant: 'destructive' as const };
+    const validade = daysUntilValidity(produto.validade);
+    if (validade !== null && validade < 0) return { label: 'Vencido', variant: 'destructive' as const };
     if (produto.quantidade <= (produto.quantidade_minima || 0)) return { label: 'Crítico', variant: 'destructive' as const };
     if (produto.ponto_pedido && produto.quantidade <= produto.ponto_pedido) return { label: 'Pedir', variant: 'secondary' as const };
     if (produto.quantidade <= (produto.quantidade_minima || 0) * 1.5) return { label: 'Baixo', variant: 'secondary' as const };
@@ -207,13 +215,14 @@ export default function Estoque() {
       total: items.length,
       critico: items.filter(p => p.quantidade <= (p.quantidade_minima || 0)).length,
       valorTotal: items.reduce((acc, p) => acc + (p.quantidade * (p.valor_unitario || 0)), 0),
+      vencidos: items.filter(p => Number(p.quantidade) > 0 && (daysUntilValidity(p.validade) ?? 0) < 0).length,
       vencendo: items.filter(p => {
         const info = getValidadeInfo(p.validade);
         return Number(p.quantidade) > 0 && info !== null && info.dias >= 0 && info.dias <= 60;
       }).length,
       pontoPedido: items.filter(p => p.ponto_pedido && p.quantidade <= p.ponto_pedido).length,
     };
-  }, [estoque, getValidadeInfo]);
+  }, [estoque, getValidadeInfo, daysUntilValidity]);
 
   // ─── ABC Curve Analysis ─────────────────────────────────
   const abcData = useMemo(() => {
@@ -458,16 +467,17 @@ export default function Estoque() {
     });
   }, [estoque, daysUntilValidity]);
 
-  // Item mais crítico: menor saldo relativo ao mínimo; se não houver, o que vence mais perto.
+  // Itens vencidos e saldo crítico precisam de uma ação; vencimento futuro já tem filtro próprio.
   const heroItem = useMemo(() => {
     const items = estoque as any[];
+    const vencido = expiryAlerts.find(item => (daysUntilValidity(item.validade) ?? 0) < 0);
+    if (vencido) return { item: vencido, tipo: 'vencido' as const };
     const criticos = items
       .filter(p => p.quantidade <= (p.quantidade_minima || 0))
       .sort((a, b) => (a.quantidade - (a.quantidade_minima || 0)) - (b.quantidade - (b.quantidade_minima || 0)));
     if (criticos[0]) return { item: criticos[0], tipo: 'estoque' as const };
-    if (expiryAlerts[0]) return { item: expiryAlerts[0], tipo: 'validade' as const };
     return null;
-  }, [estoque, expiryAlerts]);
+  }, [estoque, expiryAlerts, daysUntilValidity]);
 
   const isMedicamento = formData.categoria === 'medicamentos';
   const timelineItem = (estoque as any[]).find(p => p.id === timelineItemId);
@@ -496,6 +506,7 @@ export default function Estoque() {
     ? [
       plural(stats.total, 'item', 'itens'),
       stats.critico > 0 ? `${stats.critico} em estoque baixo` : null,
+      stats.vencidos > 0 ? `${stats.vencidos} vencido${stats.vencidos === 1 ? '' : 's'}` : null,
       stats.vencendo > 0 ? `${stats.vencendo} vencendo em 60 dias` : null,
     ].filter(Boolean).join(' · ')
     : 'Controle de materiais e medicamentos: saldo, validade e movimentações.';
@@ -516,11 +527,12 @@ export default function Estoque() {
     return <ErrorState title="Não foi possível carregar o estoque" error={estoqueQuery.error} onRetry={() => void estoqueQuery.refetch()} />;
   }
 
-  const indicadores: { key: typeof filterAlerta; icon: typeof Package; label: string; value: string; caption: string; color: string; surface: string; escuro: boolean }[] = [
-    { key: 'todos', icon: Package, label: 'Total de itens', value: String(stats.total), caption: 'cadastrados no estoque', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-    { key: 'critico', icon: AlertTriangle, label: 'Estoque baixo', value: String(stats.critico), caption: 'no mínimo ou abaixo', color: 'text-white', surface: 'bg-white/15', escuro: true },
-    { key: 'validade', icon: Calendar, label: 'Vencendo', value: String(stats.vencendo), caption: 'até 60 dias', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
-    { key: 'ponto_pedido', icon: TrendingDown, label: 'Ponto de pedido', value: String(stats.pontoPedido), caption: 'hora de comprar', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+  const indicadores: { key: typeof filterAlerta; label: string; value: string; caption: string; color: string }[] = [
+    { key: 'todos', label: 'Total de itens', value: String(stats.total), caption: 'cadastrados no estoque', color: 'text-foreground' },
+    { key: 'critico', label: 'Estoque baixo', value: String(stats.critico), caption: 'no mínimo ou abaixo', color: 'text-destructive' },
+    { key: 'vencidos', label: 'Itens vencidos', value: String(stats.vencidos), caption: 'saldo maior que zero', color: 'text-destructive' },
+    { key: 'validade', label: 'Validade próxima', value: String(stats.vencendo), caption: 'vencem em até 60 dias', color: 'text-warning-foreground' },
+    { key: 'ponto_pedido', label: 'Ponto de pedido', value: String(stats.pontoPedido), caption: 'reposição recomendada', color: 'text-primary' },
   ];
 
   return (
@@ -532,18 +544,18 @@ export default function Estoque() {
         actions={<>
           <div className="flex rounded-full border border-border/60 bg-card p-1">
             <button type="button" aria-pressed={activeTab === 'produtos'} onClick={() => setActiveTab('produtos')}
-              className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors', activeTab === 'produtos' ? 'bg-gradient-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+              className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', activeTab === 'produtos' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
               <Package className="h-3.5 w-3.5" /> Produtos
             </button>
             <button type="button" aria-pressed={activeTab === 'curva_abc'} onClick={() => setActiveTab('curva_abc')}
-              className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors', activeTab === 'curva_abc' ? 'bg-gradient-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+              className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', activeTab === 'curva_abc' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
               <BarChart3 className="h-3.5 w-3.5" /> Curva ABC
             </button>
           </div>
           <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void estoqueQuery.refetch()} disabled={estoqueQuery.isFetching} aria-label="Atualizar estoque" title="Atualizar estoque">
             <RefreshCw className={cn('h-4 w-4', estoqueQuery.isFetching && 'animate-spin')} />
           </Button>
-          <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Plus className="h-4 w-4" />Novo item</Button>
+          <Button onClick={handleNew} className="shrink-0 gap-2"><Plus className="h-4 w-4" />Novo item</Button>
         </>}
       />
 
@@ -556,54 +568,45 @@ export default function Estoque() {
         </div>
       )}
 
-      <section role="group" aria-label="Situação do estoque" className="space-y-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <section role="group" aria-label="Situação do estoque" className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">Situação agora</h2>
-          <p className="text-xs text-muted-foreground">{filterAlerta === 'todos' ? 'Clique em um indicador para filtrar os produtos.' : 'Clique novamente para limpar o filtro.'}</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {indicadores.map((item) => {
-            const Icon = item.icon;
-            const ativo = filterAlerta === item.key;
-            return <button key={item.key} type="button" aria-pressed={ativo} onClick={() => { setActiveTab('produtos'); setFilterAlerta(ativo ? 'todos' : item.key); }}
-              className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                item.escuro && 'border-transparent bg-gradient-primary text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#1080CA]/60')}>
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', item.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', item.color)} /></div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={cn('truncate text-xs font-semibold', item.escuro ? 'text-white/80' : 'text-foreground')}>{item.label}</h3>
-                    <span className={cn('text-2xl font-bold tabular-nums', item.color)}>{item.value}</span>
-                  </div>
-                  <p className={cn('truncate text-[11px]', item.escuro ? 'text-white/60' : 'text-muted-foreground')}>{item.caption}</p>
-                </div>
-              </div>
-            </button>;
-          })}
-          <div className="rounded-2xl border border-border/60 bg-card shadow-xs">
-            <div className="flex min-h-[96px] items-center gap-3 p-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10"><DollarSign aria-hidden="true" className="h-5 w-5 text-success" /></div>
-              <div className="min-w-0 flex-1">
-                <h3 className="truncate text-xs font-semibold text-foreground">Valor em estoque</h3>
-                <p className="truncate text-lg font-bold tabular-nums text-success">{formatCurrency(stats.valorTotal)}</p>
-              </div>
-            </div>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-xs text-muted-foreground">Valor em estoque</span>
+            <span className="text-sm font-semibold tabular-nums text-foreground">{formatCurrency(stats.valorTotal)}</span>
           </div>
         </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 sm:divide-y-0 xl:grid-cols-5">
+          {indicadores.map((item) => {
+            const ativo = filterAlerta === item.key;
+            return (
+              <button key={item.key} type="button" aria-pressed={ativo} onClick={() => { setActiveTab('produtos'); setFilterAlerta(ativo ? 'todos' : item.key); }}
+                className={cn('min-h-[84px] min-w-0 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                  ativo && 'bg-primary/5')}>
+                <span className="block truncate text-xs font-medium text-muted-foreground">{item.label}</span>
+                <span className={cn('mt-1 block text-2xl font-semibold tabular-nums', item.color)}>{item.value}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{item.caption}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="sr-only">{filterAlerta === 'todos' ? 'Selecione um indicador para filtrar os produtos.' : 'Um filtro de situação está ativo. Selecione-o novamente para limpar.'}</p>
       </section>
 
       {activeTab === 'produtos' && heroItem && (() => {
         const { item, tipo } = heroItem;
         const status = getStatus(item);
         const dias = daysUntilValidity(item.validade);
-        return <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+        return <Card className={cn('overflow-hidden rounded-xl', tipo === 'vencido' && 'border-destructive/30 bg-destructive/5')}>
           <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
-                {tipo === 'estoque' ? <AlertTriangle className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
+              <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', tipo === 'vencido' ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning-foreground')}>
+                <AlertTriangle className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{tipo === 'estoque' ? 'Item mais crítico' : 'Validade mais próxima'}</p>
+                <p className={cn('text-[11px] font-semibold uppercase tracking-wide', tipo === 'vencido' ? 'text-destructive' : 'text-warning-foreground')}>
+                  {tipo === 'vencido' ? 'Item vencido — revisar saída' : 'Item com estoque crítico'}
+                </p>
                 <h2 className="truncate text-lg font-bold text-foreground">{item.nome}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span>{formatCategoria(item.categoria)}{item.localizacao ? ` · ${item.localizacao}` : ''}</span>
@@ -616,8 +619,9 @@ export default function Estoque() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleMovimentacao(item, 'entrada')}>
-                <ArrowDown aria-hidden="true" className="h-4 w-4" /> Registrar entrada
+              <Button variant={tipo === 'vencido' ? 'destructive' : 'default'} className="h-10 gap-1.5" onClick={() => handleMovimentacao(item, tipo === 'vencido' ? 'saida' : 'entrada')}>
+                {tipo === 'vencido' ? <ArrowUp aria-hidden="true" className="h-4 w-4" /> : <ArrowDown aria-hidden="true" className="h-4 w-4" />}
+                {tipo === 'vencido' ? 'Registrar saída' : 'Registrar entrada'}
               </Button>
               <Button variant="outline" className="h-10 gap-1.5 rounded-full" onClick={() => handleEdit(item)}>
                 <Edit aria-hidden="true" className="h-4 w-4" /> Editar
@@ -690,7 +694,7 @@ export default function Estoque() {
             <CardHeader><CardTitle>Classificação Completa</CardTitle></CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-xl border border-border/60">
-                <Table>
+                <Table containerProps={{ role: 'region', 'aria-label': 'Tabela da curva ABC; use a rolagem horizontal para acessar todas as colunas', tabIndex: 0, className: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring' }}>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">#</TableHead>
@@ -737,7 +741,7 @@ export default function Estoque() {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative w-full sm:w-72">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input aria-label="Buscar produtos" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Produto, EAN, lote, fornecedor..." value={searchTerm}
+                  <Input aria-label="Buscar produtos" className="h-10 rounded-full pl-9" placeholder="Produto, EAN, lote, fornecedor..." value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)} />
                 </div>
                 <Select value={filterCategoria} onValueChange={setFilterCategoria}>
@@ -748,10 +752,10 @@ export default function Estoque() {
                   </SelectContent>
                 </Select>
                 <div role="group" aria-label="Filtrar por alerta" className="flex flex-wrap items-center gap-1.5">
-                  {([['todos', 'Todos'], ['critico', 'Estoque crítico'], ['validade', 'Validade'], ['ponto_pedido', 'Ponto de pedido']] as [typeof filterAlerta, string][]).map(([key, label]) => {
+                  {([['todos', 'Todos'], ['critico', 'Estoque crítico'], ['vencidos', 'Vencidos'], ['validade', 'Vencem em até 60 dias'], ['ponto_pedido', 'Ponto de pedido']] as [typeof filterAlerta, string][]).map(([key, label]) => {
                     const ativo = filterAlerta === key;
                     return <button key={key} type="button" aria-pressed={ativo} onClick={() => setFilterAlerta(key)}
-                      className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]', ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground')}>{label}</button>;
+                      className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', ativo ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground')}>{label}</button>;
                   })}
                 </div>
                 {(searchTerm.trim() !== '' || filterCategoria !== 'todos' || filterAlerta !== 'todos') && (
@@ -764,7 +768,7 @@ export default function Estoque() {
 
               {filteredProdutos.length === 0 ? (
                 <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-muted-foreground">
-                  <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Package className="h-7 w-7" /></span>
+                  <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-muted text-muted-foreground"><Package className="h-7 w-7" /></span>
                   <p className="font-medium text-foreground">Nenhum produto corresponde aos filtros</p>
                   <p className="mt-1 text-sm">Limpe a busca, a categoria ou o indicador para ver todos os itens.</p>
                   <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); setFilterCategoria('todos'); setFilterAlerta('todos'); }}>Limpar filtros</Button>
@@ -773,7 +777,7 @@ export default function Estoque() {
                 <Card className="rounded-2xl border-border/60 shadow-xs">
                   <CardContent className="p-4">
                     <div className="overflow-hidden rounded-xl border border-border/60">
-                      <Table>
+                      <Table className="md:min-w-[760px]" containerProps={{ role: 'region', 'aria-label': 'Tabela de produtos; use a rolagem horizontal para acessar todas as colunas', tabIndex: 0, className: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring' }}>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Produto</TableHead>
@@ -794,6 +798,11 @@ export default function Estoque() {
                                 <TableCell>
                                   <div>
                                     <p className="font-medium">{produto.nome}</p>
+                                    {produto.validade && (
+                                      <p className={cn('mt-1 text-xs sm:hidden', validadeInfo?.dias !== undefined && validadeInfo.dias < 0 ? 'font-medium text-destructive' : validadeInfo?.dias !== undefined && validadeInfo.dias <= 30 ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
+                                        Validade {format(parseDateOnly(produto.validade)!, 'dd/MM/yyyy')}{validadeInfo ? ` · ${validadeInfo.label}` : ''}
+                                      </p>
+                                    )}
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                       {produto.principio_ativo && (
                                         <span className="flex items-center gap-0.5"><Pill className="h-3 w-3" />{produto.principio_ativo}</span>
@@ -1031,7 +1040,7 @@ export default function Estoque() {
           </div>
           <DialogFooter className="flex-shrink-0 pt-4 border-t">
             <Button variant="outline" className="rounded-full" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>
           </DialogFooter>
@@ -1081,7 +1090,7 @@ export default function Estoque() {
           </div>
           <DialogFooter>
             <Button variant="outline" className="rounded-full" onClick={() => setIsMovimentacaoOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={handleSaveMovimentacao} disabled={isSaving || !quantidadeMovimentacaoValida || saidaExcedeSaldo || entradaExcedeMaximo || !movimentacao.motivo.trim()}>
+            <Button onClick={handleSaveMovimentacao} disabled={isSaving || !quantidadeMovimentacaoValida || saidaExcedeSaldo || entradaExcedeMaximo || !movimentacao.motivo.trim()}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Confirmar'}
             </Button>
           </DialogFooter>

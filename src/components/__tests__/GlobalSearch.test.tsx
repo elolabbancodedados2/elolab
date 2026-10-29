@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(async () => ({ data: [], error: null })) }));
 
 let roles: string[] = ['financeiro'];
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
@@ -14,7 +16,7 @@ vi.mock('@/hooks/useSubscriptionPlan', () => ({
   useUserPlan: () => ({ hasFeature: () => false, isLoading: false, isError: false }),
 }));
 vi.mock('@/integrations/supabase/client', () => ({
-  supabase: { rpc: vi.fn(async () => ({ data: [], error: null })) },
+  supabase: { rpc: mocks.rpc },
 }));
 
 import { GlobalSearch } from '../GlobalSearch';
@@ -22,6 +24,11 @@ import { GlobalSearch } from '../GlobalSearch';
 beforeAll(() => {
   globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
   Element.prototype.scrollIntoView ??= () => {};
+});
+
+beforeEach(() => {
+  mocks.rpc.mockReset();
+  mocks.rpc.mockResolvedValue({ data: [], error: null });
 });
 
 function abrirEBuscar(termo: string) {
@@ -38,6 +45,17 @@ describe('GlobalSearch — módulos', () => {
     const item = within(dialog).getByRole('option', { name: /repasses médicos/i });
     expect(within(item).getByText('Módulo')).toBeInTheDocument();
     expect(within(item).getByText('Financeiro')).toBeInTheDocument();
+  });
+
+  it('recupera de uma falha de rede e permite tentar a busca novamente', async () => {
+    roles = ['admin'];
+    mocks.rpc.mockRejectedValueOnce(new Error('offline'));
+    const dialog = abrirEBuscar('ana');
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Não foi possível buscar.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tentar novamente' }));
+    await within(dialog).findByText('Nenhum resultado encontrado nesta clínica.');
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
 
   it('não oferece módulos fora do perfil', () => {

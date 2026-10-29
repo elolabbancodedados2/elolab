@@ -12,6 +12,7 @@ type SyntheticClinicOptions = {
   authenticated?: boolean;
   role?: string;
   platformAdmin?: boolean;
+  platformOnly?: boolean;
   receptionPopulated?: boolean;
   queuePopulated?: boolean;
   queueTriagePending?: boolean;
@@ -220,7 +221,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       id: '00000000-0000-4000-9000-000000000046', clinica_id: TEST_CLINIC_ID, tipo: 'receita',
       categoria: 'exame', descricao: 'Exame diagnóstico aguardando pagamento',
       paciente_id: null, fornecedor: null, numero_documento: 'REC-2026-0144',
-      data: todaySaoPaulo, data_emissao: todaySaoPaulo, data_vencimento: dateOffset(4), competencia: todaySaoPaulo.slice(0, 7),
+      data: todaySaoPaulo, data_emissao: todaySaoPaulo, data_vencimento: dateOffset(1), competencia: todaySaoPaulo.slice(0, 7),
       forma_pagamento: null, valor: 280, valor_pago: 0, desconto: 0, acrescimo: 0,
       status: 'pendente', recorrente: false, frequencia_recorrencia: null, centro_custo: 'ambulatorio', observacoes: null,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -285,6 +286,8 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
           return `${String(Math.floor(minutos / 60)).padStart(2, '0')}:${String(minutos % 60).padStart(2, '0')}`;
         })()
         : `${String(8 + Math.floor(index / 2)).padStart(2, '0')}:${index % 2 ? '30' : '00'}`;
+      const [horaInicioNumero, minutoInicioNumero] = horaInicio.split(':').map(Number);
+      const fimEmMinutos = horaInicioNumero * 60 + minutoInicioNumero + 20;
       return {
         id: `00000000-0000-4000-9000-${String(index + 10).padStart(12, '0')}`,
         clinica_id: TEST_CLINIC_ID,
@@ -293,7 +296,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
         sala_id: null,
         data: todaySaoPaulo,
         hora_inicio: `${horaInicio}:00`,
-        hora_fim: `${horaInicio}:20`,
+        hora_fim: `${String(Math.floor(fimEmMinutos / 60)).padStart(2, '0')}:${String(fimEmMinutos % 60).padStart(2, '0')}:00`,
         tipo: 'Consulta',
         status: options.analyticsPopulated
           ? index < 2 ? 'finalizado' : index === 2 ? 'faltou' : 'confirmado'
@@ -434,6 +437,28 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     const { pathname } = requestUrl;
     const method = route.request().method();
     requests.push(`${method} ${pathname}?${requestUrl.searchParams.toString()}`);
+
+    if (method === 'HEAD' && ['/rest/v1/pacientes', '/rest/v1/agendamentos', '/rest/v1/lancamentos'].includes(pathname)) {
+      const isMonthCount = requestUrl.searchParams.has('created_at');
+      const populated = pathname === '/rest/v1/pacientes'
+        ? options.receptionPopulated || options.queuePopulated || options.agendaPopulated || options.analyticsPopulated || options.accountsPopulated || options.prontuarioPopulated
+        : pathname === '/rest/v1/agendamentos'
+          ? options.receptionPopulated || options.queuePopulated || options.agendaPopulated || options.analyticsPopulated
+          : options.accountsPopulated;
+      const count = populated && !isMonthCount
+        ? pathname === '/rest/v1/agendamentos' ? syntheticAppointments.length : 1
+        : 0;
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-range': `0-0/${count}`,
+          'access-control-allow-origin': '*',
+          'access-control-expose-headers': 'content-range',
+        },
+        body: '',
+      });
+      return;
+    }
 
     const isAccountActivityHeartbeat = pathname === '/rest/v1/profiles' && method === 'PATCH'
       && (() => {
@@ -607,7 +632,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
         email: TEST_EMAIL,
         cpf_cnpj: '52998224725',
         ativo: true,
-        clinica_id: TEST_CLINIC_ID,
+        clinica_id: options.platformOnly ? null : TEST_CLINIC_ID,
       };
       const wantsSingleProfile = requestUrl.searchParams.get('select') === '*';
       const wantsCheckoutDocument = requestUrl.searchParams.get('select') === 'cpf_cnpj';
@@ -616,7 +641,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     }
 
     if (pathname === '/rest/v1/user_roles' && method === 'GET') {
-      await json(route, [{ role: options.role ?? 'admin' }]);
+      await json(route, options.platformOnly ? [] : [{ role: options.role ?? 'admin' }]);
       return;
     }
 

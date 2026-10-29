@@ -3,6 +3,57 @@ import { installSyntheticClinic } from './helpers/syntheticClinic';
 
 test.use({ serviceWorkers: 'block' });
 
+test('central apresenta filtros semânticos e lista legível em desktop e celular', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });
+  const notifications = [
+    {
+      source_type: 'resultado_critico', source_id: '00000000-0000-4000-8000-0000000002b1',
+      category: 'exames', severity: 'error', title: 'Resultado crítico: potássio',
+      message: 'Ana QA · 6,4 mmol/L · registre ciência e conduta',
+      occurred_at: '2026-10-14T10:01:00.000Z', href: '/laudos-lab?coleta=00000000-0000-4000-8000-0000000002b1', is_read: false,
+    },
+    {
+      source_type: 'tarefa', source_id: '00000000-0000-4000-8000-0000000002b2',
+      category: 'tarefas', severity: 'warning', title: 'Revisar retorno da paciente QA',
+      message: 'O prazo de retorno está vencido e precisa de confirmação.',
+      occurred_at: '2026-10-14T10:00:00.000Z', href: '/tarefas', is_read: false,
+    },
+  ];
+  await page.route('http://127.0.0.1:54321/rest/v1/rpc/central_notificacoes_usuario*', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(notifications) });
+  });
+
+  const captures = [
+    { width: 1280, height: 800, name: 'desktop' },
+    { width: 390, height: 844, name: 'mobile' },
+  ];
+  for (const viewport of captures) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto('/notificacoes');
+    const main = page.locator('#main-content');
+    const indicators = main.getByRole('group', { name: 'Indicadores e filtros rápidos de notificações' });
+    await expect(main.getByRole('heading', { name: 'Central de notificações' })).toBeVisible();
+    await expect(indicators.getByRole('button')).toHaveCount(4);
+    await expect(indicators.getByRole('button', { name: /Todas/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(indicators.getByText('não lidas, inclui resultado crítico')).toBeVisible();
+    await expect(main.getByText('Não lida').first()).toBeVisible();
+    await expect(main.getByText('Crítica').first()).toBeVisible();
+    await expect.poll(() => main.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/notifications-${viewport.name}.png`, fullPage: true });
+
+    if (viewport.name === 'mobile') {
+      await indicators.getByRole('button', { name: /Críticas/ }).click();
+      await expect(indicators.getByRole('button', { name: /Críticas/ })).toHaveAttribute('aria-pressed', 'true');
+      await expect(main.getByText('1 de 2 notificações')).toBeVisible();
+      await expect(main.getByRole('button', { name: /Resultado crítico: potássio/ })).toBeVisible();
+      await expect(main.getByRole('button', { name: /Revisar retorno da paciente QA/ })).toHaveCount(0);
+    }
+  }
+
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
 test('agrupa alertas repetidos e abre a origem marcando o evento uma vez', async ({ page }, testInfo) => {
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });

@@ -69,8 +69,13 @@ function MobileTableAdapter() {
   return null;
 }
 
-const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, children, ...props }, ref) => {
+type TableProps = React.HTMLAttributes<HTMLTableElement> & {
+  containerProps?: React.HTMLAttributes<HTMLDivElement>;
+};
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, children, containerProps, ...props }, ref) => {
+    const { className: containerClassName, ...containerAttributes } = containerProps ?? {};
     const tableRef = React.useRef<HTMLTableElement | null>(null);
     const setTableRef = React.useCallback((node: HTMLTableElement | null) => {
       tableRef.current = node;
@@ -83,7 +88,7 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
     }, [children]);
 
     return (
-      <div className="relative w-full overflow-auto overscroll-x-contain [touch-action:pan-x_pan-y]">
+      <div className={cn("relative w-full overflow-auto overscroll-x-contain [touch-action:pan-x_pan-y]", containerClassName)} {...containerAttributes}>
         <table ref={setTableRef} className={cn("mobile-card-table w-full caption-bottom text-sm", className)} {...props} role={props.role ?? "table"}>
           {children}
         </table>

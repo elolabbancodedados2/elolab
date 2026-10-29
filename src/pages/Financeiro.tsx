@@ -1,18 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import {
-  DollarSign, TrendingUp, TrendingDown, CheckCircle2, Clock,
-  AlertTriangle, HandCoins, CreditCard, Wallet, BarChart3,
-  ArrowRight, Stethoscope, Receipt, FileText, ChevronLeft, ChevronRight,
-  ArrowUpRight, ArrowDownRight, Building2, PieChart as PieChartIcon,
-  Activity, Target, Percent, Users, Calendar,
+  DollarSign, AlertTriangle, ArrowRight, FileText, ChevronLeft, ChevronRight,
+  ArrowUpRight, ArrowDownRight, PieChart as PieChartIcon,
+  Activity,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -27,12 +24,19 @@ import { MAX_LINHAS_AUTO, useLancamentos } from '@/hooks/useSupabaseData';
 import { addDays, format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Legend,
 } from 'recharts';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
+import {
+  currentFinanceMonth,
+  formatFinanceMonth,
+  normalizeFinanceRouteParams,
+  parseFinanceMonth,
+  parseFinanceOverviewTab,
+} from '@/lib/financeRouteState';
 import { PageHeader } from '@/components/PageHeader';
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -52,11 +56,6 @@ const CATEGORIAS_DESPESA: Record<string, string> = {
   impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
   equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
 };
-
-const PIE_COLORS = [
-  '#1080CA', '#2ED5E7', 'hsl(var(--success))', 'hsl(var(--warning))',
-  'hsl(var(--destructive))', '#0B4F7D', 'hsl(var(--muted-foreground))', '#5BA4D9',
-];
 
 const statusLiquidadoParcialOuTotal = (status: string | null) => status === 'pago' || status === 'parcial';
 const statusEmAberto = (status: string | null) => ['pendente', 'atrasado', 'parcial'].includes(status || '');
@@ -90,14 +89,36 @@ interface EventoFinanceiro {
 }
 
 export default function Financeiro() {
-  const navigate = useNavigate();
   const { profile } = useSupabaseAuth();
   const lancamentosQuery = useLancamentos();
   const { data: lancamentos = [] } = lancamentosQuery;
-  const [currentDate, setCurrentDate] = useState(() =>
-    parseDateOnly(dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo'))!
-  );
-  const [activeTab, setActiveTab] = useState('resumo');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchString = searchParams.toString();
+  const currentDate = parseFinanceMonth(searchParams.get('mes')) ?? currentFinanceMonth();
+  const activeTab = parseFinanceOverviewTab(searchParams.get('tab'));
+
+  useEffect(() => {
+    const normalized = normalizeFinanceRouteParams(searchParams, new Date(), true);
+    if (normalized.toString() !== searchString) {
+      setSearchParams(normalized, { replace: true });
+    }
+  }, [searchParams, searchString, setSearchParams]);
+
+  const updateMonth = (date: Date) => {
+    setSearchParams(current => {
+      const next = new URLSearchParams(current);
+      next.set('mes', formatFinanceMonth(date));
+      return next;
+    });
+  };
+
+  const updateTab = (tab: string) => {
+    setSearchParams(current => {
+      const next = new URLSearchParams(current);
+      next.set('tab', parseFinanceOverviewTab(tab));
+      return next;
+    });
+  };
 
   const mesAtual = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
   const mesAnterior = { start: startOfMonth(subMonths(currentDate, 1)), end: endOfMonth(subMonths(currentDate, 1)) };
@@ -263,10 +284,6 @@ export default function Financeiro() {
   }, [eventosFinanceiros, currentDate]);
 
   // ─── Receitas pie ─────────────────────────────
-  const receitasPie = useMemo(() => {
-    return dre.receitasPorCat.map(r => ({ name: r.label, value: r.valor }));
-  }, [dre]);
-
   if (lancamentosQuery.isLoading || pagamentosQuery.isLoading) return (
     <div className="space-y-6">
       <Skeleton className="h-10 w-64" />
@@ -291,82 +308,94 @@ export default function Financeiro() {
         className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs sm:p-5"
         actions={(
           <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
-            <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+            <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10" onClick={() => updateMonth(subMonths(currentDate, 1))}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-[120px] text-center text-sm font-bold capitalize text-foreground">
               {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
             </span>
-            <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+            <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10" onClick={() => updateMonth(addMonths(currentDate, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs font-semibold" onClick={() => setCurrentDate(new Date())}>
+            <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs font-semibold" onClick={() => updateMonth(currentFinanceMonth())}>
               Hoje
             </Button>
           </div>
         )}
       />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          {
-            label: 'Receita Recebida', value: kpis.recebido, icon: CheckCircle2,
-            color: 'text-success', bg: 'bg-success/10', border: 'border-success/20',
-            var: kpis.varReceita,
-            varNovaBase: kpis.receitaSemBaseAnterior,
-            varGoodWhenUp: true,
-          },
-          {
-            label: 'A Receber', value: kpis.aReceber, icon: Clock,
-            color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10', border: 'border-[#1080CA]/20',
-            varNovaBase: false,
-            sub: kpis.countPendentesReceber > 0 ? `${kpis.countPendentesReceber} em aberto` : undefined,
-            varGoodWhenUp: false,
-          },
-          {
-            label: 'Despesas Pagas', value: kpis.totalDespesas, icon: TrendingDown,
-            color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20',
-            var: kpis.varDespesa,
-            varNovaBase: kpis.despesaSemBaseAnterior,
-            varGoodWhenUp: false,
-          },
-          {
-            label: 'Resultado Líquido', value: kpis.saldo, icon: DollarSign,
-            color: kpis.saldo >= 0 ? 'text-white' : 'text-red-300',
-            bg: 'bg-white/10',
-            border: 'border-transparent',
-            escuro: true,
-            varNovaBase: false,
-            varGoodWhenUp: true,
-          },
-        ].map((s) => (
-          <div key={s.label}>
-            <Card className={cn('h-full rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', s.border, 'escuro' in s && s.escuro && 'bg-gradient-primary text-white')}>
-              <CardContent className="py-4 px-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className={cn('text-[10px] font-semibold uppercase tracking-wider', 'escuro' in s && s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
-                    <p className={cn('text-2xl font-black mt-1 tabular-nums', s.color)}>{fmtShort(s.value)}</p>
-                    {s.varNovaBase ? (
-                      <p className="text-[10px] mt-0.5 text-muted-foreground">Sem base no mês anterior</p>
-                    ) : s.var !== undefined && s.var !== 0 && (
-                      <div className={cn('flex items-center gap-0.5 text-[10px] mt-0.5', (s.var > 0) === s.varGoodWhenUp ? 'text-success' : 'text-destructive')}>
-                        {s.var > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                        {formatarPercentualFinanceiro(Math.abs(s.var))} vs mês anterior
-                      </div>
-                    )}
-                    {s.sub && <p className="text-[10px] text-muted-foreground mt-0.5">{s.sub}</p>}
-                  </div>
-                  <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center ring-1 ring-inset ring-black/[0.03]', s.bg)}>
-                    <s.icon className={cn('h-5 w-5', s.color)} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+      <section aria-labelledby="finance-summary-title" className="overflow-hidden rounded-2xl border border-border/70 bg-card">
+        <header className="flex flex-wrap items-start justify-between gap-2 border-b border-border/70 px-4 py-3 sm:px-5">
+          <div>
+            <h2 id="finance-summary-title" className="text-sm font-semibold text-foreground">Resumo financeiro</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Valores realizados seguem a data do pagamento; pendências usam o vencimento.</p>
           </div>
-        ))}
-      </div>
+          <span className="text-xs font-medium capitalize text-muted-foreground">{format(currentDate, 'MMMM yyyy', { locale: ptBR })}</span>
+        </header>
+
+        <div className="grid min-w-0 xl:grid-cols-12">
+          <div className="min-w-0 px-4 py-3 sm:px-5 xl:col-span-7">
+            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Movimentação realizada</h3>
+            <dl className="divide-y divide-border/60">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <dt className="text-sm font-medium text-foreground">Entradas recebidas</dt>
+                <dd className="text-right text-base font-semibold tabular-nums text-success">{fmt(kpis.recebido)}</dd>
+                <dd className="col-span-2 text-xs text-muted-foreground sm:col-span-1 sm:text-right">
+                  {kpis.receitaSemBaseAnterior ? 'Sem base no mês anterior' : kpis.varReceita !== 0 ? `${formatarPercentualFinanceiro(Math.abs(kpis.varReceita))} ${kpis.varReceita > 0 ? 'acima' : 'abaixo'} do mês anterior` : 'Sem variação ante o mês anterior'}
+                </dd>
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <dt className="text-sm font-medium text-foreground">Despesas pagas</dt>
+                <dd className="text-right text-base font-semibold tabular-nums text-destructive">{fmt(kpis.totalDespesas)}</dd>
+                <dd className="col-span-2 text-xs text-muted-foreground sm:col-span-1 sm:text-right">
+                  {kpis.despesaSemBaseAnterior ? 'Sem base no mês anterior' : kpis.varDespesa !== 0 ? `${formatarPercentualFinanceiro(Math.abs(kpis.varDespesa))} ${kpis.varDespesa > 0 ? 'acima' : 'abaixo'} do mês anterior` : 'Sem variação ante o mês anterior'}
+                </dd>
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-t-2 border-border py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <dt className="text-sm font-semibold text-foreground">Resultado líquido</dt>
+                <dd className={cn('text-right text-lg font-bold tabular-nums', kpis.saldo >= 0 ? 'text-primary' : 'text-destructive')}>{kpis.saldo < 0 ? `−${fmt(Math.abs(kpis.saldo))}` : fmt(kpis.saldo)}</dd>
+                <dd className="col-span-2 text-xs text-muted-foreground sm:col-span-1 sm:text-right">Entradas recebidas menos despesas pagas</dd>
+              </div>
+            </dl>
+
+            <dl className="mt-2 grid grid-cols-1 gap-2 border-t border-border/70 pt-3 sm:grid-cols-2 sm:gap-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <div><dt className="text-xs font-medium text-foreground">Taxa de recebimento</dt><dd className="text-[11px] text-muted-foreground">Contas com vencimento neste mês</dd></div>
+                <dd className="text-sm font-semibold tabular-nums text-foreground">{kpis.taxaRecebimento.toFixed(0)}%</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <div><dt className="text-xs font-medium text-foreground">Margem operacional</dt><dd className="text-[11px] text-muted-foreground">Resultado sobre receitas pagas</dd></div>
+                <dd className={cn('text-sm font-semibold tabular-nums', dre.margemLucro === null ? 'text-muted-foreground' : dre.margemLucro >= 0 ? 'text-success' : 'text-destructive')}>{dre.margemLucro === null ? '—' : formatarPercentualFinanceiro(dre.margemLucro)}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <aside aria-labelledby="finance-pending-title" className="min-w-0 border-t border-border/70 bg-muted/20 px-4 py-3 sm:px-5 xl:col-span-5 xl:border-l xl:border-t-0">
+            <h3 id="finance-pending-title" className="text-sm font-semibold text-foreground">Pendências e próximos passos</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Acompanhe os valores em aberto do período e os atrasos acumulados.</p>
+            <ul className="mt-2 divide-y divide-border/60">
+              <li>
+                <Link to={`/contas?tab=receber&status=aberto&mes=${formatFinanceMonth(currentDate)}`} className="group flex min-h-12 items-center justify-between gap-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                  <span className="min-w-0"><span className="block text-sm font-medium text-foreground">A receber neste mês</span><span className="block text-xs text-muted-foreground">{kpis.countPendentesReceber} {kpis.countPendentesReceber === 1 ? 'conta em aberto' : 'contas em aberto'}</span></span>
+                  <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tabular-nums text-foreground">{fmt(kpis.aReceber)}<ArrowRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></span>
+                </Link>
+              </li>
+              <li>
+                <Link to="/contas?tab=receber&status=atrasado&periodo=todos" className="group flex min-h-12 items-center justify-between gap-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                  <span className="min-w-0"><span className="block text-sm font-medium text-foreground">Em atraso até hoje</span><span className="block text-xs text-muted-foreground">{kpis.countContasVencidas} {kpis.countContasVencidas === 1 ? 'conta vencida' : 'contas vencidas'}</span></span>
+                  <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tabular-nums text-destructive">{fmt(kpis.vencido)}<ArrowRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></span>
+                </Link>
+              </li>
+              <li>
+                <Link to={`/contas?tab=pagar&status=aberto&mes=${formatFinanceMonth(currentDate)}`} className="group flex min-h-12 items-center justify-between gap-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                  <span className="min-w-0"><span className="block text-sm font-medium text-foreground">A pagar neste mês</span><span className="block text-xs text-muted-foreground">{kpis.countPendentesPagar} {kpis.countPendentesPagar === 1 ? 'conta em aberto' : 'contas em aberto'}</span></span>
+                  <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tabular-nums text-foreground">{fmt(kpis.aPagar)}<ArrowRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></span>
+                </Link>
+              </li>
+            </ul>
+          </aside>
+        </div>
+      </section>
 
       {lancamentos.length >= MAX_LINHAS_AUTO && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -386,29 +415,8 @@ export default function Financeiro() {
         </div>
       )}
 
-      {/* Secondary KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: 'Atrasos acumulados', value: fmt(kpis.vencido), icon: AlertTriangle, color: 'text-destructive', sub: `${kpis.countContasVencidas} ${kpis.countContasVencidas === 1 ? 'conta vencida' : 'contas vencidas'} até hoje` },
-          { label: 'A Pagar', value: fmt(kpis.aPagar), icon: CreditCard, color: 'text-warning', sub: kpis.countPendentesPagar > 0 ? `${kpis.countPendentesPagar} em aberto` : undefined },
-          { label: 'Taxa Recebimento', value: `${kpis.taxaRecebimento.toFixed(0)}%`, icon: Target, color: 'text-[#1080CA]', sub: 'Contas com vencimento no mês' },
-          { label: 'Margem de lucro', value: dre.margemLucro === null ? '—' : formatarPercentualFinanceiro(dre.margemLucro), icon: Percent, color: dre.margemLucro === null ? 'text-muted-foreground' : dre.margemLucro >= 0 ? 'text-success' : 'text-destructive', sub: dre.margemLucro === null ? 'Sem receita para calcular no período' : undefined },
-        ].map((s, i) => (
-          <Card key={s.label} className="rounded-2xl border-border/60 shadow-xs">
-            <CardContent className="py-3 px-4 flex items-center gap-3">
-              <s.icon className={cn('h-4 w-4 shrink-0', s.color)} />
-              <div>
-                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{s.label}</p>
-                <p className={cn('text-base font-black tabular-nums', s.color)}>{s.value}</p>
-                {s.sub && <p className="text-[10px] text-muted-foreground">{s.sub}</p>}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={updateTab}>
         <TabsList>
           <TabsTrigger value="resumo" className="gap-1.5"><Activity className="h-3.5 w-3.5" /> Evolução</TabsTrigger>
           <TabsTrigger value="dre" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> DRE</TabsTrigger>
@@ -436,7 +444,7 @@ export default function Financeiro() {
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '0.7rem' }} />
                     <Bar dataKey="receitas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Receitas" />
                     <Bar dataKey="despesas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} name="Despesas" />
-                    <Bar dataKey="lucro" fill="#1080CA" radius={[4, 4, 0, 0]} name="Lucro" />
+                    <Bar dataKey="lucro" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Lucro" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -449,7 +457,7 @@ export default function Financeiro() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-5 w-5 text-[#1080CA]" />
+                <FileText className="h-5 w-5 text-primary" />
                 DRE — Demonstrativo de Resultado
               </CardTitle>
               <CardDescription>
@@ -510,7 +518,7 @@ export default function Financeiro() {
                 'rounded-lg border p-4 flex items-center justify-between',
                 dre.totalReceitas === 0 && dre.totalDespesas === 0
                   ? 'bg-muted/30 border-border'
-                  : dre.lucroOperacional >= 0 ? 'bg-[#1080CA]/5 border-[#1080CA]/20' : 'bg-destructive/5 border-destructive/20'
+                  : dre.lucroOperacional >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/20'
               )}>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider">Resultado Operacional</p>
@@ -531,114 +539,112 @@ export default function Financeiro() {
 
         {/* Categorias */}
         <TabsContent value="categorias">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-bold text-success">Receitas por Categoria</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {receitasPie.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-12">Sem dados</p>
-                ) : (
-                  <div className="flex items-center gap-4">
-                    <div className="h-52 w-52 shrink-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={receitasPie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={80} strokeWidth={2}>
-                            {receitasPie.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                          </Pie>
-                          <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      {receitasPie.map((item, i) => (
-                        <div key={item.name} className="flex items-center justify-between text-xs gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                            <span className="truncate text-muted-foreground">{item.name}</span>
-                          </div>
-                          <span className="font-bold tabular-nums shrink-0">{fmt(item.value)}</span>
+          <div className="divide-y divide-border rounded-xl border border-border bg-card">
+            <section aria-labelledby="revenue-categories-title" className="p-4 sm:p-5">
+              <header className="mb-4">
+                <h3 id="revenue-categories-title" className="text-sm font-semibold text-foreground">Receitas por categoria</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Valores recebidos no período selecionado · Total {fmt(dre.totalReceitas)}</p>
+              </header>
+              {dre.receitasPorCat.length === 0 ? (
+                <p role="status" className="py-5 text-sm text-muted-foreground">Nenhuma receita recebida neste período.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {dre.receitasPorCat.map(item => {
+                    const pct = dre.totalReceitas > 0 ? (item.valor / dre.totalReceitas) * 100 : 0;
+                    return (
+                      <li key={item.cat} className="space-y-1.5">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm lg:pr-14">
+                          <span className="font-medium text-foreground">{item.label}</span>
+                          <span className="text-right tabular-nums text-foreground">{fmt(item.valor)} <span className="text-xs text-muted-foreground">({pct.toFixed(0)}%)</span></span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-success" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-bold text-destructive">Despesas por Categoria</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {dre.despesasPorCat.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-12">Sem dados</p>
-                ) : (
-                  <div className="space-y-2">
-                    {dre.despesasPorCat.map((item, i) => {
-                      const pct = dre.totalDespesas > 0 ? (item.valor / dre.totalDespesas) * 100 : 0;
-                      return (
-                        <div key={item.cat} className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">{item.label}</span>
-                            <span className="font-bold tabular-nums">{fmt(item.valor)} ({pct.toFixed(0)}%)</span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-destructive/60 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                          </div>
+            <section aria-labelledby="expense-categories-title" className="p-4 sm:p-5">
+              <header className="mb-4">
+                <h3 id="expense-categories-title" className="text-sm font-semibold text-foreground">Despesas por categoria</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Valores pagos no período selecionado · Total {fmt(dre.totalDespesas)}</p>
+              </header>
+              {dre.despesasPorCat.length === 0 ? (
+                <p role="status" className="py-5 text-sm text-muted-foreground">Nenhuma despesa paga neste período.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {dre.despesasPorCat.map(item => {
+                    const pct = dre.totalDespesas > 0 ? (item.valor / dre.totalDespesas) * 100 : 0;
+                    return (
+                      <li key={item.cat} className="space-y-1.5">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm lg:pr-14">
+                          <span className="font-medium text-foreground">{item.label}</span>
+                          <span className="text-right tabular-nums text-foreground">{fmt(item.valor)} <span className="text-xs text-muted-foreground">({pct.toFixed(0)}%)</span></span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-destructive" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
           </div>
         </TabsContent>
       </Tabs>
 
       {/* Quick Access */}
-      <div>
-        <h2 className="text-lg font-bold mb-4">Acesso Rápido</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section aria-labelledby="finance-operations-title" className="space-y-3">
+        <div>
+          <h2 id="finance-operations-title" className="text-base font-semibold text-foreground">Operações financeiras</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Acesse o trabalho relacionado por tipo de tarefa.</p>
+        </div>
+        <div className="grid overflow-hidden rounded-xl border border-border/70 bg-card md:grid-cols-3 md:divide-x md:divide-border/70">
           {[
-            { label: 'Caixa Diário', desc: 'Abrir/fechar caixa, receber pagamentos', icon: HandCoins, href: '/caixa', color: 'text-success', bg: 'bg-success/10' },
-            { label: 'Contas a Receber', desc: 'Cobranças, recebimentos por categoria', icon: TrendingUp, href: '/contas-receber', color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
-            { label: 'Contas a Pagar', desc: 'Fornecedores, salários e despesas', icon: CreditCard, href: '/contas-pagar', color: 'text-destructive', bg: 'bg-destructive/10' },
-            { label: 'Fluxo de Caixa', desc: 'Visão mensal de entradas e saídas', icon: Wallet, href: '/fluxo-caixa', color: 'text-info', bg: 'bg-info/10' },
-            { label: 'Tabela de Preços', desc: 'Preços de exames por convênio', icon: Receipt, href: '/precos-exames', color: 'text-warning-foreground', bg: 'bg-warning/10' },
-            { label: 'Tipos de Consulta', desc: 'Valores, durações e categorias', icon: Stethoscope, href: '/tipos-consulta', color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
-            { label: 'Relatórios', desc: 'Exportações e análises detalhadas', icon: BarChart3, href: '/relatorios', color: 'text-info', bg: 'bg-info/10' },
-            { label: 'Pagamentos', desc: 'Histórico de pagamentos e recibos', icon: FileText, href: '/pagamentos', color: 'text-muted-foreground', bg: 'bg-muted' },
-          ].map((item) => (
-            <Card key={item.href} role="link" tabIndex={0} aria-label={`Abrir ${item.label}`}
-              className="group cursor-pointer rounded-2xl border border-border/60 shadow-xs transition-all hover:-translate-y-1 hover:border-[#1080CA]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
-              onClick={() => navigate(item.href)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  navigate(item.href);
-                }
-              }}>
-              <CardContent className="py-5 px-5">
-                <div className="flex items-start gap-3">
-                  <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', item.bg)}>
-                    <item.icon className={cn('h-5 w-5', item.color)} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-sm">{item.label}</p>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.desc}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {
+              title: 'Recebimentos',
+              links: [
+                { label: 'Caixa Diário', desc: 'Receber e conferir pagamentos', href: '/caixa' },
+                { label: 'Contas a Receber', desc: 'Cobranças e valores em aberto', href: '/contas?tab=receber' },
+                { label: 'Pagamentos', desc: 'Histórico e recibos', href: '/pagamentos' },
+              ],
+            },
+            {
+              title: 'Movimentação',
+              links: [
+                { label: 'Contas a Pagar', desc: 'Fornecedores e despesas', href: '/contas?tab=pagar' },
+                { label: 'Fluxo de Caixa', desc: 'Entradas e saídas por mês', href: `/fluxo-caixa?mes=${formatFinanceMonth(currentDate)}` },
+                { label: 'Relatórios', desc: 'Exportações e análises', href: '/relatorios' },
+              ],
+            },
+            {
+              title: 'Cadastros e valores',
+              links: [
+                { label: 'Tabela de Preços', desc: 'Preços de exames por convênio', href: '/precos-exames' },
+                { label: 'Tipos de Consulta', desc: 'Valores e durações', href: '/tipos-consulta' },
+              ],
+            },
+          ].map(group => (
+            <section key={group.title} aria-label={group.title} className="min-w-0 px-4 py-3 sm:px-5">
+              <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</h3>
+              <ul className="divide-y divide-border/60">
+                {group.links.map(item => (
+                  <li key={item.href}>
+                    <Link to={item.href} className="group flex min-h-12 items-center justify-between gap-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                      <span className="min-w-0"><span className="block text-sm font-medium text-foreground group-hover:text-primary">{item.label}</span><span className="block text-xs text-muted-foreground">{item.desc}</span></span>
+                      <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

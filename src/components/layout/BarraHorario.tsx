@@ -62,9 +62,9 @@ function rotuloDia(data: string, hoje: string) {
 function Foto({ pessoa }: { pessoa?: Pessoa | null }) {
   const inicial = primeiroNome(pessoa?.nome).charAt(0).toUpperCase() || '·';
   return (
-    <Avatar className="h-6 w-6 ring-2 ring-[#171717]">
+    <Avatar className="h-6 w-6 ring-2 ring-brand-dark">
       {pessoa?.foto_url && <AvatarImage src={pessoa.foto_url} alt="" />}
-      <AvatarFallback className="bg-gradient-to-br from-[#d9c3a5] to-[#8c6a4f] text-[9px] font-semibold text-white">{inicial}</AvatarFallback>
+      <AvatarFallback className="bg-secondary text-[9px] font-semibold text-foreground">{inicial}</AvatarFallback>
     </Avatar>
   );
 }
@@ -83,7 +83,7 @@ function Segmento({ consulta, hoje, atual, vazio, className }: {
       className={cn(
         'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-2.5 transition-colors',
         atual
-          ? 'bg-gradient-primary text-white shadow-[0_3px_12px_rgba(16,128,202,0.45)] hover:brightness-105'
+          ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
           : 'text-white/75 hover:bg-white/10',
         className,
       )}
@@ -145,7 +145,7 @@ export function BarraHorario() {
     <section
       aria-label="Agenda de hoje"
       aria-busy={isLoading}
-      className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-[#171717] p-1 pl-3 text-white shadow-md"
+      className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-brand-dark p-1 pl-3 text-white shadow-sm"
     >
       <div className="hidden shrink-0 pr-2 leading-tight 2xl:block">
         <p className="text-[12px] font-semibold">{isMedicoOnly ? 'Sua agenda' : 'Hoje'}</p>
@@ -155,7 +155,7 @@ export function BarraHorario() {
         <div className="h-9 flex-1 animate-pulse rounded-full bg-white/10" />
       ) : (
         <>
-          <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta agora' : 'Sem consultas hoje'} />
+          <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta' : 'Sem consultas'} />
           <Segmento consulta={proxima} hoje={hoje} vazio="Nenhuma próxima" className="hidden lg:flex" />
         </>
       )}

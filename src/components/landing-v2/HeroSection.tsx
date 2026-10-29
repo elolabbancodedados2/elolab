@@ -5,8 +5,6 @@ import { useNavigate } from "react-router-dom";
 import Image from "./Image";
 import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
 import Logo from "./Logo";
-import AnimatedGradient from "./animated-gradient";
-import { GradientWaveText } from "./gradient-wave-text";
 
 const NAV_LINKS = [
   { label: "Produto", href: "#about" },
@@ -15,9 +13,6 @@ const NAV_LINKS = [
   { label: "Preços", href: "#pricing" },
 ];
 
-const CTA_COLORS = ["#2FE0C9", "#FFFFFF", "#2F6BFF"];
-const BUTTON_WAVE_COLORS = ["#FFFFFF", "#DBEAFE", "#FFFFFF"];
-const PRISM_CONFIG = { preset: "Prism" } as const;
 
 export default function HeroSection() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -29,12 +24,6 @@ export default function HeroSection() {
       id="top"
       className="relative isolate flex h-screen min-h-[500px] flex-col overflow-hidden bg-background font-inter text-elolab-ink"
     >
-      <AnimatedGradient
-        className="pointer-events-none"
-        style={{ zIndex: 0 }}
-        config={PRISM_CONFIG}
-      />
-
       <div
         className="pointer-events-none"
         style={{
@@ -88,17 +77,7 @@ export default function HeroSection() {
               href="mailto:contato@elolab.com.br?subject=Agendar%20demonstra%C3%A7%C3%A3o%20EloLab"
               className="elolab-gradient-button group inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue"
             >
-              <GradientWaveText
-                as="span"
-                align="left"
-                baseColor="rgb(10,34,55)"
-                customColors={BUTTON_WAVE_COLORS}
-                inView
-                once={false}
-                className="w-auto"
-              >
-                Agendar demonstração
-              </GradientWaveText>
+              <span>Agendar demonstração</span>
               <ArrowUpRight
                 aria-hidden="true"
                 className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
@@ -149,17 +128,7 @@ export default function HeroSection() {
               onClick={() => setMenuOpen(false)}
               className="elolab-gradient-button mt-2 inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 font-semibold shadow-sm"
             >
-              <GradientWaveText
-                as="span"
-                align="left"
-                baseColor="rgb(10,34,55)"
-                customColors={BUTTON_WAVE_COLORS}
-                inView
-                once={false}
-                className="w-auto"
-              >
-                Agendar demonstração
-              </GradientWaveText>
+              <span>Agendar demonstração</span>
               <ArrowUpRight aria-hidden="true" className="size-4" />
             </a>
           </nav>
@@ -170,17 +139,9 @@ export default function HeroSection() {
           <p className="text-xs font-medium uppercase tracking-[0.22em] text-elolab-blue sm:text-sm">
             Gestão integrada para clínicas
           </p>
-          <GradientWaveText
-            as="h1"
-            alignClassName="justify-center text-center lg:justify-start lg:text-left"
-            className="mt-6 max-w-3xl text-balance text-4xl font-medium leading-[0.95] tracking-[-0.055em] text-elolab-ink sm:text-5xl md:text-6xl lg:text-7xl"
-            speed={0.75}
-            inView
-            once={false}
-            repeat
-          >
+          <h1 className="mt-6 max-w-3xl text-balance text-4xl font-semibold leading-[0.98] tracking-[-0.045em] text-elolab-ink sm:text-5xl md:text-6xl lg:text-7xl">
             Toda a clínica.<br />Em um só fluxo.
-          </GradientWaveText>
+          </h1>
           <p className="mt-6 max-w-xl text-balance text-sm leading-relaxed text-elolab-ink/75 sm:text-base md:text-lg lg:max-w-md xl:max-w-xl">
             Agenda, triagem, prontuário, financeiro e operação conectados em
             uma plataforma para sua equipe.
@@ -188,19 +149,9 @@ export default function HeroSection() {
 
           <a
               href="mailto:contato@elolab.com.br?subject=Agendar%20demonstra%C3%A7%C3%A3o%20EloLab"
-            className="group mt-9 inline-flex items-center gap-3 rounded-full border border-elolab-blue/25 bg-elolab-navy px-6 py-3.5 text-white shadow-[0_12px_32px_rgba(10,34,55,0.2)] transition-all duration-200 hover:bg-[#102f49] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue focus-visible:ring-offset-2 focus-visible:ring-offset-background md:px-8 md:py-4"
+            className="group mt-9 inline-flex items-center gap-3 rounded-full bg-elolab-blue px-6 py-3.5 text-white transition-colors duration-200 hover:bg-[#1049A3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-elolab-blue focus-visible:ring-offset-2 focus-visible:ring-offset-background md:px-8 md:py-4"
           >
-            <GradientWaveText
-              className="h-auto w-auto text-sm font-medium sm:text-base"
-              speed={0.7}
-              repeat
-              inView
-              once={false}
-              baseColor="rgb(255,255,255)"
-              customColors={CTA_COLORS}
-            >
-              Agendar demonstração
-            </GradientWaveText>
+              <span className="text-sm font-semibold sm:text-base">Agendar demonstração</span>
             <ArrowRight
               aria-hidden="true"
               className="size-4 shrink-0 transition-transform duration-200 group-hover:translate-x-1 md:size-5"

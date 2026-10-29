@@ -72,10 +72,11 @@ const PERIODOS: { key: Periodo; label: string }[] = [
   { key: '7dias', label: '7 dias' },
   { key: '30dias', label: '30 dias' },
 ];
+const TEMPO_LIMITE_CARGA_MS = 15_000;
 
-const PILL_BASE = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]';
-const PILL_ATIVA = 'border-transparent bg-gradient-primary text-white shadow-sm';
-const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
+const PILL_BASE = 'min-h-11 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2';
+const PILL_ATIVA = 'border-primary/30 bg-primary/10 text-primary';
+const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground';
 
 function mensagemWhatsApp(primeiroNome: string, medico: string, data: string) {
   return `Olá, ${primeiroNome}! Seu retorno com ${medico} está previsto para ${data}. Podemos confirmar o horário?`;
@@ -102,6 +103,8 @@ export default function RetornosControl() {
   const [isRealizando, setIsRealizando] = useState(false);
   const [isCancelando, setIsCancelando] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
+  const [cargaExpirada, setCargaExpirada] = useState(false);
+  const [tentativaCarga, setTentativaCarga] = useState(0);
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
   // Vínculo do usuário com um cadastro médico: habilita o atalho "Meus retornos"
@@ -168,6 +171,15 @@ export default function RetornosControl() {
   );
 
   const isLoading = loadingRetornos || loadingPacientes || loadingMedicos || loadingAgendamentosRetornoParaConcluir;
+
+  useEffect(() => {
+    if (!isLoading) {
+      setCargaExpirada(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setCargaExpirada(true), TEMPO_LIMITE_CARGA_MS);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, tentativaCarga]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setAgora(new Date()), 60_000);
@@ -464,6 +476,8 @@ export default function RetornosControl() {
   };
 
   const atualizarTudo = () => {
+    setCargaExpirada(false);
+    setTentativaCarga(atual => atual + 1);
     void refetchRetornos();
     void refetchPacientes();
     void refetchMedicos();
@@ -477,7 +491,7 @@ export default function RetornosControl() {
       case 'pendente':
         return <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-warning-foreground"><Clock className="h-3 w-3" /> Pendente</Badge>;
       case 'agendado':
-        return <Badge variant="outline" className="gap-1 rounded-full border-[#BFD8EE] bg-[#1080CA]/10 text-[#1080CA]"><CalendarPlus className="h-3 w-3" /> Agendado</Badge>;
+        return <Badge variant="outline" className="gap-1 rounded-full border-primary/30 bg-primary/10 text-primary"><CalendarPlus className="h-3 w-3" /> Agendado</Badge>;
       case 'realizado':
         return <Badge className="gap-1 rounded-full bg-success text-success-foreground hover:bg-success"><CheckCircle2 className="h-3 w-3" /> Realizado</Badge>;
       case 'cancelado':
@@ -492,6 +506,19 @@ export default function RetornosControl() {
     mensagemWhatsApp(getPacienteNome(r.paciente_id).split(' ')[0], getMedicoNome(r.medico_id), format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })),
   );
 
+  const erroDeCarga = erroRetornos || erroPacientes || erroMedicos || erroAgendamentosRetornoParaConcluir;
+  if (erroDeCarga || cargaExpirada) {
+    const tempoEsgotado = cargaExpirada && !erroDeCarga;
+    return (
+      <ErrorState
+        error={erroDeCarga}
+        title={tempoEsgotado ? 'A consulta está demorando' : 'Não foi possível carregar o controle de retornos'}
+        description={tempoEsgotado ? 'Os dados ainda não responderam. Tente atualizar para continuar.' : undefined}
+        onRetry={atualizarTudo}
+      />
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -502,16 +529,14 @@ export default function RetornosControl() {
     );
   }
 
-  const erroDeCarga = erroRetornos || erroPacientes || erroMedicos || erroAgendamentosRetornoParaConcluir;
-  if (erroDeCarga) return <ErrorState error={erroDeCarga} title="Não foi possível carregar o controle de retornos" onRetry={atualizarTudo} />;
 
   // Classes completas: Tailwind compila classes estáticas — templates como
   // `text-${cor}` geravam classe inexistente e "Atrasados" nunca ficava colorido.
   const kpis = [
-    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} acima de 30 dias` : 'fora da data prevista' },
-    { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: 'ainda sem horário marcado' },
-    { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'a partir de hoje' },
-    { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${taxaComparecimento}% de comparecimento` },
+    { key: 'atrasado', label: 'Atrasados', value: atrasados, icon: AlertTriangle, color: 'text-destructive', surface: 'bg-destructive/10', ring: 'ring-destructive/50', caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} acima de 30 dias` : 'fora da data prevista' },
+    { key: 'pendente', label: 'Pendentes', value: pendentes, icon: CalendarClock, color: 'text-warning-foreground', surface: 'bg-warning/10', ring: 'ring-warning/50', caption: 'ainda sem horário marcado' },
+    { key: 'proximos7', label: 'Próximos 7 dias', value: proximos7, icon: CalendarDays, color: 'text-primary', surface: 'bg-primary/10', ring: 'ring-primary/50', caption: 'a partir de hoje' },
+    { key: 'realizado', label: 'Realizados', value: realizados, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', ring: 'ring-success/50', caption: `${taxaComparecimento}% de comparecimento` },
   ];
 
   const descricaoHeader = retornosNoEscopo.length === 0
@@ -552,7 +577,7 @@ export default function RetornosControl() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
-              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
+              className="shrink-0 gap-2 rounded-full"
               onClick={() => navigate('/agenda')}
               title="Abre a agenda para conferir os horários dos retornos"
             >
@@ -563,7 +588,7 @@ export default function RetornosControl() {
       />
 
       {pacienteFiltroId && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
             Exibindo retornos de <span className="font-medium">{getPacienteNome(pacienteFiltroId)}</span>.
           </p>
@@ -589,33 +614,31 @@ export default function RetornosControl() {
       )}
 
       {/* Indicadores */}
-      <section role="group" aria-label="Resumo dos retornos" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      <section role="group" aria-label="Resumo dos retornos" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
         {kpis.map(kpi => {
           const Icon = kpi.icon;
           const ativo = filtroStatus === kpi.key;
+          const cor = kpi.value > 0 ? kpi.color : 'text-muted-foreground';
           return (
             <button
               key={kpi.key}
               type="button"
               aria-pressed={ativo}
+              aria-label={`${kpi.label}: ${kpi.value}. ${kpi.caption}`}
               onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
-              className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
-              )}
+              data-testid={`return-kpi-${kpi.key}`}
+              className={cn('min-w-0 bg-card p-3 text-left transition-colors hover:bg-muted/50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary', ativo && `ring-2 ring-inset ${kpi.value > 0 ? kpi.ring : 'ring-primary/50'}`, ativo && kpi.value > 0 && 'bg-muted/40')}
             >
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
-                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
+              <div className="flex min-h-[68px] items-start gap-2.5">
+                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', kpi.value > 0 ? kpi.surface : 'bg-muted/70')}>
+                  <Icon aria-hidden="true" className={cn('h-4 w-4', cor)} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
-                    <span className={cn('text-2xl font-bold tabular-nums', kpi.color)}>{kpi.value}</span>
+                    <h3 className="text-xs font-semibold leading-5 text-foreground">{kpi.label}</h3>
+                    <span data-testid={`return-kpi-value-${kpi.key}`} className={cn('text-xl font-bold tabular-nums', cor)}>{kpi.value}</span>
                   </div>
-                  <p className={cn('flex items-center gap-1 truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>
+                  <p className="mt-0.5 flex items-center gap-1 text-[11px] leading-4 text-muted-foreground">
                     {kpi.key === 'realizado' && <TrendingUp aria-hidden="true" className="h-3 w-3 shrink-0" />}
                     {kpi.caption}
                   </p>
@@ -630,16 +653,18 @@ export default function RetornosControl() {
       {destaque && (() => {
         const whatsapp = linkWhatsAppRetorno(destaque);
         const atrasado = destaque.statusCalculado === 'atrasado';
+        const foco = atrasado ? 'border-destructive/30' : 'border-primary/20';
+        const focoIcone = atrasado ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary';
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className={cn('overflow-hidden rounded-xl', foco)}>
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', focoIcone)}>
                   {atrasado ? <AlertTriangle className="h-5 w-5" /> : <CalendarClock className="h-5 w-5" />}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{atrasado ? 'Atrasado há mais tempo' : 'Próximo retorno'}</p>
-                  <h2 className="truncate text-lg font-bold text-foreground">{getPacienteNome(destaque.paciente_id)}</h2>
+                  <p className={cn('text-[11px] font-semibold uppercase tracking-wide', atrasado ? 'text-destructive' : 'text-primary')}>{atrasado ? 'Atrasado há mais tempo' : 'Próximo retorno'}</p>
+                  <h2 className="break-words text-lg font-bold text-foreground sm:truncate">{getPacienteNome(destaque.paciente_id)}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1"><Stethoscope aria-hidden="true" className="h-3 w-3" /> {getMedicoNome(destaque.medico_id)}</span>
                     <span className="inline-flex items-center gap-1"><CalendarDays aria-hidden="true" className="h-3 w-3" /> {format(destaque.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })}</span>
@@ -650,12 +675,12 @@ export default function RetornosControl() {
                     )}
                     {getStatusBadge(destaque.statusCalculado)}
                   </div>
-                  {destaque.motivo && <p className="mt-1 truncate text-xs text-muted-foreground" title={destaque.motivo}>Motivo: {destaque.motivo}</p>}
+                  {destaque.motivo && <p className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground" title={destaque.motivo}>Motivo: {destaque.motivo}</p>}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp ? (
-                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
                   </Button>
                 ) : (
@@ -666,7 +691,7 @@ export default function RetornosControl() {
                     {isAgendando ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <RefreshCw aria-hidden="true" className="h-4 w-4" />} Remarcar
                   </Button>
                 ) : (
-                  <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleAgendarRetorno(destaque)}>
+                  <Button className="h-10 gap-1.5 rounded-full" onClick={() => handleAgendarRetorno(destaque)}>
                     <CalendarPlus aria-hidden="true" className="h-4 w-4" /> Agendar retorno
                   </Button>
                 )}
@@ -682,11 +707,11 @@ export default function RetornosControl() {
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-base">
-                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <CalendarClock className="h-4 w-4" />
                 </span>
                 Retornos
-                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filtrados.length} de {retornosNoEscopo.length}</Badge>
+                <Badge variant="outline" className="rounded-full border-border text-muted-foreground">{filtrados.length} de {retornosNoEscopo.length}</Badge>
               </CardTitle>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <div className="relative w-full sm:w-72">
@@ -696,7 +721,7 @@ export default function RetornosControl() {
                     placeholder="Nome, CPF, telefone ou médico..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                    className="h-10 rounded-full pl-9"
                   />
                 </div>
                 <Select value={filtroStatus} onValueChange={setFiltroStatus}>
@@ -743,7 +768,7 @@ export default function RetornosControl() {
         <CardContent>
           {filtrados.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
-              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <CalendarClock className="h-7 w-7" />
               </span>
               <p className="font-medium text-foreground">
@@ -805,7 +830,18 @@ export default function RetornosControl() {
                           r.statusCalculado === 'cancelado' && 'text-muted-foreground',
                         )}
                       >
-                        <TableCell className="font-medium text-foreground">{getPacienteNome(r.paciente_id)}</TableCell>
+                        <TableCell className="font-medium text-foreground">
+                          <div className="flex min-w-0 items-center justify-between gap-2">
+                            <span className="min-w-0 break-words">{getPacienteNome(r.paciente_id)}</span>
+                            {whatsapp && (
+                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 shrink-0 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
+                                  <MessageCircle className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm">{getMedicoNome(r.medico_id)}</TableCell>
                         <TableCell>
                           <div>
@@ -833,7 +869,7 @@ export default function RetornosControl() {
                               <Button
                                 size="sm"
                                 onClick={() => handleAgendarRetorno(r)}
-                                className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                                className="h-9 gap-1 rounded-full text-xs"
                               >
                                 <CalendarPlus aria-hidden="true" className="h-3.5 w-3.5" /> Agendar
                               </Button>
@@ -844,7 +880,7 @@ export default function RetornosControl() {
                               </Button>
                             )}
                             {emAberto && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
-                              <Button size="sm" onClick={() => setRealizando(r)} className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">
+                              <Button size="sm" onClick={() => setRealizando(r)} className="h-9 gap-1 rounded-full text-xs">
                                 <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> Realizado
                               </Button>
                             )}
@@ -877,13 +913,6 @@ export default function RetornosControl() {
                                 <Ban aria-hidden="true" className="h-3.5 w-3.5" /> Cancelar
                               </Button>
                             )}
-                            {whatsapp && (
-                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 shrink-0 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
-                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
-                                  <MessageCircle className="h-4 w-4" />
-                                </a>
-                              </Button>
-                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -905,7 +934,7 @@ export default function RetornosControl() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CalendarPlus className="h-5 w-5 text-[#1080CA]" />
+            <CalendarPlus className="h-5 w-5 text-primary" />
               {retornoParaAgendar?.agendamento_retorno_id ? 'Remarcar Retorno' : 'Agendar Retorno'}
             </DialogTitle>
           </DialogHeader>

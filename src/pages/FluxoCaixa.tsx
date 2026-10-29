@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { valorRealizado } from '@/lib/lancamentos';
 import { grupoMovimentoCaixa, totaisMovimentoCaixa } from '@/lib/fluxoCaixa';
 import { ErrorState } from '@/components/ErrorState';
+import {
+  currentFinanceMonth,
+  formatFinanceMonth,
+  normalizeFinanceRouteParams,
+  parseFinanceMonth,
+} from '@/lib/financeRouteState';
 import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
 import { ImportarExtratoDialog } from '@/components/financeiro/ImportarExtratoDialog';
 import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
@@ -73,13 +80,28 @@ const rotulosCategoria: Record<string, string> = {
 const rotuloCategoria = (categoria: string) => rotulosCategoria[categoria]
   || categoria.replace(/_/g, ' ').replace(/\b\w/g, letra => letra.toLocaleUpperCase('pt-BR'));
 
-const GRID_COLOR = '#DCE6F2';
+const GRID_COLOR = 'hsl(var(--border))';
 
 export default function FluxoCaixa() {
-  const [currentDate, setCurrentDate] = useState(() =>
-    parseDateOnly(dateOnlyInTimeZone(new Date(), 'America/Sao_Paulo'))!
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchString = searchParams.toString();
+  const currentDate = parseFinanceMonth(searchParams.get('mes')) ?? currentFinanceMonth();
   const { profile } = useSupabaseAuth();
+
+  useEffect(() => {
+    const normalized = normalizeFinanceRouteParams(searchParams);
+    if (normalized.toString() !== searchString) {
+      setSearchParams(normalized, { replace: true });
+    }
+  }, [searchParams, searchString, setSearchParams]);
+
+  const updateMonth = (date: Date) => {
+    setSearchParams(current => {
+      const next = new URLSearchParams(current);
+      next.set('mes', formatFinanceMonth(date));
+      return next;
+    });
+  };
 
   const lancamentosQuery = useLancamentos();
   const { data: lancamentos = [], isLoading } = lancamentosQuery;
@@ -261,8 +283,8 @@ export default function FluxoCaixa() {
     };
   }, [eventosRealizados, currentDate, totaisMes]);
 
-  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
-  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const handlePrevMonth = () => updateMonth(subMonths(currentDate, 1));
+  const handleNextMonth = () => updateMonth(addMonths(currentDate, 1));
 
   if (isLoading || pagamentosQuery.isLoading) {
     return (
@@ -295,15 +317,18 @@ export default function FluxoCaixa() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
+            <Button variant="outline" asChild className="shrink-0 rounded-full">
+              <Link to={`/financeiro?mes=${formatFinanceMonth(currentDate)}&tab=resumo`}>Visão financeira</Link>
+            </Button>
             {profile?.clinica_id && <ImportarExtratoDialog clinicaId={profile.clinica_id} lancamentos={lancamentos} />}
             <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
-              <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-[#1080CA] hover:bg-[#F3F8FC]" onClick={handlePrevMonth}>
+              <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-primary hover:bg-primary/10" onClick={handlePrevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="min-w-[140px] text-center text-sm font-semibold capitalize text-foreground">
                 {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
               </span>
-              <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-full text-[#1080CA] hover:bg-[#F3F8FC]" onClick={handleNextMonth}>
+              <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-full text-primary hover:bg-primary/10" onClick={handleNextMonth}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -322,60 +347,65 @@ export default function FluxoCaixa() {
       )}
 
       {/* Faixa de indicadores */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <section aria-label="Resumo do fluxo de caixa do mês" className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-4">
         {[
-          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-success', surface: 'bg-success/10', escuro: false,
+          { label: 'Entradas no mês', value: totaisMes.entradas, icon: ArrowUpCircle, color: 'text-success', surface: 'bg-success/10',
             trend: comparacaoMesAnterior.variacaoReceita, trendPositive: comparacaoMesAnterior.variacaoReceita > 0,
             trendNovaBase: comparacaoMesAnterior.receitaSemBaseAnterior,
             sub: totaisMes.receitasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.receitasPendentes)}` : undefined },
-          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false,
+          { label: 'Saídas no mês', value: totaisMes.saidas, icon: ArrowDownCircle, color: 'text-destructive', surface: 'bg-destructive/10',
             trend: comparacaoMesAnterior.variacaoDespesa, trendPositive: comparacaoMesAnterior.variacaoDespesa < 0,
             trendNovaBase: comparacaoMesAnterior.despesaSemBaseAnterior,
             sub: totaisMes.despesasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.despesasPendentes)}` : undefined },
-          { label: totaisMes.saldo < 0 ? 'Saldo negativo no mês' : 'Saldo do mês', value: totaisMes.saldo, icon: Wallet, escuro: true, trendNovaBase: false },
-          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false,
+          { label: totaisMes.saldo < 0 ? 'Saldo negativo no mês' : 'Saldo do mês', value: totaisMes.saldo, icon: Wallet, color: totaisMes.saldo < 0 ? 'text-destructive' : 'text-primary', surface: totaisMes.saldo < 0 ? 'bg-destructive/10' : 'bg-primary/10', trendNovaBase: false },
+          { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-primary', surface: 'bg-primary/10',
             pct: totaisMes.receitas > 0 ? `${(((totaisMes.receitas - totaisMes.despesas) / totaisMes.receitas) * 100).toFixed(1)}%` : '—', trendNovaBase: false },
-        ].map((s) => (
+        ].map((s, index) => (
           <div
             key={s.label}
             className={cn(
-              'rounded-2xl border p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md',
-              s.escuro ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
+              'min-w-0 p-3 sm:p-4',
+              index % 2 === 0 && 'border-r border-border',
+              index >= 2 && 'border-t border-border lg:border-t-0',
+              (index === 1 || index === 2) && 'lg:border-r lg:border-border',
+              index === 3 && 'lg:border-r-0',
+              index === 2 && (totaisMes.saldo < 0 ? 'bg-destructive/5' : 'bg-primary/5'),
             )}
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-2 sm:gap-3">
               <div className="min-w-0">
-                <p className={cn('text-[11px] font-medium', s.escuro ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
+                <p className="text-[11px] font-medium text-muted-foreground">{s.label}</p>
                 {s.pct !== undefined ? (
-                  <p className={cn('text-2xl font-bold', s.escuro ? 'text-white' : s.color)}>{s.pct}</p>
+                  <p className={cn('text-xl font-bold sm:text-2xl', s.color)}>{s.pct}</p>
                 ) : (
-                  <p className={cn('text-2xl font-bold tabular-nums', s.escuro ? 'text-white' : s.color)}>{formatCurrency(s.value)}</p>
+                  <p className={cn('text-lg font-bold tabular-nums sm:text-2xl', s.color)}>{formatCurrency(s.value)}</p>
                 )}
                 {s.trendNovaBase ? (
-                  <p className={cn('mt-1 text-xs', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>Sem base no mês anterior</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Sem base no mês anterior</p>
                 ) : s.trend !== undefined && s.trend !== 0 && (
                   <div className={cn('flex items-center gap-1 mt-1 text-xs font-medium', s.trendPositive ? 'text-success' : 'text-destructive')}>
                     {s.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                     {Math.abs(s.trend).toFixed(1)}%
                   </div>
                 )}
-                {s.sub && <p className={cn('mt-1 text-xs', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.sub}</p>}
+                {s.sub && <p className="mt-1 text-xs text-muted-foreground">{s.sub}</p>}
               </div>
-              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro ? 'bg-white/15' : s.surface)}>
-                <s.icon className={cn('h-5 w-5', s.escuro ? 'text-white' : s.color)} />
+              <div aria-hidden="true" className={cn('hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:flex', s.surface)}>
+                <s.icon className={cn('h-5 w-5', s.color)} />
               </div>
             </div>
           </div>
         ))}
-      </div>
+      </section>
 
       {/* Gráficos */}
+      {temMovimentosNoMes ? (
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Evolução Diária */}
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                 <TrendingUp className="h-4 w-4" />
               </span>
               <div>
@@ -385,7 +415,6 @@ export default function FluxoCaixa() {
             </div>
           </CardHeader>
           <CardContent>
-            {temMovimentosNoMes ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dadosDiarios}>
@@ -403,20 +432,11 @@ export default function FluxoCaixa() {
                   <Legend />
                   <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#1080CA" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            ) : (
-              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#DCE6F2] bg-[#F3F8FC] px-6 text-center">
-                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
-                  <TrendingUp className="h-6 w-6" />
-                </span>
-                <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
-                <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">A evolução diária aparecerá aqui quando houver entradas, saídas, suprimentos ou sangrias.</p>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -424,7 +444,7 @@ export default function FluxoCaixa() {
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                 <Wallet className="h-4 w-4" />
               </span>
               <div>
@@ -434,14 +454,13 @@ export default function FluxoCaixa() {
             </div>
           </CardHeader>
           <CardContent>
-            {temMovimentosNoMes ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={dadosDiarios}>
                   <defs>
                     <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1080CA" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#1080CA" stopOpacity={0} />
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
@@ -459,33 +478,33 @@ export default function FluxoCaixa() {
                     type="monotone"
                     dataKey="saldoAcumulado"
                     name="Saldo"
-                    stroke="#1080CA"
+                    stroke="hsl(var(--primary))"
                     fillOpacity={1}
                     fill="url(#colorSaldo)"
                   />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-            ) : (
-              <div role="status" className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#DCE6F2] bg-[#F3F8FC] px-6 text-center">
-                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
-                  <Wallet className="h-6 w-6" />
-                </span>
-                <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
-                <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">O saldo acumulado aparecerá aqui quando houver movimentações registradas.</p>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
+      ) : (
+        <div role="status" aria-label="Sem movimentações para exibir" className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-4">
+          <TrendingUp aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Nenhuma movimentação registrada neste mês</p>
+            <p className="mt-1 text-xs text-muted-foreground">A evolução diária, o saldo acumulado e as categorias aparecerão quando houver entradas, saídas, suprimentos ou sangrias.</p>
+          </div>
+        </div>
+      )}
 
       <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} />
 
       {/* Por Categoria */}
-      <Card className="rounded-2xl border-border/60 shadow-xs">
+      {temMovimentosNoMes && <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <div className="flex items-center gap-2.5">
-            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <DollarSign className="h-4 w-4" />
             </span>
             <div>
@@ -496,8 +515,8 @@ export default function FluxoCaixa() {
         </CardHeader>
         <CardContent>
           {dadosPorCategoria.length === 0 ? (
-            <div role="status" className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#DCE6F2] bg-[#F3F8FC] px-6 py-10 text-center">
-              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <div role="status" className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
                 <DollarSign className="h-6 w-6" />
               </span>
               <p className="text-sm font-medium text-foreground">Nenhuma movimentação neste mês</p>
@@ -520,14 +539,14 @@ export default function FluxoCaixa() {
                   <Legend />
                   <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="#1080CA" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }

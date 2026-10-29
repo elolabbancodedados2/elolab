@@ -61,4 +61,19 @@ describe('PainelDoDia', () => {
     expect(within(resumo).getByRole('button', { name: /Devem o adicional/ })).toHaveTextContent('—');
     expect(within(resumo).getByText('Não foi possível carregar o saldo a receber do dia')).toBeInTheDocument();
   });
+
+  it('agrupa os indicadores secundários num controle acessível para telas estreitas', () => {
+    const onFiltrar = renderPanel({
+      atendimentos: [{ step: 2, ag: { status: 'em_atendimento' }, lanc: null }],
+    });
+    const resumo = screen.getByRole('group', { name: 'Resumo de atendimento e recebimentos' });
+    const toggle = within(resumo).getByRole('button', { name: 'Ver outros 3 indicadores' });
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'reception-secondary-metrics');
+    fireEvent.click(toggle);
+    expect(within(resumo).getByRole('button', { name: 'Ocultar indicadores adicionais' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(within(resumo).getByRole('button', { name: /Recebido líquido/ }));
+    expect(onFiltrar).not.toHaveBeenCalled();
+  });
 });

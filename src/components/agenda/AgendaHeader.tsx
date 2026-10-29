@@ -110,13 +110,13 @@ export function AgendaHeader(p: Props) {
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate text-xl font-extrabold tracking-[-0.03em] text-foreground sm:text-[26px]">{label}</h1>
-            {isToday && <Badge className="shrink-0 border-transparent bg-gradient-primary text-white shadow-sm hover:bg-gradient-primary">HOJE</Badge>}
+            {isToday && <Badge className="shrink-0 border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary">HOJE</Badge>}
           </div>
           <div className="flex w-full items-center rounded-full border border-border bg-card p-0.5 shadow-xs sm:w-auto sm:shrink-0">
             <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className={cn('h-10 rounded-full px-3 text-xs font-semibold sm:h-9', isToday && 'text-[#1080CA]')} onClick={() => p.onDateChange(todaySaoPauloDateOnly())}>
+            <Button variant="ghost" size="sm" className={cn('h-10 rounded-full px-3 text-xs font-semibold sm:h-9', isToday && 'text-primary')} onClick={() => p.onDateChange(todaySaoPauloDateOnly())}>
               Hoje
             </Button>
             <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full sm:h-9 sm:w-9" onClick={() => nav(1)} aria-label="Próximo">
@@ -126,7 +126,7 @@ export function AgendaHeader(p: Props) {
             <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" aria-label="Data da agenda" aria-haspopup="dialog" className="h-10 flex-1 justify-center gap-2 rounded-full px-3 text-xs font-semibold tabular-nums sm:h-9 sm:flex-none">
-                  <CalendarDays className="h-4 w-4 text-[#1080CA]" />
+                  <CalendarDays className="h-4 w-4 text-primary" />
                   {formatWithDatePreference(d, 'dd/MM/yyyy')}
                 </Button>
               </PopoverTrigger>
@@ -142,21 +142,21 @@ export function AgendaHeader(p: Props) {
                     setCalendarOpen(false);
                   }}
                   modifiers={{ comConsulta: diasMarcados }}
-                  modifiersClassNames={{ comConsulta: "relative font-semibold after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-[#1080CA] after:content-['']" }}
+                  modifiersClassNames={{ comConsulta: "relative font-semibold after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary after:content-['']" }}
                   classNames={{
-                    day_selected: 'bg-gradient-primary text-white hover:bg-gradient-primary hover:text-white focus:bg-gradient-primary focus:text-white after:bg-white',
-                    day_today: 'ring-1 ring-[#1080CA]/50 text-[#1080CA]',
+                    day_selected: 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground after:bg-primary-foreground',
+                    day_today: 'ring-1 ring-primary/50 text-primary',
                   }}
                 />
                 <p className="border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
-                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-[#1080CA] align-middle" /> dias com consulta
+                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle" /> dias com consulta
                 </p>
               </PopoverContent>
             </Popover>
             {p.onIrParaProxima && (
               <>
                 <div className="mx-0.5 h-5 w-px bg-border" />
-                <Button variant="ghost" size="sm" onClick={p.onIrParaProxima} aria-label="Ir para a próxima consulta" title="Ir para a próxima consulta" className="h-10 gap-1.5 rounded-full px-3 text-xs font-semibold text-[#1080CA] sm:h-9">
+                <Button variant="ghost" size="sm" onClick={p.onIrParaProxima} aria-label="Ir para a próxima consulta" title="Ir para a próxima consulta" className="h-10 gap-1.5 rounded-full px-3 text-xs font-semibold text-primary sm:h-9">
                   <SkipForward className="h-3.5 w-3.5" /> <span className="hidden xl:inline">Próxima</span>
                 </Button>
               </>
@@ -168,7 +168,7 @@ export function AgendaHeader(p: Props) {
           <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className={cn('hidden h-10 lg:inline-flex', pill)}>
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
-            {p.waitingCount > 0 && <Badge className="ml-1.5 h-5 border-transparent bg-gradient-primary px-1.5 text-[10px] text-white hover:bg-gradient-primary">{p.waitingCount}</Badge>}
+            {p.waitingCount > 0 && <Badge className="ml-1.5 h-5 border-transparent bg-primary px-1.5 text-[10px] text-primary-foreground hover:bg-primary">{p.waitingCount}</Badge>}
           </Button>
           <Button asChild variant="outline" size="icon" className={cn('h-11 w-11 shrink-0 lg:hidden', pill)}>
             <Link to="/lista-espera" aria-label={`Abrir lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} title="Abrir lista de espera">
@@ -200,13 +200,13 @@ export function AgendaHeader(p: Props) {
           </DropdownMenu>
 
           <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:brightness-110 sm:h-10 sm:flex-none sm:px-4">
-            <Plus className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">Nova consulta</span>
+            <Plus className="mr-1.5 h-4 w-4" /> <span className="whitespace-nowrap">Nova consulta</span>
           </Button>
         </div>
       </div>
 
       {/* Linha 2: visualização + busca + filtros | totais */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-2 2xl:flex-row 2xl:items-center">
         <div role="group" aria-label="Visualização da agenda" className="flex shrink-0 items-center gap-0.5 self-start rounded-full border border-border bg-muted/70 p-1">
           <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'daily' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
             <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
@@ -227,7 +227,7 @@ export function AgendaHeader(p: Props) {
               value={p.search}
               onChange={(e) => p.onSearchChange(e.target.value)}
               aria-label="Buscar paciente, CPF ou telefone"
-              className={cn('h-10 rounded-full border-border bg-card pl-9 text-sm focus-visible:ring-[#1080CA] sm:h-9', p.search && 'pr-10')}
+              className={cn('h-10 rounded-full border-border bg-card pl-9 text-sm focus-visible:ring-primary sm:h-9', p.search && 'pr-10')}
             />
             {p.search && (
               <Button
@@ -245,9 +245,9 @@ export function AgendaHeader(p: Props) {
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.medicoFilter.length > 0 && 'border-[#1080CA]/40 text-[#1080CA]')}>
+              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.medicoFilter.length > 0 && 'border-primary/40 text-primary')}>
                 <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
-                {p.medicoFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-[#1080CA] px-1 text-[10px] text-white hover:bg-[#1080CA]">{p.medicoFilter.length}</Badge>}
+                {p.medicoFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.medicoFilter.length}</Badge>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="max-h-80 w-64 overflow-y-auto rounded-xl p-2">
@@ -273,9 +273,9 @@ export function AgendaHeader(p: Props) {
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.statusFilter.length > 0 && 'border-[#1080CA]/40 text-[#1080CA]')}>
+              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.statusFilter.length > 0 && 'border-primary/40 text-primary')}>
                 <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
-                {p.statusFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-[#1080CA] px-1 text-[10px] text-white hover:bg-[#1080CA]">{p.statusFilter.length}</Badge>}
+                {p.statusFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.statusFilter.length}</Badge>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-56 rounded-xl p-2">
@@ -306,7 +306,7 @@ export function AgendaHeader(p: Props) {
           )}
         </div>
 
-        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs lg:w-auto lg:shrink-0 lg:overflow-visible lg:pb-0">
+        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs 2xl:w-auto 2xl:shrink-0 2xl:overflow-visible 2xl:pb-0">
           <Stat label="Total" value={p.totals.total} active={p.statusFilter.length === 0} onClick={() => toggleTotal('total')} />
           <Stat label="Conf." value={p.totals.confirmados} tone="success" active={sameFilter(p.statusFilter, TOTAL_FILTERS.confirmados)} onClick={() => toggleTotal('confirmados')} />
           <Stat label="Aguard." value={p.totals.aguardando} tone="warning" active={sameFilter(p.statusFilter, TOTAL_FILTERS.aguardando)} onClick={() => toggleTotal('aguardando')} />
@@ -340,8 +340,8 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
         tone === 'success' && 'border-success/30 bg-success/5',
         tone === 'warning' && 'border-warning/30 bg-warning/5',
         tone === 'destructive' && 'border-destructive/30 bg-destructive/5',
-        active && tone && 'border-transparent bg-gradient-primary text-white shadow-sm',
-        active && !tone && 'border-[#1080CA]/40',
+        active && tone && 'border-transparent bg-primary text-primary-foreground shadow-sm',
+        active && !tone && 'border-primary/40',
       )}
     >
       <span className={cn(
@@ -350,7 +350,7 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
         !active && tone === 'warning' && 'text-warning-foreground',
         !active && tone === 'destructive' && 'text-destructive',
       )}>{value}</span>
-      <span className={cn('text-[10px] uppercase tracking-wide', active && tone ? 'text-white/70' : 'text-muted-foreground')}>{label}</span>
+      <span className={cn('text-[10px] uppercase tracking-wide', active && tone ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{label}</span>
     </button>
   );
 }

@@ -27,7 +27,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dadosAoRegistrarColeta, gravarFiltrosWorklist, lerFiltrosWorklist, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, resumirPendenciasPorSetor, STATUS_COLETA_LABELS, STATUS_COLETA_PENDENTES, type FiltrosWorklist } from '@/lib/laboratorioWorkflow';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
 import { GestaoLaboratorioPanel } from '@/pages/laboratorio/GestaoLaboratorioPanel';
 import { IndicadoresLaboratorioPanel } from '@/pages/laboratorio/IndicadoresLaboratorioPanel';
@@ -81,14 +81,14 @@ import {
 import { linkWhatsApp } from '@/lib/whatsapp';
 
 const statusColors: Record<string, string> = {
-  pendente: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
-  coletado: 'border border-[#BFD8EE] bg-[#EEF4FA] text-[#0B5E96]',
-  em_analise: 'border border-[#c8eaf1] bg-[#edfbff] text-[#087e98]',
-  validado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
-  liberado: 'border border-[#ccebdd] bg-[#effaf4] text-[#16734d]',
-  cancelado: 'border border-[#f1d1d1] bg-[#fff0f0] text-[#a83232]',
-  recoleta: 'border border-[#f1dfb8] bg-[#fff8e8] text-[#8a5b00]',
-  rejeitada: 'border border-[#f1d1d1] bg-[#fff0f0] text-[#a83232]',
+  pendente: 'border border-warning/35 bg-warning/10 text-warning-foreground',
+  coletado: 'border border-info/30 bg-info/10 text-info',
+  em_analise: 'border border-primary/30 bg-primary/10 text-primary',
+  validado: 'border border-success/30 bg-success/10 text-success',
+  liberado: 'border border-success/30 bg-success/10 text-success',
+  cancelado: 'border border-destructive/30 bg-destructive/10 text-destructive',
+  recoleta: 'border border-warning/35 bg-warning/10 text-warning-foreground',
+  rejeitada: 'border border-destructive/30 bg-destructive/10 text-destructive',
 };
 
 const statusLabels = STATUS_COLETA_LABELS;
@@ -127,8 +127,10 @@ function parseNumeroOpcional(valor: unknown): number | null {
 }
 
 export default function Laboratorio() {
+  const location = useLocation();
+  const contextoDaRota = location.state as { buscaPaciente?: unknown } | null;
   const [agora, setAgora] = useState(() => new Date());
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => typeof contextoDaRota?.buscaPaciente === 'string' ? contextoDaRota.buscaPaciente : '');
   // Filtros na URL: sobrevivem à atualização da worklist, ao recarregar e ao voltar de outra tela.
   const [searchParams, setSearchParams] = useSearchParams();
   const filtrosWorklist = lerFiltrosWorklist(searchParams);
@@ -625,7 +627,7 @@ export default function Laboratorio() {
             </Button>
             <Button
               onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
-              className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
+              className="rounded-full gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
             >
               <Plus aria-hidden="true" className="h-4 w-4" /> Nova coleta
             </Button>
@@ -635,13 +637,15 @@ export default function Laboratorio() {
 
       <LaboratorioSubnav />
 
+      {activeTab === 'worklist' && (
+        <>
       {/* ─── Indicator strip ─── */}
       <section aria-label="Indicadores do laboratório hoje">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-5">
           {[
-            { label: 'Urgentes', value: stats.urgentes, icon: Zap, filter: 'urgente', escuro: true },
+            { label: 'Urgentes', value: stats.urgentes, icon: Zap, filter: 'urgente', escuro: false, color: 'text-warning-foreground', bg: 'bg-warning/10' },
             { label: 'Pendentes', value: stats.pendentes, icon: Clock, filter: 'pendente', escuro: false, color: 'text-warning', bg: 'bg-warning/10' },
-            { label: 'Em análise', value: stats.emAnalise, icon: Activity, filter: 'em_analise', escuro: false, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
+            { label: 'Em análise', value: stats.emAnalise, icon: Activity, filter: 'em_analise', escuro: false, color: 'text-primary', bg: 'bg-primary/10' },
             { label: 'Validados', value: stats.validados, icon: CheckCircle2, filter: 'validado', escuro: false, color: 'text-success', bg: 'bg-success/10' },
             { label: 'Liberados', value: stats.liberados, icon: Download, filter: 'liberado', escuro: false, color: 'text-success', bg: 'bg-success/10' },
           ].map((s) => {
@@ -655,10 +659,10 @@ export default function Laboratorio() {
                 aria-pressed={isActive}
                 onClick={() => filtrarPipeline(s.filter)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-3 shadow-xs text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
-                  s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  !s.escuro && isActive && 'ring-2 ring-[#1080CA]',
-                  s.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                  'rounded-2xl border border-border/60 bg-card p-3 shadow-xs text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                  s.escuro && 'border-transparent bg-primary text-primary-foreground',
+                  !s.escuro && isActive && 'ring-2 ring-primary',
+                  s.escuro && isActive && 'ring-2 ring-primary',
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -687,14 +691,14 @@ export default function Laboratorio() {
           `Olá ${(proximo as any).pacientes?.nome ?? ''}, sua coleta está pendente no laboratório.`,
         );
         return (
-          <div className="rounded-2xl border border-[#1080CA]/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                   <FlaskConical className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-wide text-[#1080CA] font-medium">
+                  <p className={cn('text-[11px] uppercase tracking-wide font-medium', (proximo as any).urgente ? 'text-warning-foreground' : 'text-primary')}>
                     {(proximo as any).urgente ? 'Urgente — Próxima a coletar' : 'Próxima coleta pendente'}
                   </p>
                   <p className="text-lg font-bold truncate">{(proximo as any).pacientes?.nome}</p>
@@ -813,11 +817,13 @@ export default function Laboratorio() {
           </Button>
         </div>
       )}
+        </>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="max-w-full overflow-x-auto md:overflow-visible">
-          <TabsList aria-label="Seções do laboratório" className="h-auto w-max min-w-full flex-nowrap justify-start gap-1 md:w-full md:flex-wrap">
+        <div className="max-w-full">
+          <TabsList aria-label="Seções do laboratório" className="h-auto w-full min-w-0 flex-wrap justify-start gap-1 overflow-visible">
             <TabsTrigger ref={worklistTabRef} value="worklist" className="gap-1"><ClipboardCheck className="h-3.5 w-3.5" />Worklist</TabsTrigger>
             <TabsTrigger value="pipeline" className="gap-1"><Activity className="h-3.5 w-3.5" />Pipeline</TabsTrigger>
             <TabsTrigger value="pedidos" className="gap-1"><TestTube className="h-3.5 w-3.5" />Pedidos</TabsTrigger>
@@ -838,7 +844,7 @@ export default function Laboratorio() {
                   placeholder="Buscar paciente, código ou CPF..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]"
+                  className="h-10 rounded-full pl-10 focus-visible:ring-primary"
                 />
               </div>
               <Select value={setorFilter} onValueChange={setSetorFilter}>
@@ -863,7 +869,7 @@ export default function Laboratorio() {
             </div>
             {pendenciasPorSetor.length > 0 && (
               <div role="group" aria-label="Pendências por setor" className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Em aberto por setor</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">Em aberto por setor</span>
                 {pendenciasPorSetor.map((pendencia) => {
                   const rotulo = `${pendencia.nome}: ${pendencia.total} pendente${pendencia.total === 1 ? '' : 's'}${pendencia.urgentes > 0 ? `, ${pendencia.urgentes} urgente${pendencia.urgentes === 1 ? '' : 's'}` : ''}`;
                   const conteudo = (
@@ -874,7 +880,7 @@ export default function Laboratorio() {
                     </>
                   );
                   if (!pendencia.id) {
-                    return <span key="sem-setor" aria-label={rotulo} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-[#BFD8EE] px-3 text-xs text-muted-foreground">{conteudo}</span>;
+                    return <span key="sem-setor" aria-label={rotulo} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs text-muted-foreground">{conteudo}</span>;
                   }
                   const ativo = setorFilter === pendencia.id;
                   return (
@@ -886,7 +892,7 @@ export default function Laboratorio() {
                       onClick={() => setSetorFilter(ativo ? 'todos' : pendencia.id!)}
                       className={cn(
                         'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors',
-                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm [&_.text-destructive]:text-white' : 'border-[#DCE6F2] bg-background text-foreground hover:border-[#9CC7EC]',
+                        ativo ? 'border-transparent bg-primary text-primary-foreground shadow-sm [&_.text-destructive]:text-primary-foreground' : 'border-border bg-background text-foreground hover:border-primary/40',
                       )}
                     >
                       {conteudo}
@@ -909,8 +915,8 @@ export default function Laboratorio() {
                   className={cn(
                     'h-8 rounded-full border px-3 text-xs transition-colors',
                     statusFilter === value && !urgentOnly
-                      ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-                      : 'border-border bg-background text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      ? 'border-transparent bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
                   )}
                 >
                   {label}
@@ -959,7 +965,7 @@ export default function Laboratorio() {
             ) : filtered.length === 0 ? (
               <Card className="rounded-2xl border-border/60">
                 <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
                     <FlaskConical className="h-7 w-7" />
                   </div>
                   <div>
@@ -976,7 +982,7 @@ export default function Laboratorio() {
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center">
                     <Button
-                      className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
+                      className="rounded-full gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
                       onClick={coletasQuery.hasNextPage
                         ? () => void coletasQuery.fetchNextPage()
                         : dateFilter !== 'todos'
@@ -1007,7 +1013,7 @@ export default function Laboratorio() {
                 return (
                   <Card key={coleta.id} className={cn(
                     'rounded-2xl border-border/60 shadow-xs transition-all hover:shadow-md',
-                    coleta.urgente && 'border-destructive/50 bg-destructive/5',
+                    coleta.urgente && 'border-warning/50 bg-warning/5',
                   )}>
                     <CardContent className="py-3 px-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
@@ -1019,7 +1025,7 @@ export default function Laboratorio() {
                             </Badge>
                             <Badge className={cn(statusColors[coleta.status], 'rounded-full')}>{statusLabels[coleta.status]}</Badge>
                             {coleta.laboratorio_setores?.nome && <Badge variant="secondary" className="rounded-full">{coleta.laboratorio_setores.nome}</Badge>}
-                            {coleta.urgente && <Badge variant="destructive" className="rounded-full gap-1"><Zap className="h-3 w-3" />Urgente</Badge>}
+                            {coleta.urgente && <Badge variant="outline" className="rounded-full gap-1 border-warning/40 bg-warning/10 text-warning-foreground"><Zap className="h-3 w-3" />Urgente</Badge>}
                             {coleta.jejum_necessario && <Badge variant="outline" className="rounded-full text-[10px]">Jejum {coleta.jejum_horas}h</Badge>}
                             {(coleta as any).procedimento_codigo && <Badge variant="outline" className="rounded-full font-mono text-[10px]">{(coleta as any).procedimento_codigo}</Badge>}
                             {(coleta as any).numero_guia && <Badge variant="secondary" className="rounded-full text-[10px]">Guia: {(coleta as any).numero_guia}</Badge>}
@@ -1123,17 +1129,17 @@ export default function Laboratorio() {
               {[
                 { label: 'Pendente', value: stats.pendentes, icon: Clock, color: 'text-warning', bg: 'bg-warning/10', filter: 'pendente' },
                 { label: 'Coletado', value: stats.coletados, icon: TestTube, color: 'text-info', bg: 'bg-info/10', filter: 'coletado' },
-                { label: 'Em Análise', value: stats.emAnalise, icon: Activity, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10', filter: 'em_analise' },
+                { label: 'Em Análise', value: stats.emAnalise, icon: Activity, color: 'text-primary', bg: 'bg-primary/10', filter: 'em_analise' },
                 { label: 'Validado', value: stats.validados, icon: Shield, color: 'text-success', bg: 'bg-success/10', filter: 'validado' },
                 { label: 'Liberado', value: stats.liberados, icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', filter: 'liberado' },
-                { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-destructive', bg: 'bg-destructive/10', filter: 'urgente' },
+                { label: 'Urgentes', value: stats.urgentes, icon: Zap, color: 'text-warning-foreground', bg: 'bg-warning/10', filter: 'urgente' },
               ].map((s) => (
                 <div key={s.label}>
                   <button
                     type="button"
                     className={cn(
-                      'w-full rounded-2xl border border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
-                      (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-[#1080CA]',
+                      'w-full rounded-2xl border border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                      (statusFilter === s.filter || (s.filter === 'urgente' && urgentOnly)) && 'ring-2 ring-primary',
                     )}
                     aria-pressed={s.filter === 'urgente' ? urgentOnly : statusFilter === s.filter && dateFilter === 'hoje' && !urgentOnly}
                     onClick={() => filtrarPipeline(s.filter)}
@@ -1154,7 +1160,7 @@ export default function Laboratorio() {
           </section>
           {stats.total === 0 ? (
             <div className="rounded-2xl border border-border/60 bg-card py-12 flex flex-col items-center gap-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
                 <Activity className="h-7 w-7" />
               </div>
               <div>
@@ -1162,7 +1168,7 @@ export default function Laboratorio() {
                 <p className="text-sm text-muted-foreground mt-1">Registre uma coleta para iniciar o acompanhamento das etapas laboratoriais.</p>
               </div>
               <Button
-                className="rounded-full gap-2 bg-gradient-primary text-white shadow-md hover:brightness-110"
+                className="rounded-full gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
                 onClick={() => { resetColetaForm(); setShowNewColeta(true); }}
               >
                 <Plus className="h-4 w-4" /> Registrar coleta
@@ -1185,7 +1191,7 @@ export default function Laboratorio() {
                         <span className={cn('h-2.5 w-2.5 rounded-full',
                           step === 'pendente' && 'bg-yellow-500',
                           step === 'coletado' && 'bg-blue-500',
-                          step === 'em_analise' && 'bg-purple-500',
+                          step === 'em_analise' && 'bg-info',
                           step === 'validado' && 'bg-green-500',
                           step === 'liberado' && 'bg-emerald-500',
                         )} />
@@ -1200,11 +1206,11 @@ export default function Laboratorio() {
                     ) : items.map((c: any) => (
                       <div key={c.id} className={cn(
                         'rounded-lg border p-2 space-y-1 text-xs',
-                        c.urgente && 'border-destructive/50 bg-destructive/5'
+                        c.urgente && 'border-warning/50 bg-warning/5'
                       )}>
                         <div className="flex items-center justify-between">
                           <span className="font-medium truncate">{c.pacientes?.nome}</span>
-                          {c.urgente && <Zap className="h-3 w-3 text-destructive shrink-0" />}
+                          {c.urgente && <Zap className="h-3 w-3 text-warning-foreground shrink-0" />}
                         </div>
                         <p className="text-muted-foreground font-mono text-[10px]">{c.codigo_amostra}</p>
                         <p className="text-muted-foreground">{c.tipo_amostra} {c.tubo && `· ${c.tubo}`}</p>
@@ -1217,7 +1223,9 @@ export default function Laboratorio() {
                         )}
                         {c.status === 'validado' && (
                           <Button asChild size="sm" variant="outline" className="h-6 text-[10px] w-full gap-1">
-                            <Link to="/laudos-lab"><FileText className="h-2.5 w-2.5" />Liberar laudo</Link>
+                            <Link to={`/laudos-lab?coleta=${encodeURIComponent(c.id)}`} aria-label={`Abrir laudo da amostra ${c.codigo_amostra}`}>
+                              <FileText className="h-2.5 w-2.5" />Revisar laudo
+                            </Link>
                           </Button>
                         )}
                       </div>
@@ -1605,7 +1613,7 @@ export default function Laboratorio() {
               )}
               <div className="flex items-center gap-2">
                 <Checkbox checked={newColetaForm.urgente} onCheckedChange={v => setNewColetaForm(p => ({ ...p, urgente: !!v }))} />
-                <Label className="text-sm text-destructive font-medium">Urgente</Label>
+                <Label className="text-sm text-warning-foreground font-medium">Urgente</Label>
               </div>
             </div>
 
@@ -1713,7 +1721,7 @@ export default function Laboratorio() {
                 </form>
               </CardContent>
             </Card> : (
-              <div role="status" className="rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4 text-sm text-[#0B4F7D]">
+              <div role="status" className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-primary">
                 A amostra não está mais aberta para lançamento. Isso preserva a conferência e a trilha de auditoria do resultado.
               </div>
             )}

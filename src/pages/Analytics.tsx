@@ -34,8 +34,7 @@ import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, todaySaoPauloD
 import { calculateAttendanceRate } from '@/lib/analyticsKpis';
 import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
-const COLORS = ['#1080CA', '#2ED5E7', '#0B4F7D', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))'];
-const GRID_COLOR = '#DCE6F2';
+const COR_GRADE = 'hsl(var(--border))';
 const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
 
 function diaFinanceiro(value?: string | null): string | null {
@@ -118,7 +117,7 @@ function getDateRange(preset: string, customFrom?: Date, customTo?: Date): { fro
   }
 }
 
-interface KPICardProps {
+interface KPIItemProps {
   title: string;
   value: string | number;
   change?: number | null;
@@ -127,15 +126,13 @@ interface KPICardProps {
   definition: string;
   source: string;
   period: string;
-  tone: 'primary' | 'success' | 'accent' | 'warning' | 'dark';
-  onClick?: () => void;
-  pressed?: boolean;
+  valueTone?: 'default' | 'success' | 'destructive';
 }
 
-function KPIDefinition({ title, definition, source, period }: Pick<KPICardProps, 'title' | 'definition' | 'source' | 'period'>) {
+function KPIDefinition({ title, definition, source, period }: Pick<KPIItemProps, 'title' | 'definition' | 'source' | 'period'>) {
   return (
-    <details className="mt-2 text-xs" data-testid="analytics-kpi-definition" onClick={(event) => event.stopPropagation()}>
-      <summary className="w-fit cursor-pointer rounded-sm font-medium text-[#1080CA] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <details className="mt-1 text-xs" data-testid="analytics-kpi-definition">
+      <summary className="w-fit cursor-pointer rounded-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         Critério e fonte
       </summary>
       <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-card p-2 text-muted-foreground">
@@ -147,65 +144,25 @@ function KPIDefinition({ title, definition, source, period }: Pick<KPICardProps,
   );
 }
 
-const KPI_TONES = {
-  primary: 'border-[#1080CA]/20 from-[#1080CA]/5 to-card',
-  success: 'border-success/20 from-success/5 to-card',
-  accent: 'border-border/60 from-accent to-card',
-  warning: 'border-warning/20 from-warning/5 to-card',
-  dark: 'border-transparent bg-gradient-primary text-white',
-} as const;
-
-const KPI_ICON_TONES = {
-  primary: 'bg-[#1080CA]/10 text-[#1080CA] ring-[#1080CA]/20',
-  success: 'bg-success/10 text-success ring-success/20',
-  accent: 'bg-accent text-accent-foreground ring-border',
-  warning: 'bg-warning/10 text-warning-foreground ring-warning/20',
-  dark: 'bg-white/20 text-white ring-white/20',
-} as const;
-
-function KPICard({ title, value, change, icon, description, definition, source, period, tone, onClick, pressed }: KPICardProps) {
-  const dark = tone === 'dark';
+function KPIItem({ title, value, change, icon, description, definition, source, period, valueTone = 'default' }: KPIItemProps) {
+  const valueColor = valueTone === 'success' ? 'text-success' : valueTone === 'destructive' ? 'text-destructive' : 'text-foreground';
   return (
-    <div data-testid="analytics-kpi" className="h-full">
-      <Card
-        className={cn(
-          'h-full border bg-gradient-to-br shadow-xs transition-all',
-          KPI_TONES[tone],
-          onClick && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
-        )}
-        {...(onClick ? {
-          role: 'button' as const,
-          tabIndex: 0,
-          'aria-pressed': pressed,
-          onClick,
-          onKeyDown: (event: React.KeyboardEvent) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              onClick();
-            }
-          },
-        } : {})}
-      >
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={cn('text-sm', dark ? 'text-white/70' : 'text-muted-foreground')}>{title}</p>
-              <p className={cn('text-3xl font-bold mt-1 tabular-nums', dark && 'text-white')}>{value}</p>
-              {change !== undefined && (
-                <div className={cn('flex items-center gap-1 text-sm mt-1', change === null ? (dark ? 'text-white/60' : 'text-muted-foreground') : change >= 0 ? 'text-success' : 'text-destructive')}>
-                  {change === null ? 'Sem base anterior para comparar' : <>
-                    {change > 0 ? <ArrowUp className="h-3 w-3" /> : change < 0 ? <ArrowDown className="h-3 w-3" /> : <Activity className="h-3 w-3" />}
-                    {Math.abs(change)}% vs período anterior
-                  </>}
-                </div>
-              )}
-              {description && <p className={cn('text-xs mt-1', dark ? 'text-white/70' : 'text-muted-foreground')}>{description}</p>}
-              <KPIDefinition title={title} definition={definition} source={source} period={period} />
-            </div>
-            <div className={cn('rounded-2xl p-3 ring-1', KPI_ICON_TONES[tone])}>{icon}</div>
-          </div>
-        </CardContent>
-      </Card>
+    <div data-testid="analytics-kpi" className="min-w-0 p-3">
+      <div className="flex items-center gap-2">
+        <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">{icon}</span>
+        <p className="truncate text-sm font-medium text-muted-foreground">{title}</p>
+      </div>
+      <p className={cn('mt-2 break-words text-2xl font-semibold tabular-nums', valueColor)}>{value}</p>
+      {change !== undefined && (
+        <div className={cn('mt-1 flex items-center gap-1 text-xs', change === null ? 'text-muted-foreground' : change >= 0 ? 'text-success' : 'text-destructive')}>
+          {change === null ? 'Sem base anterior para comparar' : <>
+            {change > 0 ? <ArrowUp aria-hidden="true" className="h-3 w-3" /> : change < 0 ? <ArrowDown aria-hidden="true" className="h-3 w-3" /> : <Activity aria-hidden="true" className="h-3 w-3" />}
+            {Math.abs(change)}% vs período anterior
+          </>}
+        </div>
+      )}
+      {description && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>}
+      <KPIDefinition title={title} definition={definition} source={source} period={period} />
     </div>
   );
 }
@@ -621,7 +578,8 @@ export default function Analytics() {
 
             <Button
               variant={showComparison ? 'default' : 'outline'}
-              size="sm" className={cn('h-9 rounded-full text-xs gap-1', showComparison && 'bg-gradient-primary text-white hover:brightness-110')}
+              size="sm" className="h-9 gap-1 rounded-full text-xs"
+              aria-pressed={showComparison}
               onClick={() => setShowComparison(!showComparison)}
             >
               <TrendingUp className="h-3.5 w-3.5" />
@@ -672,100 +630,109 @@ export default function Analytics() {
       </div>
       {fontesNoLimite.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><Activity className="mt-0.5 h-4 w-4 shrink-0" /><p>O limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros foi atingido em: {fontesNoLimite.join(', ')}. Estes indicadores podem estar incompletos.</p></div>}
 
-      {/* KPIs */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KPICard
-          title="Taxa de Comparecimento"
-          value={baseComparecimento > 0 ? `${taxaComparecimento}%` : '—'}
-          change={showComparison ? (baseComparecimento > 0 ? calcChange(taxaComparecimento, prevTaxaComp) : null) : undefined}
-          icon={<Users className="h-6 w-6 text-[#1080CA]" />}
-          tone="primary"
-          onClick={() => setActiveTab('atendimento')}
-          pressed={activeTab === 'atendimento'}
-          definition="Consultas finalizadas divididas pelo total de consultas finalizadas e faltas. Consultas futuras, em andamento e canceladas ficam fora do denominador."
-          source="Agendamentos, pelos estados finalizado, atendimento_finalizado e faltou."
-          period={kpiPeriod}
-          description={baseComparecimento > 0
-            ? `${compareceram} finalizadas de ${baseComparecimento} consultas com desfecho (${faltaram} faltas).`
-            : 'Sem consultas finalizadas ou faltas no período.'}
-        />
-        <KPICard
-          title="Receita do Período"
-          value={receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          change={showComparison ? calcChange(receitaTotal, prevReceita) : undefined}
-          icon={<DollarSign className="h-6 w-6" />}
-          tone="dark"
-          onClick={() => setActiveTab('financeiro')}
-          pressed={activeTab === 'financeiro'}
-          definition="Soma de receitas pagas no período menos estornos cuja data ocorreu no período; registros legados sem pagamentos individuais usam o valor realizado da conta."
-          source="Pagamentos e lançamentos legados sem pagamento individual."
-          period={kpiPeriod}
-          description={`Margem: ${margemLucro === null ? '—' : `${margemLucro}%`}`}
-        />
-        <KPICard
-          title="Ticket Médio"
-          value={atendimentosComRecebimento.size > 0 ? ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
-          change={showComparison ? calcChange(ticketMedio, ticketMedioAnterior) : undefined}
-          icon={<TrendingUp className="h-6 w-6 text-accent-foreground" />}
-          tone="accent"
-          onClick={() => setActiveTab('financeiro')}
-          pressed={activeTab === 'financeiro'}
-          definition="Receita vinculada a agendamentos dividida pela quantidade de agendamentos distintos com recebimento no período."
-          source="Pagamentos/lançamentos vinculados a agendamento."
-          period={kpiPeriod}
-          description={`Média por atendimento com recebimento · Lucro: ${lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
-        />
-        <KPICard
-          title="Total Agendamentos"
-          value={totalAg}
-          change={showComparison ? calcChange(totalAg, prevTotalAg) : undefined}
-          icon={<CalendarIcon className="h-6 w-6 text-warning-foreground" />}
-          tone="warning"
-          onClick={() => setActiveTab('atendimento')}
-          pressed={activeTab === 'atendimento'}
-          definition="Contagem de todos os agendamentos com data dentro do período, independentemente do status."
-          source="Agendamentos, campo data."
-          period={kpiPeriod}
-          description={`${cancelados} cancelados (${taxaCancelamento}%)`}
-        />
-      </div>
-
-      {/* Secondary KPIs */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="shadow-xs"><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Despesas</p>
-          <p className="text-xl font-bold tabular-nums text-destructive">{despesaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-          {showComparison && <p className={cn('text-[10px]', changeDespesas === null ? 'text-muted-foreground' : changeDespesas <= 0 ? 'text-success' : 'text-destructive')}>
-            {changeDespesas === null ? 'Sem base anterior para comparar' : `${changeDespesas <= 0 ? '↓' : '↑'} ${Math.abs(changeDespesas)}% vs anterior`}
-          </p>}
-          <KPIDefinition title="Despesas" definition="Soma das despesas pagas no período menos estornos ocorridos no período; contas legadas sem pagamentos individuais usam o valor realizado da conta." source="Pagamentos e lançamentos legados sem pagamento individual." period={kpiPeriod} />
-        </CardContent></Card>
-        <Card className="shadow-xs"><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Triagens</p>
-          <p className="text-xl font-bold tabular-nums">{triagens.length}</p>
-          <p className="text-[10px] text-muted-foreground">No período selecionado</p>
-          <KPIDefinition title="Triagens" definition="Quantidade de registros criados dentro do período selecionado." source="Triagens, campo created_at." period={kpiPeriod} />
-        </CardContent></Card>
-        <Card className="shadow-xs"><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Margem de Lucro</p>
-          <p className={cn('text-xl font-bold tabular-nums', margemLucro === null ? 'text-muted-foreground' : margemLucro >= 0 ? 'text-success' : 'text-destructive')}>{margemLucro === null ? '—' : `${margemLucro}%`}</p>
-          <p className="text-[10px] text-muted-foreground">Receita - Despesa / Receita</p>
-          <KPIDefinition title="Margem de lucro" definition="(Receita - despesas) ÷ receita × 100. Sem receita, o indicador fica indisponível." source="Os mesmos eventos de pagamentos e lançamentos usados em Receita e Despesas." period={kpiPeriod} />
-        </CardContent></Card>
-        <Card className="shadow-xs"><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Média diária de agendamentos</p>
-          <p className="text-xl font-bold tabular-nums">{(totalAg / (rangeDays || 1)).toFixed(1)}</p>
-          <p className="text-[10px] text-muted-foreground">consultas/dia</p>
-          <KPIDefinition title="Média diária de atendimentos" definition="Total de agendamentos ÷ quantidade inclusiva de dias do período." source="Agendamentos, campo data." period={kpiPeriod} />
-        </CardContent></Card>
-      </div>
+      <section aria-labelledby="analytics-summary-title" className="overflow-hidden rounded-xl border border-border bg-card" data-testid="analytics-summary">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2 sm:px-5">
+          <div>
+            <h2 id="analytics-summary-title" className="text-sm font-semibold text-foreground">Resumo do período</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Indicadores de atendimento, receita e operação na janela selecionada.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="h-9 rounded-full" onClick={() => setActiveTab('atendimento')}>Ver atendimento</Button>
+            <Button variant="outline" size="sm" className="h-9 rounded-full" onClick={() => setActiveTab('financeiro')}>Ver financeiro</Button>
+          </div>
+        </header>
+        <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
+          <KPIItem
+            title="Taxa de Comparecimento"
+            value={baseComparecimento > 0 ? `${taxaComparecimento}%` : '—'}
+            change={showComparison ? (baseComparecimento > 0 ? calcChange(taxaComparecimento, prevTaxaComp) : null) : undefined}
+            icon={<Users className="h-4 w-4" />}
+            definition="Consultas finalizadas divididas pelo total de consultas finalizadas e faltas. Consultas futuras, em andamento e canceladas ficam fora do denominador."
+            source="Agendamentos, pelos estados finalizado, atendimento_finalizado e faltou."
+            period={kpiPeriod}
+            description={baseComparecimento > 0
+              ? `${compareceram} finalizadas de ${baseComparecimento} consultas com desfecho (${faltaram} faltas).`
+              : 'Sem consultas finalizadas ou faltas no período.'}
+          />
+          <KPIItem
+            title="Receita do Período"
+            value={receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            change={showComparison ? calcChange(receitaTotal, prevReceita) : undefined}
+            icon={<DollarSign className="h-4 w-4" />}
+            definition="Soma de receitas pagas no período menos estornos cuja data ocorreu no período; registros legados sem pagamentos individuais usam o valor realizado da conta."
+            source="Pagamentos e lançamentos legados sem pagamento individual."
+            period={kpiPeriod}
+            description={`Margem: ${margemLucro === null ? '—' : `${margemLucro}%`}`}
+          />
+          <KPIItem
+            title="Ticket Médio"
+            value={atendimentosComRecebimento.size > 0 ? ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+            change={showComparison ? calcChange(ticketMedio, ticketMedioAnterior) : undefined}
+            icon={<TrendingUp className="h-4 w-4" />}
+            definition="Receita vinculada a agendamentos dividida pela quantidade de agendamentos distintos com recebimento no período."
+            source="Pagamentos/lançamentos vinculados a agendamento."
+            period={kpiPeriod}
+            description={`Média por atendimento com recebimento · Lucro: ${lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
+          />
+          <KPIItem
+            title="Total Agendamentos"
+            value={totalAg}
+            change={showComparison ? calcChange(totalAg, prevTotalAg) : undefined}
+            icon={<CalendarIcon className="h-4 w-4" />}
+            definition="Contagem de todos os agendamentos com data dentro do período, independentemente do status."
+            source="Agendamentos, campo data."
+            period={kpiPeriod}
+            description={`${cancelados} cancelados (${taxaCancelamento}%)`}
+          />
+        </div>
+        <div className="border-t border-border bg-muted/30 px-4 py-2 sm:px-5">
+          <h3 className="text-xs font-semibold text-muted-foreground">Indicadores complementares</h3>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
+          <KPIItem
+            title="Despesas"
+            value={despesaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            change={showComparison ? changeDespesas : undefined}
+            valueTone="destructive"
+            icon={<DollarSign className="h-4 w-4" />}
+            definition="Soma das despesas pagas no período menos estornos ocorridos no período; contas legadas sem pagamentos individuais usam o valor realizado da conta."
+            source="Pagamentos e lançamentos legados sem pagamento individual."
+            period={kpiPeriod}
+          />
+          <KPIItem
+            title="Triagens"
+            value={triagens.length}
+            icon={<Activity className="h-4 w-4" />}
+            definition="Quantidade de registros criados dentro do período selecionado."
+            source="Triagens, campo created_at."
+            period={kpiPeriod}
+          />
+          <KPIItem
+            title="Margem de Lucro"
+            value={margemLucro === null ? '—' : `${margemLucro}%`}
+            valueTone={margemLucro === null ? 'default' : margemLucro >= 0 ? 'success' : 'destructive'}
+            icon={<TrendingUp className="h-4 w-4" />}
+            definition="(Receita - despesas) dividido pela receita. Sem receita, o indicador fica indisponível."
+            source="Os mesmos eventos de pagamentos e lançamentos usados em Receita e Despesas."
+            period={kpiPeriod}
+          />
+          <KPIItem
+            title="Média diária de agendamentos"
+            value={(totalAg / (rangeDays || 1)).toFixed(1)}
+            icon={<CalendarIcon className="h-4 w-4" />}
+            definition="Total de agendamentos dividido pela quantidade inclusiva de dias do período."
+            source="Agendamentos, campo data."
+            period={kpiPeriod}
+          />
+        </div>
+      </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="atendimento">Atendimento</TabsTrigger>
-          <TabsTrigger value="produtividade">Produtividade</TabsTrigger>
-          <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
-          <TabsTrigger value="triagem">Triagem</TabsTrigger>
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-transparent p-0 sm:grid-cols-3 lg:grid-cols-5">
+          <TabsTrigger className="w-full px-2 text-xs" value="atendimento">Atendimento</TabsTrigger>
+          <TabsTrigger className="w-full px-2 text-xs" value="produtividade">Produtividade</TabsTrigger>
+          <TabsTrigger className="w-full px-2 text-xs" value="financeiro">Financeiro</TabsTrigger>
+          <TabsTrigger className="w-full px-2 text-xs" value="triagem">Triagem</TabsTrigger>
           <TabsTrigger value="satisfacao">Satisfação</TabsTrigger>
         </TabsList>
 
@@ -777,19 +744,23 @@ export default function Analytics() {
                 <CardDescription>{showComparison ? 'Atual vs Período Anterior' : `Últimos ${Math.min(14, rangeDays)} dias`}</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+                {agPorDia.length === 0 ? (
+                  <p className="flex min-h-[300px] items-center justify-center text-center text-sm text-muted-foreground">
+                    Nenhum dado de agendamento disponÃ­vel no perÃ­odo selecionado.
+                  </p>
+                ) : <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={agPorDia}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={COR_GRADE} />
                     <XAxis dataKey="dia" className="text-xs" />
                     <YAxis className="text-xs" />
                     <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
-                    <Bar dataKey="agendamentos" fill="#1080CA" radius={[4, 4, 0, 0]} name="Atual" />
+                    <Bar dataKey="agendamentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Atual" />
                     {showComparison && (
                       <Bar dataKey="anterior" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} opacity={0.4} name="Anterior" />
                     )}
                     {showComparison && <Legend />}
                   </BarChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer>}
                 <AccessibleChartTable
                   title="Agendamentos por dia"
                   period={kpiPeriod}
@@ -806,16 +777,19 @@ export default function Analytics() {
                 <CardDescription>Distribuição por status</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie data={statusAgendamentos} cx="50%" cy="50%" labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={100} dataKey="value">
-                      {statusAgendamentos.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                {statusAgendamentos.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-muted-foreground">Nenhum agendamento no período selecionado.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={Math.max(280, statusAgendamentos.length * 32)}>
+                    <BarChart data={statusAgendamentos} layout="vertical" margin={{ top: 4, right: 12, bottom: 4, left: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={COR_GRADE} horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" width={150} interval={0} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                      <Bar dataKey="value" name="Agendamentos" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} maxBarSize={20} isAnimationActive={false} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
                 <AccessibleChartTable
                   title="Status dos agendamentos"
                   period={kpiPeriod}
@@ -844,12 +818,11 @@ export default function Analytics() {
                     const taxa = med.total > 0 ? Math.round((med.finalizados / med.total) * 100) : 0;
                     return (
                       <div key={i}
-                        className="flex items-center gap-4 p-3 rounded-xl border border-border/60 bg-card hover:shadow-sm transition-shadow animate-in fade-in slide-in-from-left-2"
-                        style={{ animationDelay: `${i * 50}ms` }}
+                        className="flex items-center gap-4 border-b border-border/60 p-3 last:border-b-0 hover:bg-muted/30"
                       >
                         <div className={cn(
                           'h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0',
-                          i === 0 ? 'bg-gradient-primary text-white' : 'bg-muted text-foreground',
+                          i === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground',
                         )}>
                           {i + 1}º
                         </div>
@@ -865,7 +838,7 @@ export default function Analytics() {
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div
                               style={{ width: `${taxa}%` }}
-                              className="h-full bg-gradient-primary rounded-full transition-all duration-700"
+                              className="h-full rounded-full bg-primary transition-all duration-700"
                             />
                           </div>
                           <p className="text-[10px] text-center text-muted-foreground mt-0.5">{taxa}% finaliz.</p>
@@ -887,24 +860,20 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="financeiro" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <section aria-label="Resumo financeiro" className="grid divide-y divide-border rounded-xl border border-border bg-card md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
               { label: 'Receita Total', value: receitaTotal, color: 'text-success' },
               { label: 'Despesa Total', value: despesaTotal, color: 'text-destructive' },
               { label: 'Saldo', value: receitaTotal - despesaTotal, color: receitaTotal - despesaTotal >= 0 ? 'text-success' : 'text-destructive' },
             ].map(item => (
-              <Card key={item.label} className="shadow-xs">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">{item.label}</p>
-                    <p className={cn('text-3xl font-bold tabular-nums', item.color)}>
-                      {item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <div key={item.label} className="min-w-0 px-4 py-3 md:px-5">
+                <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
+                <p className={cn('mt-1 break-words text-xl font-semibold tabular-nums', item.color)}>
+                  {item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </p>
+              </div>
             ))}
-          </div>
+          </section>
 
           <Card className="shadow-xs">
             <CardHeader>
@@ -912,9 +881,13 @@ export default function Analytics() {
               <CardDescription>Receitas vs Despesas</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+              {eventosFinanceiros.length === 0 ? (
+                <p className="flex min-h-[300px] items-center justify-center text-center text-sm text-muted-foreground">
+                  Nenhuma movimentação financeira no período selecionado.
+                </p>
+              ) : <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={fluxoCaixa}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={COR_GRADE} />
                   <XAxis dataKey="dia" className="text-xs" />
                   <YAxis className="text-xs" />
                   <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
@@ -923,7 +896,7 @@ export default function Analytics() {
                   <Area type="monotone" dataKey="despesas" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.6} />
                   <Legend />
                 </AreaChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer>}
                 <AccessibleChartTable
                   title="Fluxo de caixa"
                   period={kpiPeriod}
@@ -943,7 +916,11 @@ export default function Analytics() {
                 <CardDescription>Protocolo Manchester</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+                {classificacaoRisco.length === 0 ? (
+                  <p className="flex min-h-[300px] items-center justify-center text-center text-sm text-muted-foreground">
+                    Nenhuma triagem registrada no período selecionado.
+                  </p>
+                ) : <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={classificacaoRisco} cx="50%" cy="50%" labelLine={false}
                       label={({ name, value }) => `${name}: ${value}`}
@@ -952,7 +929,7 @@ export default function Analytics() {
                     </Pie>
                     <Tooltip />
                   </PieChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer>}
                 <AccessibleChartTable
                   title="Classificação de risco das triagens"
                   period={kpiPeriod}

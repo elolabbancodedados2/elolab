@@ -18,8 +18,8 @@ interface FinalizarAtendimentoDialogProps {
   open: boolean;
   pacienteNome: string;
   onClose: () => void;
-  /** Recebe o prazo escolhido (dias) ou null para "sem retorno". */
-  onConfirm: (dias: number | null) => Promise<void>;
+  /** Retorna true ao concluir; false mantém as opções abertas para recuperação. */
+  onConfirm: (dias: number | null) => Promise<boolean>;
 }
 
 const OPCOES = [7, 15, 30, 60, 90, 180];
@@ -45,7 +45,8 @@ export function FinalizarAtendimentoDialog({
     if (submitting) return;
     setSubmitting(true);
     try {
-      await onConfirm(dias);
+      const finalizado = await onConfirm(dias);
+      if (finalizado) onClose();
     } finally {
       setSubmitting(false);
     }

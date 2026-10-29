@@ -62,15 +62,47 @@ test('cadastro patrimonial, ordem concluída, documento privado e bloqueio de sa
 
   await page.goto('/patrimonio-equipamentos');
   await expect(page.getByRole('heading', { name: 'Patrimônio e manutenção' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Abrir salas e leitos' })).toBeVisible();
+  const overdueIndicator = page.getByRole('group', { name: 'Situação do patrimônio' }).getByRole('button', { name: /Manutenção vencida/ });
+  await expect(overdueIndicator).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('equipment-indicator-value-vencida')).toHaveClass(/text-muted-foreground/);
+  await page.screenshot({ path: testInfo.outputPath('patrimonio-vazio-desktop-after.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('patrimonio-vazio-mobile-after.png'), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole('button', { name: 'Novo equipamento' }).first().click();
   await page.getByLabel('Nome *').fill('Autoclave consultório');
   await page.getByLabel('Sala / localização').click();
   await page.getByRole('option', { name: 'Consultório QA' }).click();
   await page.getByLabel('Patrimônio', { exact: true }).fill('PAT-QA-001');
-  await page.getByLabel('Calibração até').fill('2026-11-01');
+  await page.getByLabel('Calibração até').fill('2026-10-01');
   await page.getByLabel('Bloquear disponibilidade da sala se este equipamento ficar indisponível').check();
   await page.getByRole('button', { name: 'Cadastrar ativo' }).click();
   await expect(page.getByRole('heading', { name: 'Autoclave consultório', exact: true })).toBeVisible();
+  await expect(page.getByText('Equipamento cadastrado')).toBeVisible();
+  await page.locator('#main-content').evaluate((main) => main.scrollTo({ top: 0 }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(async () => {
+    const mobileToast = await page.locator('[data-sonner-toast]').filter({ hasText: 'Equipamento cadastrado' }).first().boundingBox();
+    const mobileNav = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+    return Boolean(mobileToast && mobileNav && mobileToast.y + mobileToast.height <= mobileNav.y);
+  }).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('patrimonio-ativo-mobile-after.png'), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.getByTestId('equipment-indicator-value-vencida')).toHaveText('1');
+  await expect(page.getByTestId('equipment-indicator-value-vencida')).toHaveClass(/text-destructive/);
+  await expect(page.getByText('Prazo vencido')).toBeVisible();
+  await overdueIndicator.focus();
+  await overdueIndicator.press('Enter');
+  await expect(overdueIndicator).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Mostrando apenas manutenção vencida.')).toBeVisible();
+  await overdueIndicator.press('Enter');
+  await expect(overdueIndicator).toHaveAttribute('aria-pressed', 'false');
+  await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
+  await page.locator('#main-content').evaluate((main) => main.scrollTo({ top: 0 }));
+  await page.screenshot({ path: testInfo.outputPath('patrimonio-ativo-desktop-after.png'), fullPage: true });
   await page.getByRole('button', { name: 'Abrir ordem de serviço' }).click();
   await page.getByRole('combobox', { name: 'Equipamento da ordem' }).click();
   await page.getByRole('option', { name: 'Autoclave consultório · PAT-QA-001' }).click();
@@ -92,5 +124,74 @@ test('cadastro patrimonial, ordem concluída, documento privado e bloqueio de sa
   expect(calls.find((call) => call.action === 'add_document')?.storage_path).toContain(`${synthetic.clinicId}/${assetId}/`);
   expect(calls.map((call) => call.action)).toContain('document_url');
   expect(uploadedPath).toContain(`${synthetic.clinicId}/${assetId}/`);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('perfil de recepção respeita os limites de manutenção e cadastro retornados pela API', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'recepcao' });
+  const assetId = '00000000-0000-4000-8000-000000000411';
+
+  await page.route('**/functions/v1/patrimonio-equipamentos', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body.action).toBe('list');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      assets: [{ id: assetId, room_id: null, name: 'Autoclave recepção', category: 'clinical', manufacturer: null, model: null,
+        serial_number: 'QA-411', asset_tag: 'PAT-QA-411', acquired_on: null, warranty_until: null, calibration_due: null,
+        maintenance_interval_days: null, responsible_user_id: null, status: 'active', block_room_when_unavailable: false,
+        created_at: '2026-10-14T13:00:00Z', updated_at: '2026-10-14T13:00:00Z' }],
+      orders: [], documents: [], audit: [], rooms: [], profiles: [],
+      canManageAssets: false, canMaintain: false, canOpenOrders: false,
+    }) });
+  });
+
+  await page.goto('/patrimonio-equipamentos');
+  await expect(page.getByRole('heading', { name: 'Autoclave recepção', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Novo equipamento' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Abrir ordem de serviço' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Enviar para manutenção' })).toHaveCount(0);
+  await expect(page.getByLabel('Próxima calibração')).toHaveCount(0);
+  await expect(page.getByLabel('Anexar PDF ou imagem')).toHaveCount(0);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('erro ao carregar patrimônio mantém a operação bloqueada e oferece nova tentativa', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'admin' });
+
+  await page.route('**/functions/v1/patrimonio-equipamentos', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body.action).toBe('list');
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'indisponível' }) });
+  });
+
+  await page.goto('/patrimonio-equipamentos');
+  await expect(page.getByRole('alert')).toContainText('Não foi possível carregar o patrimônio');
+  await expect(page.getByRole('alert')).toContainText('Nenhuma alteração será feita até confirmar o estado atual dos equipamentos.');
+  await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Novo equipamento' })).toHaveCount(0);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('carregamento mostra esqueleto até confirmar os dados', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'admin' });
+  let releaseResponse!: () => void;
+  const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+
+  await page.route('**/functions/v1/patrimonio-equipamentos', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body.action).toBe('list');
+    await responseGate;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      assets: [], orders: [], documents: [], audit: [], rooms: [], profiles: [],
+      canManageAssets: false, canMaintain: false, canOpenOrders: false,
+    }) });
+  });
+
+  await page.goto('/patrimonio-equipamentos', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#main-content main .animate-pulse')).toBeVisible();
+  releaseResponse();
+  await expect(page.getByText('Nenhum ativo patrimonial cadastrado')).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

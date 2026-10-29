@@ -50,9 +50,9 @@ import { nomeMedico } from '@/lib/formatters';
 
 const STATUS_COLORS: Record<string, string> = {
   aguardando: 'border-warning/40 bg-warning/10 text-warning-foreground',
-  notificado: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
+  notificado: 'border-primary/30 bg-primary/10 text-primary',
   confirmado: 'border-success/30 bg-success/10 text-success',
-  agendado: 'border-transparent bg-gradient-primary text-white hover:bg-gradient-primary',
+  agendado: 'border-transparent bg-primary text-primary-foreground',
   desistiu: 'border-border bg-muted text-muted-foreground',
 };
 
@@ -362,7 +362,7 @@ export default function ListaEspera() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void listaQuery.refetch()} aria-label="Atualizar lista de espera" title="Atualizar lista">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full">
               <Plus className="h-4 w-4" />
               Adicionar à Lista
             </Button>
@@ -374,7 +374,7 @@ export default function ListaEspera() {
       <section role="group" aria-label="Resumo da lista de espera" className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {([
           { key: 'aguardando', icon: Clock, label: 'Aguardando', value: aguardando.length, caption: 'ainda sem contato', color: 'text-white', surface: 'bg-white/15', escuro: true },
-          { key: 'notificado', icon: Phone, label: 'Notificados', value: lista.filter(i => i.status === 'notificado').length, caption: 'aguardando resposta', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+          { key: 'notificado', icon: Phone, label: 'Notificados', value: lista.filter(i => i.status === 'notificado').length, caption: 'aguardando resposta', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
           { key: 'confirmado', icon: CheckCircle, label: 'Confirmados', value: lista.filter(i => i.status === 'confirmado').length, caption: 'prontos para agendar', color: 'text-success', surface: 'bg-success/10', escuro: false },
           { key: 'agendado', icon: CalendarPlus, label: 'Agendados', value: lista.filter(i => i.status === 'agendado').length, caption: `${lista.length} no total`, color: 'text-foreground', surface: 'bg-muted', escuro: false },
         ]).map(s => {
@@ -387,10 +387,10 @@ export default function ListaEspera() {
               aria-pressed={ativo}
               onClick={() => setStatusFilter(ativo ? 'todos' : s.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                s.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                s.escuro && 'border-transparent bg-primary text-primary-foreground',
+                ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && s.escuro && 'ring-2 ring-primary/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -399,10 +399,10 @@ export default function ListaEspera() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                    <h3 className={cn('text-xs font-semibold leading-tight', s.escuro ? 'text-primary-foreground/90' : 'text-foreground')}>{s.label}</h3>
                     <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
                   </div>
-                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                  <p className={cn('text-[11px] leading-snug', s.escuro ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{s.caption}</p>
                 </div>
               </div>
             </button>
@@ -418,14 +418,14 @@ export default function ListaEspera() {
         const whatsapp = linkWhatsApp(info.telefone, mensagemWhatsApp(info.nome.split(' ')[0], proximoAChamar.especialidade));
         const medicoPref = (proximoAChamar as any).medicos;
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-xs">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
                   <Bell className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Próximo a chamar</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Próximo a chamar</p>
                   <h2 className="truncate text-lg font-bold text-foreground">{info.nome}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{proximoAChamar.especialidade || 'Sem especialidade'}</span>
@@ -441,14 +441,14 @@ export default function ListaEspera() {
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp ? (
-                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
                   </Button>
                 ) : (
                   <span className="text-xs text-muted-foreground">Sem telefone válido</span>
                 )}
                 <Button
-                  className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110"
+                  className="h-10 gap-1.5 rounded-full"
                   onClick={() => handleUpdateStatus(proximoAChamar.id, proximoAChamar.status || 'aguardando', 'notificado')}
                   disabled={updatingId !== null}
                   title="Altera o status; não envia mensagem ao paciente."
@@ -496,7 +496,7 @@ export default function ListaEspera() {
                     placeholder="Nome, CPF, telefone ou e-mail..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]"
+                    className="h-10 rounded-full pl-10"
                   />
                 </div>
               </div>
@@ -516,8 +516,8 @@ export default function ListaEspera() {
                     aria-pressed={ativo}
                     onClick={() => setPrioridadeFilter(opt.key)}
                     className={cn(
-                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      ativo ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground',
                     )}
                   >
                     {opt.label}
@@ -550,7 +550,7 @@ export default function ListaEspera() {
                 {filteredLista.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
-                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
                         <Clock className="h-7 w-7" />
                       </span>
                       <p className="font-medium text-foreground">{lista.length === 0 ? 'Nenhum paciente na lista de espera' : 'Nenhum paciente corresponde aos filtros'}</p>
@@ -560,9 +560,7 @@ export default function ListaEspera() {
                           Limpar filtros
                         </Button>
                       ) : (
-                        <Button size="sm" className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={handleOpenNew}>
-                          Adicionar à Lista
-                        </Button>
+                        <p className="mt-4 text-xs">Use “Adicionar à Lista” no topo para incluir o primeiro paciente.</p>
                       )}
                     </TableCell>
                   </TableRow>
@@ -576,11 +574,11 @@ export default function ListaEspera() {
                     const eProximo = proximoAChamar?.id === item.id;
                     const encerrado = ['agendado', 'desistiu'].includes(item.status || '');
                     return (
-                      <TableRow key={item.id} className={cn(eProximo && 'bg-[#F3F8FC]', encerrado && 'text-muted-foreground')}>
+                      <TableRow key={item.id} className={cn(eProximo && 'bg-primary/5', encerrado && 'text-muted-foreground')}>
                         <TableCell>
                           <span className={cn(
                             'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-                            eProximo ? 'bg-gradient-primary text-white' : 'bg-muted text-muted-foreground',
+                            eProximo ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
                           )}>
                             {index + 1}
                           </span>
@@ -589,7 +587,7 @@ export default function ListaEspera() {
                           <div className="min-w-0">
                             <p className="flex items-center gap-1.5 font-medium text-foreground">
                               <span className="truncate">{nome}</span>
-                              {eProximo && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Próximo</Badge>}
+                              {eProximo && <Badge className="rounded-full border-transparent bg-primary text-[9px] text-primary-foreground">Próximo</Badge>}
                             </p>
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Phone aria-hidden="true" className="h-3 w-3" />
@@ -627,7 +625,7 @@ export default function ListaEspera() {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {whatsapp && !encerrado && (
-                              <Button aria-label={`Chamar ${nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Chamar ${nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${nome} no WhatsApp`} title="Chamar no WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>
@@ -648,7 +646,7 @@ export default function ListaEspera() {
                             {item.status === 'notificado' && (
                               <Button
                                 size="sm"
-                                className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110"
+                                className="h-9 rounded-full text-xs"
                                 onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'confirmado')}
                                 disabled={updatingId !== null}
                               >
@@ -658,7 +656,7 @@ export default function ListaEspera() {
                             {item.status === 'confirmado' && (
                               <Button
                                 size="sm"
-                                className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                                className="h-9 gap-1 rounded-full text-xs"
                                 onClick={() => navigate(`/agenda?espera=${encodeURIComponent(item.id)}&paciente=${encodeURIComponent(item.paciente_id)}`)}
                                 disabled={updatingId !== null}
                                 title="Abre a agenda para criar a consulta; o status só muda após salvar."

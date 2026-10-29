@@ -24,9 +24,6 @@ import { passwordSchema } from '@/lib/passwordPolicy';
 import { AuthSwitch } from '@/components/ui/auth-switch';
 import { interpretarErroLogin, loginSchema, type LoginFormData } from '@/lib/authValidation';
 import logoHorizontal from '@/assets/elolab-logo-identidade.png';
-import AnimatedGradient from '@/components/landing-v2/animated-gradient';
-
-const AUTH_BACKGROUND_CONFIG = { preset: 'Prism' } as const;
 
 function rotuloFrequencia(frequencia: string) {
   switch (frequencia) {
@@ -418,12 +415,8 @@ export default function Auth() {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <div className="relative isolate min-h-svh overflow-x-hidden bg-background text-foreground">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden bg-[#f2f9fd]">
-        <AnimatedGradient config={AUTH_BACKGROUND_CONFIG} style={{ zIndex: 0 }} />
-      </div>
-
-      <header className="relative z-20 flex min-h-[82px] items-center justify-between px-5 pt-[env(safe-area-inset-top)] sm:px-8 xl:px-14">
+    <div className="min-h-svh overflow-x-hidden bg-background text-foreground">
+      <header className="mx-auto flex min-h-[82px] w-full max-w-[1120px] items-center justify-between px-5 pt-[env(safe-area-inset-top)] sm:px-8">
         <Link to="/auth" aria-label="EloLab — início do acesso" className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4">
           <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="w-[172px] object-contain sm:w-[205px]" />
         </Link>
@@ -434,7 +427,7 @@ export default function Auth() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto grid min-h-[calc(100svh-154px)] w-full max-w-[1680px] grid-cols-1 items-center gap-7 px-4 py-5 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,490px)_minmax(0,1fr)] lg:gap-8 xl:px-14">
+      <main className="mx-auto grid min-h-[calc(100svh-154px)] w-full max-w-[1120px] grid-cols-1 items-center gap-7 px-4 py-5 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,490px)] lg:gap-14">
         <aside className="hidden self-center lg:block">
           <div className="max-w-[220px] border-l border-primary/30 py-1 pl-4 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
             <p className="-ml-[18px] flex items-center gap-2 font-semibold text-foreground"><span className="h-5 w-1 rounded-full bg-primary" />Saúde</p>
@@ -454,13 +447,12 @@ export default function Auth() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="relative z-10 mx-auto w-full max-w-[490px] rounded-[32px] border border-border/70 bg-card/80 px-6 py-7 shadow-[0_28px_90px_-38px_rgba(16,128,202,0.35)] backdrop-blur-2xl sm:px-10 sm:py-9"
+          className="mx-auto w-full max-w-[490px] rounded-2xl border border-border bg-card px-6 py-7 shadow-sm sm:px-10 sm:py-9"
         >
           <div className="mb-6 text-center">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {activeTab === 'login' ? 'Bem-vindo à' : urlCodigo ? 'Convite EloLab' : 'Crie sua conta'}
+              {activeTab === 'login' ? 'Acesso à plataforma' : urlCodigo ? 'Convite da equipe' : 'Nova conta'}
             </p>
-            <img src={logoHorizontal} alt="EloLab — tecnologia que cuida" className="mx-auto w-[178px] object-contain sm:w-[195px]" />
             <p className="mx-auto mt-3 max-w-[300px] text-sm leading-relaxed text-muted-foreground">
               {activeTab === 'login' ? 'Acesse sua conta e continue cuidando de vidas.' : 'Faça seu cadastro para começar com a EloLab.'}
             </p>
@@ -606,7 +598,7 @@ export default function Auth() {
                     />
                     <Button
                       type="submit"
-                      className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105 hover:shadow-[0_15px_28px_-12px_rgba(16,128,202,0.6)]"
+                      className="h-[52px] w-full rounded-[14px] bg-primary text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
                       disabled={isLoading}
                     >
                       {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Acessando…</> : 'Acessar conta'}
@@ -842,7 +834,7 @@ export default function Auth() {
                       />
                       <Button
                         type="submit"
-                        className="h-[52px] w-full rounded-[14px] bg-[image:var(--gradient-primary)] text-sm font-bold text-white shadow-glow transition hover:brightness-105"
+                        className="h-[52px] w-full rounded-[14px] bg-primary text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
                         disabled={isLoading || (hasAnyPlanIntent && (!hasPlanIntent || !planoSelecionado || loadingPlanos || erroPlanos))}
                       >
                         {isLoading ? <><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Criando…</> : urlCodigo ? 'Aceitar convite e criar conta' : 'Criar conta'}
@@ -878,14 +870,9 @@ export default function Auth() {
           </div>
         </motion.div>
 
-        <aside className="hidden justify-self-end self-center text-muted-foreground xl:block">
-          <div className="border-l border-primary/30 py-1 pl-4"><span className="text-xs">01</span></div>
-          <p className="mt-4 max-w-[135px] text-xs font-medium uppercase leading-relaxed tracking-[0.12em]">Para a rotina da sua clínica</p>
-          <div className="mt-5 flex gap-1.5" aria-hidden="true"><span className="h-1 w-5 rounded-full bg-primary" /><span className="h-1 w-5 rounded-full bg-border" /><span className="h-1 w-5 rounded-full bg-border" /></div>
-        </aside>
       </main>
 
-      <footer className="relative z-10 mx-auto flex w-full max-w-[1680px] flex-col items-center justify-between gap-4 px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-xs text-muted-foreground sm:flex-row sm:px-8 xl:px-14">
+      <footer className="mx-auto flex w-full max-w-[1120px] flex-col items-center justify-between gap-4 px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-xs text-muted-foreground sm:flex-row sm:px-8">
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 sm:justify-start">
           <span className="inline-flex items-center gap-2"><Shield className="h-4 w-4" aria-hidden="true" />Acesso por perfil</span>
           <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />Agenda integrada</span>

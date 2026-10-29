@@ -38,7 +38,13 @@ export default {
           light: "hsl(var(--brand-light))",
           hover: "hsl(var(--brand-hover))",
           glow: "hsl(var(--brand-glow))",
+          dark: "hsl(var(--brand-dark))",
         },
+        // Classes antigas `bg-gradient-*` continuam válidas, mas agora são
+        // aliases de superfícies sólidas da marca para evitar regressões sem gradientes.
+        "gradient-primary": "hsl(var(--primary))",
+        "gradient-hero": "hsl(var(--brand-dark))",
+        "gradient-sidebar": "hsl(var(--sidebar-background))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -158,10 +164,6 @@ export default {
           "0%, 100%": { boxShadow: "0 0 20px -5px hsl(var(--primary) / 0.3)" },
           "50%": { boxShadow: "0 0 30px -5px hsl(var(--primary) / 0.5)" },
         },
-        "shimmer": {
-          from: { transform: "translateX(-100%)" },
-          to: { transform: "translateX(100%)" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -173,14 +175,10 @@ export default {
         "scale-in": "scale-in 0.3s ease-out forwards",
         "float": "float 3s ease-in-out infinite",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
-        "shimmer": "shimmer 2s infinite",
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'gradient-primary': 'var(--gradient-primary)',
-        'gradient-hero': 'var(--gradient-hero)',
-        'gradient-sidebar': 'var(--gradient-sidebar)',
         'mesh': 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\' width=\'32\' height=\'32\' fill=\'none\' stroke=\'rgb(148 163 184 / 0.05)\'%3E%3Cpath d=\'M0 .5H31.5V32\'/%3E%3C/svg%3E")',
       },
     },

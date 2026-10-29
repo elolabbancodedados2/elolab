@@ -28,13 +28,16 @@ export default function AtendimentoFila() {
   const tab = podeAcessarTriagem && searchParams.get('tab') === 'triagem' ? 'triagem' : 'fila';
 
   const handleTabChange = (value: string) => {
-    setSearchParams(value === 'triagem' ? { tab: 'triagem' } : {}, { replace: true });
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (value === 'triagem') nextSearchParams.set('tab', 'triagem');
+    else nextSearchParams.delete('tab');
+    setSearchParams(nextSearchParams, { replace: true });
   };
 
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className={`grid w-full max-w-md ${podeAcessarTriagem ? 'grid-cols-2' : 'grid-cols-1'} mx-auto rounded-xl border border-[#DCE6F2] bg-[#EEF4FA] p-1`}>
+        <TabsList className={`grid w-full max-w-md ${podeAcessarTriagem ? 'grid-cols-2' : 'grid-cols-1'} mx-auto rounded-xl border border-border bg-muted p-1`}>
           <TabsTrigger value="fila" className="min-h-10 gap-2 rounded-lg">
             <ClipboardCheck className="h-4 w-4" />
             Fila

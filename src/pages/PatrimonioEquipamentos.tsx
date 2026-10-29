@@ -49,7 +49,7 @@ const ORDER_KINDS: Record<string, string> = { preventive: 'Preventiva', correcti
 const ORDER_STATUS: Record<string, string> = { open: 'Aberta', in_progress: 'Em andamento', completed: 'Concluída', cancelled: 'Cancelada' };
 const ORDER_BADGE: Record<Order['status'], string> = {
   open: 'border-warning/40 bg-warning/10 text-warning-foreground',
-  in_progress: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
+  in_progress: 'border-primary/30 bg-primary/10 text-primary',
   completed: 'border-success/30 bg-success/10 text-success',
   cancelled: 'border-border bg-muted text-muted-foreground',
 };
@@ -236,11 +236,11 @@ export default function PatrimonioEquipamentos() {
   if (query.isLoading) return <main className="space-y-5"><PageHeader title="Patrimônio e manutenção" description="Ativos, calibrações, ordens de serviço e documentos" icon={<Wrench />} /><Card className="h-40 animate-pulse rounded-2xl" /></main>;
   if (query.error) return <ErrorState title="Não foi possível carregar o patrimônio" description="Nenhuma alteração será feita até confirmar o estado atual dos equipamentos." error={query.error} onRetry={() => void query.refetch()} />;
 
-  const indicadores: { key: Indicador; icon: typeof Wrench; label: string; value: number; caption: string; color: string; surface: string; escuro: boolean }[] = [
-    { key: 'vencida', icon: AlertTriangle, label: 'Manutenção vencida', value: stats.vencida, caption: 'calibração ou ordem atrasada', color: 'text-white', surface: 'bg-white/15', escuro: true },
-    { key: 'em30', icon: CalendarClock, label: 'Vence em 30 dias', value: stats.em30, caption: 'programar com antecedência', color: 'text-warning', surface: 'bg-warning/10', escuro: false },
-    { key: 'manutencao', icon: Wrench, label: 'Em manutenção', value: stats.manutencao, caption: `${plural(stats.ordensAbertas, 'ordem aberta', 'ordens abertas')}${stats.indisponivel > 0 ? ` · ${stats.indisponivel} indisponível` : ''}`, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-    { key: 'operacional', icon: CheckCircle2, label: 'Operacionais', value: stats.operacional, caption: `${totalAtivos} no total`, color: 'text-success', surface: 'bg-success/10', escuro: false },
+  const indicadores: { key: Indicador; icon: typeof Wrench; label: string; value: number; caption: string; color: string }[] = [
+    { key: 'vencida', icon: AlertTriangle, label: 'Manutenção vencida', value: stats.vencida, caption: 'calibração ou ordem atrasada', color: 'text-destructive' },
+    { key: 'em30', icon: CalendarClock, label: 'Vence em 30 dias', value: stats.em30, caption: 'programar com antecedência', color: 'text-warning-foreground' },
+    { key: 'manutencao', icon: Wrench, label: 'Em manutenção', value: stats.manutencao, caption: `${plural(stats.ordensAbertas, 'ordem aberta', 'ordens abertas')}${stats.indisponivel > 0 ? ` · ${stats.indisponivel} indisponível` : ''}`, color: 'text-primary' },
+    { key: 'operacional', icon: CheckCircle2, label: 'Operacionais', value: stats.operacional, caption: `${totalAtivos} no total`, color: 'text-success' },
   ];
 
   return <main className="space-y-6">
@@ -249,8 +249,8 @@ export default function PatrimonioEquipamentos() {
       description={descricao}
       icon={<Wrench />}
       actions={<>
-        <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
-          <Link to="/gestao-fluxo"><DoorOpen aria-hidden="true" className="h-4 w-4" /> Salas</Link>
+        <Button asChild variant="outline" size="icon" className="shrink-0 rounded-full" aria-label="Abrir salas e leitos">
+          <Link to="/gestao-fluxo" aria-label="Abrir salas e leitos" title="Abrir salas e leitos"><DoorOpen aria-hidden="true" className="h-4 w-4" /></Link>
         </Button>
         {data.canOpenOrders && <Button variant="outline" className="shrink-0 gap-2 rounded-full" aria-expanded={showOrderForm} aria-controls="equipment-order-form" onClick={() => showOrderForm ? setShowOrderForm(false) : abrirOrdemPara()}>
           <ClipboardList aria-hidden="true" className="h-4 w-4" /> Abrir ordem de serviço
@@ -258,7 +258,7 @@ export default function PatrimonioEquipamentos() {
         <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void query.refetch()} disabled={query.isFetching} aria-label="Atualizar patrimônio" title="Atualizar patrimônio">
           <RefreshCw className={cn('h-4 w-4', query.isFetching && 'animate-spin')} />
         </Button>
-        {data.canManageAssets && <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" aria-expanded={showAssetForm} aria-controls="equipment-asset-form" onClick={() => showAssetForm ? setShowAssetForm(false) : abrirCadastro()}>
+        {data.canManageAssets && <Button className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground" aria-expanded={showAssetForm} aria-controls="equipment-asset-form" onClick={() => showAssetForm ? setShowAssetForm(false) : abrirCadastro()}>
           <Plus className="h-4 w-4" /> Novo equipamento
         </Button>}
       </>}
@@ -269,21 +269,21 @@ export default function PatrimonioEquipamentos() {
         <h2 className="text-sm font-semibold text-foreground">Situação agora</h2>
         <p className="text-xs text-muted-foreground">{indicador === 'todos' ? 'Clique em um indicador para filtrar os equipamentos.' : `Mostrando apenas ${INDICADOR_LABEL[indicador]}.`}</p>
       </div>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-xl border border-border bg-card md:grid-cols-4">
         {indicadores.map((item) => {
           const Icon = item.icon;
           const ativo = indicador === item.key;
           return <button key={item.key} type="button" aria-pressed={ativo} onClick={() => setIndicador(ativo ? 'todos' : item.key)}
-            className={cn('rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-              item.escuro && 'border-transparent bg-gradient-primary text-white', ativo && !item.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30', ativo && item.escuro && 'ring-2 ring-[#1080CA]/60')}>
-            <div className="flex min-h-[96px] items-center gap-3 p-3">
-              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', item.surface)}><Icon aria-hidden="true" className={cn('h-5 w-5', item.color)} /></div>
+            aria-label={`${item.label}: ${item.value}. ${item.caption}`}
+            className={cn('min-w-0 p-3 text-left transition-colors hover:bg-muted/50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary', ativo && 'bg-primary/5')}>
+            <div className="flex min-h-[72px] items-start gap-2.5">
+              <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/70', item.value > 0 ? item.color : 'text-muted-foreground')}><Icon aria-hidden="true" className="h-4 w-4" /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <h3 className={cn('truncate text-xs font-semibold', item.escuro ? 'text-white/80' : 'text-foreground')}>{item.label}</h3>
-                  <span className={cn('text-2xl font-bold tabular-nums', item.color)}>{item.value}</span>
+                  <h3 className="text-xs font-semibold leading-5 text-foreground">{item.label}</h3>
+                  <span data-testid={`equipment-indicator-value-${item.key}`} className={cn('text-xl font-bold tabular-nums', item.value > 0 ? item.color : 'text-muted-foreground')}>{item.value}</span>
                 </div>
-                <p className={cn('truncate text-[11px]', item.escuro ? 'text-white/60' : 'text-muted-foreground')}>{item.caption}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{item.caption}</p>
               </div>
             </div>
           </button>;
@@ -295,16 +295,17 @@ export default function PatrimonioEquipamentos() {
       const prazo = prazoDe(proximaManutencao);
       const sala = roomNames.get(proximaManutencao.room_id || '');
       const dias = prazo.dias ?? 0;
-      return <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+      const urgencia = prazo.urgencia;
+      return <Card className={cn('overflow-hidden rounded-2xl', urgencia === 'vencida' ? 'border-destructive/30' : urgencia === 'em30' ? 'border-warning/30' : 'border-border')}>
         <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><CalendarClock className="h-5 w-5" /></span>
+            <span aria-hidden="true" className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl', urgencia === 'vencida' ? 'bg-destructive/10 text-destructive' : urgencia === 'em30' ? 'bg-warning/10 text-warning-foreground' : 'bg-primary/10 text-primary')}><CalendarClock className="h-5 w-5" /></span>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Próxima manutenção</p>
+              <p className={cn('text-[11px] font-semibold uppercase tracking-wide', urgencia === 'vencida' ? 'text-destructive' : urgencia === 'em30' ? 'text-warning-foreground' : 'text-primary')}>{urgencia === 'vencida' ? 'Prazo vencido' : 'Próxima manutenção'}</p>
               <h2 className="truncate text-lg font-bold text-foreground">{proximaManutencao.name}</h2>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{CATEGORIES[proximaManutencao.category]}{proximaManutencao.asset_tag ? ` · ${proximaManutencao.asset_tag}` : ''}</span>
-                {sala && <Link to="/gestao-fluxo" className="inline-flex items-center gap-1 font-medium text-[#1080CA] underline-offset-2 hover:underline"><DoorOpen aria-hidden="true" className="h-3 w-3" />{sala}</Link>}
+                {sala && <Link to="/gestao-fluxo" className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"><DoorOpen aria-hidden="true" className="h-3 w-3" />{sala}</Link>}
                 <span>{prazo.origem === 'ordem' ? 'Ordem de serviço' : 'Calibração'} em {fmt(prazo.date)}</span>
                 <span className={cn('inline-flex items-center gap-1 font-medium', dias < 0 ? 'text-destructive' : dias <= 30 ? 'text-warning-foreground' : '')}>
                   {dias < 0 ? `vencida há ${plural(Math.abs(dias), 'dia', 'dias')}` : dias === 0 ? 'vence hoje' : `em ${plural(dias, 'dia', 'dias')}`}
@@ -314,7 +315,7 @@ export default function PatrimonioEquipamentos() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {data.canOpenOrders && <Button className="h-10 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => abrirOrdemPara(proximaManutencao.id, prazo.origem === 'calibracao' ? 'calibration' : undefined)}>
+            {data.canOpenOrders && <Button className="h-10 gap-1.5 rounded-full bg-primary text-primary-foreground" onClick={() => abrirOrdemPara(proximaManutencao.id, prazo.origem === 'calibracao' ? 'calibration' : undefined)}>
               <ClipboardList aria-hidden="true" className="h-4 w-4" /> Abrir ordem
             </Button>}
             {data.canMaintain && proximaManutencao.status === 'active' && <Button variant="outline" className="h-10 gap-1.5 rounded-full" disabled={operation.isPending} onClick={() => patchAsset(proximaManutencao, { status: 'maintenance' })}>
@@ -339,7 +340,7 @@ export default function PatrimonioEquipamentos() {
       <div className="space-y-1"><Label>Calibração até</Label><Input aria-label="Calibração até" type="date" value={assetForm.calibration_due} onChange={(event) => setAssetForm({ ...assetForm, calibration_due: event.target.value })} /></div>
       <div className="space-y-1"><Label>Manutenção a cada (dias)</Label><Input type="number" min="1" max="3650" value={assetForm.maintenance_interval_days} onChange={(event) => setAssetForm({ ...assetForm, maintenance_interval_days: event.target.value })} /></div>
       <label className="flex items-center gap-2 text-sm sm:col-span-2"><Checkbox checked={assetForm.block_room_when_unavailable} onCheckedChange={(checked) => setAssetForm({ ...assetForm, block_room_when_unavailable: checked === true })} />Bloquear disponibilidade da sala se este equipamento ficar indisponível</label>
-      <div className="flex items-end"><Button type="submit" className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={createAsset.isPending || !assetForm.name.trim()}>{createAsset.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Cadastrar ativo</Button></div>
+      <div className="flex items-end"><Button type="submit" className="rounded-full bg-primary text-primary-foreground" disabled={createAsset.isPending || !assetForm.name.trim()}>{createAsset.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Cadastrar ativo</Button></div>
     </form></CardContent></Card></div>}
 
     {data.canOpenOrders && showOrderForm && <div ref={orderFormRef} id="equipment-order-form"><Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-lg">Abrir ordem de serviço</CardTitle><CardDescription>Registre manutenção preventiva, corretiva, inspeção ou calibração com prazo e responsável. A equipe autorizada atualiza e conclui a ordem.</CardDescription></div><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" aria-label="Fechar ordem de serviço" onClick={() => setShowOrderForm(false)}><X className="h-4 w-4" /></Button></div></CardHeader><CardContent><form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" onSubmit={(event) => { event.preventDefault(); createOrder.mutate(); }}>
@@ -350,7 +351,7 @@ export default function PatrimonioEquipamentos() {
       <div className="space-y-1"><Label>Prazo</Label><Input type="date" value={orderForm.due_on} onChange={(event) => setOrderForm({ ...orderForm, due_on: event.target.value })} /></div>
       <div className="space-y-1"><Label>Responsável</Label><Select value={orderForm.assigned_to || '__none__'} onValueChange={(assigned_to) => setOrderForm({ ...orderForm, assigned_to: assigned_to === '__none__' ? '' : assigned_to })}><SelectTrigger aria-label="Responsável pela ordem"><SelectValue placeholder="A definir" /></SelectTrigger><SelectContent><SelectItem value="__none__">A definir</SelectItem>{data.profiles.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-1 sm:col-span-2"><Label>Descrição</Label><Textarea maxLength={2000} rows={2} value={orderForm.description} onChange={(event) => setOrderForm({ ...orderForm, description: event.target.value })} /></div>
-      <div className="flex items-end"><Button type="submit" className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={createOrder.isPending || !orderForm.asset_id || orderForm.title.trim().length < 3}>{createOrder.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Abrir ordem</Button></div>
+      <div className="flex items-end"><Button type="submit" className="rounded-full bg-primary text-primary-foreground" disabled={createOrder.isPending || !orderForm.asset_id || orderForm.title.trim().length < 3}>{createOrder.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Abrir ordem</Button></div>
     </form></CardContent></Card></div>}
 
     <section className="space-y-3" aria-labelledby="equipment-list-heading">
@@ -358,7 +359,7 @@ export default function PatrimonioEquipamentos() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Buscar equipamentos" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" placeholder="Nome, patrimônio, sala, série..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Input aria-label="Buscar equipamentos" className="h-10 rounded-full pl-9 focus-visible:ring-primary" placeholder="Nome, patrimônio, sala, série..." value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger aria-label="Filtrar por categoria" className="h-10 w-full rounded-full sm:w-48"><SelectValue placeholder="Categoria" /></SelectTrigger>
@@ -368,7 +369,7 @@ export default function PatrimonioEquipamentos() {
           {([['todos', 'Todos'], ...Object.entries(STATUSES)] as [typeof statusFilter, string][]).map(([key, label]) => {
             const ativo = statusFilter === key;
             return <button key={key} type="button" aria-pressed={ativo} onClick={() => setStatusFilter(key)}
-              className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]', ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground')}>{label}</button>;
+              className={cn('min-h-11 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', ativo ? 'border-transparent bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground')}>{label}</button>;
           })}
         </div>
         {temFiltro && <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}><X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros</Button>}
@@ -376,18 +377,18 @@ export default function PatrimonioEquipamentos() {
       </div>
 
       {filtrados.length === 0 ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-muted-foreground">
-        <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Package className="h-7 w-7" /></span>
+        <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Package className="h-7 w-7" /></span>
         <p className="font-medium text-foreground">{totalAtivos === 0 ? 'Nenhum ativo patrimonial cadastrado' : 'Nenhum equipamento corresponde aos filtros'}</p>
         <p className="mt-1 text-sm">{totalAtivos === 0 ? 'Cadastre o primeiro equipamento para acompanhar calibrações e ordens de serviço. Os equipamentos dos setores laboratoriais continuam na gestão do laboratório.' : 'Limpe a busca, a categoria, o status ou o indicador para ver todos os equipamentos.'}</p>
         {totalAtivos === 0
-          ? (data.canManageAssets && <Button className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={abrirCadastro}><Plus className="mr-1.5 h-4 w-4" />Novo equipamento</Button>)
+          ? (data.canManageAssets && <Button className="mt-4 rounded-full bg-primary text-primary-foreground" size="sm" onClick={abrirCadastro}><Plus className="mr-1.5 h-4 w-4" />Novo equipamento</Button>)
           : <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>}
       </CardContent></Card>
       : porCategoria.map(([categoria, ativos]) => <section key={categoria} aria-labelledby={`equipment-cat-${categoria}`} className="space-y-3">
         <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><Package className="h-4 w-4" /></span>
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><Package className="h-4 w-4" /></span>
           <h3 id={`equipment-cat-${categoria}`} className="text-base font-semibold text-foreground">{CATEGORIES[categoria] || categoria}</h3>
-          <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{ativos.length}</Badge>
+          <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{ativos.length}</Badge>
         </div>
         <div className="grid gap-3 xl:grid-cols-2">{ativos.map((asset) => {
           const orders = ordersByAsset.get(asset.id) ?? [];
@@ -398,16 +399,16 @@ export default function PatrimonioEquipamentos() {
           const calibrationExpired = Boolean(asset.calibration_due && asset.calibration_due.slice(0, 10) < hoje);
           const dueSoon = Boolean(asset.calibration_due && !calibrationExpired && diasEntre(hoje, asset.calibration_due) <= 30);
           return <Card key={asset.id} className={cn('overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
-            prazo.urgencia === 'vencida' && 'border-destructive/30 shadow-[0_8px_24px_rgba(239,68,68,0.10)]',
+            prazo.urgencia === 'vencida' && 'border-destructive/30 ',
             prazo.urgencia === 'em30' && 'border-warning/40',
-            proximaManutencao?.id === asset.id && 'ring-1 ring-[#1080CA]/30')}>
+            proximaManutencao?.id === asset.id && 'ring-1 ring-primary/30')}>
             <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <CardTitle className="flex flex-wrap items-center gap-1.5 text-base"><span className="truncate">{asset.name}</span>{proximaManutencao?.id === asset.id && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Próxima</Badge>}</CardTitle>
+                <CardTitle className="flex flex-wrap items-center gap-1.5 text-base"><span className="truncate">{asset.name}</span>{proximaManutencao?.id === asset.id && <Badge className="rounded-full border-transparent bg-primary/10 text-primary">Próxima</Badge>}</CardTitle>
                 <CardDescription className="flex flex-wrap items-center gap-x-1.5">
                   <span>{CATEGORIES[asset.category]}</span>
                   <span aria-hidden="true">·</span>
-                  {sala ? <Link to="/gestao-fluxo" className="inline-flex items-center gap-1 font-medium text-[#1080CA] underline-offset-2 hover:underline" title="Ver em Salas e leitos"><DoorOpen aria-hidden="true" className="h-3 w-3" />{sala}</Link> : <span>Sem sala fixa</span>}
+                  {sala ? <Link to="/gestao-fluxo" className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline" title="Ver em Salas e leitos"><DoorOpen aria-hidden="true" className="h-3 w-3" />{sala}</Link> : <span>Sem sala fixa</span>}
                   {asset.asset_tag && <><span aria-hidden="true">·</span><span>{asset.asset_tag}</span></>}
                 </CardDescription>
               </div>
@@ -417,17 +418,17 @@ export default function PatrimonioEquipamentos() {
               <div className="grid grid-cols-2 gap-2 text-muted-foreground"><p>Série: {asset.serial_number || '—'}</p><p>Modelo: {asset.model || '—'}</p><p>Responsável: {profilesById.get(asset.responsible_user_id || '') || 'A definir'}</p><p>Garantia: {fmt(asset.warranty_until)}</p><p className={cn(dueSoon && 'font-medium text-warning-foreground', calibrationExpired && 'font-medium text-destructive')}><CalendarClock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />Calibração: {fmt(asset.calibration_due)} {calibrationExpired ? <span className="text-destructive">· vencida</span> : dueSoon && '· vence em breve'}</p><p>Manutenção: {asset.maintenance_interval_days ? `a cada ${asset.maintenance_interval_days} dias` : 'sem periodicidade'}</p></div>
               {asset.block_room_when_unavailable && <p className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 p-2 text-warning-foreground"><ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />A sala fica bloqueada se este equipamento estiver fora de operação.</p>}
               {(podeAgir || (data.canOpenOrders && asset.status !== 'retired')) && <div className="flex flex-wrap gap-2">
-                {podeAgir && asset.status !== 'active' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'active' })}>Marcar em operação</Button>}
-                {podeAgir && asset.status === 'active' && <><Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'maintenance' })}>Enviar para manutenção</Button><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'unavailable' })}>Marcar indisponível</Button></>}
+                {podeAgir && asset.status !== 'active' && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'active' })}>Marcar em operação</Button>}
+                {podeAgir && asset.status === 'active' && <><Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'maintenance' })}>Enviar para manutenção</Button><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'unavailable' })}>Marcar indisponível</Button></>}
                 {data.canOpenOrders && asset.status !== 'retired' && <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => abrirOrdemPara(asset.id)}><ClipboardList aria-hidden="true" className="h-3.5 w-3.5" />Abrir OS</Button>}
                 {podeAgir && data.canManageAssets && <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:text-destructive" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'retired' })}>Aposentar</Button>}
               </div>}
               {podeAgir && <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); const date = calibrationDates[asset.id] ?? asset.calibration_due ?? ''; patchAsset(asset, { calibration_due: date || null }); }}><div className="space-y-1"><Label htmlFor={`calibration-${asset.id}`}>Próxima calibração</Label><Input id={`calibration-${asset.id}`} className="h-9 rounded-full" type="date" value={calibrationDates[asset.id] ?? asset.calibration_due ?? ''} onChange={(event) => setCalibrationDates({ ...calibrationDates, [asset.id]: event.target.value })} /></div><Button size="sm" type="submit" variant="outline" className="h-9 rounded-full text-xs" disabled={operation.isPending}>Atualizar prazo</Button></form>}
-              {docs.length > 0 && <div className="space-y-1"><p className="font-medium">Documentos</p>{docs.map((doc) => <div key={doc.id} className="flex items-center justify-between gap-2"><span className="truncate">{doc.file_name} · {(doc.byte_size / 1024).toFixed(0)} KB</span><Button size="sm" variant="link" className="h-auto p-0 text-[#1080CA]" onClick={() => void openDocument(doc.id)}>Abrir</Button></div>)}</div>}
-              {podeAgir && <Label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs hover:border-[#9CC7EC]"><FileUp aria-hidden="true" className="h-4 w-4" />Anexar PDF ou imagem<input className="sr-only" type="file" accept="application/pdf,image/png,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadDocument(asset, file); event.currentTarget.value = ''; }} /></Label>}
+              {docs.length > 0 && <div className="space-y-1"><p className="font-medium">Documentos</p>{docs.map((doc) => <div key={doc.id} className="flex items-center justify-between gap-2"><span className="truncate">{doc.file_name} · {(doc.byte_size / 1024).toFixed(0)} KB</span><Button size="sm" variant="link" className="h-auto p-0 text-primary" onClick={() => void openDocument(doc.id)}>Abrir</Button></div>)}</div>}
+              {podeAgir && <Label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs hover:border-primary/50"><FileUp aria-hidden="true" className="h-4 w-4" />Anexar PDF ou imagem<input className="sr-only" type="file" accept="application/pdf,image/png,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadDocument(asset, file); event.currentTarget.value = ''; }} /></Label>}
               {orders.length > 0 && <div className="space-y-2 border-t pt-3"><p className="font-medium">Ordens de serviço</p>{orders.slice(0, 5).map((order) => {
                 const atrasada = Boolean(order.due_on && (order.status === 'open' || order.status === 'in_progress') && order.due_on.slice(0, 10) < hoje);
-                return <div key={order.id} className={cn('rounded-xl border border-border/60 p-3', atrasada && 'border-destructive/30 bg-destructive/5')}><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{order.title} · {ORDER_KINDS[order.kind]}</span><Badge variant="outline" className={cn('rounded-full', ORDER_BADGE[order.status])}>{ORDER_STATUS[order.status]}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{PRIORIDADES[order.priority] ?? order.priority.toUpperCase()} · prazo <span className={cn(atrasada && 'font-medium text-destructive')}>{fmt(order.due_on)}{atrasada && ' (atrasada)'}</span> · {profilesById.get(order.assigned_to || '') || 'Sem responsável'}</p>{order.description && <p className="mt-1 text-xs">{order.description}</p>}{order.status === 'open' && data.canMaintain && <Button size="sm" className="mt-2 h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'in_progress' } })}>Iniciar serviço</Button>}{order.status === 'in_progress' && data.canMaintain && <div className="mt-2 flex gap-2"><Input className="h-9 rounded-full" aria-label={`Serviço executado em ${order.title}`} placeholder="Serviço executado *" maxLength={2000} value={completionNotes[order.id] || ''} onChange={(event) => setCompletionNotes({ ...completionNotes, [order.id]: event.target.value })} /><Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={(completionNotes[order.id] || '').trim().length < 3 || operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'completed', completion_note: completionNotes[order.id] } })}>Concluir</Button></div>}{order.completion_note && <p className="mt-1 rounded-lg bg-muted p-2 text-xs">Concluído: {order.completion_note}</p>}</div>;
+                return <div key={order.id} className={cn('rounded-xl border border-border/60 p-3', atrasada && 'border-destructive/30 bg-destructive/5')}><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{order.title} · {ORDER_KINDS[order.kind]}</span><Badge variant="outline" className={cn('rounded-full', ORDER_BADGE[order.status])}>{ORDER_STATUS[order.status]}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{PRIORIDADES[order.priority] ?? order.priority.toUpperCase()} · prazo <span className={cn(atrasada && 'font-medium text-destructive')}>{fmt(order.due_on)}{atrasada && ' (atrasada)'}</span> · {profilesById.get(order.assigned_to || '') || 'Sem responsável'}</p>{order.description && <p className="mt-1 text-xs">{order.description}</p>}{order.status === 'open' && data.canMaintain && <Button size="sm" className="mt-2 h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'in_progress' } })}>Iniciar serviço</Button>}{order.status === 'in_progress' && data.canMaintain && <div className="mt-2 flex gap-2"><Input className="h-9 rounded-full" aria-label={`Serviço executado em ${order.title}`} placeholder="Serviço executado *" maxLength={2000} value={completionNotes[order.id] || ''} onChange={(event) => setCompletionNotes({ ...completionNotes, [order.id]: event.target.value })} /><Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={(completionNotes[order.id] || '').trim().length < 3 || operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'completed', completion_note: completionNotes[order.id] } })}>Concluir</Button></div>}{order.completion_note && <p className="mt-1 rounded-lg bg-muted p-2 text-xs">Concluído: {order.completion_note}</p>}</div>;
               })}</div>}
             </CardContent>
           </Card>;
@@ -437,9 +438,9 @@ export default function PatrimonioEquipamentos() {
 
     <section className="space-y-3" aria-labelledby="equipment-history-heading">
       <div className="flex items-center gap-2.5">
-        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm"><History className="h-4 w-4" /></span>
+        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><History className="h-4 w-4" /></span>
         <h2 id="equipment-history-heading" className="text-base font-semibold text-foreground">Histórico de auditoria</h2>
-        {data.audit.length > 0 && <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{Math.min(data.audit.length, 25)}</Badge>}
+        {data.audit.length > 0 && <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{Math.min(data.audit.length, 25)}</Badge>}
       </div>
       {data.audit.length === 0
         ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="p-5 text-sm text-muted-foreground">Cadastros, alterações, ordens e documentos serão registrados aqui.</CardContent></Card>

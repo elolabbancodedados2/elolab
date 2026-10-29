@@ -1,7 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useState, useMemo, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
   TrendingUp, User, Loader2, Eye, FileText, Printer, MoreHorizontal, Filter,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -42,6 +43,7 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { mensagemDeErro } from '@/lib/erros';
 import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
+import { parseAccountFilterStatus, parseFinanceMonth } from '@/lib/financeRouteState';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -149,9 +151,9 @@ function parseMoneyInput(value: string): number | null {
 const formatMoneyInput = (value: number) => Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '';
 const formaPagamentoRPC: Record<string, string> = { cartao_credito: 'credito', cartao_debito: 'debito' };
 
-const PILL_BASE = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]';
-const PILL_ATIVA = 'border-transparent bg-gradient-primary text-white shadow-sm';
-const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground';
+const PILL_BASE = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const PILL_ATIVA = 'border-primary bg-primary text-primary-foreground';
+const PILL_INATIVA = 'border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground';
 
 const PERIODOS_RECEITA: { key: string; label: string }[] = [
   { key: 'mes_atual', label: 'Mês atual' },
@@ -162,16 +164,18 @@ const PERIODOS_RECEITA: { key: string; label: string }[] = [
 ];
 
 const PIE_COLORS = [
-  'hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))',
-  'hsl(var(--destructive))', 'hsl(var(--info))', 'hsl(var(--accent-foreground))',
-  'hsl(var(--muted-foreground))', 'hsl(var(--primary))',
+  'hsl(var(--primary))', 'hsl(var(--primary) / 0.82)', 'hsl(var(--primary) / 0.68)',
+  'hsl(var(--primary) / 0.54)', 'hsl(var(--primary) / 0.4)', 'hsl(var(--primary) / 0.32)',
+  'hsl(var(--primary) / 0.24)', 'hsl(var(--primary) / 0.16)',
 ];
 
 export default function ContasReceber() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('todos');
   const [filterCategoria, setFilterCategoria] = useState('todas');
-  const [filterPeriodo, setFilterPeriodo] = useState('mes_atual');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
+  const selectedMonth = parseFinanceMonth(searchParams.get('mes'));
+  const filterPeriodo = selectedMonth ? 'mes_selecionado' : searchParams.get('periodo') || 'mes_atual';
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -271,8 +275,30 @@ export default function ContasReceber() {
   const isLoading = contasQuery.isLoading || pagamentosQuery.isLoading;
   const hojeClinica = parseDateOnly(todaySaoPauloDateOnly())!;
 
+  const setFilterStatus = (status: string) => setSearchParams(current => {
+    const next = new URLSearchParams(current);
+    if (status === 'todos') next.delete('status');
+    else next.set('status', status);
+    return next;
+  });
+  const setFilterPeriodo = (periodo: string) => setSearchParams(current => {
+    const next = new URLSearchParams(current);
+    next.delete('mes');
+    if (periodo === 'mes_atual') next.delete('periodo');
+    else next.set('periodo', periodo);
+    return next;
+  });
+  const limparFiltrosDeRota = () => setSearchParams(current => {
+    const next = new URLSearchParams(current);
+    next.delete('status');
+    next.delete('mes');
+    next.delete('periodo');
+    return next;
+  });
+
   // Period filter
   const periodoRange = useMemo(() => {
+    if (selectedMonth) return { start: startOfMonth(selectedMonth), end: endOfMonth(selectedMonth) };
     // O período acompanha o dia civil da clínica em São Paulo, mesmo que o
     // navegador esteja em outro fuso horário.
     const now = parseDateOnly(todaySaoPauloDateOnly())!;
@@ -283,7 +309,7 @@ export default function ContasReceber() {
       case 'ultimos_6': return { start: startOfMonth(subMonths(now, 5)), end: endOfMonth(now) };
       default: return null;
     }
-  }, [filterPeriodo]);
+  }, [filterPeriodo, selectedMonth]);
 
   const filteredContas = useMemo(() => {
     return contas.filter(c => {
@@ -293,7 +319,8 @@ export default function ContasReceber() {
         String(c.descricao || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         String(c.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         String(c.numero_documento || '').toLowerCase().includes(searchTerm.toLowerCase());
-      const matchStatus = filterStatus === 'todos' || (filterStatus === 'atrasado' ? c.vencido : c.status === filterStatus);
+      const matchStatus = filterStatus === 'todos'
+        || (filterStatus === 'aberto' ? ['pendente', 'parcial', 'atrasado'].includes(c.status) : filterStatus === 'atrasado' ? c.vencido : c.status === filterStatus);
       const matchCategoria = filterCategoria === 'todas' || c.categoria === filterCategoria;
       let matchPeriodo = true;
       if (periodoRange) {
@@ -305,6 +332,13 @@ export default function ContasReceber() {
       return matchSearch && matchStatus && matchCategoria && matchPeriodo;
     });
   }, [contas, searchTerm, filterStatus, filterCategoria, periodoRange]);
+
+  const periodFilteredCount = useMemo(() => periodoRange
+    ? contas.filter(conta => {
+      const dataReferencia = parseDateOnly(conta.data_vencimento || conta.data);
+      return !!dataReferencia && dataReferencia >= periodoRange.start && dataReferencia <= periodoRange.end;
+    }).length
+    : contas.length, [contas, periodoRange]);
 
   const stats = useMemo(() => {
     const filtered = filteredContas;
@@ -720,7 +754,7 @@ export default function ContasReceber() {
   if (pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="flex flex-col gap-6 pb-8">
       <PageHeader
         title="Contas a Receber"
         description={stats.countTotal === 0
@@ -740,7 +774,7 @@ export default function ContasReceber() {
             title="Exportar para Excel">
             <Download className="h-4 w-4" />
           </Button>
-          <Button onClick={handleNew} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0">
+          <Button onClick={handleNew} className="gap-2 shrink-0">
             <Plus className="h-4 w-4" /> Nova Receita
           </Button>
           </>
@@ -756,48 +790,35 @@ export default function ContasReceber() {
       )}
 
       {/* Indicadores clicáveis */}
-      <section role="group" aria-label="Resumo das contas a receber" className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        {[
-          { key: 'todos', label: 'Total Geral', value: stats.total, icon: DollarSign, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: `${stats.countTotal} lançamento(s)` },
-          { key: 'pendente', label: 'Em aberto', value: stats.pendente, icon: Clock, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: `${stats.countPendente} conta(s)` },
-          { key: 'atrasado', label: 'Vencidas / Em atraso', value: stats.atrasado, icon: AlertCircle, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: `${stats.countAtrasado} em atraso` },
-          { key: 'pago', label: 'Recebido', value: stats.pago, icon: Check, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: `${stats.countPago} conta(s)` },
-        ].map(kpi => {
-          const Icon = kpi.icon;
-          const ativo = filterStatus === kpi.key;
-          return (
-            <button
-              key={kpi.key}
-              type="button"
-              aria-pressed={ativo}
-              onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
-              className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
-              )}
-            >
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', kpi.surface)}>
-                  <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
-                  <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>{fmt(kpi.value)}</p>
-                  <p className={cn('truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>
-                    {kpi.caption}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <section role="group" aria-label="Resumo das contas a receber" className="order-1 overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">Resumo de recebimentos</h2>
+          {selectedMonth && <span className="text-xs text-muted-foreground">{format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}</span>}
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-border md:grid-cols-4 md:divide-y-0">
+          {[
+            { key: 'todos', label: 'Total em receitas', value: stats.total, color: 'text-foreground', caption: `${stats.countTotal} lançamento(s)` },
+            { key: 'pendente', label: 'Em aberto', value: stats.pendente, color: 'text-warning-foreground', caption: `${stats.countPendente} conta(s)` },
+            { key: 'atrasado', label: 'Vencidas / em atraso', value: stats.atrasado, color: 'text-destructive', caption: `${stats.countAtrasado} em atraso` },
+            { key: 'pago', label: 'Recebido', value: stats.pago, color: 'text-success', caption: `${stats.countPago} conta(s)` },
+          ].map(kpi => {
+            const ativo = filterStatus === kpi.key;
+            return (
+              <button key={kpi.key} type="button" aria-pressed={ativo}
+                onClick={() => setFilterStatus(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
+                className={cn('min-h-[84px] min-w-0 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring', ativo && 'bg-primary/5')}>
+                <span className="block truncate text-xs font-medium text-muted-foreground">{kpi.label}</span>
+                <span className={cn('mt-1 block whitespace-nowrap text-xl font-semibold tabular-nums', kpi.color)}>{fmt(kpi.value)}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{kpi.caption}</span>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       {/* Gráficos compactos juntos quando ambos estão vazios */}
       {porCategoria.length === 0 && porFormaPgto.length === 0 ? (
-        <Card>
+        <Card className="order-4">
           <CardContent role="status" aria-label="Gráficos sem dados nas contas filtradas" className="grid gap-4 py-5 sm:grid-cols-2 sm:divide-x sm:divide-border">
             <section className="space-y-1 sm:pr-4">
               <h2 className="text-sm font-bold">Receita por Categoria</h2>
@@ -812,7 +833,7 @@ export default function ContasReceber() {
           </CardContent>
         </Card>
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="order-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Por Categoria */}
         <Card>
           <CardHeader className="pb-2">
@@ -891,14 +912,14 @@ export default function ContasReceber() {
         const dataVenc = d.data_vencimento ? parseDateOnly(d.data_vencimento) : null;
         const diasVenc = dataVenc ? differenceInCalendarDays(dataVenc, hojeClinica) : null;
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className={cn('order-2 overflow-hidden rounded-xl', d.vencido ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5')}>
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', d.vencido ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning-foreground')}>
                   {d.vencido ? <AlertCircle className="h-5 w-5" /> : <Receipt className="h-5 w-5" />}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">{d.vencido ? 'Receita vencida há mais tempo' : 'Próxima receita a vencer'}</p>
+                  <p className={cn('text-[11px] font-semibold uppercase tracking-wide', d.vencido ? 'text-destructive' : 'text-warning-foreground')}>{d.vencido ? 'Receita vencida há mais tempo' : 'Próxima receita a vencer'}</p>
                   <h2 className="truncate text-lg font-bold text-foreground">{getPacienteNome(d)}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1"><Calendar aria-hidden="true" className="h-3 w-3" /> {dataVenc ? `Venc. ${format(dataVenc, 'dd/MM/yyyy')}` : '—'}</span>
@@ -913,12 +934,16 @@ export default function ContasReceber() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <span className="text-lg font-bold tabular-nums text-foreground">{fmt(d.valor)}</span>
+                <span className="flex flex-col items-start sm:items-end">
+                  <span className="text-[11px] text-muted-foreground">Saldo a receber</span>
+                  <span className="text-lg font-bold tabular-nums text-foreground">{fmt(saldoDevedorConta(d))}</span>
+                </span>
                 {['pendente', 'atrasado', 'parcial'].includes(d.status) && (
                   <Button
                     size="sm"
                     onClick={() => handleDarBaixa(d)}
-                    className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                    variant={d.vencido ? 'destructive' : 'default'}
+                    className="h-9 gap-1 text-xs"
                   >
                     <Receipt aria-hidden="true" className="h-3.5 w-3.5" /> {d.status === 'parcial' ? 'Receber saldo' : 'Receber'}
                   </Button>
@@ -930,16 +955,16 @@ export default function ContasReceber() {
       })()}
 
       {/* Lista de receitas */}
-      <Card className="rounded-2xl border-border/60 shadow-xs">
+      <Card className="order-3 rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-base">
-                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Receipt className="h-4 w-4" />
                 </span>
                 Receitas
-                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredContas.length} de {contas.length}</Badge>
+                <Badge variant="outline" className="rounded-full border-border text-muted-foreground">{filteredContas.length} de {periodFilteredCount}</Badge>
               </CardTitle>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <div className="relative w-full sm:w-72">
@@ -949,7 +974,7 @@ export default function ContasReceber() {
                     placeholder="Paciente, CPF, descrição ou documento..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                    className="h-10 rounded-full pl-9 focus-visible:ring-ring"
                   />
                 </div>
                 <Select value={filterCategoria} onValueChange={setFilterCategoria}>
@@ -968,6 +993,7 @@ export default function ContasReceber() {
               <div role="group" aria-label="Filtrar por status" className="flex flex-wrap gap-1.5">
                 {[
                   { key: 'todos', label: 'Todos' },
+                  { key: 'aberto', label: 'Em aberto' },
                   { key: 'pendente', label: 'Pendentes' },
                   { key: 'parcial', label: 'Parciais' },
                   { key: 'atrasado', label: 'Vencidos' },
@@ -984,6 +1010,12 @@ export default function ContasReceber() {
                   );
                 })}
               </div>
+              {selectedMonth && (
+                <span className="inline-flex h-8 items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-foreground">
+                  Vencimentos de {format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR })}
+                  <button type="button" aria-label="Remover filtro de mês" onClick={() => setSearchParams(current => { const next = new URLSearchParams(current); next.delete('mes'); return next; })} className="rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X className="h-3 w-3" /></button>
+                </span>
+              )}
               <div role="group" aria-label="Filtrar por período" className="flex flex-wrap gap-1.5">
                 {PERIODOS_RECEITA.map(opt => {
                   const ativo = filterPeriodo === opt.key;
@@ -1006,14 +1038,14 @@ export default function ContasReceber() {
                   <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
                 </Button>
               )}
-              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {contas.length}</span>
+              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {periodFilteredCount}</span>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {filteredContas.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
-              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                 <Receipt className="h-7 w-7" />
               </span>
               <p className="font-medium text-foreground">{contas.length === 0 ? 'Nenhuma receita cadastrada' : 'Nenhuma conta encontrada com estes filtros'}</p>
@@ -1021,7 +1053,7 @@ export default function ContasReceber() {
                 {contas.length === 0 ? 'Cadastre uma receita para acompanhar recebimentos.' : 'Ajuste a busca, o status ou o período.'}
               </p>
               {contas.length === 0 ? (
-                <Button size="sm" onClick={handleNew} className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110"><Plus className="mr-1 h-4 w-4" /> Cadastrar receita</Button>
+                <Button size="sm" onClick={handleNew} className="mt-4 rounded-full"><Plus className="mr-1 h-4 w-4" /> Cadastrar receita</Button>
               ) : (
                 <Button size="sm" variant="outline" onClick={() => {
                   setSearchTerm('');
@@ -1032,72 +1064,68 @@ export default function ContasReceber() {
               )}
             </div>
           ) : (
-            <div className="space-y-2">
-              {filteredContas.map((conta) => {
-                const status = conta.vencido
-                  ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
-                  : STATUS_CONFIG[conta.status || 'pendente'];
-                const catInfo = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
-                const CatIcon = catInfo?.icon || DollarSign;
-                const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
-                const diasVenc = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
-                return (
-                  <div key={conta.id}>
-                    <Card className={cn('group rounded-2xl border shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', status?.border || 'border-border/60')}>
-                      <CardContent className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          {/* Category icon */}
-                          <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', status?.bg)}>
-                            <CatIcon className={cn('h-5 w-5', catInfo?.color || status?.color)} />
-                          </div>
-
-                          {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-bold text-sm truncate">{getPacienteNome(conta)}</p>
-                              <Badge variant="outline" className={cn('rounded-full text-[9px] h-4 px-1.5 shrink-0', catInfo?.color)}>
-                                {catInfo?.label || conta.categoria}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground truncate" title={conta.descricao}>{conta.descricao}</p>
-                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                              {conta.data_vencimento && (
-                                <span className={cn('text-[10px] flex items-center gap-0.5',
-                                  diasVenc !== null && diasVenc < 0 ? 'text-destructive font-semibold' : 'text-muted-foreground/60'
-                                )}>
-                                  <Calendar className="h-2.5 w-2.5" />
-                                  {format(new Date(conta.data_vencimento + 'T12:00:00'), 'dd/MM/yy')}
-                                  {diasVenc !== null && diasVenc < 0 && ` (${Math.abs(diasVenc)}d)`}
-                                  {diasVenc !== null && diasVenc === 0 && ' (hoje)'}
-                                </span>
-                              )}
-                              {conta.competencia && (
-                                <span className="text-[10px] text-muted-foreground/50">Comp: {conta.competencia}</span>
-                              )}
-                              {conta.centro_custo && conta.centro_custo !== 'geral' && (
-                                <span className="text-[10px] text-muted-foreground/50">{CENTROS_CUSTO_RECEITA.find(c => c.value === conta.centro_custo)?.label || conta.centro_custo}</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Value + Status */}
-                          <div className="text-right shrink-0">
-                            <p className={cn('text-lg font-black tabular-nums', status?.color)}>{fmt(conta.valor)}</p>
-                            {conta.status === 'parcial' && <p className="text-[10px] text-muted-foreground">Saldo: {fmt(saldoDevedorConta(conta))}</p>}
-                            <Badge className={cn('rounded-full text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex items-center gap-1 shrink-0">
+            <div className="overflow-hidden rounded-xl border border-border/60">
+              <Table className="md:min-w-[760px]" containerProps={{ role: 'region', 'aria-label': 'Tabela de receitas; use a rolagem horizontal para acessar todas as colunas', tabIndex: 0, className: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring' }}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Paciente / receita</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead className="hidden md:table-cell">Categoria</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredContas.map(conta => {
+                    const status = conta.vencido
+                      ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
+                      : STATUS_CONFIG[conta.status || 'pendente'];
+                    const categoria = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
+                    const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+                    const diasAteVencimento = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
+                    const aberto = ['pendente', 'atrasado', 'parcial'].includes(conta.status);
+                    const diasAtraso = diasAteVencimento === null ? null : Math.abs(diasAteVencimento);
+                    const urgencia = conta.vencido && diasAtraso !== null
+                      ? `Atrasada há ${diasAtraso} ${diasAtraso === 1 ? 'dia' : 'dias'}`
+                      : aberto && diasAteVencimento === 0
+                        ? 'Vence hoje'
+                        : aberto && diasAteVencimento !== null && diasAteVencimento > 0 && diasAteVencimento <= 7
+                          ? `Vence em ${diasAteVencimento} ${diasAteVencimento === 1 ? 'dia' : 'dias'}`
+                          : null;
+                    return (
+                      <TableRow key={conta.id} className={cn(conta.vencido && 'bg-destructive/5')}>
+                        <TableCell>
+                          <p className="font-semibold">{getPacienteNome(conta)}</p>
+                          <p className="mt-0.5 max-w-lg truncate text-xs text-muted-foreground" title={conta.descricao}>{conta.descricao}</p>
+                          {conta.numero_documento && <p className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-muted-foreground"><FileText aria-hidden="true" className="h-3 w-3" />{conta.numero_documento}</p>}
+                        </TableCell>
+                        <TableCell>
+                          <span className={cn('text-xs', conta.vencido ? 'font-medium text-destructive' : urgencia ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
+                            {dataVencimento ? `Vencimento ${format(dataVencimento, 'dd/MM/yyyy')}` : 'Vencimento não informado'}{urgencia && ` · ${urgencia}`}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <span className="text-sm">{categoria?.label || conta.categoria}</span>
+                          {conta.competencia && <p className="mt-0.5 text-[10px] text-muted-foreground">Comp. {conta.competencia}</p>}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          <span className="font-medium">{fmt(conta.valor)}</span>
+                          {saldoDevedorConta(conta) > 0 && Number(conta.valor_pago || 0) > 0 && <p className="mt-0.5 text-xs text-muted-foreground">Em aberto: {fmt(saldoDevedorConta(conta))}</p>}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={cn('rounded-full text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
                             {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
-                              <Button size="sm" onClick={() => handleDarBaixa(conta)}
-                                className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
-                                <Receipt className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
+                              <Button size="sm" onClick={() => handleDarBaixa(conta)} className="h-9 gap-1 text-xs">
+                                <Receipt aria-hidden="true" className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
                               </Button>
                             )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Mais ações da conta" className="h-9 w-9 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button variant="ghost" size="icon" aria-label={`Mais ações da conta de ${getPacienteNome(conta)}`} className="h-9 w-9 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -1119,12 +1147,12 @@ export default function ContasReceber() {
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                );
-              })}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

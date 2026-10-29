@@ -15,7 +15,7 @@
  * Cada cartão que corresponde a uma aba filtra a lista abaixo ao ser clicado —
  * a pergunta e a resposta ficam no mesmo lugar.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Users, Clock, Wallet, CheckCircle2, Stethoscope, AlertTriangle, Banknote,
@@ -133,6 +133,7 @@ export function resumoDoDia(atendimentos: any[], recebidos: PagamentoDoDia[], ag
 }
 
 export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimentos = false, erroAtendimentos = false, erroFinanceiro = false, onFiltrar, abaAtiva }: Props) {
+  const [mostrarIndicadoresSecundarios, setMostrarIndicadoresSecundarios] = useState(false);
   // Datas locais de São Paulo, fim exclusivo. A coluna é timestamptz; usar
   // `hojeT00:00:00` sem offset fazia o Postgres interpretar meia-noite UTC.
   const amanha = new Date(`${hoje}T00:00:00Z`);
@@ -141,6 +142,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
   const fimLocalExclusivo = `${amanha.toISOString().slice(0, 10)}T00:00:00-03:00`;
   const pagamentosQuery = useQuery({
     queryKey: ['pagamentos-do-dia', clinicaId, hoje],
+    meta: { suppressGlobalErrorToast: true },
     enabled: !!clinicaId,
     queryFn: async () => {
       const selecionar = () => supabase.from('pagamentos')
@@ -254,13 +256,47 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
         : erroAtendimentos
           ? 'Não foi possível calcular o saldo a receber do dia'
           : carregandoAtendimentos
-            ? 'Carregando o saldo das contas do dia…'
+            ? 'Carregando saldo do dia…'
             : n.aReceberTotal > 0
             ? `Faltam ${formatCurrency(n.aReceberTotal)}`
             : 'Pagamentos menos estornos de hoje',
       tom: n.recebidoTotal < 0 ? 'text-destructive' : 'text-success',
     },
   ];
+  const indicadoresPrincipais = cartoes.filter(c => ['agenda', 'nao-chegaram', 'balcao', 'atendendo'].includes(c.id));
+  const indicadoresSecundarios = cartoes.filter(c => ['esperando', 'adicional', 'caixa'].includes(c.id));
+
+  const renderIndicador = (c: (typeof cartoes)[number]) => {
+    const clicavel = !!c.aba;
+    const ativo = c.aba && c.aba === abaAtiva;
+    return (
+      <button
+        key={c.id}
+        type="button"
+        onClick={() => c.aba && onFiltrar(c.aba)}
+        disabled={!clicavel}
+        aria-pressed={clicavel ? Boolean(ativo) : undefined}
+        className={cn(
+          'grid min-h-[4.25rem] min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center gap-x-1 border-b-2 border-transparent px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem] sm:gap-x-1.5 sm:px-1.5 sm:py-1.5',
+          clicavel ? 'cursor-pointer hover:bg-muted/40' : 'cursor-default',
+          ativo ? 'border-primary bg-primary/5' : c.id === 'caixa' ? 'bg-muted/30' : '',
+          c.alerta && !ativo && c.id !== 'caixa' && 'border-warning/70',
+        )}
+      >
+        <div className={cn('col-span-2 col-start-1 row-start-1 min-w-0 text-[11px] font-semibold leading-tight', c.tom)}>
+          <span className="line-clamp-2">{c.titulo}</span>
+        </div>
+        <p className={cn('col-start-2 row-start-2 text-right text-lg font-bold tabular-nums leading-none', c.tom)}>
+          {c.id !== 'caixa' && (erroAtendimentos || (erroFinanceiro && ['balcao', 'adicional'].includes(c.id)))
+            ? '—'
+            : c.id !== 'caixa' && carregandoAtendimentos ? '…' : c.valor}
+        </p>
+        <p title={c.detalhe} className="col-start-1 row-start-2 min-w-0 pt-0.5 text-[10px] leading-tight text-muted-foreground">
+          {c.detalhe}
+        </p>
+      </button>
+    );
+  };
 
   return (
     <div role="group" aria-label="Resumo de atendimento e recebimentos" aria-busy={carregandoAtendimentos || pagamentosQuery.isLoading} className="space-y-2">
@@ -275,47 +311,26 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
           O histórico de pagamentos do dia atingiu {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros; o recebido líquido pode estar incompleto.
         </div>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
-        {cartoes.map((c) => {
-          const Icone = c.icone;
-          const clicavel = !!c.aba;
-          const ativo = c.aba && c.aba === abaAtiva;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => c.aba && onFiltrar(c.aba)}
-              disabled={!clicavel}
-              aria-pressed={clicavel ? Boolean(ativo) : undefined}
-              className={cn(
-                'flex h-full min-h-[5.75rem] flex-col rounded-2xl border px-3 py-2.5 text-left shadow-xs transition-all xl:min-h-20 xl:py-2',
-                clicavel ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default',
-                ativo
-                  ? 'border-transparent bg-gradient-primary text-white shadow-md'
-                  : c.id === 'caixa'
-                    ? 'border-transparent bg-gradient-primary text-white'
-                    : 'border-border/60 bg-card hover:border-[#1080CA]/40',
-                c.alerta && !ativo && c.id !== 'caixa' && 'border-l-4 border-l-current',
-              )}
-            >
-              {/* Em 1440 px os sete cartões ficam com ~150 px: rótulo e detalhe
-                  quebram em duas linhas em vez de virar "Ainda não chega…". */}
-              <div className={cn('flex min-h-[1.875rem] items-start gap-1.5 text-xs font-semibold uppercase leading-tight tracking-wide', c.tom, (ativo || c.id === 'caixa') && 'text-white/80')}>
-                <Icone className="mt-px h-3 w-3 shrink-0" aria-hidden="true" />
-                <span>{c.titulo}</span>
-              </div>
-              <p className={cn('mt-1 text-xl font-bold tabular-nums leading-none', c.tom, ativo && 'text-white', c.id === 'caixa' && (n.recebidoTotal < 0 ? 'text-red-300' : 'text-white'))}>
-                {c.id !== 'caixa' && (erroAtendimentos || (erroFinanceiro && ['balcao', 'adicional'].includes(c.id)))
-                  ? '—'
-                  : c.id !== 'caixa' && carregandoAtendimentos ? '…' : c.valor}
-              </p>
-              <p title={c.detalhe} className={cn('mt-auto pt-1 text-xs leading-snug xl:truncate', (ativo || c.id === 'caixa') ? 'text-white/60' : 'text-muted-foreground')}>
-                {c.detalhe}
-              </p>
-            </button>
-          );
-        })}
+      <div data-testid="reception-operational-summary" className="grid grid-cols-2 gap-x-2 gap-y-1 sm:grid-cols-4 sm:gap-x-2 sm:gap-y-1 2xl:grid-cols-7">
+        {indicadoresPrincipais.map(renderIndicador)}
+        <div
+          id="reception-secondary-metrics"
+          className={mostrarIndicadoresSecundarios ? 'max-sm:contents sm:contents' : 'hidden sm:contents'}
+        >
+          {indicadoresSecundarios.map(renderIndicador)}
+        </div>
       </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-8 px-2 text-xs sm:hidden"
+        aria-expanded={mostrarIndicadoresSecundarios}
+        aria-controls="reception-secondary-metrics"
+        onClick={() => setMostrarIndicadoresSecundarios(value => !value)}
+      >
+        {mostrarIndicadoresSecundarios ? 'Ocultar indicadores adicionais' : 'Ver outros 3 indicadores'}
+      </Button>
 
       {n.porForma.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">

@@ -1,11 +1,11 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatCurrency } from '@/lib/formatters';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, FileText, FileDown, Loader2, X,
   AlertTriangle, Upload, Clock, Calendar, Building2, DollarSign, Trash2,
-  RefreshCw, FlaskConical, ClipboardList, ExternalLink, Hourglass, CalendarCheck, CheckCircle2, Paperclip, CalendarPlus,
+  RefreshCw, FlaskConical, ClipboardList, ExternalLink, Paperclip,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +44,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Database } from '@/integrations/supabase/types';
-import { autoCreateColeta, autoProgressExame, autoVincularResultadoProntuario } from '@/lib/workflowAutomation';
+import { autoCreateColeta, autoProgressExame } from '@/lib/workflowAutomation';
 import { podeExcluirExame, preparosAusentesNaGuia, proximaAcaoExame, textoPreparosParaGuia } from '@/lib/examesWorkflow';
 import { GerenciadorLaboratorios } from '@/components/GerenciadorLaboratorios';
 import { LancarResultado } from '@/components/exames/LancarResultado';
@@ -55,9 +55,9 @@ type StatusExame = Database['public']['Enums']['status_exame'];
 
 const STATUS_COLORS: Record<StatusExame, string> = {
   solicitado: 'border-warning/40 bg-warning/10 text-warning-foreground',
-  agendado: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]',
+  agendado: 'border-primary/30 bg-primary/10 text-primary',
   realizado: 'border-info/30 bg-info/10 text-info',
-  laudo_disponivel: 'border-transparent bg-gradient-primary text-white hover:bg-gradient-primary',
+  laudo_disponivel: 'border-transparent bg-primary text-primary-foreground hover:bg-primary/90',
   cancelado: 'border-border bg-muted text-muted-foreground',
 };
 
@@ -368,6 +368,7 @@ export default function Exames() {
   const [formData, setFormData] = useState<FormData>({ ...initialFormData });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLock = useRef(false);
+  const autoOpenHandledRef = useRef(false);
 
   // Multi-select exams
   const [examesSelecionados, setExamesSelecionados] = useState<ExameSelecionado[]>([]);
@@ -381,6 +382,21 @@ export default function Exames() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user, profile } = useSupabaseAuth();
+  const prontuarioFonteId = searchParams.get('prontuario');
+  const prontuarioFonteQuery = useQuery({
+    queryKey: ['exame-prontuario-context', prontuarioFonteId, profile?.clinica_id],
+    enabled: Boolean(prontuarioFonteId && profile?.clinica_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('id, paciente_id, clinica_id')
+        .eq('id', prontuarioFonteId!)
+        .eq('clinica_id', profile!.clinica_id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
   const queryClient = useQueryClient();
   const medicosQuery = useMedicos();
   const { data: medicos = [], isLoading: loadingMedicos } = medicosQuery;
@@ -633,7 +649,7 @@ export default function Exames() {
     setExamesSelecionados(prev => prev.filter(e => e.nome !== nome));
   };
 
-  const handleOpenNew = () => {
+  const handleOpenNew = useCallback(() => {
     setFormData({ ...initialFormData, data_solicitacao: todaySaoPauloDateOnly(), paciente_id: pacienteFiltroId || '', medico_solicitante_id: medicoId || '' });
     setExamesSelecionados([]);
     setAnexos([]);
@@ -641,7 +657,27 @@ export default function Exames() {
     setCatFilter('');
     setCustomExamCode('');
     setIsDialogOpen(true);
+  }, [pacienteFiltroId, medicoId]);
+
+  const handleCloseNew = () => {
+    setIsDialogOpen(false);
+    if (!prontuarioFonteId && searchParams.get('novo') !== '1') return;
+    const params = new URLSearchParams(searchParams);
+    params.delete('prontuario');
+    params.delete('novo');
+    setSearchParams(params, { replace: true });
   };
+
+  useEffect(() => {
+    if (searchParams.get('novo') !== '1') {
+      autoOpenHandledRef.current = false;
+      return;
+    }
+    if (autoOpenHandledRef.current || isDialogOpen) return;
+    if (prontuarioFonteId && prontuarioFonteQuery.isLoading) return;
+    autoOpenHandledRef.current = true;
+    handleOpenNew();
+  }, [searchParams, isDialogOpen, prontuarioFonteId, prontuarioFonteQuery.isLoading, handleOpenNew]);
 
   const handleView = (id: string) => {
     setSelectedId(id);
@@ -737,6 +773,18 @@ export default function Exames() {
         description: 'Busque o paciente novamente antes de salvar ou emitir a guia.',
       });
       return;
+    }
+    if (prontuarioFonteId) {
+      if (prontuarioFonteQuery.isLoading) {
+        toast.info('Confirmando o prontuário de origem. Tente novamente em instantes.');
+        return;
+      }
+      if (prontuarioFonteQuery.isError || prontuarioFonteQuery.data?.paciente_id !== formData.paciente_id) {
+        toast.error('Não foi possível confirmar o vínculo com o prontuário de origem.', {
+          description: 'Atualize a página a partir do prontuário do paciente antes de solicitar exames.',
+        });
+        return;
+      }
     }
     if (examesSelecionados.length === 0) {
       toast.error('Adicione pelo menos um exame à guia.');
@@ -886,6 +934,7 @@ export default function Exames() {
       // Insert one row per exam in the batch
       const inserts = examesSelecionados.map(ex => ({
         paciente_id: formData.paciente_id,
+        prontuario_id: prontuarioFonteId ? prontuarioFonteQuery.data!.id : null,
         medico_solicitante_id: formData.medico_solicitante_id || null,
         tipo_exame: `${ex.tuss ? ex.tuss + ' - ' : ''}${ex.nome}`,
         tipo_categorizado: formData.tipo_categorizado || 'laboratorial',
@@ -937,6 +986,12 @@ export default function Exames() {
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       queryClient.invalidateQueries({ queryKey: ['coletas_laboratorio'] });
       setIsDialogOpen(false);
+      if (prontuarioFonteId) {
+        const params = new URLSearchParams(searchParams);
+        params.delete('prontuario');
+        params.delete('novo');
+        setSearchParams(params, { replace: true });
+      }
 
       if (emitir && guiaPdf) {
         try {
@@ -1033,21 +1088,6 @@ export default function Exames() {
         clinicaId: profile.clinica_id,
       });
       if (!result.success) throw new Error(result.message);
-
-      // Auto-link result to prontuario when report is available
-      if (newStatus === 'laudo_disponivel' && exame.resultado) {
-        const linkResult = await autoVincularResultadoProntuario({
-          exameId: id,
-          pacienteId: exame.paciente_id,
-          tipoExame: exame.tipo_exame,
-          resultado: exame.resultado,
-        });
-        if (!linkResult.success) {
-          toast.warning('Exame atualizado, mas não foi possível vincular ao prontuário.', {
-            description: linkResult.message,
-          });
-        }
-      }
 
       if (result.actions.length > 0) {
         toast.info(`Automações: ${result.actions.join(' • ')}`);
@@ -1181,7 +1221,7 @@ export default function Exames() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refreshExames} aria-label="Atualizar exames" title="Atualizar exames">
               <RefreshCw className={cn('h-4 w-4', examesQuery.isFetching && 'animate-spin')} />
             </Button>
-            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button onClick={handleOpenNew} className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
               <Plus className="h-4 w-4" />Nova Guia de Exames
             </Button>
           </>
@@ -1189,10 +1229,17 @@ export default function Exames() {
       />
 
       {pacienteFiltroId && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-[#BFD8EE] bg-[#F3F8FC] p-3 text-foreground sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/40 p-3 text-foreground sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
-            Exibindo exames de <span className="font-medium text-[#1080CA]">{getPacienteNomePorId(pacienteFiltroId)}</span>.
+            Exibindo exames de <span className="font-medium text-primary">{getPacienteNomePorId(pacienteFiltroId)}</span>.
           </p>
+          {searchParams.get('voltar') === 'prontuario' && (
+            <Button asChild variant="outline" size="sm" className="rounded-full">
+              <Link to={`/prontuarios?paciente=${encodeURIComponent(pacienteFiltroId)}${searchParams.get('agendamento') ? `&agendamento=${encodeURIComponent(searchParams.get('agendamento')!)}` : ''}`}>
+                Voltar ao prontuário
+              </Link>
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1200,6 +1247,8 @@ export default function Exames() {
             onClick={() => {
               const params = new URLSearchParams(searchParams);
               params.delete('paciente');
+              params.delete('voltar');
+              params.delete('agendamento');
               setSearchParams(params, { replace: true });
             }}
           >
@@ -1218,13 +1267,12 @@ export default function Exames() {
         </div>
         <div data-testid="exam-status-kpis" className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
           {([
-            { key: 'aguardando' as IndicadorExame, icon: Hourglass, label: 'Aguardando resultado', caption: 'solicitados, agendados ou realizados', color: 'text-white', surface: 'bg-white/15', escuro: true },
-            { key: 'hoje' as IndicadorExame, icon: CalendarPlus, label: 'Solicitados hoje', caption: 'guias emitidas hoje', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
-            { key: 'agendado' as IndicadorExame, icon: CalendarCheck, label: 'Agendados / coleta', caption: 'aguardando realização', color: 'text-info', surface: 'bg-info/10', escuro: false },
-            { key: 'laudo_disponivel' as IndicadorExame, icon: CheckCircle2, label: 'Resultados prontos', caption: 'laudo disponível', color: 'text-success', surface: 'bg-success/10', escuro: false },
-            { key: 'criticos' as IndicadorExame, icon: AlertTriangle, label: 'Críticos', caption: criticosQuery.isError ? 'não foi possível conferir' : 'resultado crítico no laboratório', color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
+            { key: 'aguardando' as IndicadorExame, label: 'Aguardando resultado', caption: 'Solicitados, agendados ou realizados', color: 'text-primary' },
+            { key: 'hoje' as IndicadorExame, label: 'Solicitados hoje', caption: 'Guias emitidas hoje', color: 'text-primary' },
+            { key: 'agendado' as IndicadorExame, label: 'Agendados / coleta', caption: 'Aguardando realização', color: 'text-info' },
+            { key: 'laudo_disponivel' as IndicadorExame, label: 'Resultados prontos', caption: 'Laudo disponível', color: 'text-success' },
+            { key: 'criticos' as IndicadorExame, label: 'Críticos', caption: criticosQuery.isError ? 'Não foi possível conferir' : 'Resultado crítico no laboratório', color: 'text-destructive' },
           ]).map(s => {
-            const Icon = s.icon;
             const ativo = indicador === s.key;
             return (
               <button
@@ -1233,23 +1281,16 @@ export default function Exames() {
                 aria-pressed={ativo}
                 onClick={() => setIndicador(ativo ? 'todos' : s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                  s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                  'flex min-h-16 min-w-0 items-start gap-3 border-b-2 border-border/70 px-2 py-2 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                  ativo && 'border-primary bg-primary text-primary-foreground',
                 )}
               >
-                <div className="flex min-h-[96px] items-center gap-3 p-3">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
-                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('min-w-0 flex-1 break-words text-xs font-semibold leading-tight', ativo ? 'text-primary-foreground' : 'text-foreground')}>{s.label}</h3>
+                    <span className={cn('shrink-0 text-2xl font-bold tabular-nums', ativo ? 'text-primary-foreground' : s.color)}>{contagens[s.key as Exclude<IndicadorExame, 'todos'>]}</span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{contagens[s.key as Exclude<IndicadorExame, 'todos'>]}</span>
-                    </div>
-                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
-                  </div>
+                  <p className={cn('break-words text-[11px] leading-tight', ativo ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{s.caption}</p>
                 </div>
               </button>
             );
@@ -1268,7 +1309,7 @@ export default function Exames() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={cn('h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]', searchTerm && 'pr-10')} />
+          <Input aria-label="Buscar por paciente ou exame" placeholder="Buscar paciente ou exame..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={cn('h-10 rounded-full pl-9 focus-visible:ring-primary', searchTerm && 'pr-10')} />
           {searchTerm && (
             <Button type="button" variant="ghost" size="icon" aria-label="Limpar busca" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full" onClick={() => setSearchTerm('')}>
               <X className="h-4 w-4" />
@@ -1296,8 +1337,8 @@ export default function Exames() {
                   aria-pressed={ativo}
                   onClick={() => setTipoFilter(ativo ? 'todos' : tipo)}
                   className={cn(
-                    'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                    ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                    'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                    ativo ? 'border-transparent bg-primary text-primary-foreground shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                   )}
                 >
                   {tipo === 'todos' ? 'Todos os tipos' : (TIPO_CATEGORIZADO_LABELS[tipo] || tipo)}
@@ -1320,11 +1361,11 @@ export default function Exames() {
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center gap-3">
-            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <FileText className="h-4 w-4" />
             </span>
             <CardTitle className="text-base font-semibold">Exames</CardTitle>
-            <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredExames.length}</Badge>
+            <Badge variant="outline" className="rounded-full border-primary/25 text-primary">{filteredExames.length}</Badge>
             {indicador === 'criticos' && contagens.criticos > 0 && (
               <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-destructive">atenção imediata</Badge>
             )}
@@ -1332,7 +1373,7 @@ export default function Exames() {
         </CardHeader>
         <CardContent>
           <div className="overflow-hidden rounded-xl border border-border/60">
-            <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]">
+            <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <Table>
               <TableHeader>
                 <TableRow>
@@ -1349,7 +1390,7 @@ export default function Exames() {
                   <TableRow>
                     <TableCell colSpan={6} className="py-3">
                       <div role="status" aria-live="polite" className="flex flex-col items-center gap-2 py-12 text-center">
-                        <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                        <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
                           <FileText className="h-7 w-7" />
                         </span>
                         <h3 className="font-semibold text-foreground">
@@ -1365,7 +1406,7 @@ export default function Exames() {
                             : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
                         </p>
                         {examesNoEscopo.length === 0 ? (
-                          <Button className="mt-3 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleOpenNew}>
+                          <Button className="mt-3 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" onClick={handleOpenNew}>
                             <Plus aria-hidden="true" className="mr-2 h-4 w-4" />Nova guia de exames
                           </Button>
                         ) : (
@@ -1415,7 +1456,7 @@ export default function Exames() {
                               <div className={cn(
                                 'h-5 px-1.5 rounded-full text-[9px] font-medium flex items-center',
                                 i < step && 'bg-success/10 text-success',
-                                i === step && step >= 0 && 'bg-[#1080CA]/10 text-[#1080CA] ring-1 ring-[#1080CA]/20',
+                                i === step && step >= 0 && 'bg-primary/10 text-primary ring-1 ring-primary/20',
                                 i > step && 'bg-muted text-muted-foreground/40',
                                 step === -1 && 'bg-muted text-muted-foreground line-through',
                               )}>
@@ -1459,8 +1500,8 @@ export default function Exames() {
                               className={cn(
                                 'h-9 gap-1 rounded-full text-xs',
                                 nextStatus === 'laudo_disponivel' && !precisaLancarResultado
-                                  ? 'bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110'
-                                  : 'bg-gradient-primary text-white hover:brightness-110',
+                                  ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
+                                  : 'bg-primary text-primary-foreground hover:bg-primary/90',
                               )}
                               disabled={exameEmAtualizacao !== null}
                               onClick={() => {
@@ -1476,13 +1517,13 @@ export default function Exames() {
                             </Button>
                           )}
                           {acaoSeguinte.destino === 'laboratorio' && (
-                            <Button asChild size="sm" className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">
+                            <Button asChild size="sm" className="h-9 gap-1 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90">
                               <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Abrir Laboratório</Link>
                             </Button>
                           )}
                           {exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && acaoSeguinte.destino !== 'laboratorio' && (
                             <Button asChild variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs">
-                              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Coleta no Laboratório</Link>
+                              <Link to="/laboratorio" state={{ buscaPaciente: getPacienteNome(exame) }}><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Coleta no Laboratório</Link>
                             </Button>
                           )}
                           {!exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
@@ -1510,9 +1551,10 @@ export default function Exames() {
 
       {/* ─── New Exam Dialog ─── */}
       <Dialog open={isDialogOpen} onOpenChange={open => {
-        if (open || !isSubmitting) setIsDialogOpen(open);
+        if (open) setIsDialogOpen(true);
+        else if (!isSubmitting) handleCloseNew();
       }}>
-        <DialogContent className="max-w-3xl max-h-[95vh] overflow-hidden flex flex-col" aria-busy={isSubmitting}>
+        <DialogContent className="h-[95dvh] max-h-[95dvh] max-w-3xl overflow-hidden flex flex-col" aria-busy={isSubmitting}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
@@ -1521,7 +1563,19 @@ export default function Exames() {
             </DialogTitle>
           </DialogHeader>
 
-          <fieldset disabled={isSubmitting} className="flex-1 min-w-0 overflow-y-auto space-y-5 border-0 p-0 pr-2">
+          {prontuarioFonteId && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm" role={prontuarioFonteQuery.isLoading ? 'status' : prontuarioFonteQuery.isError || !prontuarioFonteQuery.data || prontuarioFonteQuery.data.paciente_id !== formData.paciente_id ? 'alert' : 'note'}>
+              {prontuarioFonteQuery.isLoading ? (
+                <span className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Confirmando o prontuário de origem…</span>
+              ) : prontuarioFonteQuery.isError || !prontuarioFonteQuery.data || prontuarioFonteQuery.data.paciente_id !== formData.paciente_id ? (
+                <span className="text-destructive">Não foi possível confirmar o paciente e o prontuário de origem. Atualize a página a partir do prontuário antes de salvar.</span>
+              ) : (
+                <span>Solicitação vinculada ao atendimento de <strong>{getPacienteNomePorId(formData.paciente_id)}</strong>. Os exames serão associados a este prontuário.</span>
+              )}
+            </div>
+          )}
+
+          <fieldset disabled={isSubmitting} data-testid="exam-request-fields" className="min-h-0 flex-1 min-w-0 overflow-y-auto overscroll-contain space-y-5 border-0 p-0 pr-2">
             {/* Paciente + Médico */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -1530,7 +1584,7 @@ export default function Exames() {
                   value={formData.paciente_id || null}
                   onChange={id => setFormData(form => ({ ...form, paciente_id: id }))}
                   placeholder="Buscar paciente por nome, CPF ou telefone..."
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || Boolean(prontuarioFonteId)}
                   className="h-11"
                 />
                 {formData.paciente_id && pacienteResumoQuery.isLoading && (
@@ -1837,8 +1891,9 @@ export default function Exames() {
 
             {/* Clinical info */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Indicação Clínica *</Label>
+              <Label htmlFor="exam-indicacao-clinica" className="text-xs font-medium">Indicação Clínica *</Label>
               <Textarea
+                id="exam-indicacao-clinica"
                 value={formData.indicacao_clinica}
                 onChange={e => setFormData({ ...formData, indicacao_clinica: e.target.value })}
                 placeholder="Sintomas, achados clínicos, suspeita diagnóstica..."
@@ -1847,8 +1902,9 @@ export default function Exames() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Hipótese Diagnóstica / CID</Label>
+              <Label htmlFor="exam-hipotese-diagnostica" className="text-xs font-medium">Hipótese Diagnóstica / CID</Label>
               <Input
+                id="exam-hipotese-diagnostica"
                 value={formData.hipotese_diagnostica}
                 onChange={e => setFormData({ ...formData, hipotese_diagnostica: e.target.value })}
                 placeholder="Ex: J18.9 - Pneumonia, M54.5 - Lombalgia..."
@@ -1856,8 +1912,9 @@ export default function Exames() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Observações para Laboratório/Clínica</Label>
+              <Label htmlFor="exam-observacoes" className="text-xs font-medium">Observações para Laboratório/Clínica</Label>
               <Textarea
+                id="exam-observacoes"
                 value={formData.observacoes}
                 onChange={e => setFormData({ ...formData, observacoes: e.target.value })}
                 placeholder="Instruções especiais, alergias a contraste, marcapasso, próteses..."
@@ -1929,8 +1986,8 @@ export default function Exames() {
             </div>
           </fieldset>
 
-          <DialogFooter className="flex-shrink-0 pt-4 border-t gap-2">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancelar</Button>
+          <DialogFooter data-testid="exam-request-footer" className="flex-shrink-0 pt-4 border-t gap-2">
+            <Button variant="outline" onClick={handleCloseNew} disabled={isSubmitting}>Cancelar</Button>
             <Button variant="secondary" onClick={() => handleSave(false)} disabled={isSubmitting || pacienteResumoQuery.isLoading} className="gap-1">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               Solicitar ({examesSelecionados.length})
@@ -1995,9 +2052,9 @@ export default function Exames() {
                       const nome = path.split('/').pop() || path;
                       const ocupado = anexoEmAcao === path;
                       return (
-                        <li key={path} className="flex items-center justify-between gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
+                        <li key={path} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 p-3">
                           <div className="flex min-w-0 items-center gap-2">
-                            <Paperclip aria-hidden="true" className="h-4 w-4 shrink-0 text-[#1080CA]" />
+                            <Paperclip aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
                             <p className="truncate text-sm font-medium" title={nome}>{nome}</p>
                           </div>
                           <div className="flex shrink-0 gap-1">
@@ -2017,7 +2074,7 @@ export default function Exames() {
                 </div>
               )}
               {selectedExame.arquivo_resultado && (
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-3">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 p-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Laudo anexado</p>
                     <p className="truncate text-xs text-muted-foreground">

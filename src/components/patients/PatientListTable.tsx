@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import { motion } from 'framer-motion';
 import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power, MessageCircle } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
@@ -8,6 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PatientPhoto, AllergyAlert } from '@/components/clinical';
 import { describeMissingPatientContacts } from '@/lib/patientContactCompleteness';
+
+function patientSexLabel(value: string | null | undefined) {
+  const normalized = value?.trim().toLocaleLowerCase('pt-BR');
+  if (normalized === 'm' || normalized === 'masculino') return { label: 'M', accessible: 'Masculino' };
+  if (normalized === 'f' || normalized === 'feminino') return { label: 'F', accessible: 'Feminino' };
+  if (normalized === 'o' || normalized === 'outro') return { label: 'O', accessible: 'Outro' };
+  return { label: 'N/I', accessible: 'Sexo não informado' };
+}
 
 interface PatientListTableProps {
   pacientes: any[];
@@ -97,33 +104,33 @@ export const PatientListTable = memo(function PatientListTable({
                 <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </button>
               {paciente.alergias?.length > 0 && <AllergyAlert alergias={paciente.alergias} compact className="mt-2" />}
-              <div className="mt-3 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+              <div data-testid="patient-mobile-actions" className="mt-3 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                 {(() => {
                   const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
                   return whatsapp ? (
-                    <Button asChild variant="outline" className="h-11 min-w-0 flex-1 gap-1 rounded-full border-[#1080CA]/30 px-2 text-xs text-[#1080CA]">
+                    <Button asChild variant="outline" className="h-11 w-full min-w-0 gap-1 rounded-full border-primary/30 px-2 text-xs text-primary">
                       <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
                     </Button>
                   ) : null;
                 })()}
                 {podeGerarLinkPortal && paciente.ativo !== false && (
-                  <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
+                  <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
                     <Link className="h-4 w-4" /> Portal
                   </Button>
                 )}
                 {podeGerarLinkPortal && paciente.ativo !== false && (
-                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
+                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
                     <Unlink className="h-4 w-4" /> Revogar
                   </Button>
                 )}
-                {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
+                {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
                   <Edit className="h-4 w-4" /> Editar
                 </Button>}
-                {podeEditarPaciente && onChangeStatus && <Button variant="outline" onClick={() => onChangeStatus(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs" aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`}>
+                {podeEditarPaciente && onChangeStatus && <Button variant="outline" onClick={() => onChangeStatus(paciente)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`}>
                   <Power className="h-4 w-4" /> {paciente.ativo === false ? 'Reativar' : 'Inativar'}
                 </Button>}
                 {podeExcluirPaciente && (
-                  <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 min-w-0 flex-1 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
+                  <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
                     <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
                 )}
@@ -158,7 +165,18 @@ export const PatientListTable = memo(function PatientListTable({
               const idade = calcularIdade(paciente.data_nascimento);
               const contatoAusente = describeMissingPatientContacts(paciente);
               return (
-                <TableRow key={paciente.id} className="cursor-pointer transition-colors hover:bg-[#1080CA]/[0.05]" onClick={() => onView(paciente)}>
+                <TableRow
+                  key={paciente.id}
+                  tabIndex={0}
+                  aria-label={`Abrir ficha de ${paciente.nome}`}
+                  className="cursor-pointer transition-colors hover:bg-primary/[0.05] focus-visible:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  onClick={() => onView(paciente)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                    event.preventDefault();
+                    onView(paciente);
+                  }}
+                >
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <PatientPhoto
@@ -172,12 +190,11 @@ export const PatientListTable = memo(function PatientListTable({
                         <p className="font-medium truncate">{paciente.nome}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           {paciente.ativo === false && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Inativo</Badge>}
-                          {paciente.sexo && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {['M', 'masculino'].includes(paciente.sexo) ? 'M' : ['F', 'feminino'].includes(paciente.sexo) ? 'F' : 'O'}
-                            </Badge>
-                          )}
-                          {paciente.data_nascimento && Number.isFinite(idade) && idade >= 0 && idade < 18 && <Badge className="bg-amber-500/10 text-amber-700 text-[10px] px-1.5 py-0">Menor</Badge>}
+                          {paciente.sexo && (() => {
+                            const sex = patientSexLabel(paciente.sexo);
+                            return <Badge variant="outline" aria-label={sex.accessible} title={sex.accessible} className="px-1.5 py-0 text-[10px]">{sex.label}</Badge>;
+                          })()}
+                          {paciente.data_nascimento && Number.isFinite(idade) && idade >= 0 && idade < 18 && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Menor</Badge>}
                         </div>
                         {paciente.alergias && paciente.alergias.length > 0 && (
                           <AllergyAlert alergias={paciente.alergias} compact className="mt-1" />
@@ -219,49 +236,41 @@ export const PatientListTable = memo(function PatientListTable({
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
-                      <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </motion.div>
+                      <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-primary/10 hover:text-primary">
+                        <Eye className="h-4 w-4" />
+                      </Button>
                       {(() => {
                         const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
                         return whatsapp ? (
-                          <Button asChild variant="ghost" size="icon" title="Chamar no WhatsApp" className="h-11 w-11 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                          <Button asChild variant="ghost" size="icon" title="Chamar no WhatsApp" className="h-11 w-11 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                             <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /></a>
                           </Button>
                         ) : null;
                       })()}
                       {podeGerarLinkPortal && paciente.ativo !== false && (
-                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
-                            <Link className="h-4 w-4" />
-                          </Button>
-                        </motion.div>
+                        <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-primary/10 hover:text-primary">
+                          <Link className="h-4 w-4" />
+                        </Button>
                       )}
                       {podeGerarLinkPortal && paciente.ativo !== false && (
-                        <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-full text-destructive hover:bg-destructive/10">
-                            <Unlink className="h-4 w-4" />
-                          </Button>
-                        </motion.div>
+                        <Button variant="ghost" size="icon" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} title="Revogar links do portal" aria-label={`Revogar links do portal de ${paciente.nome}`} className="h-11 w-11 rounded-full text-destructive hover:bg-destructive/10">
+                          <Unlink className="h-4 w-4" />
+                        </Button>
                       )}
-                      {podeEditarPaciente && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                      {podeEditarPaciente &&
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(paciente)} title="Editar" aria-label={`Editar ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-primary/10 hover:text-primary">
                           <Edit className="h-4 w-4" />
                         </Button>
-                      </motion.div>}
-                      {podeEditarPaciente && onChangeStatus && <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                        <Button variant="ghost" size="icon" onClick={() => onChangeStatus(paciente)} title={paciente.ativo === false ? 'Reativar paciente' : 'Inativar paciente'} aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                      }
+                      {podeEditarPaciente && onChangeStatus &&
+                        <Button variant="ghost" size="icon" onClick={() => onChangeStatus(paciente)} title={paciente.ativo === false ? 'Reativar paciente' : 'Inativar paciente'} aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-primary/10 hover:text-primary">
                           <Power className="h-4 w-4" />
                         </Button>
-                      </motion.div>}
+                      }
                       {podeExcluirPaciente && (
-                        <motion.div whileHover={{ scale: 1.15, rotate: 5 }} whileTap={{ scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                          <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </motion.div>
+                        <Button variant="ghost" size="icon" onClick={() => onDelete(paciente)} title="Excluir ficha vazia" aria-label={`Excluir ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-destructive/10">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       )}
                     </div>
                   </TableCell>

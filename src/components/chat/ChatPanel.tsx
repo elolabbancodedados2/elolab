@@ -17,6 +17,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useLocation } from 'react-router-dom';
 
 // ─── Helpers ───────────────────────────────────────────────
 const getInitials = (name: string) =>
@@ -502,6 +503,8 @@ function ViewConversa({
 
 // ─── Chat Panel Principal ──────────────────────────────────
 export function ChatPanel() {
+  const { pathname } = useLocation();
+  const sobreRecepcao = pathname === '/recepcao';
   const { user } = useSupabaseAuth();
   const [aberto, setAberto] = useState(false);
   const [search, setSearch] = useState('');
@@ -529,7 +532,7 @@ export function ChatPanel() {
   return (
     <>
       {/* Floating Button */}
-      <div className="fixed bottom-6 right-6 z-50 hidden lg:block">
+      <div className={cn('fixed right-6 z-50 hidden lg:block', sobreRecepcao ? 'top-20' : 'bottom-6')}>
         <Button
           size="icon"
           className={cn(

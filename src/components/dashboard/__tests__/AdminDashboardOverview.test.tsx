@@ -26,8 +26,9 @@ describe('AdminDashboardOverview', () => {
   it('organiza o resumo, a agenda e as pendências em áreas reconhecíveis', () => {
     renderOverview();
 
-    expect(screen.getByRole('heading', { name: 'Bom dia, Ana' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Sua agenda de hoje' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Visão da clínica' })).toBeInTheDocument();
+    expect(screen.getByText('Bom dia, Ana. Prioridades e agenda de hoje.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Resumo de hoje' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Agenda de hoje' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Precisa de atenção' })).toBeInTheDocument();
     expect(screen.getByText('R$ 1.250,00')).toBeInTheDocument();

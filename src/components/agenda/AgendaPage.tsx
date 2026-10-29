@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { addDays, addMonths, addWeeks, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import {
@@ -76,14 +76,22 @@ function MobileDailyAppointments({
         const doctor = medico?.nome || medico?.crm || 'Profissional não informado';
         const start = appointment.hora_inicio?.slice(0, 5) || '—';
         const end = appointment.hora_fim?.slice(0, 5);
-        const status = appointment.status?.replace(/_/g, ' ') || 'agendado';
+        const statusKey = appointment.status || 'agendado';
+        const status = formatAppointmentStatus(statusKey);
+        const statusClass = ['confirmado', 'pago'].includes(statusKey)
+          ? 'bg-success/10 text-success'
+          : ['aguardando', 'aguardando_triagem', 'em_triagem', 'fila_atendimento', 'aguardando_pagamento', 'aguardando_pagamento_adicional', 'faltou'].includes(statusKey)
+            ? 'bg-warning/15 text-warning-foreground'
+            : ['cancelado', 'finalizado', 'atendimento_finalizado'].includes(statusKey)
+              ? 'bg-muted text-muted-foreground'
+              : 'bg-primary/10 text-primary';
 
         return (
           <button
             key={appointment.id}
             type="button"
             onClick={() => onCardClick(appointment)}
-            aria-label={`Abrir consulta de ${patient} às ${start}`}
+            aria-label={`Abrir consulta de ${patient} às ${start}, status ${status}`}
             className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="w-[4.5rem] shrink-0 text-sm font-semibold tabular-nums text-foreground">
@@ -93,7 +101,7 @@ function MobileDailyAppointments({
               <span className="block truncate text-sm font-semibold text-foreground">{patient}</span>
               <span className="mt-0.5 block truncate text-xs text-muted-foreground">{doctor}{appointment.tipo ? ` · ${appointment.tipo}` : ''}</span>
             </span>
-            <span className="shrink-0 rounded-full bg-accent px-2 py-1 text-[10px] font-medium capitalize text-accent-foreground">{status}</span>
+            <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${statusClass}`}>{status}</span>
           </button>
         );
       })}
@@ -102,6 +110,8 @@ function MobileDailyAppointments({
 }
 
 const VIEWS_AGENDA: AgendaView[] = ['daily', 'weekly', 'monthly'];
+const isAgendaView = (value: string | null): value is AgendaView =>
+  value !== null && VIEWS_AGENDA.includes(value as AgendaView);
 
 function lerPreferenciaAgenda(chave: string): string | null {
   try {
@@ -128,6 +138,7 @@ function toMinutes(t: string) {
 export function AgendaPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchString = searchParams.toString();
   const { profile } = useSupabaseAuth();
   const esperaIdDaRota = searchParams.get('espera');
   const pacienteIdDaRota = searchParams.get('paciente');
@@ -135,24 +146,71 @@ export function AgendaPage() {
   // Links da central de notificações: ?data=AAAA-MM-DD&agendamento=<id>
   const dataDaRota = searchParams.get('data');
   const agendamentoIdDaRota = searchParams.get('agendamento');
+  const viewDaRota = searchParams.get('view');
+  const viewDaRotaValida = isAgendaView(viewDaRota);
   const reagendarAplicadoRef = useRef<string | null>(null);
   const { medicoId: myMedicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
   const [date, setDate] = useState(() => normalizeAgendaDate(isValidAgendaDate(dataDaRota) ? dataDaRota : lerPreferenciaAgenda('agenda:date')));
+  const activeDate = isValidAgendaDate(dataDaRota) ? dataDaRota : date;
   useEffect(() => {
     if (isValidAgendaDate(dataDaRota)) setDate(dataDaRota);
   }, [dataDaRota]);
   const [view, setView] = useState<AgendaView>(() => {
+    if (isAgendaView(viewDaRota)) return viewDaRota;
     const preferencia = lerPreferenciaAgenda('agenda:view');
     return VIEWS_AGENDA.includes(preferencia as AgendaView) ? preferencia as AgendaView : 'daily';
   });
+  const activeView: AgendaView = viewDaRotaValida ? viewDaRota : view;
   const { defaultView, setDefaultView, loaded: defaultViewLoaded } = useAgendaDefaultView();
-  const [viewTouched, setViewTouched] = useState(() => VIEWS_AGENDA.includes(lerPreferenciaAgenda('agenda:view') as AgendaView));
+  const [viewTouched, setViewTouched] = useState(() => viewDaRotaValida || VIEWS_AGENDA.includes(lerPreferenciaAgenda('agenda:view') as AgendaView));
   useEffect(() => {
-    if (defaultViewLoaded && defaultView && !viewTouched) setView(defaultView);
-  }, [defaultViewLoaded, defaultView, viewTouched]);
-  const handleViewChange = (v: AgendaView) => { setViewTouched(true); setView(v); };
-  useEffect(() => { salvarPreferenciaAgenda('agenda:date', date); }, [date]);
-  useEffect(() => { salvarPreferenciaAgenda('agenda:view', view); }, [view]);
+    if (viewDaRotaValida) {
+      if (view !== viewDaRota) setView(viewDaRota);
+      if (!viewTouched) setViewTouched(true);
+      return;
+    }
+    if (defaultViewLoaded && defaultView && !viewTouched && view !== defaultView) setView(defaultView);
+  }, [defaultViewLoaded, defaultView, viewTouched, viewDaRotaValida, viewDaRota, view]);
+
+  const updateAgendaContext = useCallback((context: { date?: string; view?: AgendaView }) => {
+    const nextDate = context.date ? normalizeAgendaDate(context.date) : undefined;
+    if (nextDate) setDate(nextDate);
+    if (context.view) {
+      setViewTouched(true);
+      setView(context.view);
+    }
+    setSearchParams(current => {
+      const next = new URLSearchParams(current);
+      if (nextDate) {
+        next.set('data', nextDate);
+        next.delete('agendamento');
+      }
+      if (context.view) next.set('view', context.view);
+      return next.toString() === current.toString() ? current : next;
+    });
+  }, [setSearchParams]);
+  const handleDateChange = useCallback((nextDate: string) => updateAgendaContext({ date: nextDate }), [updateAgendaContext]);
+  const handleViewChange = useCallback((nextView: AgendaView) => updateAgendaContext({ view: nextView }), [updateAgendaContext]);
+  const handleDayClick = useCallback((nextDate: string) => updateAgendaContext({ date: nextDate, view: 'daily' }), [updateAgendaContext]);
+
+  // Date and view are safe to keep in a link; patient search text remains in local state.
+  useEffect(() => {
+    if (!defaultViewLoaded) return;
+    // Browser back/forward must win over the previous in-memory date. Wait for
+    // the URL-to-state effect above before normalizing the route back to state.
+    if (isValidAgendaDate(dataDaRota) && date !== dataDaRota) return;
+    if (viewDaRotaValida && view !== viewDaRota) return;
+    if (!viewDaRotaValida && !viewTouched && defaultView && view !== defaultView) return;
+    const normalized = new URLSearchParams(searchParams);
+    if (!isValidAgendaDate(dataDaRota) || dataDaRota !== date) normalized.set('data', date);
+    if (!viewDaRotaValida || viewDaRota !== view) normalized.set('view', view);
+    if (normalized.toString() !== searchParams.toString()) {
+      setSearchParams(normalized, { replace: true });
+    }
+  }, [defaultViewLoaded, defaultView, viewTouched, viewDaRotaValida, viewDaRota, view, dataDaRota, date, searchParams, setSearchParams]);
+
+  useEffect(() => { salvarPreferenciaAgenda('agenda:date', activeDate); }, [activeDate]);
+  useEffect(() => { salvarPreferenciaAgenda('agenda:view', activeView); }, [activeView]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [medicoFilter, setMedicoFilter] = useState<string[]>([]);
@@ -172,12 +230,12 @@ export function AgendaPage() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       // Com um modal ou menu aberto, as setas e letras pertencem a ele, não à agenda atrás.
       if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-state="open"][role="listbox"]')) return;
-      const d = parseISO(date);
-      const step = view === 'monthly' ? addMonths : view === 'weekly' ? addWeeks : addDays;
-      if (e.key === 'ArrowLeft') { setDate(format(step(d, -1), 'yyyy-MM-dd')); e.preventDefault(); }
-      else if (e.key === 'ArrowRight') { setDate(format(step(d, 1), 'yyyy-MM-dd')); e.preventDefault(); }
-      else if (e.key.toLowerCase() === 't') { setDate(todaySaoPauloDateOnly()); }
-      else if (e.key.toLowerCase() === 'n') { setDialogState({ open: true, initial: { data: date } }); e.preventDefault(); }
+      const d = parseISO(activeDate);
+      const step = activeView === 'monthly' ? addMonths : activeView === 'weekly' ? addWeeks : addDays;
+      if (e.key === 'ArrowLeft') { handleDateChange(format(step(d, -1), 'yyyy-MM-dd')); e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { handleDateChange(format(step(d, 1), 'yyyy-MM-dd')); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 't') { handleDateChange(todaySaoPauloDateOnly()); }
+      else if (e.key.toLowerCase() === 'n') { setDialogState({ open: true, initial: { data: activeDate } }); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'd') handleViewChange('daily');
       else if (e.key.toLowerCase() === 'w') handleViewChange('weekly');
       else if (e.key.toLowerCase() === 'm') handleViewChange('monthly');
@@ -185,21 +243,21 @@ export function AgendaPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [date, view]);
+  }, [activeDate, activeView, searchString, setSearchParams, updateAgendaContext, handleDateChange, handleViewChange]);
 
   // Só o período que a visão mostra. Antes a agenda baixava o histórico
   // inteiro da clínica (com paciente e médico de cada consulta) a cada abertura.
   const periodo = useMemo(() => {
-    const d = parseISO(date);
-    if (view === 'daily') return { inicio: date, fim: date };
-    if (view === 'weekly') {
+    const d = parseISO(activeDate);
+    if (activeView === 'daily') return { inicio: activeDate, fim: activeDate };
+    if (activeView === 'weekly') {
       const ini = startOfWeek(d, { weekStartsOn: 1 });
       return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 6), 'yyyy-MM-dd') };
     }
     // Mesma grade de 6 semanas que a MonthlyView desenha.
     const ini = startOfWeek(startOfMonth(d), { weekStartsOn: 1 });
     return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
-  }, [date, view]);
+  }, [activeDate, activeView]);
   const agendaQuery = useAgendamentosPeriodo(periodo.inicio, periodo.fim, { enabled: !isMedicoOnly || !!myMedicoId, resumoPaciente: true });
   const { data: allAppts = [], isLoading } = agendaQuery;
   const medicosQuery = useMedicos();
@@ -281,16 +339,17 @@ export function AgendaPage() {
     const origem = reagendamentoData;
     if (!origem) {
       toast.error('O atendimento original não foi encontrado nesta clínica.');
-      const params = new URLSearchParams(searchParams);
-      params.delete('reagendar');
-      setSearchParams(params, { replace: true });
+      setSearchParams(current => {
+        const params = new URLSearchParams(current);
+        params.delete('reagendar');
+        return params;
+      }, { replace: true });
       return;
     }
 
     const novaData = format(addDays(parseISO(todaySaoPauloDateOnly()), 1), 'yyyy-MM-dd');
     reagendarAplicadoRef.current = reagendarIdDaRota;
-    setDate(novaData);
-    handleViewChange('daily');
+    updateAgendaContext({ date: novaData, view: 'daily' });
     setDialogState({
       open: true,
       initial: {
@@ -308,22 +367,25 @@ export function AgendaPage() {
       },
     });
     toast.info('Reagendamento preparado', { description: 'Revise a data e o horário antes de salvar.' });
-    const params = new URLSearchParams(searchParams);
-    params.delete('reagendar');
-    setSearchParams(params, { replace: true });
-  }, [reagendarIdDaRota, profile?.clinica_id, reagendamentoLoading, reagendamentoError, reagendamentoData, refetchReagendamento, searchParams, setSearchParams]);
+    setSearchParams(current => {
+      const params = new URLSearchParams(current);
+      params.delete('reagendar');
+      return params;
+    }, { replace: true });
+  }, [reagendarIdDaRota, profile?.clinica_id, reagendamentoLoading, reagendamentoError, reagendamentoData, refetchReagendamento, setSearchParams, updateAgendaContext]);
 
   // Abre a consulta indicada pela notificação quando ela aparece no período carregado.
   useEffect(() => {
-    if (!agendamentoIdDaRota || isLoading || (isValidAgendaDate(dataDaRota) && date !== dataDaRota)) return;
+    if (!agendamentoIdDaRota || isLoading || (isValidAgendaDate(dataDaRota) && activeDate !== dataDaRota)) return;
     const alvo = (allAppts as any[]).find((a) => a.id === agendamentoIdDaRota);
     if (alvo) setDialogState({ open: true, initial: alvo });
     else toast.info('A consulta da notificação não está mais nesta data.', { description: 'Ela pode ter sido remarcada ou cancelada.' });
-    const params = new URLSearchParams(searchParams);
-    params.delete('agendamento');
-    params.delete('data');
-    setSearchParams(params, { replace: true });
-  }, [agendamentoIdDaRota, dataDaRota, date, isLoading, allAppts, searchParams, setSearchParams]);
+    setSearchParams(current => {
+      const params = new URLSearchParams(current);
+      params.delete('agendamento');
+      return params;
+    }, { replace: true });
+  }, [agendamentoIdDaRota, dataDaRota, activeDate, isLoading, allAppts, setSearchParams]);
 
   // A lista de espera abre esta rota para criar a consulta. Valide o vínculo e
   // o estado no servidor antes de carregar o paciente no formulário.
@@ -338,10 +400,12 @@ export function AgendaPage() {
         .maybeSingle();
       if (!active) return;
 
-      const params = new URLSearchParams(searchParams);
-      params.delete('espera');
-      params.delete('paciente');
-      setSearchParams(params, { replace: true });
+      setSearchParams(current => {
+        const params = new URLSearchParams(current);
+        params.delete('espera');
+        params.delete('paciente');
+        return params;
+      }, { replace: true });
 
       if (error || !data || data.paciente_id !== pacienteIdDaRota || data.status !== 'confirmado') {
         toast.error('Não foi possível iniciar o agendamento', {
@@ -367,7 +431,7 @@ export function AgendaPage() {
     };
     void abrirAgendamentoDaLista();
     return () => { active = false; };
-  }, [esperaIdDaRota, pacienteIdDaRota, profile?.clinica_id, searchParams, setSearchParams]);
+  }, [esperaIdDaRota, pacienteIdDaRota, profile?.clinica_id, setSearchParams]);
 
   const { scheme, setScheme, colorFor } = useAgendaColorScheme();
 
@@ -427,8 +491,8 @@ export function AgendaPage() {
     [medicos, isMedicoOnly, myMedicoId],
   );
 
-  const dayAppts = useMemo(() => filtered.filter((a: any) => a.data === date), [filtered, date]);
-  const dayApptsBase = useMemo(() => baseVisivel.filter((a: any) => a.data === date), [baseVisivel, date]);
+  const dayAppts = useMemo(() => filtered.filter((a: any) => a.data === activeDate), [filtered, activeDate]);
+  const dayApptsBase = useMemo(() => baseVisivel.filter((a: any) => a.data === activeDate), [baseVisivel, activeDate]);
 
   const totals = useMemo(() => ({
     total: dayApptsBase.length,
@@ -440,9 +504,9 @@ export function AgendaPage() {
   // Dias com consulta no mês exibido (grade de 6 semanas), só para marcar o
   // mini‑calendário — carrega apenas data e status.
   const gradeMes = useMemo(() => {
-    const ini = startOfWeek(startOfMonth(parseISO(date)), { weekStartsOn: 1 });
+    const ini = startOfWeek(startOfMonth(parseISO(activeDate)), { weekStartsOn: 1 });
     return { inicio: format(ini, 'yyyy-MM-dd'), fim: format(addDays(ini, 41), 'yyyy-MM-dd') };
-  }, [date]);
+  }, [activeDate]);
   const diasQuery = useSupabaseQuery<{ id: string; data: string; status: string; medico_id: string }>('agendamentos', {
     select: 'id, data, status, medico_id',
     filters: [
@@ -463,11 +527,11 @@ export function AgendaPage() {
 
   // Expediente de cada profissional no dia da semana exibido, para a barra de
   // ocupação do cabeçalho da visão diária.
-  const diaSemana = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const diaSemana = new Date(`${activeDate}T12:00:00Z`).getUTCDay();
   const idsMedicosVisiveis = useMemo(() => visibleMedicos.map((m: any) => m.id).sort(), [visibleMedicos]);
   const expedienteQuery = useQuery({
     queryKey: ['agenda-expediente', profile?.clinica_id, diaSemana, idsMedicosVisiveis],
-    enabled: !!profile?.clinica_id && idsMedicosVisiveis.length > 0 && view === 'daily',
+    enabled: !!profile?.clinica_id && idsMedicosVisiveis.length > 0 && activeView === 'daily',
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data, error } = await (supabase.from('medico_disponibilidade' as any)
@@ -488,7 +552,7 @@ export function AgendaPage() {
   const expedientePorMedico = expedienteQuery.data ?? {};
 
   const proximaDoDia = useMemo(() => {
-    if (date !== todaySaoPauloDateOnly()) return null;
+    if (activeDate !== todaySaoPauloDateOnly()) return null;
     const agora = new Date();
     const partes = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(agora);
     const nowMin = Number(partes.find(p => p.type === 'hour')?.value ?? 0) * 60 + Number(partes.find(p => p.type === 'minute')?.value ?? 0);
@@ -496,7 +560,7 @@ export function AgendaPage() {
       .filter((a: any) => !['cancelado', 'faltou'].includes(a.status))
       .sort((a: any, b: any) => a.hora_inicio.localeCompare(b.hora_inicio))
       .find((a: any) => toMinutes(a.hora_inicio.slice(0, 5)) >= nowMin) ?? null;
-  }, [dayApptsBase, date]);
+  }, [dayApptsBase, activeDate]);
 
   const irParaProxima = () => {
     if (!proximaDoDia) { toast.info('Não há mais consultas hoje.'); return; }
@@ -713,7 +777,7 @@ export function AgendaPage() {
   };
 
   const handleSlotClick = (medico_id: string, hora_inicio: string) => {
-    setDialogState({ open: true, initial: { medico_id, data: date, hora_inicio, status: 'agendado', tipo: 'consulta' } });
+    setDialogState({ open: true, initial: { medico_id, data: activeDate, hora_inicio, status: 'agendado', tipo: 'consulta' } });
   };
 
   if (isMedicoOnly && loadingCurrentMedico) return <AgendaSkeleton />;
@@ -733,9 +797,9 @@ export function AgendaPage() {
     <div className="flex min-w-0 gap-0">
       <div className="min-w-0 flex-1 space-y-4 px-0 py-2 sm:p-4">
         <AgendaHeader
-          date={date}
-          view={view}
-          onDateChange={setDate}
+          date={activeDate}
+          view={activeView}
+          onDateChange={handleDateChange}
           onViewChange={handleViewChange}
           defaultView={defaultView}
           onSetDefaultView={setDefaultView}
@@ -746,7 +810,7 @@ export function AgendaPage() {
           medicoFilter={medicoFilter}
           onStatusFilterChange={setStatusFilter}
           onMedicoFilterChange={setMedicoFilter}
-          onNewAppointment={() => setDialogState({ open: true, initial: { data: date } })}
+          onNewAppointment={() => setDialogState({ open: true, initial: { data: activeDate } })}
           onNewBlock={() => setBlockOpen(true)}
           onOpenColorScheme={() => setColorOpen(true)}
           onToggleWaiting={() => setWaitingOpen(o => !o)}
@@ -754,7 +818,7 @@ export function AgendaPage() {
           totals={totals}
           legend={legend}
           diasComConsulta={diasComConsulta}
-          onIrParaProxima={view === 'daily' && date === todaySaoPauloDateOnly() ? irParaProxima : undefined}
+          onIrParaProxima={activeView === 'daily' && activeDate === todaySaoPauloDateOnly() ? irParaProxima : undefined}
         />
 
         {allAppts.length >= MAX_LINHAS_AUTO && (
@@ -785,11 +849,11 @@ export function AgendaPage() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            {view === 'daily' && (
+            {activeView === 'daily' && (
               <>
                 <div className="hidden xl:block">
                   <DailyMultiDoctorView
-                    date={date}
+                    date={activeDate}
                     medicos={medicoFilter.length ? visibleMedicos.filter((m: any) => medicoFilter.includes(m.id)) : visibleMedicos}
                     agendamentos={dayAppts}
                     agendamentosDoDia={dayApptsBase}
@@ -809,33 +873,33 @@ export function AgendaPage() {
                 />
               </>
             )}
-            {view === 'weekly' && (
+            {activeView === 'weekly' && (
               <WeeklyView
-                date={date}
+                date={activeDate}
                 agendamentos={filtered}
                 colorFor={colorFor}
                 medicoById={medicoById}
-                onDayClick={(d) => { setDate(d); setView('daily'); }}
+                onDayClick={handleDayClick}
                 onCardClick={(a) => setDialogState({ open: true, initial: a })}
               />
             )}
-            {view === 'monthly' && (
+            {activeView === 'monthly' && (
               <MonthlyView
-                date={date}
+                date={activeDate}
                 agendamentos={filtered}
                 colorFor={colorFor}
                 medicoById={medicoById}
-                onDayClick={(d) => { setDate(d); setView('daily'); }}
+                onDayClick={handleDayClick}
               />
             )}
             <DragOverlay>
               {activeDrag?.agendamento && (
-                <div className="rounded-lg border border-[#1080CA] bg-card px-2 py-1.5 text-xs shadow-lg">
+                <div className="rounded-lg border border-primary bg-card px-2 py-1.5 text-xs shadow-lg">
                   {activeDrag.agendamento.hora_inicio.slice(0, 5)} · {activeDrag.agendamento.pacientes?.nome || 'Paciente'}
                 </div>
               )}
               {activeDrag?.waiting && (
-                <div className="rounded-lg border border-[#1080CA] bg-card px-3 py-2 text-xs shadow-lg">
+                <div className="rounded-lg border border-primary bg-card px-3 py-2 text-xs shadow-lg">
                   {activeDrag.waiting.pacientes?.nome || 'Paciente'}
                 </div>
               )}
