@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Plus, Search, Clock, Phone, CheckCircle, XCircle, AlertTriangle, Users, Bell, MessageCircle, CalendarPlus, RefreshCw, X, Hourglass } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -12,13 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import {
   Select,
   SelectContent,
@@ -40,7 +34,7 @@ import { useMedicos } from '@/hooks/useSupabaseData';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
@@ -105,12 +99,21 @@ const initialFormData: FormData = {
   observacoes: '',
 };
 
-export default function ListaEspera() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('aguardando');
-  const [prioridadeFilter, setPrioridadeFilter] = useState<'todas' | 'urgente' | 'preferencial' | 'normal'>('todas');
-  const [ordenacao, setOrdenacao] = useState<OrdenacaoEspera>('prioridade');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+export default function ListaEspera({ creationPage = false }: { creationPage?: boolean }) {
+  const location = useLocation();
+  return <ListaEsperaWorkspace key={location.pathname} creationPage={creationPage} />;
+}
+
+function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
+  const location = useLocation();
+  const completed = useRef(false);
+  const saveLock = useRef(false);
+  const returnTo = typeof location.state?.returnTo === 'string' && /^\/gestao-fluxo(?:\?|$)/.test(location.state.returnTo) ? location.state.returnTo : '/gestao-fluxo?tab=espera';
+  const leaveForm = () => navigate(returnTo, { state: { waitingFilters: location.state?.waitingFilters } });
+  const [searchTerm, setSearchTerm] = useState(location.state?.waitingFilters?.search ?? '');
+  const [statusFilter, setStatusFilter] = useState(location.state?.waitingFilters?.status ?? 'aguardando');
+  const [prioridadeFilter, setPrioridadeFilter] = useState<'todas' | 'urgente' | 'preferencial' | 'normal'>(location.state?.waitingFilters?.priority ?? 'todas');
+  const [ordenacao, setOrdenacao] = useState<OrdenacaoEspera>(location.state?.waitingFilters?.order ?? 'prioridade');
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
@@ -136,7 +139,7 @@ export default function ListaEspera() {
       if (error) throw error;
       return data;
     },
-    enabled: !!user && !!profile?.clinica_id,
+    enabled: !!user && !!profile?.clinica_id && !creationPage,
   });
   const lista = useMemo(() => listaQuery.data ?? [], [listaQuery.data]);
   const podeRemoverPermanentemente = hasAnyRole(['admin']);
@@ -183,12 +186,10 @@ export default function ListaEspera() {
   const mensagemWhatsApp = (nome: string, especialidade: string | null) =>
     `Olá, ${nome}! Aqui é da clínica. Surgiu uma vaga${especialidade ? ` em ${especialidade}` : ''} e você está na nossa lista de espera. Podemos agendar?`;
 
-  const handleOpenNew = () => {
-    setFormData(initialFormData);
-    setIsDialogOpen(true);
-  };
+  const handleOpenNew = () => navigate('/gestao-fluxo/espera/nova', { state: { returnTo: location.pathname + location.search, waitingFilters: { search: searchTerm, status: statusFilter, priority: prioridadeFilter, order: ordenacao } } });
 
   const handleSave = async () => {
+    if (saveLock.current) return;
     if (!formData.paciente_id || !formData.especialidade) {
       toast.error('Preencha os campos obrigatórios.');
       return;
@@ -198,6 +199,7 @@ export default function ListaEspera() {
       return;
     }
 
+    saveLock.current = true;
     setIsSubmitting(true);
     try {
       let duplicadoQuery = supabase.from('lista_espera')
@@ -235,7 +237,8 @@ export default function ListaEspera() {
       
       toast.success('Paciente adicionado à lista de espera!');
       queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
-      setIsDialogOpen(false);
+      completed.current = true;
+      leaveForm();
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Erro ao adicionar:', error);
       if (error?.code === '23505' && (
@@ -250,6 +253,7 @@ export default function ListaEspera() {
         toast.error(error.message || 'Erro ao adicionar à lista');
       }
     } finally {
+      saveLock.current = false;
       setIsSubmitting(false);
     }
   };
@@ -333,7 +337,7 @@ export default function ListaEspera() {
 
   const getDiasEspera = diasDeEspera;
 
-  if (isLoading) {
+  if (isLoading && !creationPage) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -342,15 +346,18 @@ export default function ListaEspera() {
     );
   }
 
-  if (listaQuery.isError) {
+  if (listaQuery.isError && !creationPage) {
     return <ErrorState title="Não foi possível carregar a lista de espera" error={listaQuery.error} onRetry={() => void listaQuery.refetch()} />;
   }
-  if (medicosQuery.isError) {
+  if (medicosQuery.isError && !creationPage) {
     return <ErrorState title="Não foi possível carregar os médicos para a lista de espera" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      <UnsavedChangesGuard dirty={creationPage && JSON.stringify(formData) !== JSON.stringify(initialFormData)} busy={isSubmitting} completed={completed} />
+      {creationPage && <Button variant="outline" onClick={leaveForm}>Voltar à lista de espera</Button>}
+      {!creationPage && <>
       <PageHeader
         title="Lista de Espera"
         description={ativos.length > 0
@@ -700,12 +707,15 @@ export default function ListaEspera() {
         </CardContent>
       </Card>
 
-      {/* New Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (open || !isSubmitting) setIsDialogOpen(open); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Adicionar à Lista de Espera</DialogTitle>
-          </DialogHeader>
+      </>}
+      {creationPage && <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-3xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5">
+            <p className="text-sm text-muted-foreground">Gestão do fluxo / Lista de espera</p>
+            <h1 className="text-2xl font-semibold">Adicionar à Lista de Espera</h1>
+            <p className="text-sm text-muted-foreground">Registre a especialidade e as preferências para procurar uma vaga adequada.</p>
+          </header>
+          {medicosQuery.isError && <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}
+          <fieldset disabled={isSubmitting} className="min-w-0">
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="espera-paciente">Paciente *</Label>
@@ -813,16 +823,16 @@ export default function ListaEspera() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="outline" onClick={leaveForm} disabled={isSubmitting}>
               Cancelar
             </Button>
-            <LoadingButton onClick={handleSave} isLoading={isSubmitting} loadingText="Salvando...">
+            <LoadingButton type="submit" className="scroll-mb-24" isLoading={isSubmitting} loadingText="Salvando...">
               Adicionar
             </LoadingButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>}
 
       {/* Preserve the request in history when the patient declines. */}
       <AlertDialog open={!!desistindo} onOpenChange={(open) => !open && !updatingId && setDesistindo(null)}>

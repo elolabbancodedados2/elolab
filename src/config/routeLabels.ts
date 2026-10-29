@@ -28,6 +28,8 @@ const labelsByPath: Record<string, string> = {
   '/gestao-fluxo/salas/nova': 'Nova sala ou leito',
   '/precos-servicos/tipos': 'Tipos de consulta',
   '/precos-servicos/tipos/novo': 'Novo tipo de consulta',
+  '/gestao-fluxo/espera': 'Lista de espera',
+  '/gestao-fluxo/espera/nova': 'Adicionar à lista de espera',
   '/exames': 'Exames',
   '/exames/laboratorios': 'Laboratórios e fornecedores',
   '/exames/laboratorios/novo': 'Novo laboratório',

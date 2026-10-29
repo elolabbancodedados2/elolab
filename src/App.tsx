@@ -291,6 +291,8 @@ function AppRoutes() {
                           <Route path="/medicos" element={<Navigate to="/equipe" replace />} />
                           <Route path="/funcionarios" element={<Navigate to="/equipe" replace />} />
                           <Route path="/gestao-fluxo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><GestaoFluxo /></SupabaseProtectedRoute>} />
+                          <Route path="/gestao-fluxo/espera/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><ListaEspera creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/gestao-fluxo/espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />
                           <Route path="/gestao-fluxo/salas/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Salas creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/gestao-fluxo/salas/:roomId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Salas /></SupabaseProtectedRoute>} />
                           <Route path="/salas" element={<Navigate to="/gestao-fluxo" replace />} />

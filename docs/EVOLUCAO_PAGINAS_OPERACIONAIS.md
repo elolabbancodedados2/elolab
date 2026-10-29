@@ -250,3 +250,15 @@ Arquivos: `TiposConsulta.tsx`, ajuste pontual de retorno em `CaixaDiario.tsx`, r
 Validação: sete cenários Playwright passaram, incluindo 1440/768/390 px, rascunhos de cadastro e preço, recuperação de falhas, edição com cor/preparo preservados, retorno ao Caixa, registro ausente e permissões. Doze testes unitários passaram em seis arquivos (abas, acesso, integridade de preços, breadcrumbs e anúncio de rota). TypeScript e build passaram; lint focal sem erros, com 32 avisos nos arquivos de tipos/Caixa. Capturas de cadastro, rodapé mobile e preços efetivamente visualizadas. O ID exposto no breadcrumb foi corrigido durante essa revisão. Evidências em `.qa-artifacts/tipos-20261029/`.
 
 Limites: escritas foram simuladas por interceptação, sem preços reais alterados. Não rehomologamos faturamento nem convênios externos. Os limites de consulta e as validações de duplicidade existentes permanecem.
+
+Publicação de tipos e preços: build `a2b0361e58b4415c813f68ca182f18dcd87afa7a`, imagem `easypanel/elolab/app:deploy-20261029-a2b0361e`. Swarm concluído, versão e healthcheck conferidos. Cadastro vazio efetivamente visualizado em produção, sem gravação. Rollback: imagem `deploy-20261029-6fd6e463` e fonte `code.before-20261029-a2b0361e`.
+
+## Lista de espera — inclusão em página própria (29/10/2026)
+
+Diagnóstico: a solicitação de vaga usava modal longo e podia perder o preenchimento ao fechar. A busca de paciente, prioridade, especialidade e disponibilidade precisam continuar juntas, com retorno à lista operacional.
+
+Implementação: rota `/gestao-fluxo/espera/nova`, formulário contínuo com proteção contra saída/recarga e envio repetido. Retorno preserva aba, parâmetros e filtros. Mantidas a consulta preventiva de pedido duplicado, a recuperação da restrição concorrente do banco, as preferências, o vínculo com paciente e o status inicial aguardando. As ações de contato, agendamento, desistência e exclusão da lista não mudaram. Confirmações curtas continuam em diálogos.
+
+Validação: cinco cenários Playwright passaram, incluindo desktop/tablet/celular, descarte protegido, seleção de paciente, duplicidade, erro de gravação, sucesso e restrição por perfil. Onze testes unitários passaram em três arquivos (prioridade, compatibilidade de vagas e sidebar da agenda). TypeScript e build passaram; ESLint focal com zero erros e nove avisos. Capturas desktop do formulário e mobile do rodapé efetivamente visualizadas; ações acima da navegação inferior. Evidências em `.qa-artifacts/espera-20261029/`.
+
+Arquivos: `ListaEspera.tsx`, `App.tsx`, `routeLabels.ts` e `tests/waiting-list-page.spec.ts`. Testes usam escritas interceptadas; nenhuma inscrição, mensagem ou agendamento real foi criado. Nenhuma migration ou alteração de API.
