@@ -273,6 +273,7 @@ function AppRoutes() {
                           <Route path="/documentos-clinicos/novo-encaminhamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/encaminhamentos/:referralId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos /></SupabaseProtectedRoute>} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
+                          <Route path="/retornos/:returnId/agendar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
                           <Route path="/laboratorio" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Laboratorio /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/mapa-coleta" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><MapaColeta /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><GuiasExternas /></PlanFeatureGuard></SupabaseProtectedRoute>} />

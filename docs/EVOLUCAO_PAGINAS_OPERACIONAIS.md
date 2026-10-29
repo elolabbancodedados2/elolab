@@ -262,3 +262,15 @@ Implementação: rota `/gestao-fluxo/espera/nova`, formulário contínuo com pro
 Validação: cinco cenários Playwright passaram, incluindo desktop/tablet/celular, descarte protegido, seleção de paciente, duplicidade, erro de gravação, sucesso e restrição por perfil. Onze testes unitários passaram em três arquivos (prioridade, compatibilidade de vagas e sidebar da agenda). TypeScript e build passaram; ESLint focal com zero erros e nove avisos. Capturas desktop do formulário e mobile do rodapé efetivamente visualizadas; ações acima da navegação inferior. Evidências em `.qa-artifacts/espera-20261029/`.
 
 Arquivos: `ListaEspera.tsx`, `App.tsx`, `routeLabels.ts` e `tests/waiting-list-page.spec.ts`. Testes usam escritas interceptadas; nenhuma inscrição, mensagem ou agendamento real foi criado. Nenhuma migration ou alteração de API.
+
+Publicação da lista de espera: build `f46ad56444b665343c504971d161d8b35762e0e5`, imagem `easypanel/elolab/app:deploy-20261029-f46ad564`. Swarm concluído, versão pública e healthcheck conferidos. Formulário vazio efetivamente visualizado em produção, sem inscrição real. Rollback: imagem `deploy-20261029-a2b0361e` e fonte `code.before-20261029-f46ad564`.
+
+## Retornos — agendamento e remarcação em página própria (29/10/2026)
+
+Diagnóstico: agendamento/remarcação dependiam de um modal e de estado da listagem, sem endereço direto nem proteção de alterações. A consulta do horário existente antes da abertura podia falhar sem uma página de recuperação.
+
+Implementação: `/retornos/:returnId/agendar` abre agendamento ou remarcação conforme o vínculo existente. Consulta restrita à clínica recupera retorno, paciente, profissional e horário atual. Identificação ausente interrompe a abertura para conferência. Estados de erro, inexistência e retorno já encerrado têm feedback e retorno à lista. Preservados os bloqueios de agenda, conflitos de médico/paciente, verificação de expediente, confirmação explícita fora de expediente e RPC `agendar_retorno_atomico`. Envio simultâneo bloqueado; alteração não salva protegida. A volta mantém filtro de paciente e demais filtros. Sem mudança de RPC, regra de negócio ou autorização.
+
+Validação: sete cenários Playwright passaram, incluindo três larguras, vínculo e horário da remarcação, retorno à lista filtrada, descarte, conflito de agenda, exceção de expediente, falha e recuperação de RPC, registro ausente/encerrado e perfil sem acesso. Vinte e um testes unitários passaram em cinco arquivos (horário, conclusão, contratos SQL e breadcrumbs). TypeScript e build passaram; lint focal sem erros, 12 avisos. Capturas desktop/mobile efetivamente visualizadas, com contexto do paciente e ações acessíveis. Evidências em `.qa-artifacts/retornos-20261029/`.
+
+Arquivos: `Retornos.tsx`, rotas/rótulos, breadcrumbs e `tests/return-booking-page.spec.ts`. Agendamentos e remarcações de teste foram interceptados; nenhum atendimento real foi criado ou alterado. Testes de SQL verificam contratos no código, sem aplicar migrations. O componente clínico que solicita retornos dentro do prontuário permanece na etapa de componentes clínicos.

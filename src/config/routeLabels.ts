@@ -113,6 +113,7 @@ export function getRouteLabel(pathname: string): string {
   const path = pathname.replace(/\/+$/, '') || '/';
   const explicit = labelsByPath[path] || labelsByMenuPath[path];
   if (explicit) return explicit;
+  if (/^\/retornos\/[^/]+\/agendar$/.test(path)) return 'Agendar ou remarcar retorno';
   if (/^\/agenda\/[^/]+\/editar$/.test(path)) return 'Editar consulta';
   if (/^\/pacientes\/[^/]+\/editar$/.test(path)) return 'Editar paciente';
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
