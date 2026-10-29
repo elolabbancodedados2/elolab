@@ -445,8 +445,8 @@ export default function Salas() {
                   ativo && s.escuro && 'ring-2 ring-primary/60',
                 )}
               >
-                <div className="flex min-h-[88px] items-center gap-3 p-3 xl:min-h-[96px]">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                <div className="flex min-h-[68px] items-center gap-2 p-2 md:min-h-[88px] md:gap-3 md:p-3 xl:min-h-[96px]">
+                  <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg md:h-10 md:w-10 md:rounded-xl', s.surface)}>
                     <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
                   </div>
                   <div className="min-w-0 flex-1">

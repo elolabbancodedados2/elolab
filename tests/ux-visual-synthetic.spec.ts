@@ -177,7 +177,7 @@ test('Auth desktop preserves readable login and signup states without horizontal
 
     const accessSwitch = page.getByRole('group', { name: 'Modo de acesso' });
     await expect(page.getByRole('heading', { name: 'Acesse sua conta' })).toBeVisible();
-    await expect(page.getByText('Para a rotina da sua clínica')).toBeVisible();
+    await expect(page.getByText('Tudo o que sua clínica precisa, em um só lugar.')).toBeVisible();
     await expect(page.getByText('Sistema completo para clínicas')).toHaveCount(0);
     await expect(page.getByLabel('E-mail')).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Senha' })).toBeVisible();
@@ -928,7 +928,7 @@ test('insurance billing desktop explains prerequisites for empty clinic setup', 
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, backgroundImage: style.backgroundImage, opacity: style.opacity };
   })));
-  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(243, 245, 247)', 'rgb(243, 245, 247)']);
+  expect(disabledStyles.map(style => style.background)).toEqual(['rgb(247, 249, 253)', 'rgb(247, 249, 253)']);
   expect(disabledStyles.map(style => style.backgroundImage)).toEqual(['none', 'none']);
   expect(disabledStyles.map(style => style.opacity)).toEqual(['1', '1']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -2330,8 +2330,8 @@ test('LGPD export is audited before download and fails closed when audit insert 
       selects.push(url.searchParams.get('select') ?? '');
       exportSelects.set(table, selects);
     }
-    if (url.pathname === '/rest/v1/pacientes' && request.method() === 'GET' && url.searchParams.get('select') === '*') {
-      exportedPatientReads.push(url.searchParams.toString());
+    if (url.pathname === '/rest/v1/pacientes' && request.method() === 'GET') {
+      exportedPatientReads.push(url.searchParams.get('select') ?? '');
     }
     if (request.method() === 'GET' && [
       'agendamentos', 'prontuarios', 'exames', 'triagens', 'atestados', 'encaminhamentos',
@@ -2431,8 +2431,11 @@ test('LGPD export is audited before download and fails closed when audit insert 
     page.waitForEvent('download', { timeout: 1000 }).then(() => false).catch(() => true),
   ]);
   await main.getByRole('button', { name: 'Exportar' }).click();
+  const exportDialog = page.getByRole('dialog', { name: 'Escopo da exportação' });
+  await expect(exportDialog).toBeVisible();
+  await exportDialog.getByRole('button', { name: 'Gerar arquivo' }).click();
   expect(await noDownload).toBe(true);
-  expect(exportedPatientReads).toHaveLength(1); // only the patient row lookup precedes audit registration
+  expect(exportedPatientReads).toEqual(['*']); // only the patient row lookup precedes audit registration
   expect(bulkPatientDataReads).toEqual([]);
   expect(auditWrites.some(write => write.method === 'POST')).toBe(true);
 
@@ -2442,6 +2445,7 @@ test('LGPD export is audited before download and fails closed when audit insert 
   await page.goto('/lgpd-pacientes');
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#main-content').getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('dialog', { name: 'Escopo da exportação' }).getByRole('button', { name: 'Gerar arquivo' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^lgpd-export-Pessoa_Exemplo_QA-/);
   const exportPath = testInfo.outputPath('lgpd-export.json');
@@ -2497,6 +2501,7 @@ test('LGPD export is audited before download and fails closed when audit insert 
     page.waitForEvent('download', { timeout: 1000 }).then(() => false).catch(() => true),
   ]);
   await page.locator('#main-content').getByRole('button', { name: 'Exportar' }).click();
+  await page.getByRole('dialog', { name: 'Escopo da exportação' }).getByRole('button', { name: 'Gerar arquivo' }).click();
   expect(await failedMemedDownload).toBe(true);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
@@ -3727,7 +3732,7 @@ test('finance reconciles populated received revenue with its synthetic payment l
 
     const main = page.locator('#main-content');
     await expect(main.getByRole('heading', { name: 'Painel Financeiro' })).toBeVisible();
-    const revenueCard = main.getByText('Receita Recebida', { exact: true }).locator('xpath=../..');
+    const revenueCard = main.getByText('Entradas recebidas', { exact: true }).first().locator('xpath=../..');
     await expect(revenueCard).toContainText(/R\$\s*720/);
     await expect(main.getByText('Sem receita para calcular no perÃ­odo', { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

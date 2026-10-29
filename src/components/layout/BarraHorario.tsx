@@ -156,7 +156,7 @@ export function BarraHorario() {
       ) : (
         <>
           <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta' : 'Sem consultas'} />
-          <Segmento consulta={proxima} hoje={hoje} vazio="Nenhuma próxima" className="hidden lg:flex" />
+          <Segmento consulta={proxima} hoje={hoje} vazio="Nenhuma próxima" className="hidden 2xl:flex" />
         </>
       )}
     </section>
