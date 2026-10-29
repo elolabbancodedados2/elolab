@@ -11,7 +11,7 @@ export function Breadcrumbs() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
+    <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
       <Link to="/dashboard" aria-label="Voltar ao painel" className="flex items-center gap-1 transition-colors hover:text-foreground">
         <Home className="h-3.5 w-3.5" />
       </Link>
@@ -20,7 +20,7 @@ export function Breadcrumbs() {
         const label = getRouteLabel(path);
         const isLast = index === segments.length - 1;
         // These record segments have edit/work pages, but no standalone detail route.
-        if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|retornos)\/[^/]+$/.test(path)) return null;
+        if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|retornos|convenios|convenios\/[^/]+\/exames)\/[^/]+$/.test(path)) return null;
 
         return (
           <span key={path} className="flex items-center gap-1.5">

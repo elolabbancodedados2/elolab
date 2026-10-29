@@ -9,10 +9,17 @@ describe('Breadcrumbs', () => {
     '/gestao-fluxo/salas/record-qa/editar',
     '/precos-servicos/tipos/record-qa/precos',
     '/retornos/record-qa/agendar',
+    '/convenios/record-qa/editar',
   ])('não cria links para segmentos de registro sem página em %s', path => {
     render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);
     expect(screen.queryByText('Record qa')).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes('record-qa'))).toBe(false);
+  });
+  it('mantém a tabela como destino válido e omite os identificadores na edição de preço', () => {
+    render(<MemoryRouter initialEntries={['/convenios/record-qa/exames/price-qa/editar']}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.queryByText('Record qa')).not.toBeInTheDocument();
+    expect(screen.queryByText('Price qa')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href') === '/convenios/record-qa/exames')).toBe(true);
   });
   it('exibe o nome correto da Central de Notificações', () => {
     render(

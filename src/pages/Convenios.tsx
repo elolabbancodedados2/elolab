@@ -1,15 +1,15 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Edit, Trash2, Building2, Shield, ExternalLink, User, Phone, Loader2,
   FlaskConical, DollarSign, Power, RefreshCw, X, Link2, Receipt, Tags, CheckCircle2, XCircle, Layers,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -120,20 +120,26 @@ const initialExameForm: ExamePreco = {
 };
 
 /* ─── Tabela de Exames do Convênio ─── */
-function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
+function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string; creationPage: boolean }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { agreementExamId: editingExameId } = useParams();
+  const formPage = creationPage || !!editingExameId;
+  const completed = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef(JSON.stringify(initialExameForm));
+  const leaveForm = () => navigate(`/convenios/${convenioId}/exames`, { state: location.state });
   const { profile, hasRole, isAdmin } = useSupabaseAuth();
   const permissoesConvenios = getConveniosPermissions(isAdmin(), hasRole);
   const podeGerenciarTabela = permissoesConvenios.gerenciarTabelaExames;
   const podeExcluirExame = permissoesConvenios.excluirExames;
   const queryClient = useQueryClient();
   const [exameForm, setExameForm] = useState<ExamePreco>(initialExameForm);
-  const [editingExameId, setEditingExameId] = useState<string | null>(null);
-  const [isExameFormOpen, setIsExameFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const exameSaveLock = useRef(false);
   const [isDeletingExame, setIsDeletingExame] = useState(false);
   const exameDeleteLock = useRef(false);
-  const [searchExame, setSearchExame] = useState('');
+  const [searchExame, setSearchExame] = useState(location.state?.agreementExamSearch ?? '');
   const [deleteExameId, setDeleteExameId] = useState<string | null>(null);
 
   const { data: exames = [], isLoading, isFetching, error: erroExames, refetch: refetchExames } = useQuery({
@@ -158,25 +164,27 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
       normalizarTexto(e.descricao).includes(normalizarTexto(searchExame.trim()))
     ), [exames, searchExame]);
 
-  const handleNewExame = () => {
-    setEditingExameId(null);
-    setExameForm(initialExameForm);
-    setIsExameFormOpen(true);
-  };
-
-  const handleEditExame = (e: any) => {
-    setEditingExameId(e.id);
-    setExameForm({
-      tipo_exame: e.tipo_exame,
-      codigo_tuss: e.codigo_tuss || '',
-      descricao: e.descricao || '',
-      valor_tabela: e.valor_tabela || 0,
-      valor_filme: e.valor_filme || 0,
-      valor_custo: e.valor_custo || 0,
-      valor_repasse: e.valor_repasse || 0,
-    });
-    setIsExameFormOpen(true);
-  };
+  const recordQuery = useQuery({
+    queryKey: ['preco-convenio-pagina', profile?.clinica_id, convenioId, editingExameId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('precos_exames_convenio').select('*').eq('id', editingExameId!).eq('convenio_id', convenioId).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!editingExameId && !!profile?.clinica_id,
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (!formPage || initialized.current || (editingExameId && !recordQuery.data)) return;
+    const e = recordQuery.data;
+    const value = e ? { tipo_exame: e.tipo_exame, codigo_tuss: e.codigo_tuss || '', descricao: e.descricao || '', valor_tabela: e.valor_tabela || 0, valor_filme: e.valor_filme || 0, valor_custo: e.valor_custo || 0, valor_repasse: e.valor_repasse || 0 } : initialExameForm;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setExameForm(value);
+  }, [formPage, editingExameId, recordQuery.data]);
+  const openPrice = (path: string) => navigate(path, { state: { ...location.state, agreementExamSearch: searchExame } });
+  const handleNewExame = () => openPrice(`/convenios/${convenioId}/exames/novo`);
+  const handleEditExame = (e: { id: string }) => openPrice(`/convenios/${convenioId}/exames/${e.id}/editar`);
 
   const handleSaveExame = async () => {
     if (!podeGerenciarTabela) { toast.error('Seu perfil não pode alterar a tabela de exames.'); return; }
@@ -221,7 +229,8 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
         toast.success('Exame adicionado à tabela!');
       }
       queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
-      setIsExameFormOpen(false);
+      completed.current = true;
+      leaveForm();
     } catch (err: any) {
       const message = err.code === '23505'
         ? 'Já existe um exame com este nome para este convênio. Edite o registro existente.'
@@ -253,6 +262,9 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
 
   return (
     <div className="space-y-4">
+      {formPage && <UnsavedChangesGuard dirty={JSON.stringify(exameForm) !== baseline.current} busy={isSaving} completed={completed} />}
+      {formPage && <Button variant="outline" onClick={leaveForm}>Voltar à tabela de exames</Button>}
+      {!formPage && <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div className="flex items-center gap-2">
           <FlaskConical className="h-5 w-5 text-primary" />
@@ -287,7 +299,7 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
           {exames.length > 0 && <Button variant="link" onClick={() => setSearchExame('')}>Limpar busca</Button>}
         </div>
       ) : (
-        <div className="rounded-md border max-h-[400px] overflow-y-auto">
+        <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -339,19 +351,18 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
         </div>
       )}
 
-      {/* Exame Form Dialog */}
-      <Dialog open={isExameFormOpen} onOpenChange={open => { if (open || !isSaving) setIsExameFormOpen(open); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FlaskConical className="h-5 w-5 text-primary" />
-              {editingExameId ? 'Editar Exame' : 'Novo Exame na Tabela'}
-            </DialogTitle>
-          </DialogHeader>
+      </>}
+      {formPage && (editingExameId && recordQuery.isError ? <ErrorState title="Não foi possível abrir o preço do exame" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+        : editingExameId && recordQuery.isPending ? <p role="status">Carregando preço do exame…</p>
+        : editingExameId && !recordQuery.data ? <p role="status">Exame não encontrado na tabela deste convênio.</p>
+        : <form onSubmit={event => { event.preventDefault(); void handleSaveExame(); }} className="max-w-3xl space-y-6">
+          <h2 className="text-xl font-semibold">{editingExameId ? 'Editar Exame' : 'Novo Exame na Tabela'}</h2>
+          {erroExames && <ErrorState compact title="Atualize a tabela antes de salvar" error={erroExames} onRetry={() => void refetchExames()} />}
+          <fieldset disabled={isSaving} className="min-w-0">
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="convenio-exame-tipo" className="text-xs">Tipo do Exame *</Label>
-              <Input id="convenio-exame-tipo" value={exameForm.tipo_exame}
+              <Input id="convenio-exame-tipo" required value={exameForm.tipo_exame}
                 onChange={e => setExameForm({ ...exameForm, tipo_exame: e.target.value })}
                 placeholder="Ex: Hemograma, Raio-X Tórax..." />
             </div>
@@ -410,14 +421,14 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
               )}
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsExameFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSaveExame} disabled={isSaving}>
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="outline" onClick={leaveForm} disabled={isSaving}>Cancelar</Button>
+            <Button type="submit" className="scroll-mb-24" disabled={isSaving || isLoading || !!erroExames}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>)}
 
       {/* Delete Exame Dialog */}
       <AlertDialog open={!!deleteExameId} onOpenChange={open => { if (open || !isDeletingExame) setDeleteExameId(open ? deleteExameId : null); }}>
@@ -437,15 +448,28 @@ function TabelaExamesConvenio({ convenioId }: { convenioId: string }) {
 }
 
 /* ─── Página Principal ─── */
-function Convenios() {
+function Convenios({ creationPage = false, examTablePage = false, examCreationPage = false }: { creationPage?: boolean; examTablePage?: boolean; examCreationPage?: boolean }) {
+  const location = useLocation();
+  return <ConveniosWorkspace key={location.pathname} creationPage={creationPage} examTablePage={examTablePage} examCreationPage={examCreationPage} />;
+}
+
+function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: { creationPage: boolean; examTablePage: boolean; examCreationPage: boolean }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { agreementId: editingId } = useParams();
+  const taskPage = creationPage || !!editingId;
+  const activeTab = examTablePage ? 'exames' : 'dados';
+  const completed = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef(JSON.stringify(initialFormData));
+  const returnTo = typeof location.state?.agreementReturn === 'string' && /^\/convenios(?:\?|$)/.test(location.state.agreementReturn) ? location.state.agreementReturn : '/convenios';
+  const leaveTask = () => navigate(returnTo, { state: { agreementFilters: location.state?.agreementFilters } });
   const { profile, isAdmin, hasRole } = useSupabaseAuth();
   const permissoesConvenios = getConveniosPermissions(isAdmin(), hasRole);
   const podeGerenciarConvenios = permissoesConvenios.gerenciarConvenios;
   const podeGerenciarTabelaExames = permissoesConvenios.gerenciarTabelaExames;
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(location.state?.agreementFilters?.search ?? '');
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -455,8 +479,7 @@ function Convenios() {
   const convenioDeleteLock = useRef(false);
   const [atualizandoStatusId, setAtualizandoStatusId] = useState<string | null>(null);
   const [newPlano, setNewPlano] = useState('');
-  const [activeTab, setActiveTab] = useState('dados');
-  const [filtroStatus, setFiltroStatus] = useState<FiltroConvenio>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<FiltroConvenio>(location.state?.agreementFilters?.status ?? 'todos');
 
   const queryClient = useQueryClient();
   const { data: convenios = [], isLoading, error: erroConvenios, refetch: refetchConvenios } = useConvenios();
@@ -512,18 +535,20 @@ function Convenios() {
     }
   };
 
-  const handleNew = () => {
-    setEditingId(null);
-    setEditingUpdatedAt(null);
-    setFormData(initialFormData);
-    setActiveTab('dados');
-    setIsFormOpen(true);
-  };
-
-  const handleEdit = (c: any) => {
-    setEditingId(c.id);
-    setEditingUpdatedAt(c.updated_at || null);
-    setFormData({
+  const recordQuery = useQuery({
+    queryKey: ['convenio-pagina', profile?.clinica_id, editingId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('convenios').select('*').eq('id', editingId!).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!editingId && !!profile?.clinica_id,
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (!taskPage || initialized.current || (editingId && !recordQuery.data)) return;
+    const c = recordQuery.data;
+    const value: FormData = c ? {
       nome: c.nome, codigo: c.codigo, cnpj: c.cnpj || '', telefone: c.telefone || '',
       email: c.email || '', website: c.website || '', valor_consulta: c.valor_consulta || 0,
       valor_retorno: c.valor_retorno || 0, carencia: c.carencia || 0, ativo: c.ativo ?? true,
@@ -533,17 +558,16 @@ function Convenios() {
       responsavel_nome: c.responsavel_nome || '', responsavel_cargo: c.responsavel_cargo || '',
       responsavel_telefone: c.responsavel_telefone || '',
       tipo_planos: c.tipo_planos || [],
-    });
-    setActiveTab('dados');
-    setIsFormOpen(true);
-  };
-
-  const handleGerenciarPrecosExames = (c: any) => {
-    setEditingId(c.id);
-    setEditingUpdatedAt(c.updated_at || null);
-    setActiveTab('exames');
-    setIsFormOpen(true);
-  };
+    } : initialFormData;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setEditingUpdatedAt(c?.updated_at || null);
+    setFormData(value);
+  }, [taskPage, editingId, recordQuery.data]);
+  const openTask = (path: string) => navigate(path, { state: taskPage ? location.state : { agreementReturn: location.pathname + location.search, agreementFilters: { search: searchTerm, status: filtroStatus } } });
+  const handleNew = () => openTask('/convenios/novo');
+  const handleEdit = (c: { id: string }) => openTask(`/convenios/${c.id}/editar`);
+  const handleGerenciarPrecosExames = (c: { id: string }) => openTask(`/convenios/${c.id}/exames`);
 
   const handleDeleteClick = (id: string) => { setSelectedId(id); setIsDeleteOpen(true); };
 
@@ -658,13 +682,12 @@ function Convenios() {
           clinica_id: profile?.clinica_id || null,
         }).select('id').single();
         if (error) throw error;
+        if (!data) throw new Error('O cadastro não foi confirmado pelo banco.');
         toast.success('Convênio cadastrado!');
-        if (data) setEditingId(data.id);
       }
       queryClient.invalidateQueries({ queryKey: ['convenios'] });
-      if (activeTab === 'dados') {
-        setIsFormOpen(false);
-      }
+      completed.current = true;
+      leaveTask();
     } catch (error: any) {
       const message = error.code === '23505'
         ? 'Já existe um convênio com este código interno nesta clínica. Use outro código.'
@@ -686,11 +709,14 @@ function Convenios() {
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-  if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
-  if (erroConvenios) return <ErrorState error={erroConvenios} title="Não foi possível carregar os convênios" onRetry={() => { void refetchConvenios(); }} />;
+  if (isLoading && !taskPage) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  if (erroConvenios && !taskPage) return <ErrorState error={erroConvenios} title="Não foi possível carregar os convênios" onRetry={() => { void refetchConvenios(); }} />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      {taskPage && !examTablePage && <UnsavedChangesGuard dirty={JSON.stringify(formData) !== baseline.current || !!newPlano.trim()} busy={isSubmitting} completed={completed} />}
+      {taskPage && <Button variant="outline" onClick={leaveTask}>Voltar aos convênios</Button>}
+      {!taskPage && <>
       <PageHeader
         title="Convênios"
         description={totalConvenios > 0
@@ -857,14 +883,14 @@ function Convenios() {
                         <TableCell>
                           <div className="min-w-0">
                             <p className={cn('font-medium', c.ativo ? 'text-foreground' : 'text-muted-foreground')}>{c.nome}</p>
-                            <p className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-muted-foreground">
                               <span>{c.codigo}</span>
                               {temTabela && (
                                 <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-white font-sans text-[9px] text-[#1080CA]">
                                   <FlaskConical aria-hidden="true" className="mr-0.5 h-2.5 w-2.5" /> Tabela de exames
                                 </Badge>
                               )}
-                            </p>
+                            </div>
                             {c.tipo_planos && c.tipo_planos.length > 0 && (
                               <div className="mt-0.5 flex flex-wrap gap-1">
                                 {c.tipo_planos.slice(0, 2).map((p: string) => (
@@ -947,18 +973,18 @@ function Convenios() {
         </CardContent>
       </Card>
 
-      {/* ── Form Dialog with Tabs ── */}
-      <Dialog open={isFormOpen} onOpenChange={open => { if (open || !isSubmitting) setIsFormOpen(open); }}>
-        <DialogContent className="max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
-              {podeGerenciarConvenios ? (editingId ? 'Editar Convênio' : 'Novo Convênio') : 'Tabela de preços de exames'}
-            </DialogTitle>
-          </DialogHeader>
-
+      </>}
+      {taskPage && (examTablePage && !podeGerenciarTabelaExames || !examTablePage && !podeGerenciarConvenios ? <p role="status">Seu perfil não pode alterar este cadastro ou tabela.</p>
+        : editingId && recordQuery.isError ? <ErrorState title="Não foi possível abrir o convênio" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+        : editingId && recordQuery.isPending ? <p role="status">Carregando convênio…</p>
+        : editingId && !recordQuery.data ? <p role="status">Convênio não encontrado na clínica atual.</p>
+        : <section className="mx-auto max-w-5xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5">
+            <p className="text-sm text-muted-foreground">Convênios{recordQuery.data ? ` / ${recordQuery.data.nome}` : ''}</p>
+            <h1 className="text-2xl font-semibold">{examTablePage ? 'Tabela de preços de exames' : editingId ? 'Editar Convênio' : 'Novo Convênio'}</h1>
+          </header>
           <fieldset disabled={isSubmitting} className="contents">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+          <Tabs activationMode="manual" value={activeTab} onValueChange={value => editingId && openTask(`/convenios/${editingId}/${value === 'exames' ? 'exames' : 'editar'}`)} className="space-y-5">
             <TabsList className={cn('grid h-auto w-full rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm', podeGerenciarConvenios ? 'grid-cols-2' : 'grid-cols-1')}>
               {podeGerenciarConvenios && <TabsTrigger value="dados" className="min-h-11 gap-2 rounded-xl">
                 <Building2 className="h-3.5 w-3.5" /> Dados do Convênio
@@ -968,16 +994,16 @@ function Convenios() {
               </TabsTrigger>}
             </TabsList>
 
-            {podeGerenciarConvenios && <TabsContent value="dados" className="flex-1 overflow-y-auto space-y-5 pr-2 mt-4">
+            {podeGerenciarConvenios && <TabsContent value="dados" className="mt-4"><form id="agreement-form" onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-5">
               {/* Identificação */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="convenio-nome" className="text-xs">Nome *</Label>
-                  <Input id="convenio-nome" value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} />
+                  <Input id="convenio-nome" required value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="convenio-codigo" className="text-xs">Código Interno *</Label>
-                  <Input id="convenio-codigo" value={formData.codigo} onChange={e => setFormData({ ...formData, codigo: e.target.value.toUpperCase() })} maxLength={10} />
+                  <Input id="convenio-codigo" required value={formData.codigo} onChange={e => setFormData({ ...formData, codigo: e.target.value.toUpperCase() })} maxLength={10} />
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -991,7 +1017,7 @@ function Convenios() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                   <Shield className="h-4 w-4" /> Dados Regulatórios (ANS)
                 </h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="convenio-ans" className="text-xs">Registro ANS</Label>
                     <Input id="convenio-ans" value={formData.registro_ans} onChange={e => setFormData({ ...formData, registro_ans: e.target.value })}
@@ -1020,7 +1046,7 @@ function Convenios() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                   <DollarSign className="h-4 w-4" /> Valores de Consulta e Regras
                 </h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="convenio-valor-consulta" className="text-xs">Valor Consulta (R$)</Label>
                     <Input id="convenio-valor-consulta" type="number" step="0.01" value={formData.valor_consulta}
@@ -1090,7 +1116,7 @@ function Convenios() {
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                   <Phone className="h-4 w-4" /> Contato
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="convenio-telefone" className="text-xs">Telefone</Label>
                     <Input id="convenio-telefone" value={formData.telefone} onChange={e => setFormData({ ...formData, telefone: e.target.value })} />
@@ -1138,11 +1164,11 @@ function Convenios() {
                 <Switch id="convenio-ativo" checked={formData.ativo} onCheckedChange={checked => setFormData({ ...formData, ativo: checked })} />
                 <Label htmlFor="convenio-ativo">Convênio Ativo</Label>
               </div>
-            </TabsContent>}
+            </form></TabsContent>}
 
-            {podeGerenciarTabelaExames && <TabsContent value="exames" className="flex-1 overflow-y-auto mt-4">
+            {podeGerenciarTabelaExames && <TabsContent value="exames" className="mt-4">
               {editingId ? (
-                <TabelaExamesConvenio convenioId={editingId} />
+                <TabelaExamesConvenio convenioId={editingId} creationPage={examCreationPage} />
               ) : (
                 <div className="text-center py-10 text-muted-foreground">
                   <p>Salve o convênio primeiro para gerenciar a tabela de exames.</p>
@@ -1152,16 +1178,15 @@ function Convenios() {
           </Tabs>
           </fieldset>
 
-          <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Fechar</Button>
+          {!examTablePage && <div className="flex flex-wrap justify-end gap-3 pt-5 border-t">
+            <Button type="button" variant="outline" onClick={leaveTask} disabled={isSubmitting}>Cancelar</Button>
             {podeGerenciarConvenios && activeTab === 'dados' && (
-              <Button onClick={handleSave} disabled={isSubmitting}>
+              <Button type="submit" form="agreement-form" className="scroll-mb-24" disabled={isSubmitting}>
                 {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>}
+        </section>)}
 
       {/* Delete Dialog */}
       <AlertDialog open={isDeleteOpen} onOpenChange={open => { if (open || !isDeleting) setIsDeleteOpen(open); }}>

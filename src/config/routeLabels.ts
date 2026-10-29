@@ -30,6 +30,7 @@ const labelsByPath: Record<string, string> = {
   '/precos-servicos/tipos/novo': 'Novo tipo de consulta',
   '/gestao-fluxo/espera': 'Lista de espera',
   '/gestao-fluxo/espera/nova': 'Adicionar à lista de espera',
+  '/convenios/novo': 'Novo convênio',
   '/exames': 'Exames',
   '/exames/laboratorios': 'Laboratórios e fornecedores',
   '/exames/laboratorios/novo': 'Novo laboratório',
@@ -114,6 +115,10 @@ export function getRouteLabel(pathname: string): string {
   const explicit = labelsByPath[path] || labelsByMenuPath[path];
   if (explicit) return explicit;
   if (/^\/retornos\/[^/]+\/agendar$/.test(path)) return 'Agendar ou remarcar retorno';
+  if (/^\/convenios\/[^/]+\/editar$/.test(path)) return 'Editar convênio';
+  if (/^\/convenios\/[^/]+\/exames$/.test(path)) return 'Tabela de exames';
+  if (/^\/convenios\/[^/]+\/exames\/novo$/.test(path)) return 'Novo exame na tabela';
+  if (/^\/convenios\/[^/]+\/exames\/[^/]+\/editar$/.test(path)) return 'Editar exame na tabela';
   if (/^\/agenda\/[^/]+\/editar$/.test(path)) return 'Editar consulta';
   if (/^\/pacientes\/[^/]+\/editar$/.test(path)) return 'Editar paciente';
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
