@@ -17,6 +17,7 @@ test('new appointment is a page, preserves agenda context and protects unsaved w
   await page.getByRole('button', { name: 'Voltar à agenda', exact: true }).first().click();
   await expect(page.getByRole('alertdialog', { name: 'Sair sem salvar?' })).toBeVisible();
   await page.getByRole('button', { name: 'Continuar nesta página' }).click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(page.getByLabel('Observações', { exact: true })).toHaveValue('Rascunho sintético não enviado');
   await page.goBack();
   await expect(page.getByRole('alertdialog', { name: 'Sair sem salvar?' })).toBeVisible();

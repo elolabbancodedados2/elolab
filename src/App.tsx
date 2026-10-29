@@ -364,7 +364,7 @@ function AppRoutes() {
 }
 
 // Data router enables supported navigation blocking for unsaved task pages.
-const router = createBrowserRouter([{ path: "*", element: <AppRoutes /> }]);
+const router = createBrowserRouter([{ path: "*", element: <ErrorBoundary><AppRoutes /></ErrorBoundary> }]);
 
 function App() {
 
