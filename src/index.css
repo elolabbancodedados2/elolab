@@ -111,20 +111,20 @@
     --button-ripple-color: rgba(17, 17, 17, 0.06);
 
     /* EloLab v2 — "Intellecta": preto/branco/cinza + acento azul→ciano da logo */
-    --brand: 204 85% 43%;
+    --brand: 215 52% 42%;
     --brand-foreground: 0 0% 100%;
-    --brand-light: 204 70% 95%;
-    --brand-hover: 204 85% 36%;
-    --brand-glow: 186 79% 54%;
+    --brand-light: 215 35% 95%;
+    --brand-hover: 215 52% 34%;
+    --brand-glow: 215 38% 58%;
 
     /* Primary — ação primária no azul da marca (preto removido em 2026-10-18) */
-    --primary: 204 85% 43%;
+    --primary: 215 52% 42%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 204 85% 43%;
+    --primary-glow: 215 52% 42%;
 
     /* Destaque (verde-limão) para blocos "em andamento" e confirmações pontuais */
-    --highlight: 186 79% 54%;
-    --highlight-foreground: 240 10% 12%;
+    --highlight: 215 24% 90%;
+    --highlight-foreground: 215 32% 20%;
 
     /* Success — mantém o significado semântico, não muda */
     --success: 152 69% 30%;
@@ -168,7 +168,7 @@
     /* Borders */
     --border: 210 15% 90%;
     --input: 210 15% 86%;
-    --ring: 204 85% 43%;
+    --ring: 215 52% 42%;
 
     --radius: 1rem;
 
@@ -182,9 +182,9 @@
     --shadow-glow-success: 0 12px 28px -12px hsl(var(--success) / 0.45);
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, #1080CA 0%, #2ED5E7 100%);
-    --gradient-hero: linear-gradient(140deg, #0a5d94 0%, #1080CA 100%);
-    --gradient-highlight: linear-gradient(135deg, #CFF34D 0%, #9FE62B 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(215 52% 42%) 0%, hsl(215 52% 42%) 100%);
+    --gradient-hero: linear-gradient(140deg, hsl(215 52% 34%) 0%, hsl(215 52% 42%) 100%);
+    --gradient-highlight: linear-gradient(135deg, hsl(215 24% 90%) 0%, hsl(215 24% 90%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(240 20% 99%) 100%);
     --gradient-sidebar: linear-gradient(180deg, #F3F3F6 0%, #F3F3F6 55%, #BFD8EE 100%);
     --gradient-surface: linear-gradient(135deg, #f5f8fb 0%, #edf1f7 100%);
@@ -197,14 +197,14 @@
     --sidebar-accent: 240 14% 92%;
     --sidebar-accent-foreground: 240 10% 12%;
     --sidebar-border: 240 10% 88%;
-    --sidebar-ring: 204 85% 43%;
+    --sidebar-ring: 215 52% 42%;
     --sidebar-muted: 240 10% 90%;
 
     /* Charts */
-    --chart-1: 204 85% 43%;
-    --chart-2: 73 87% 63%;
-    --chart-3: 255 56% 69%;
-    --chart-4: 186 79% 54%;
+    --chart-1: 215 52% 42%;
+    --chart-2: 215 30% 58%;
+    --chart-3: 195 24% 52%;
+    --chart-4: 215 18% 72%;
     --chart-5: 0 72% 58%;
     --chart-6: 34 92% 55%;
   }
@@ -229,7 +229,7 @@ html[data-contrast='high'] {
   --muted-foreground: 252 30% 24%;
   --border: 250 25% 58%;
   --input: 250 25% 52%;
-  --ring: 204 85% 30%;
+  --ring: 215 52% 30%;
 }
 
 html[data-text-size='large'] {
