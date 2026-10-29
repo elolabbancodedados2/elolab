@@ -38,6 +38,7 @@ const labelsByPath: Record<string, string> = {
   '/laboratorio': 'Laboratório',
   '/mapa-coleta': 'Mapa de coleta',
   '/guias-externas': 'Guias externas',
+  '/guias-externas/portal': 'Portal externo de guias',
   '/laudos-lab': 'Laudos laboratoriais',
   '/pacientes': 'Pacientes',
   '/pacientes/novo': 'Novo paciente',
@@ -126,6 +127,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/guias-externas\/(?!nova$|portal$)[^/]+$/.test(pathname)) return 'Detalhe da guia';
   if (pathname === '/guias-externas/nova') return 'Nova guia externa';
   if (/^\/mapa-coleta\/[^/]+$/.test(pathname)) return 'Detalhes da coleta';
   if (pathname === '/laboratorio/coletas/nova') return 'Nova coleta de amostra';
