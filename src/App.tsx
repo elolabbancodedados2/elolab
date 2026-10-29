@@ -291,7 +291,10 @@ function AppRoutes() {
                           <Route path="/medicos" element={<Navigate to="/equipe" replace />} />
                           <Route path="/funcionarios" element={<Navigate to="/equipe" replace />} />
                           <Route path="/gestao-fluxo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><GestaoFluxo /></SupabaseProtectedRoute>} />
+                          <Route path="/gestao-fluxo/salas/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Salas creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/gestao-fluxo/salas/:roomId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Salas /></SupabaseProtectedRoute>} />
                           <Route path="/salas" element={<Navigate to="/gestao-fluxo" replace />} />
+                          <Route path="/gestao-fluxo/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/estoque" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque /></SupabaseProtectedRoute>} />
                           <Route path="/convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios /></SupabaseProtectedRoute>} />
                           <Route path="/faturamento-convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FaturamentoConvenios /></SupabaseProtectedRoute>} />

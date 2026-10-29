@@ -24,6 +24,8 @@ const labelsByPath: Record<string, string> = {
   '/agenda/nova': 'Nova consulta',
   '/prontuarios': 'Prontuários',
   '/documentos-clinicos': 'Documentos clínicos',
+  '/gestao-fluxo/salas': 'Salas e leitos',
+  '/gestao-fluxo/salas/nova': 'Nova sala ou leito',
   '/exames': 'Exames',
   '/exames/laboratorios': 'Laboratórios e fornecedores',
   '/exames/laboratorios/novo': 'Novo laboratório',
@@ -112,6 +114,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
   if (/^\/atestados\/[^/]+$/.test(path)) return 'Detalhes do atestado';
   if (/^\/encaminhamentos\/[^/]+$/.test(path)) return 'Detalhes do encaminhamento';
+  if (/^\/gestao-fluxo\/salas\/[^/]+\/editar$/.test(path)) return 'Editar sala ou leito';
   if (/^\/exames\/laboratorios\/[^/]+\/editar$/.test(path)) return 'Editar laboratório';
   if (/^\/exames\/[^/]+\/resultado$/.test(path)) return 'Lançar resultado';
   if (/^\/exames\/[^/]+$/.test(path)) return 'Detalhes do exame';

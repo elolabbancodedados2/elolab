@@ -1,12 +1,12 @@
 import { nomeMedico } from '@/lib/formatters';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus, DoorOpen, Settings, Bed, Loader2, Users, CheckCircle2, XCircle, AlertTriangle,
   Clock, MapPin, Paintbrush, Wrench, Search, Building2, Layers, RefreshCw, ListChecks, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,7 @@ import { User } from 'lucide-react';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 import { formatarDataOcupacaoAntiga, summarizeRoomOccupancy } from '@/lib/roomOccupancy';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 
 type StatusSala = Database['public']['Enums']['status_sala'];
@@ -120,18 +120,31 @@ const initialForm: SalaForm = {
   genero: '', numero_cama: '', observacoes: '',
 };
 
-export default function Salas() {
+export default function Salas({ creationPage = false }: { creationPage?: boolean }) {
+  const location = useLocation();
+  return <SalasWorkspace key={location.pathname} creationPage={creationPage} />;
+}
+
+function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { roomId: editingId } = useParams();
+  const formPage = creationPage || !!editingId;
+  const completed = useRef(false);
+  const saveLock = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef(JSON.stringify(initialForm));
+  const returnTo = typeof location.state?.returnTo === 'string' && /^\/gestao-fluxo(?:\?|$)/.test(location.state.returnTo) ? location.state.returnTo : '/gestao-fluxo';
+  const leaveForm = () => navigate(returnTo, { state: { roomFilters: location.state?.roomFilters } });
   const { profile } = useSupabaseAuth();
   const hoje = todaySaoPauloDateOnly();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [form, setForm] = useState<SalaForm>(initialForm);
   const [isSaving, setIsSaving] = useState(false);
   const [updatingSalaId, setUpdatingSalaId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterTipo, setFilterTipo] = useState('todos');
-  const [filterEstado, setFilterEstado] = useState<EstadoSala | 'todos'>('todos');
+  const [search, setSearch] = useState(location.state?.roomFilters?.search ?? '');
+  const [filterTipo, setFilterTipo] = useState(location.state?.roomFilters?.filterTipo ?? 'todos');
+  const [filterEstado, setFilterEstado] = useState<EstadoSala | 'todos'>(location.state?.roomFilters?.filterEstado ?? 'todos');
 
   const queryClient = useQueryClient();
   const salasQuery = useSalas();
@@ -178,25 +191,38 @@ export default function Salas() {
     return list;
   }, [salas, medicos, filterTipo, search]);
 
-  const handleOpen = (sala?: any) => {
-    if (sala) {
-      setEditingId(sala.id);
-      setEditingUpdatedAt(sala.updated_at ?? null);
-      setForm({
+  const recordQuery = useQuery({
+    queryKey: ['sala-pagina', profile?.clinica_id, editingId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('salas').select('*').eq('id', editingId!).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.clinica_id && !!editingId,
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (!formPage || initialized.current || (editingId && !recordQuery.data)) return;
+    const sala = recordQuery.data;
+    const value: SalaForm = sala ? {
         nome: sala.nome, tipo: sala.tipo || 'consultorio', capacidade: sala.capacidade || 1,
         status: sala.status || 'disponivel', medico_responsavel: sala.medico_responsavel || '',
         equipamentos: sala.equipamentos || [], setor: sala.setor || '', andar: sala.andar || '',
         horario_inicio: sala.horario_inicio || '07:00', horario_fim: sala.horario_fim || '19:00',
         cor: sala.cor || '#1456C0', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
         observacoes: sala.observacoes || '',
-      });
-    } else {
-      setEditingId(null);
-      setEditingUpdatedAt(null);
-      setForm(initialForm);
-    }
-    setIsDialogOpen(true);
-  };
+      } : initialForm;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setEditingUpdatedAt(sala?.updated_at ?? null);
+    setForm(value);
+  }, [formPage, editingId, recordQuery.data]);
+
+  const handleOpen = (sala?: { id: string }) => navigate(sala ? `/gestao-fluxo/salas/${sala.id}/editar` : '/gestao-fluxo/salas/nova', {
+    state: { returnTo: location.pathname + location.search, roomFilters: { search, filterTipo, filterEstado } },
+  });
 
   const toggleEquipamento = (eq: string) => {
     setForm(p => ({
@@ -208,7 +234,8 @@ export default function Salas() {
   };
 
   const handleSave = async () => {
-    if (isSaving) return;
+    if (saveLock.current) return;
+    if (salasQuery.isError || ocupacoesQuery.isError || medicosQuery.isError || salasQuery.isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading) { toast.error('Atualize os dados de salas, ocupação e responsáveis antes de salvar.'); return; }
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a página e tente novamente.'); return; }
     if (!form.nome.trim()) { toast.error('Nome da sala é obrigatório.'); return; }
     if (!Number.isInteger(form.capacidade) || form.capacidade < 1) {
@@ -219,6 +246,7 @@ export default function Salas() {
       toast.error('O horário de encerramento deve ser posterior ao horário de início.');
       return;
     }
+    saveLock.current = true;
     setIsSaving(true);
     try {
       const payload = {
@@ -239,7 +267,7 @@ export default function Salas() {
       };
 
       if (editingId) {
-        const salaAtual = (salas as any[]).find(item => item.id === editingId);
+        const salaAtual = (salas as any[]).find(item => item.id === editingId) ?? recordQuery.data;
         const ocupacaoAtiva = (ocupacoes as any[]).some(item => item.sala_id === editingId);
         if (salaAtual && ocupacaoAtiva && form.status !== 'ocupado' && form.status !== salaAtual.status) {
           throw new Error('Esta sala ainda tem paciente aguardando ou em atendimento. Finalize ou transfira o atendimento antes de alterar o status.');
@@ -260,10 +288,12 @@ export default function Salas() {
         toast.success('Sala cadastrada!');
       }
       queryClient.invalidateQueries({ queryKey: ['salas'] });
-      setIsDialogOpen(false);
+      completed.current = true;
+      leaveForm();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar sala.');
     } finally {
+      saveLock.current = false;
       setIsSaving(false);
     }
   };
@@ -338,7 +368,7 @@ export default function Salas() {
     void ocupacoesQuery.refetch();
   };
 
-  if (isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading) {
+  if (!initialized.current && (isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading)) {
     return (
       <section role="status" aria-label="Carregando salas" aria-busy="true" className="space-y-5 py-2">
         <div className="flex min-h-10 items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -372,13 +402,13 @@ export default function Salas() {
       </section>
     );
   }
-  if (salasQuery.isError) {
+  if (salasQuery.isError && !initialized.current) {
     return <ErrorState title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} />;
   }
-  if (ocupacoesQuery.isError) {
+  if (ocupacoesQuery.isError && !initialized.current) {
     return <ErrorState title="Não foi possível confirmar a ocupação das salas" description="A tela foi pausada para evitar mostrar uma sala ocupada como disponível." error={ocupacoesQuery.error} onRetry={() => void ocupacoesQuery.refetch()} />;
   }
-  if (medicosQuery.isError) {
+  if (medicosQuery.isError && !initialized.current) {
     return <ErrorState title="Não foi possível carregar os médicos responsáveis" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
 
@@ -389,7 +419,11 @@ export default function Salas() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      <UnsavedChangesGuard dirty={formPage && JSON.stringify(form) !== baseline.current} busy={isSaving} completed={completed} />
+      {formPage && <Button variant="outline" onClick={leaveForm}>Voltar às salas e leitos</Button>}
+      {formPage && (salasQuery.isError || ocupacoesQuery.isError || medicosQuery.isError) && <ErrorState compact title="Atualize os dados antes de salvar" description="Não foi possível confirmar as salas, a ocupação ou os responsáveis. O preenchimento permanece nesta página." onRetry={() => { refresh(); void medicosQuery.refetch(); }} />}
+      {!formPage && <>
       <PageHeader
         title="Salas e Leitos"
         description={totalSalas > 0
@@ -722,22 +756,24 @@ export default function Salas() {
         </Card>
       )}
 
-      {/* ─── Form Dialog (Enhanced) ─── */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (open || !isSaving) setIsDialogOpen(open); }}>
-        <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {isLeito(form.tipo) ? <Bed className="h-5 w-5 text-primary" /> : <DoorOpen className="h-5 w-5 text-primary" />}
-              {editingId ? 'Editar' : 'Nova'} {isLeito(form.tipo) ? 'Leito' : 'Sala'}
-            </DialogTitle>
-          </DialogHeader>
+      </>}
 
-          <div className="flex-1 overflow-y-auto space-y-5 pr-2">
+      {formPage && (editingId && recordQuery.isError ? <ErrorState title="Não foi possível abrir esta sala" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+        : editingId && recordQuery.isPending ? <p role="status">Carregando sala…</p>
+        : editingId && !recordQuery.data ? <p role="status">Sala não encontrada na clínica atual. Volte à lista para selecionar outro espaço.</p>
+        : <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-4xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5">
+            <p className="text-sm text-muted-foreground">Gestão do fluxo / Salas e leitos</p>
+            <h1 className="text-2xl font-semibold">{editingId ? 'Editar' : 'Nova'} {isLeito(form.tipo) ? 'Leito' : 'Sala'}</h1>
+            <p className="text-sm text-muted-foreground">Defina a identificação, a disponibilidade e os recursos do espaço.</p>
+          </header>
+          <fieldset disabled={isSaving} className="min-w-0">
+          <div className="space-y-6">
             {/* Identificação */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="sala-nome" className="text-xs">Nome *</Label>
-                <Input id="sala-nome" value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))}
+                <Input id="sala-nome" required value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))}
                   placeholder="Consultório 1, Leito 201..." />
               </div>
               <div className="space-y-1.5">
@@ -907,14 +943,14 @@ export default function Salas() {
             </div>
           </div>
 
-          <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-3 pt-5 border-t">
+            <Button type="button" variant="outline" onClick={leaveForm} disabled={isSaving}>Cancelar</Button>
+            <Button type="submit" className="scroll-mb-24" disabled={isSaving}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>)}
     </div>
   );
 }

@@ -222,3 +222,17 @@ Direção e implementação: listagem em `/exames/laboratorios`, cadastro em `/e
 Arquivos: `GerenciadorLaboratorios.tsx`, `Exames.tsx`, `App.tsx`, `routeLabels.ts` e `tests/laboratory-directory-pages.spec.ts`.
 
 Validação: seis cenários Playwright passaram (1440/768/390 px, retorno, recarga de edição, rascunho, falha e sucesso de gravação, registro ausente e permissões). TypeScript da aplicação e build passaram. ESLint focal: zero erros, 23 avisos de tipagem/hooks. Capturas desktop e mobile efetivamente visualizadas. Corrigida margem de rolagem do botão final que ficava atrás da navegação inferior no celular. Escritas foram interceptadas com dados sintéticos; nenhum fornecedor real foi alterado. Capturas em `.qa-artifacts/laboratorios-20261029/`.
+
+Publicação de laboratórios: build `8db5d6de2f5247a307e153696b8b17fcedc5db34`, imagem `easypanel/elolab/app:deploy-20261029-8db5d6de`. Swarm concluído, versão pública conferida e healthcheck `ok`. Página de cadastro vazia efetivamente visualizada em produção, sem gravação. Rollback: imagem `deploy-20261029-f749c03` e fonte `code.before-20261029-8db5d6de`.
+
+## Salas e leitos — cadastro e edição em páginas próprias (29/10/2026)
+
+Diagnóstico: o formulário longo de localização, recursos, horários e leitos ficava em overlay com rolagem interna. Fechar descartava o preenchimento, e a edição dependia de abrir um cartão da listagem.
+
+Direção e implementação: rotas `/gestao-fluxo/salas/nova` e `/gestao-fluxo/salas/:roomId/editar`, com consulta direta restrita à clínica, seções contínuas e retorno à aba/lista com filtros. Equipamentos, campos condicionais de leito, cor salva, horários e responsável permanecem. Proteção de saída/recarga, bloqueio de envio simultâneo e recuperação de erro adicionados. Preservadas validação de ocupação e atualização condicionada por `updated_at`; não há nova transição clínica nem mudança de permissão. A lista e suas ações operacionais permanecem no workspace.
+
+Arquivos: `Salas.tsx`, `App.tsx`, `routeLabels.ts`, `tests/room-pages.spec.ts` e adaptação das regressões de salas em `ux-visual-synthetic.spec.ts`.
+
+Validação: nove cenários Playwright passaram, incluindo os dois cenários existentes de ocupação/perfis; três larguras (1440/768/390), entrada pela lista e URL direta, recarga, filtros, rascunhos, erro e sucesso de gravação, conflito de versão, registro ausente e leitos. Nove testes unitários passaram em quatro arquivos (ocupação, abas e contratos SQL de acesso). TypeScript e build passaram; ESLint focal sem erros e 26 avisos. Capturas do formulário desktop e do rodapé mobile efetivamente inspecionadas, com botões acima da navegação inferior. Evidências em `.qa-artifacts/salas-20261029/`.
+
+Limites: testes de escrita foram interceptados e as verificações SQL não executam migrations. Não criamos salas reais nem modificamos ocupações em produção. Configurações possui um cadastro simplificado de salas separado; será tratado na etapa correspondente, sem declarar todas as entradas de salas já migradas.

@@ -3134,8 +3134,8 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         const addRoom = main.getByRole('button', { name: 'Nova Sala / Leito', exact: true }).first();
         await expect(addRoom).toBeVisible();
         await addRoom.click();
-        await expect(page.getByRole('dialog').getByRole('heading', { name: 'Nova Sala' })).toBeVisible();
-        await page.keyboard.press('Escape');
+        await expect(page.getByRole('heading', { name: 'Nova Sala', exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
         await expect(page.getByRole('dialog')).not.toBeVisible();
       }
       if (path === '/precos-servicos?tab=tipos') {
@@ -3199,7 +3199,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
 }
 
 test('room workspace preserves occupancy safety and readable status filters', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'recepcao' });
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, role: 'recepcao' });
   const roomRows = [
     {
       id: '00000000-0000-4000-9000-000000000201', clinica_id: '00000000-0000-4000-8000-000000000002',
@@ -3237,7 +3237,8 @@ test('room workspace preserves occupancy safety and readable status filters', as
   await page.route('**/rest/v1/salas*', route => route.request().method() === 'GET'
     ? (async () => {
       if (!roomLoadReleased) await roomLoadGate;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(roomRows) });
+      const recordId = new URL(route.request().url()).searchParams.get('id');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(recordId ? roomRows.filter(room => `eq.${room.id}` === recordId) : roomRows) });
     })()
     : route.fallback());
   await page.route('**/rest/v1/fila_atendimento*', route => {
@@ -3277,20 +3278,21 @@ test('room workspace preserves occupancy safety and readable status filters', as
     await expect(reservedRoom).toContainText('Reservada');
     if (viewport.width === 1280) {
       await main.getByRole('button', { name: 'Nova Sala / Leito' }).click();
-      const colorPicker = page.getByRole('dialog').getByRole('group', { name: 'Cor de Identificação' });
+      const colorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(colorPicker.getByRole('button')).toHaveCount(4);
       await expect(colorPicker.getByRole('button', { name: /roxo/i })).toHaveCount(0);
       await expect(colorPicker.getByRole('button', { name: 'Selecionar cor Azul primário' })).toHaveAttribute('aria-pressed', 'true');
       const cyan = colorPicker.getByRole('button', { name: 'Selecionar cor Ciano' });
       await cyan.click();
       await expect(cyan).toHaveAttribute('aria-pressed', 'true');
-      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
+      await page.getByRole('button', { name: 'Descartar e sair' }).click();
 
       await main.getByTestId('room-card-00000000-0000-4000-9000-000000000203').getByRole('button', { name: 'Editar sala Sala de Exames' }).click();
-      const savedColorPicker = page.getByRole('dialog').getByRole('group', { name: 'Cor de Identificação' });
+      const savedColorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(savedColorPicker.getByText('Cor salva')).toBeVisible();
       await expect(savedColorPicker.getByRole('button')).toHaveCount(4);
-      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
     }
     if (viewport.width < 500) {
       const search = main.getByRole('textbox', { name: 'Buscar salas, leitos ou equipamentos' });
@@ -3334,8 +3336,8 @@ test('room workspace preserves occupancy safety and readable status filters', as
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('room workspace remains restricted to roles allowed by the route', async ({ page }) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'financeiro' });
+test('room workspace remains restricted to roles allowed by the route', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, role: 'financeiro' });
   await page.goto('/gestao-fluxo');
   await expect(page.getByRole('heading', { name: 'Acesso Negado' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Salas e Leitos', exact: true })).toHaveCount(0);
