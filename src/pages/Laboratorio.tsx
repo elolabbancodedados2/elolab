@@ -23,7 +23,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
-import { dadosAoRegistrarColeta, gravarFiltrosWorklist, lerFiltrosWorklist, podeGerenciarLaboratorioPorPapel, podeRegistrarResultado, resumirPendenciasPorSetor, STATUS_COLETA_LABELS, STATUS_COLETA_PENDENTES, type FiltrosWorklist } from '@/lib/laboratorioWorkflow';
+import { dadosAoRegistrarColeta, gravarFiltrosWorklist, lerFiltrosWorklist, podeGerenciarLaboratorioPorPapel, resumirPendenciasPorSetor, STATUS_COLETA_LABELS, STATUS_COLETA_PENDENTES, type FiltrosWorklist } from '@/lib/laboratorioWorkflow';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { PedidosLaboratorioPanel } from '@/pages/laboratorio/PedidosLaboratorioPanel';
@@ -68,13 +68,6 @@ const LIMITE_PENDENCIAS_SETOR = 2000;
 const SLA_WARNING_MINUTES = 120; // 2h
 const SLA_CRITICAL_MINUTES = 240; // 4h
 
-function parseNumeroOpcional(valor: unknown): number | null {
-  if (valor == null || String(valor).trim() === '') return null;
-  const normalizado = String(valor).trim().replace(',', '.');
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalizado)) return Number.NaN;
-  return Number(normalizado);
-}
-
 export default function Laboratorio() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -100,7 +93,7 @@ export default function Laboratorio() {
   const [limparDias, setLimparDias] = useState('30');
   const [limparMotivo, setLimparMotivo] = useState('');
 
-  const [showResultados, setShowResultados] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState(() => searchParams.get('aba') === 'pedidos' ? 'pedidos' : 'worklist');
   const worklistTabRef = useRef<HTMLButtonElement>(null);
   const focusWorklistAfterFilter = useRef(false);
@@ -222,42 +215,6 @@ export default function Laboratorio() {
     [pendenciasSetorQuery.data, setoresQuery.data],
   );
 
-  const resultadosQuery = useQuery({
-    queryKey: ['resultados-laboratorio', profile?.clinica_id, user?.id, showResultados],
-    queryFn: async () => {
-      if (!showResultados) return [];
-      const { data: coleta, error: coletaError } = await supabase.from('coletas_laboratorio')
-        .select('id')
-        .eq('id', showResultados)
-        .eq('clinica_id', profile!.clinica_id!)
-        .maybeSingle();
-      if (coletaError) throw coletaError;
-      if (!coleta) throw new Error('Amostra não encontrada na clínica atual.');
-      const { data, error } = await supabase
-        .from('resultados_laboratorio')
-        .select('*')
-        .eq('coleta_id', showResultados)
-        .order('parametro');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id && !!showResultados,
-  });
-  const perfilCatalogoQuery = useQuery({
-    queryKey: ['lab-perfil-catalogo-coleta', profile?.clinica_id, showResultados],
-    enabled: !!profile?.clinica_id && !!showResultados,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).from('coletas_laboratorio')
-        .select('exames(tipo_exame, tipo_exames_catalog(nome, unidade_padrao, referencia_min, referencia_max, referencia_texto, metodo_padrao))')
-        .eq('clinica_id', profile!.clinica_id).eq('id', showResultados).maybeSingle();
-      if (error) throw error;
-      const exame = Array.isArray(data?.exames) ? data.exames[0] : data?.exames;
-      const catalogo = Array.isArray(exame?.tipo_exames_catalog) ? exame.tipo_exames_catalog[0] : exame?.tipo_exames_catalog;
-      return catalogo ? { ...catalogo, nome: catalogo.nome || exame?.tipo_exame || '' } : null;
-    },
-  });
-  const resultados = resultadosQuery.data;
-
   const updateStatus = useMutation({
     mutationFn: async ({ id, status, expectedStatus }: { id: string; status: string; expectedStatus: string }) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
@@ -294,48 +251,6 @@ export default function Laboratorio() {
     onError: (e) => toast.error('Não foi possível mudar o status da coleta', {
       description: mensagemDeErro(e),
     }),
-  });
-
-  const addResultado = useMutation({
-    mutationFn: async (form: any) => {
-      if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
-      if (!String(form.parametro ?? '').trim() || !String(form.resultado ?? '').trim()) {
-        throw new Error('Informe o parâmetro e o resultado da análise.');
-      }
-      const referenciaMinima = parseNumeroOpcional(form.valor_referencia_min);
-      const referenciaMaxima = parseNumeroOpcional(form.valor_referencia_max);
-      if ([referenciaMinima, referenciaMaxima].some(valor => valor !== null && !Number.isFinite(valor))) {
-        throw new Error('Os valores de referência precisam ser numéricos.');
-      }
-      if (referenciaMinima !== null && referenciaMaxima !== null && referenciaMinima > referenciaMaxima) {
-        throw new Error('O valor de referência mínimo não pode ser maior que o máximo.');
-      }
-      const { data: coleta, error: coletaError } = await supabase.from('coletas_laboratorio')
-        .select('id, paciente_id, status')
-        .eq('id', form.coleta_id)
-        .eq('clinica_id', profile.clinica_id)
-        .maybeSingle();
-      if (coletaError) throw coletaError;
-      if (!coleta || !['coletado', 'em_analise'].includes(coleta.status)) {
-        throw new Error('Só é possível registrar resultado em uma amostra coletada que ainda esteja em análise.');
-      }
-      const { error } = await supabase.from('resultados_laboratorio').insert({
-        ...form,
-        parametro: String(form.parametro).trim(),
-        resultado: String(form.resultado).trim(),
-        valor_referencia_min: referenciaMinima,
-        valor_referencia_max: referenciaMaxima,
-        paciente_id: coleta.paciente_id,
-        clinica_id: profile.clinica_id,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
-      setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false });
-      toast.success('Resultado adicionado!');
-    },
-    onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),
   });
 
   const hojeNaClinica = todaySaoPauloDateOnly(agora);
@@ -417,11 +332,6 @@ export default function Laboratorio() {
     const h = Math.floor(mins / 60);
     return `${h}h${mins % 60 > 0 ? `${mins % 60}m` : ''}`;
   };
-
-  const [newResultForm, setNewResultForm] = useState({
-    parametro: '', resultado: '', unidade: '', valor_referencia_min: '',
-    valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false,
-  });
 
   if (!profile?.clinica_id) {
     return <ErrorState title="Clínica não identificada" description="O módulo Laboratório só pode carregar dados após identificar a clínica da sessão." />;
@@ -915,7 +825,7 @@ export default function Laboratorio() {
                             </Button>
                           )}
                           <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs gap-1"
-                            onClick={() => setShowResultados(coleta.id)}>
+                            onClick={() => navigate(`/laboratorio/coletas/${coleta.id}/resultados`, { state: { laboratorioSearch: location.search, buscaPaciente: search } })}>
                             <Eye className="h-3 w-3" /> Resultados
                           </Button>
                           {(coleta.status === 'pendente' || coleta.status === 'recoleta') && (
@@ -1089,98 +999,6 @@ export default function Laboratorio() {
       </Tabs>
 
       {/* ─── Dialog Nova Coleta ─── */}
-      {/* ─── Dialog Resultados ─── */}
-      <Dialog open={!!showResultados} onOpenChange={() => setShowResultados(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Resultados Laboratoriais</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            {resultadosQuery.isLoading && <p role="status" className="text-muted-foreground text-center py-4">Carregando resultados…</p>}
-            {resultadosQuery.isError && (
-              <ErrorState compact title="Não foi possível carregar os resultados desta amostra" error={resultadosQuery.error} onRetry={() => void resultadosQuery.refetch()} />
-            )}
-            {!resultadosQuery.isLoading && !resultadosQuery.isError && resultados?.length === 0 && <p className="text-muted-foreground text-center py-4">Nenhum resultado cadastrado</p>}
-            {resultados?.map((r: any) => {
-              const textoResultado = String(r.resultado ?? '').trim();
-              const numeroNormalizado = textoResultado.includes(',')
-                ? textoResultado.replace(/\./g, '').replace(',', '.')
-                : textoResultado;
-              const numResult = textoResultado ? Number(numeroNormalizado) : Number.NaN;
-              const isAltered = Number.isFinite(numResult) && ((r.valor_referencia_min != null && numResult < r.valor_referencia_min) || (r.valor_referencia_max != null && numResult > r.valor_referencia_max));
-              return (
-                <div key={r.id} className={cn('p-3 rounded-lg border', (isAltered || r.critico) ? 'border-destructive/30 bg-destructive/5' : '')}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="flex items-center gap-2 font-medium">{r.parametro}{r.critico && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Crítico</Badge>}</p>
-                      {r.metodo && <p className="text-xs text-muted-foreground">Método: {r.metodo}</p>}
-                    </div>
-                    <div className="text-right">
-                      <p className={cn('text-lg font-bold', isAltered && 'text-destructive')}>
-                        {r.resultado} {r.unidade}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Ref: {r.valor_referencia_texto || `${r.valor_referencia_min ?? '-'} a ${r.valor_referencia_max ?? '-'} ${r.unidade || ''}`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Add resultado form */}
-            {podeRegistrarResultado(coletas?.find((c: any) => c.id === showResultados)?.status) ? <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle className="text-sm">Adicionar Resultado</CardTitle><p className="mt-1 text-xs text-muted-foreground">Informe resultado e referência definidos para este método.</p></div>{perfilCatalogoQuery.data && <Button type="button" size="sm" variant="outline" disabled={perfilCatalogoQuery.isLoading || addResultado.isPending} onClick={() => setNewResultForm(current => ({ ...current, unidade: perfilCatalogoQuery.data?.unidade_padrao || current.unidade, valor_referencia_min: perfilCatalogoQuery.data?.referencia_min == null ? current.valor_referencia_min : String(perfilCatalogoQuery.data.referencia_min), valor_referencia_max: perfilCatalogoQuery.data?.referencia_max == null ? current.valor_referencia_max : String(perfilCatalogoQuery.data.referencia_max), valor_referencia_texto: perfilCatalogoQuery.data?.referencia_texto || current.valor_referencia_texto, metodo: perfilCatalogoQuery.data?.metodo_padrao || current.metodo }))}>Usar perfil do exame</Button>}</CardHeader>
-              <CardContent>
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!showResultados) return;
-                  // O botão não era desabilitado durante a mutation: dois
-                  // cliques por impaciência inseriam o mesmo parâmetro duas
-                  // vezes na coleta, e o laudo saía com a linha repetida.
-                  if (addResultado.isPending) return;
-                  const coleta = coletas?.find((c: any) => c.id === showResultados);
-                  addResultado.mutate({
-                    coleta_id: showResultados,
-                    clinica_id: profile?.clinica_id,
-                    paciente_id: coleta?.paciente_id,
-                    parametro: newResultForm.parametro,
-                    resultado: newResultForm.resultado,
-                    unidade: newResultForm.unidade || null,
-                    valor_referencia_min: newResultForm.valor_referencia_min,
-                    valor_referencia_max: newResultForm.valor_referencia_max,
-                    valor_referencia_texto: newResultForm.valor_referencia_texto || null,
-                    metodo: newResultForm.metodo || null,
-                    critico: newResultForm.critico,
-                  });
-                }} className="grid grid-cols-2 gap-3">
-                  <div><Label htmlFor="lab-resultado-parametro" className="text-xs">Parâmetro *</Label><Input id="lab-resultado-parametro" disabled={addResultado.isPending} value={newResultForm.parametro} onChange={(e) => setNewResultForm(p => ({ ...p, parametro: e.target.value }))} placeholder="Ex: Hemoglobina" /></div>
-                  <div><Label htmlFor="lab-resultado-valor" className="text-xs">Resultado *</Label><Input id="lab-resultado-valor" disabled={addResultado.isPending} value={newResultForm.resultado} onChange={(e) => setNewResultForm(p => ({ ...p, resultado: e.target.value }))} placeholder="Ex: 14.2" /></div>
-                  <div><Label htmlFor="lab-resultado-unidade" className="text-xs">Unidade</Label><Input id="lab-resultado-unidade" disabled={addResultado.isPending} value={newResultForm.unidade} onChange={(e) => setNewResultForm(p => ({ ...p, unidade: e.target.value }))} placeholder="g/dL" /></div>
-                  <div><Label htmlFor="lab-resultado-metodo" className="text-xs">Método</Label><Input id="lab-resultado-metodo" disabled={addResultado.isPending} value={newResultForm.metodo} onChange={(e) => setNewResultForm(p => ({ ...p, metodo: e.target.value }))} placeholder="Automatizado" /></div>
-                  <div><Label htmlFor="lab-resultado-ref-min" className="text-xs">Ref. Mínimo</Label><Input id="lab-resultado-ref-min" disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_min} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_min: e.target.value }))} placeholder="Opcional" /></div>
-                  <div><Label htmlFor="lab-resultado-ref-max" className="text-xs">Ref. Máximo</Label><Input id="lab-resultado-ref-max" disabled={addResultado.isPending} type="text" inputMode="decimal" value={newResultForm.valor_referencia_max} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_max: e.target.value }))} placeholder="Opcional" /></div>
-                  <div className="col-span-2"><Label htmlFor="lab-resultado-ref-texto" className="text-xs">Referência textual</Label><Input id="lab-resultado-ref-texto" disabled={addResultado.isPending} value={newResultForm.valor_referencia_texto} onChange={(e) => setNewResultForm(p => ({ ...p, valor_referencia_texto: e.target.value }))} placeholder="Ex: Não reagente" /></div>
-                  <div className="col-span-2 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3"><Checkbox id="resultado-critico" checked={newResultForm.critico} disabled={addResultado.isPending} onCheckedChange={(checked) => setNewResultForm(p => ({ ...p, critico: checked === true }))} /><div><Label htmlFor="resultado-critico" className="cursor-pointer text-sm font-medium">Resultado crítico</Label><p className="text-xs text-muted-foreground">Sinaliza para revisão prioritária conforme o protocolo da clínica.</p></div></div>
-                  <div className="col-span-2">
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={!newResultForm.parametro || !newResultForm.resultado || addResultado.isPending}
-                      className="gap-2"
-                    >
-                      {addResultado.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      Adicionar
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card> : (
-              <div role="status" className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-primary">
-                A amostra não está mais aberta para lançamento. Isso preserva a conferência e a trilha de auditoria do resultado.
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
