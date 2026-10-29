@@ -261,6 +261,9 @@ function AppRoutes() {
                           <Route path="/documentos-clinicos/novo-atestado" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Atestados creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/atestados/:certificateId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Atestados /></SupabaseProtectedRoute>} />
                           <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/exames/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames creationPage /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/exames/:examId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/exames/:examId/resultado" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames resultPage /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/triagem" element={<RedirecionarTriagem />} />
                           <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos?tab=encaminhamentos" replace />} />
                           <Route path="/documentos-clinicos/novo-encaminhamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos creationPage /></SupabaseProtectedRoute>} />

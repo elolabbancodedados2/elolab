@@ -14,16 +14,14 @@
  * Ao salvar, o exame vai para "laudo disponível" — que é o estado que dispara
  * o aviso ao paciente e a vinculação ao prontuário.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Upload, FileText, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { mensagemDeErro } from '@/lib/erros';
@@ -57,6 +55,8 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
   const [texto, setTexto] = useState('');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const completed = useRef(false);
+  const saveLock = useRef(false);
   const exameId = exame?.id ?? null;
   const resultadoSalvo = exame?.resultado ?? '';
 
@@ -69,7 +69,7 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
 
   async function salvar() {
     if (!exame) return;
-    if (salvando) return;
+    if (saveLock.current) return;
     if (!profile?.clinica_id) {
       toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
       return;
@@ -81,6 +81,7 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
       return;
     }
 
+    saveLock.current = true;
     setSalvando(true);
     let arquivoNovo: string | null = null;
     let resultadoPersistido = false;
@@ -162,6 +163,7 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
           description: [erroAoAvancar, 'O exame continua na lista. Use a ação de avanço para tentar novamente.'].filter(Boolean).join(' '),
         });
       }
+      completed.current = true;
       onFechar();
     } catch (e: unknown) {
       if (arquivoNovo && !resultadoPersistido) {
@@ -178,22 +180,24 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
       }
       toast.error('Não foi possível lançar o resultado', { description: mensagemDeErro(e) });
     } finally {
+      saveLock.current = false;
       setSalvando(false);
     }
   }
 
+  if (!exame) return null;
   return (
-    <Dialog open={!!exame} onOpenChange={a => { if (!a && !salvando) onFechar(); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Resultado — {exame?.tipo_exame}</DialogTitle>
-          <DialogDescription>
+    <section className="space-y-6">
+      <UnsavedChangesGuard completed={completed} busy={salvando} dirty={texto !== resultadoSalvo || !!arquivo} />
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Resultado — {exame?.tipo_exame}</h1>
+          <p className="text-sm text-muted-foreground">
             Escreva o resultado, anexe o laudo, ou os dois. Ao salvar, o exame
             passa a "laudo disponível" e o paciente é avisado.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </header>
 
-        <fieldset disabled={salvando} className="space-y-3">
+        <fieldset disabled={salvando} className="min-w-0 space-y-5">
           <div className="space-y-1">
             <Label htmlFor="resultado-texto">Resultado</Label>
             <Textarea
@@ -220,7 +224,7 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
                 </Button>
               </div>
             ) : (
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent/40">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent/40 focus-within:ring-2 focus-within:ring-ring">
                 <Upload className="h-3.5 w-3.5" />
                 {exame?.arquivo_resultado ? 'Trocar o laudo anexado' : 'Anexar PDF ou imagem (até 10 MB)'}
                 <input
@@ -232,14 +236,13 @@ export function LancarResultado({ exame, onFechar, aoSalvar }: Props) {
           </div>
         </fieldset>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onFechar} disabled={salvando}>Cancelar</Button>
+        <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+          <Button variant="outline" onClick={onFechar} disabled={salvando}>Voltar aos exames</Button>
           <Button onClick={salvar} disabled={salvando}>
             {salvando && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             Lançar resultado
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+    </section>
   );
 }

@@ -1554,20 +1554,18 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await page.screenshot({ path: testInfo.outputPath('fila-atendimento-prontuario-existente-1280.png'), animations: 'disabled' });
 
   await dialog.getByRole('button', { name: 'Solicitar Exame' }).click();
-  await expect(page).toHaveURL(new RegExp(`/exames\\?paciente=${patientId}.*prontuario=${prontuarioId}.*novo=1`));
-  const examDialog = page.getByRole('dialog');
+  await expect(page).toHaveURL(new RegExp(`/exames/nova\\?paciente=${patientId}.*prontuario=${prontuarioId}`));
+  const examDialog = page.locator('#main-content');
   await expect(examDialog.getByRole('heading', { name: 'Nova Guia de Exames' })).toBeVisible();
   await expect(examDialog.getByRole('note')).toContainText('Carla Oliveira');
   await expect(examDialog.getByRole('note')).toContainText('associados a este prontuário');
   await page.screenshot({ path: testInfo.outputPath('pedido-exame-contexto-prontuario-1280.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.screenshot({ path: testInfo.outputPath('pedido-exame-contexto-prontuario-375.png'), animations: 'disabled' });
-  const examFields = examDialog.getByTestId('exam-request-fields');
   const examFooter = examDialog.getByTestId('exam-request-footer');
-  const [fieldsBounds, footerBounds] = await Promise.all([examFields.boundingBox(), examFooter.boundingBox()]);
-  expect(fieldsBounds).not.toBeNull();
-  expect(footerBounds).not.toBeNull();
-  expect(fieldsBounds!.y + fieldsBounds!.height).toBeLessThanOrEqual(footerBounds!.y + 1);
+  await examFooter.scrollIntoViewIfNeeded();
+  expect((await examFooter.boundingBox())!.y + (await examFooter.boundingBox())!.height).toBeLessThanOrEqual(752);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await examDialog.getByLabel(/Indicação Clínica/).scrollIntoViewIfNeeded();
   await expect(examDialog.getByLabel(/Indicação Clínica/)).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('pedido-exame-contexto-prontuario-375-rolado.png'), animations: 'disabled' });
@@ -1601,7 +1599,7 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await page.screenshot({ path: testInfo.outputPath('pedido-exame-worklist-contexto-1280.png'), animations: 'disabled' });
 
   await page.goto(`/exames?paciente=${patientId}&prontuario=00000000-0000-4000-9000-000000000299&novo=1&voltar=prontuario`);
-  const invalidContextDialog = page.getByRole('dialog');
+  const invalidContextDialog = page.locator('#main-content');
   await expect(invalidContextDialog.getByRole('alert')).toContainText('Não foi possível confirmar o paciente e o prontuário de origem');
   await invalidContextDialog.getByPlaceholder('Buscar por nome, TUSS ou código livre...').fill('Hemograma Completo');
   await invalidContextDialog.getByRole('button', { name: /Hemograma Completo/ }).click();
@@ -1609,7 +1607,8 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await invalidContextDialog.getByRole('button', { name: 'Solicitar (1)' }).click();
   await expect(page.getByText('Não foi possível confirmar o vínculo com o prontuário de origem.')).toBeVisible();
   expect(examInsertPayloads).toHaveLength(1);
-  await invalidContextDialog.getByRole('button', { name: 'Cancelar' }).click();
+  await invalidContextDialog.getByRole('button', { name: 'Voltar aos exames', exact: true }).click();
+  await page.getByRole('button', { name: 'Descartar e sair' }).click();
   await expect(page).not.toHaveURL(/prontuario=.*novo=1/);
   await expect(page.getByRole('link', { name: 'Voltar ao prontuário' })).toBeVisible();
 });

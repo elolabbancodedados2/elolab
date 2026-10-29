@@ -1,7 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatCurrency } from '@/lib/formatters';
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { Link, useSearchParams, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, FileText, FileDown, Loader2, X,
   AlertTriangle, Upload, Clock, Calendar, Building2, DollarSign, Trash2,
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -26,6 +26,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { FieldHelp } from '@/components/ContextualHelp';
 import { gravarFiltrosExames, lerFiltrosExames, type FiltrosExames } from '@/lib/examesFiltros';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Separator } from '@/components/ui/separator';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -348,10 +349,18 @@ const initialFormData: FormData = {
   necessita_contraste: false,
 };
 
-export default function Exames() {
+export default function Exames({ creationPage = false, resultPage = false }: { creationPage?: boolean; resultPage?: boolean }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { examId } = useParams();
+  const taskPage = creationPage || !!examId;
+  const completed = useRef(false);
+  const baseline = useRef(initialFormData);
+  const initialized = useRef('');
+  const [readyFor, setReadyFor] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.examSearch || '');
   const filtrosUrl = lerFiltrosExames(searchParams);
   const statusFilter = filtrosUrl.status;
   const tipoFilter = filtrosUrl.tipo;
@@ -360,15 +369,15 @@ export default function Exames() {
   const setStatusFilter = (status: string) => atualizarFiltros({ status });
   const setTipoFilter = (tipo: string) => atualizarFiltros({ tipo });
   const setIndicador = (valor: IndicadorExame) => atualizarFiltros({ indicador: valor });
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isViewOpen, setIsViewOpen] = useState(false);
+  const isDialogOpen = creationPage;
+  const isViewOpen = !!examId && !resultPage;
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const [baixandoLaudoId, setBaixandoLaudoId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({ ...initialFormData });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLock = useRef(false);
-  const autoOpenHandledRef = useRef(false);
+
 
   // Multi-select exams
   const [examesSelecionados, setExamesSelecionados] = useState<ExameSelecionado[]>([]);
@@ -398,9 +407,30 @@ export default function Exames() {
     },
   });
   const queryClient = useQueryClient();
+  const fallbackParams = new URLSearchParams(searchParams);
+  fallbackParams.delete('novo'); fallbackParams.delete('prontuario');
+  const returnTo = /^\/exames(?:\?|$)/.test(location.state?.returnTo || '')
+    ? location.state.returnTo : `/exames${fallbackParams.size ? `?${fallbackParams}` : ''}`;
+  const leaveTask = () => navigate(returnTo, { replace: true, state: { examSearch: searchTerm } });
+  const openTask = (path: string) => {
+    if (!taskPage) navigate(`${location.pathname}${location.search}`, { replace: true, state: { examSearch: searchTerm } });
+    navigate(path, { state: { returnTo: taskPage ? returnTo : `${location.pathname}${location.search}`, examSearch: searchTerm } });
+  };
+  const recordQuery = useQuery({
+    queryKey: ['exame-pagina', profile?.clinica_id, user?.id, examId, location.key],
+    enabled: !!examId && !!profile?.clinica_id && !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('exames')
+        .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(crm, especialidade, nome)')
+        .eq('id', examId!).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: Infinity, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
   const medicosQuery = useMedicos();
   const { data: medicos = [], isLoading: loadingMedicos } = medicosQuery;
-  const { currentMedico, medicoId, isMedicoOnly } = useCurrentMedico();
+  const { currentMedico, medicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
   const pacienteResumoId = formData.paciente_id || pacienteFiltroId;
   const pacienteResumoQuery = usePacienteResumo(pacienteResumoId);
   const medicosAtivos = medicos.filter(m => m.ativo !== false);
@@ -509,7 +539,7 @@ export default function Exames() {
         return query;
       });
     },
-    enabled: !!user && !!profile?.clinica_id && (!isMedicoOnly || !!medicoId),
+    enabled: !taskPage && !!user && !!profile?.clinica_id && (!isMedicoOnly || !!medicoId),
   });
   const exames = examesQuery.data ?? [];
 
@@ -536,7 +566,7 @@ export default function Exames() {
     [exames, pacienteFiltroId],
   );
 
-  const isLoading = examesQuery.isLoading || loadingMedicos || customTypesQuery.isLoading;
+  const isLoading = (!taskPage && examesQuery.isLoading) || loadingMedicos || customTypesQuery.isLoading || loadingCurrentMedico;
 
   const hoje = todaySaoPauloDateOnly();
   const statusAguardando: StatusExame[] = ['solicitado', 'agendado', 'realizado'];
@@ -601,7 +631,7 @@ export default function Exames() {
     void criticosQuery.refetch();
   };
 
-  const selectedExame = useMemo(() => exames.find(e => e.id === selectedId), [exames, selectedId]);
+  const selectedExame = recordQuery.data;
   const anexosSelecionado = useMemo(() => extrairAnexosGuia(selectedExame?.observacoes), [selectedExame?.observacoes]);
   // A linha "Anexos: ..." vira a lista de anexos acima; o restante das observações continua visível.
   const observacoesSelecionado = useMemo(() => {
@@ -649,40 +679,28 @@ export default function Exames() {
     setExamesSelecionados(prev => prev.filter(e => e.nome !== nome));
   };
 
-  const handleOpenNew = useCallback(() => {
-    setFormData({ ...initialFormData, data_solicitacao: todaySaoPauloDateOnly(), paciente_id: pacienteFiltroId || '', medico_solicitante_id: medicoId || '' });
-    setExamesSelecionados([]);
-    setAnexos([]);
-    setExamSearch('');
-    setCatFilter('');
-    setCustomExamCode('');
-    setIsDialogOpen(true);
-  }, [pacienteFiltroId, medicoId]);
-
-  const handleCloseNew = () => {
-    setIsDialogOpen(false);
-    if (!prontuarioFonteId && searchParams.get('novo') !== '1') return;
+  const handleOpenNew = () => {
     const params = new URLSearchParams(searchParams);
-    params.delete('prontuario');
     params.delete('novo');
-    setSearchParams(params, { replace: true });
+    openTask(`/exames/nova${params.size ? `?${params}` : ''}`);
   };
-
+  const handleCloseNew = leaveTask;
+  const taskKey = `${location.pathname}${location.search}`;
   useEffect(() => {
-    if (searchParams.get('novo') !== '1') {
-      autoOpenHandledRef.current = false;
-      return;
+    if (!creationPage && searchParams.get('novo') === '1') {
+      const params = new URLSearchParams(searchParams); params.delete('novo');
+      navigate(`/exames/nova?${params}`, { replace: true, state: { returnTo, examSearch: searchTerm } });
     }
-    if (autoOpenHandledRef.current || isDialogOpen) return;
-    if (prontuarioFonteId && prontuarioFonteQuery.isLoading) return;
-    autoOpenHandledRef.current = true;
-    handleOpenNew();
-  }, [searchParams, isDialogOpen, prontuarioFonteId, prontuarioFonteQuery.isLoading, handleOpenNew]);
-
-  const handleView = (id: string) => {
-    setSelectedId(id);
-    setIsViewOpen(true);
-  };
+  }, [creationPage, searchParams, navigate, returnTo, searchTerm]);
+  useEffect(() => {
+    if (!creationPage || loadingCurrentMedico || currentMedicoError || initialized.current === taskKey) return;
+    initialized.current = taskKey;
+    const form = { ...initialFormData, data_solicitacao: todaySaoPauloDateOnly(), paciente_id: pacienteFiltroId || '', medico_solicitante_id: medicoId || '' };
+    baseline.current = form; completed.current = false;
+    setFormData(form); setExamesSelecionados([]); setAnexos([]);
+    setExamSearch(''); setCatFilter(''); setCustomExamCode(''); setReadyFor(taskKey);
+  }, [creationPage, loadingCurrentMedico, currentMedicoError, taskKey, pacienteFiltroId, medicoId]);
+  const handleView = (id: string) => openTask(`/exames/${id}`);
 
   /** Baixa um arquivo do bucket privado via download autorizado (sem tornar o storage público). */
   const baixarArquivoStorage = async (path: string, nomeFallback: string) => {
@@ -985,13 +1003,8 @@ export default function Exames() {
 
       queryClient.invalidateQueries({ queryKey: ['exames'] });
       queryClient.invalidateQueries({ queryKey: ['coletas_laboratorio'] });
-      setIsDialogOpen(false);
-      if (prontuarioFonteId) {
-        const params = new URLSearchParams(searchParams);
-        params.delete('prontuario');
-        params.delete('novo');
-        setSearchParams(params, { replace: true });
-      }
+      completed.current = true;
+      leaveTask();
 
       if (emitir && guiaPdf) {
         try {
@@ -1033,7 +1046,7 @@ export default function Exames() {
    * o status direto: sem resultado, o banco recusa a transição — e recusar
    * depois do clique, com a mensagem do trigger, seria pior que pedir antes.
    */
-  const [lancandoResultado, setLancandoResultado] = useState<any | null>(null);
+  const setLancandoResultado = (exame: { id: string }) => openTask(`/exames/${exame.id}/resultado`);
   const [exameEmAtualizacao, setExameEmAtualizacao] = useState<string | null>(null);
   const updateStatusLock = useRef(false);
 
@@ -1046,7 +1059,7 @@ export default function Exames() {
     updateStatusLock.current = true;
     setExameEmAtualizacao(id);
     try {
-      let exame = exames.find(e => e.id === id);
+      let exame = selectedExame?.id === id ? selectedExame : exames.find(e => e.id === id);
 
       // Ao liberar o laudo, o exame vem do BANCO e não do cache: o resultado
       // pode ter acabado de ser salvo pelo diálogo, e a lista em memória ainda
@@ -1182,7 +1195,7 @@ export default function Exames() {
   };
 
   if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
-  if (examesQuery.isError) return <ErrorState title="Não foi possível carregar as solicitações de exames" error={examesQuery.error} onRetry={() => void examesQuery.refetch()} />;
+  if (!taskPage && examesQuery.isError) return <ErrorState title="Não foi possível carregar as solicitações de exames" error={examesQuery.error} onRetry={() => void examesQuery.refetch()} />;
   if (medicosQuery.isError) {
     return <ErrorState title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
@@ -1196,8 +1209,24 @@ export default function Exames() {
     />;
   }
 
+  if (currentMedicoError) return <ErrorState title="Não foi possível confirmar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
+  if (examId && recordQuery.isLoading) return <p role="status" className="py-8">Carregando exame…</p>;
+  if (examId && recordQuery.isError) return <div className="space-y-4"><Button onClick={leaveTask} variant="outline">Voltar aos exames</Button><ErrorState title="Não foi possível abrir o exame" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} /></div>;
+  if (examId && !selectedExame) return <div className="space-y-4"><h1 className="text-2xl font-semibold">Exame indisponível</h1><p>O exame não foi encontrado ou não está disponível nesta clínica.</p><Button variant="outline" onClick={leaveTask}>Voltar aos exames</Button></div>;
+  if (creationPage && readyFor !== taskKey) return <p role="status">Preparando solicitação…</p>;
+  if (resultPage && selectedExame) {
+    const next = proximaAcaoExame(selectedExame.status || 'solicitado', selectedExame.tipo_categorizado);
+    return <section className="mx-auto max-w-4xl space-y-6"><Button variant="ghost" onClick={leaveTask}>← Voltar aos exames</Button>
+      <div className="border-b pb-4"><p className="text-xs text-muted-foreground">Paciente</p><p className="font-medium">{getPacienteNome(selectedExame)}</p></div>
+      {next.destino === 'status' && next.status === 'laudo_disponivel'
+        ? <LancarResultado key={selectedExame.id} exame={selectedExame} onFechar={leaveTask} aoSalvar={id => handleUpdateStatus(id, 'laudo_disponivel')} />
+        : <div className="space-y-3"><h1 className="text-2xl font-semibold">Lançamento indisponível nesta etapa</h1><p>Confira o estado atual do exame antes de registrar o resultado.</p>{next.destino === 'laboratorio' && <Button asChild variant="outline"><Link to="/laboratorio">Abrir laboratório</Link></Button>}<Button variant="outline" onClick={() => handleView(selectedExame.id)}>Consultar exame</Button></div>}
+    </section>;
+  }
+
   return (
     <div className="space-y-6">
+      {!taskPage && <>
       <PageHeader
         title="Solicitação de exames"
         description={examesNoEscopo.length > 0
@@ -1549,20 +1578,11 @@ export default function Exames() {
         </CardContent>
       </Card>
 
-      {/* ─── New Exam Dialog ─── */}
-      <Dialog open={isDialogOpen} onOpenChange={open => {
-        if (open) setIsDialogOpen(true);
-        else if (!isSubmitting) handleCloseNew();
-      }}>
-        <DialogContent className="h-[95dvh] max-h-[95dvh] max-w-3xl overflow-hidden flex flex-col" aria-busy={isSubmitting}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Nova Guia de Exames
-              {/* Selo removido: a guia sai sem assinatura digital nenhuma. */}
-            </DialogTitle>
-          </DialogHeader>
-
+      </>}
+      {creationPage && <section className="mx-auto max-w-5xl space-y-6" aria-busy={isSubmitting}>
+        <UnsavedChangesGuard completed={completed} busy={isSubmitting} dirty={JSON.stringify(formData) !== JSON.stringify(baseline.current) || examesSelecionados.length > 0 || anexos.length > 0} />
+        <Button variant="ghost" onClick={handleCloseNew}>← Voltar aos exames</Button>
+        <header className="space-y-2 border-b pb-5"><h1 className="text-2xl font-semibold tracking-tight">Nova Guia de Exames</h1><p className="text-sm text-muted-foreground">Selecione os exames e revise a indicação clínica, os preparos e os anexos antes de solicitar.</p></header>
           {prontuarioFonteId && (
             <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm" role={prontuarioFonteQuery.isLoading ? 'status' : prontuarioFonteQuery.isError || !prontuarioFonteQuery.data || prontuarioFonteQuery.data.paciente_id !== formData.paciente_id ? 'alert' : 'note'}>
               {prontuarioFonteQuery.isLoading ? (
@@ -1575,12 +1595,12 @@ export default function Exames() {
             </div>
           )}
 
-          <fieldset disabled={isSubmitting} data-testid="exam-request-fields" className="min-h-0 flex-1 min-w-0 overflow-y-auto overscroll-contain space-y-5 border-0 p-0 pr-2">
+          <fieldset disabled={isSubmitting} data-testid="exam-request-fields" className="min-w-0 space-y-5 border-0 p-0">
             {/* Paciente + Médico */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Paciente *</Label>
-                <PacienteCombobox
+                <Label htmlFor="request-patient" className="text-xs font-medium">Paciente *</Label>
+                <PacienteCombobox id="request-patient"
                   value={formData.paciente_id || null}
                   onChange={id => setFormData(form => ({ ...form, paciente_id: id }))}
                   placeholder="Buscar paciente por nome, CPF ou telefone..."
@@ -1600,9 +1620,9 @@ export default function Exames() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Profissional Solicitante</Label>
+                <Label htmlFor="request-doctor" className="text-xs font-medium">Profissional Solicitante</Label>
                 <Select value={formData.medico_solicitante_id} disabled={isMedicoOnly} onValueChange={v => setFormData({ ...formData, medico_solicitante_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione (opcional)" /></SelectTrigger>
+                  <SelectTrigger id="request-doctor"><SelectValue placeholder="Selecione (opcional)" /></SelectTrigger>
                   <SelectContent>{medicosDisponiveis.map(m => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} — {m.especialidade || 'Clínico'}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -1611,13 +1631,13 @@ export default function Exames() {
             {/* Data + Validade */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1"><Calendar className="h-3 w-3" />Data do Pedido</Label>
-                <Input type="date" max={todaySaoPauloDateOnly()} value={formData.data_solicitacao} onChange={e => setFormData({ ...formData, data_solicitacao: e.target.value })} />
+                <Label htmlFor="request-date" className="text-xs font-medium flex items-center gap-1"><Calendar className="h-3 w-3" />Data do Pedido</Label>
+                <Input id="request-date" type="date" max={todaySaoPauloDateOnly()} value={formData.data_solicitacao} onChange={e => setFormData({ ...formData, data_solicitacao: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1"><Clock className="h-3 w-3" />Validade (dias)</Label>
+                <Label htmlFor="request-validity" className="text-xs font-medium flex items-center gap-1"><Clock className="h-3 w-3" />Validade (dias)</Label>
                 <Select value={formData.validade_dias.toString()} onValueChange={v => setFormData({ ...formData, validade_dias: parseInt(v) })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="request-validity"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="30">30 dias</SelectItem>
                     <SelectItem value="60">60 dias</SelectItem>
@@ -1627,9 +1647,9 @@ export default function Exames() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Urgência</Label>
+                <Label htmlFor="request-urgency" className="text-xs font-medium">Urgência</Label>
                 <Select value={formData.urgencia} onValueChange={v => setFormData({ ...formData, urgencia: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="request-urgency"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="normal">Normal</SelectItem>
                     <SelectItem value="urgente">Urgente</SelectItem>
@@ -1638,9 +1658,9 @@ export default function Exames() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Jejum</Label>
+                <Label htmlFor="request-fasting" className="text-xs font-medium">Jejum</Label>
                 <Select value={formData.jejum} onValueChange={v => setFormData({ ...formData, jejum: v })}>
-                  <SelectTrigger><SelectValue placeholder="Se necessário" /></SelectTrigger>
+                  <SelectTrigger id="request-fasting"><SelectValue placeholder="Se necessário" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="nao">Não necessário</SelectItem>
                     <SelectItem value="8h">8 horas</SelectItem>
@@ -1817,9 +1837,9 @@ export default function Exames() {
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Tipo de Exame</Label>
+                  <Label htmlFor="request-type" className="text-xs font-medium">Tipo de Exame</Label>
                   <Select value={formData.tipo_categorizado || 'laboratorial'} onValueChange={v => setFormData({ ...formData, tipo_categorizado: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="request-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="laboratorial">Laboratorial</SelectItem>
                       <SelectItem value="imagem">Imagem</SelectItem>
@@ -1831,8 +1851,8 @@ export default function Exames() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Preço de Custo (R$)</Label>
-                  <Input
+                  <Label htmlFor="request-cost" className="text-xs font-medium">Preço de Custo (R$)</Label>
+                  <Input id="request-cost"
                     type="number"
                     step="0.01"
                     min="0"
@@ -1842,8 +1862,8 @@ export default function Exames() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Preço de Venda (R$)</Label>
-                  <Input
+                  <Label htmlFor="request-price" className="text-xs font-medium">Preço de Venda (R$)</Label>
+                  <Input id="request-price"
                     type="number"
                     step="0.01"
                     min="0"
@@ -1858,7 +1878,7 @@ export default function Exames() {
               </p>
 
               <div className="mt-4 space-y-1.5">
-                <Label className="text-xs font-medium">Laboratório responsável</Label>
+                <Label htmlFor="request-lab" className="text-xs font-medium">Laboratório responsável</Label>
                 {laboratoriosQuery.isError ? (
                   <ErrorState compact title="Não foi possível carregar os laboratórios" error={laboratoriosQuery.error} onRetry={() => void laboratoriosQuery.refetch()} />
                 ) : (
@@ -1867,7 +1887,7 @@ export default function Exames() {
                     onValueChange={value => setFormData({ ...formData, laboratorio_id: value === '__nenhum__' ? undefined : value })}
                     disabled={laboratoriosQuery.isLoading}
                   >
-                    <SelectTrigger><SelectValue placeholder={laboratoriosQuery.isLoading ? 'Carregando laboratórios…' : 'Selecione (opcional)'} /></SelectTrigger>
+                    <SelectTrigger id="request-lab"><SelectValue placeholder={laboratoriosQuery.isLoading ? 'Carregando laboratórios…' : 'Selecione (opcional)'} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__nenhum__">Sem laboratório vinculado</SelectItem>
                       {laboratorios.map((laboratorio: any) => (
@@ -1986,8 +2006,8 @@ export default function Exames() {
             </div>
           </fieldset>
 
-          <DialogFooter data-testid="exam-request-footer" className="flex-shrink-0 pt-4 border-t gap-2">
-            <Button variant="outline" onClick={handleCloseNew} disabled={isSubmitting}>Cancelar</Button>
+          <div data-testid="exam-request-footer" className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button variant="outline" onClick={handleCloseNew} disabled={isSubmitting}>Voltar aos exames</Button>
             <Button variant="secondary" onClick={() => handleSave(false)} disabled={isSubmitting || pacienteResumoQuery.isLoading} className="gap-1">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               Solicitar ({examesSelecionados.length})
@@ -1996,14 +2016,12 @@ export default function Exames() {
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <FileDown className="h-4 w-4" />Criar e baixar guia PDF
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+      </section>}
 
-      {/* ─── View Dialog ─── */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Detalhes do Exame</DialogTitle></DialogHeader>
+      {isViewOpen && <section className="mx-auto max-w-4xl space-y-6">
+        <Button variant="ghost" onClick={leaveTask}>← Voltar aos exames</Button>
+        <h1 className="border-b pb-5 text-2xl font-semibold tracking-tight">Detalhes do Exame</h1>
           {selectedExame && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
@@ -2103,11 +2121,12 @@ export default function Exames() {
               )}
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewOpen(false)}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button variant="outline" onClick={leaveTask}>Voltar aos exames</Button>
+            {selectedExame && proximaAcaoExame(selectedExame.status || 'solicitado', selectedExame.tipo_categorizado).destino === 'laboratorio' && <Button asChild><Link to="/laboratorio">Abrir laboratório</Link></Button>}
+            {selectedExame?.status === 'realizado' && (selectedExame.tipo_categorizado || '').toLowerCase() !== 'laboratorial' && !selectedExame.resultado && !selectedExame.arquivo_resultado && <Button onClick={() => setLancandoResultado(selectedExame)}>Lançar resultado</Button>}
+          </div>
+      </section>}
 
       {/* ─── Manage Laboratories ─── */}
       <Dialog open={isManageTypesOpen} onOpenChange={setIsManageTypesOpen}>
@@ -2177,11 +2196,7 @@ export default function Exames() {
       {/* Lançar resultado — o degrau que faltava entre "realizado" e o laudo.
           Depois de salvar, segue o fluxo normal, que vincula ao prontuário e
           avisa o paciente. */}
-      <LancarResultado
-        exame={lancandoResultado}
-        onFechar={() => setLancandoResultado(null)}
-        aoSalvar={(exameId) => handleUpdateStatus(exameId, 'laudo_disponivel')}
-      />
+
     </div>
   );
 }

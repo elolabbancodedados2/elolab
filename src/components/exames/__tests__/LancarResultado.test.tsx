@@ -34,6 +34,8 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
+// Navigation protection is exercised with a real router in exam-pages.spec.ts.
+vi.mock('@/components/UnsavedChangesGuard', () => ({ UnsavedChangesGuard: () => null }));
 
 import { LancarResultado } from '@/components/exames/LancarResultado';
 

@@ -179,3 +179,32 @@ Arquivos: `src/pages/Encaminhamentos.tsx`, `src/components/clinical/Encaminhamen
 ### Publicação
 
 Deploy concluído em 29/10/2026: `f5a8eae0db6185ac04abdeddf124d31491975294`, imagem `easypanel/elolab/app:deploy-20261029-f5a8eae`. Swarm confirmou atualização concluída; `/version.json` confirmou a versão e `/healthz` respondeu `ok`. Houve indisponibilidade transitória durante a troca, seguida de recuperação confirmada. A navegação da lista para o detalhe do registro de demonstração foi conferida em produção: página própria, zero diálogos, auditoria de leitura concluída e histórico visível. Não houve alteração de status ou texto clínico. Rollback preservado: imagem `deploy-20261029-763ab16` e fonte `code.before-20261029-f5a8eae`. Capturas sintéticas locais em `.qa-artifacts/encaminhamentos-20261029/`, fora do Git. Sem migration ou deploy de Edge Functions.
+
+## Exames — guia, consulta e lançamento de resultado
+
+### Diagnóstico e direção
+
+A guia ocupava um modal com altura de 95% da janela, rolagem interna e rodapé fixo. O resultado abria outro modal; o detalhe não possuía endereço próprio. A inspeção visual da versão publicada mostrou a indicação clínica fora da área inicial e o formulário comprimido entre cabeçalho e ações. O objetivo da mudança é dar espaço à solicitação e preservar o contexto entre prontuário, exames e laboratório.
+
+### Jornada, estados e integração
+
+- `/exames/nova`: identificação do paciente e solicitante → escolha dos exames → indicação, preparo e anexos → solicitar ou solicitar e baixar PDF. Os rótulos de paciente, solicitante, data, validade, urgência, jejum, categoria, preços e laboratório foram associados aos controles correspondentes.
+- Links existentes com `novo=1` encaminham à nova página mantendo paciente e prontuário. A confirmação de vínculo com o prontuário continua obrigatória; contexto inválido impede o salvamento. Retorno conserva os filtros da lista e o acesso ao prontuário.
+- `/exames/:examId`: consulta direta restrita à clínica, com carregamento, recuperação de erro e registro indisponível. Campos clínicos, anexos privados e download de laudo preservados. Ações levam ao laboratório ou ao lançamento de resultado conforme a etapa existente.
+- `/exames/:examId/resultado`: identifica paciente e exame antes do texto e arquivo. A rota só permite o lançamento quando a próxima ação do fluxo é liberar laudo. Exames laboratoriais continuam na esteira de laboratório; cancelados e finalizados não ganham transições alternativas pela URL.
+- Falha de gravação conserva texto e arquivo. A versão `updated_at` continua impedindo sobrescrita de outro operador. Resultado salvo e falha posterior na liberação são comunicados separadamente; o resultado não é enviado de novo ao voltar à lista.
+- Guardas de saída/recarga protegem os rascunhos e bloqueiam descarte durante envio. Bloqueio de requisição duplicada foi preservado na guia e reforçado no resultado. Dados não são persistidos localmente.
+- APIs, proteção por plano e perfis, armazenamento privado, upload/limpeza de arquivos, geração de PDF, automações de coleta e liberação permanecem com os contratos anteriores. Nenhuma regra clínica ou financeira alterada.
+
+### Implementação e validação
+
+Arquivos: `src/pages/Exames.tsx`, `src/components/exames/LancarResultado.tsx`, `src/App.tsx`, `src/config/routeLabels.ts`, testes do componente e testes Playwright. A regressão prontuário → pedido → laboratório foi adaptada para navegar pela página, sem enfraquecer as asserções de vínculo e payload.
+
+- 10 cenários novos Playwright passaram, incluindo 1440/768/390 px, proteção de rascunho, falha de solicitação, PDF real (`%PDF-`), concorrência no resultado, liberação posterior malsucedida, retorno com busca, rotas fora da etapa/perfil, carregamento, erro e exame ausente.
+- 3 regressões existentes passaram: acesso médico a exames da clínica, prontuário e pedido conectado ao laboratório, confirmações de cancelamento/exclusão em desktop e celular.
+- 13 testes unitários passaram: concorrência/upload do resultado, transições, preparos e filtros. TypeScript com `tsconfig.app.json` e build de produção passaram; ESLint focal sem erros, com 20 avisos existentes no arquivo de exames (17 de `any`, 3 de dependências de hooks).
+- Capturas de guia desktop/tablet, rodapé no celular, consulta mobile e resultado desktop/mobile efetivamente visualizadas. Campos não ultrapassam a tela e as ações ficam acessíveis acima da navegação inferior.
+
+### Limites e sequência
+
+Testes de gravação, upload e automação foram executados com respostas interceptadas e dados sintéticos; nenhum exame real foi solicitado ou liberado. Integrações externas não foram rehomologadas. Cadastro de laboratórios/fornecedores ainda usa o gerenciador anterior e será tratado como fluxo próprio em entrega posterior. Confirmações curtas de cancelamento, exclusão e descarte permanecem em diálogos. A diretriz confirmada pelo responsável é migrar todos os formulários e tarefas longas gradualmente, mantendo particularidades de cada módulo.
