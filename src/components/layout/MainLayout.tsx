@@ -18,6 +18,7 @@ import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 import { Version20Announcement } from '@/components/Version20Announcement';
 import { MobileTabBar } from './MobileTabBar';
+import { UpgradeNotice } from './UpgradeNotice';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -54,6 +55,7 @@ export function MainLayout() {
 
       {/* Main Content */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <UpgradeNotice />
         <Navbar mobileMenuOpen={mobileMenuOpen} onMenuClick={() => setMobileMenuOpen(open => !open)} />
         <ImpersonationBanner />
         <main 
