@@ -9,6 +9,7 @@ import { Clock, Save, Plus, AlertCircle } from 'lucide-react';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 const DAYS_OF_WEEK = [
   { value: 1, label: 'Segunda-feira' },
@@ -33,18 +34,21 @@ interface Availability {
 interface Props {
   medico_id: string;
   medico_nome: string;
+  protectChanges?: boolean;
 }
 
 // Helper to bypass strict typing for tables not yet in generated types
 const db = supabase as any;
 
-export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
+export function MedicoAvailabilityManager({ medico_id, medico_nome, protectChanges = false }: Props) {
   const [availabilities, setAvailabilities] = useState<Availability[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [editing, setEditing] = useState<Partial<Availability> | null>(null);
   const loadRequestId = useRef(0);
+  const writeLock = useRef(false);
+  const completed = useRef(false);
 
   const loadAvailability = useCallback(async () => {
     const requestId = ++loadRequestId.current;
@@ -74,6 +78,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
   }, [loadAvailability]);
 
   const handleSave = async () => {
+    if (writeLock.current || loading || loadError) return;
     if (!Number.isInteger(editing?.dia_semana) || !editing?.hora_inicio || !editing?.hora_fim) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
@@ -93,6 +98,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
       return;
     }
 
+    writeLock.current = true;
     setSaving(true);
     try {
       if (editing.id) {
@@ -104,7 +110,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
             duracao_consulta: duration,
             intervalo_consultas: interval,
           })
-          .eq('id', editing.id);
+          .eq('id', editing.id).eq('medico_id', medico_id);
 
         if (error) throw error;
         toast.success('Disponibilidade atualizada');
@@ -130,24 +136,30 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
     } catch (err) {
       toast.error('Não foi possível salvar a disponibilidade', { description: mensagemDeErro(err) });
     } finally {
+      writeLock.current = false;
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (writeLock.current) return;
     if (!window.confirm('Remover este horário?')) return;
-
+    writeLock.current = true;
+    setSaving(true);
     try {
       const { error } = await db
         .from('medico_disponibilidade')
         .delete()
-        .eq('id', id);
+        .eq('id', id).eq('medico_id', medico_id);
 
       if (error) throw error;
       await loadAvailability();
       toast.success('Horário removido');
     } catch (err) {
       toast.error('Não foi possível remover a disponibilidade', { description: mensagemDeErro(err) });
+    } finally {
+      writeLock.current = false;
+      setSaving(false);
     }
   };
 
@@ -155,13 +167,14 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
 
   return (
     <Card>
+      {protectChanges && <UnsavedChangesGuard dirty={!!editing} busy={saving} completed={completed} />}
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5" />
           Horários de Disponibilidade — {medico_nome}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6"><fieldset disabled={saving} className="min-w-0 space-y-6">
         <div className="space-y-3">
           <h4 className="font-semibold text-sm">Dias e horários configurados</h4>
           {loading ? (
@@ -179,7 +192,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
           ) : (
             <div className="space-y-2">
               {availabilities.map(av => (
-                <div key={av.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div key={av.id} className="flex flex-wrap gap-3 items-center justify-between p-3 bg-muted rounded-lg">
                   <div className="space-y-1">
                     <div className="font-medium text-sm">{getDayLabel(av.dia_semana)}</div>
                     <div className="text-xs text-muted-foreground">
@@ -187,7 +200,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="outline" aria-label={`Editar horário de ${getDayLabel(av.dia_semana)}`} onClick={() => setEditing(av)}>Editar</Button>
+                    <Button size="sm" variant="outline" disabled={!!editing} aria-label={`Editar horário de ${getDayLabel(av.dia_semana)}`} onClick={() => setEditing(av)}>Editar</Button>
                     <Button size="sm" variant="destructive" aria-label={`Remover horário de ${getDayLabel(av.dia_semana)}`} onClick={() => handleDelete(av.id)}>×</Button>
                   </div>
                 </div>
@@ -241,7 +254,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
                 disabled={saving || loading}
                 isLoading={saving}
                 loadingText="Salvando..."
-                className="flex-1 gap-2"
+                className="flex-1 gap-2 scroll-mb-24"
               >
                 <Save className="h-4 w-4" />
                 Salvar
@@ -251,12 +264,12 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome }: Props) {
         )}
 
         {!editing && (
-          <Button onClick={() => setEditing({ duracao_consulta: 30, intervalo_consultas: 5 })} className="w-full gap-2">
+          <Button disabled={loading || !!loadError} onClick={() => setEditing({ duracao_consulta: 30, intervalo_consultas: 5 })} className="w-full gap-2 scroll-mb-24">
             <Plus className="h-4 w-4" />
             Adicionar novo horário
           </Button>
         )}
-      </CardContent>
+      </fieldset></CardContent>
     </Card>
   );
 }

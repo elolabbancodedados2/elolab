@@ -1,7 +1,8 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico, validateCPF } from '@/lib/formatters';
-import React, { useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import {
   Plus, Search, Pencil, Stethoscope, Phone, Mail, BadgeCheck, Award,
   FileText, Clock, User, Upload, Image, Calendar, ClipboardList, Pill,
@@ -13,7 +14,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -27,9 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -173,7 +171,7 @@ function EspecialidadeCombobox({ value, onChange, especialidadesExtras }: { valu
 }
 
 // ─── Doctor Profile Panel ───
-function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose: () => void; onEdit: () => void }) {
+function MedicoProfilePanel({ medico, onEdit, onAvailability }: { medico: any; onEdit: () => void; onAvailability: () => void }) {
   const navigate = useNavigate();
   const { user, profile } = useSupabaseAuth();
 
@@ -253,10 +251,9 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
   };
 
   return (
-    <Sheet open onOpenChange={() => onClose()}>
-      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
-        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 border-b">
-          <SheetHeader className="mb-4"><SheetTitle className="sr-only">Perfil do Médico</SheetTitle></SheetHeader>
+    <section className="mx-auto max-w-6xl overflow-hidden rounded-xl border bg-card">
+        <div className="p-5 sm:p-8 border-b">
+          <h1 className="text-sm text-muted-foreground mb-4">Perfil do Médico</h1>
           <div className="flex items-start gap-4">
             <Avatar className="h-20 w-20 ring-4 ring-background shadow-xl">
               {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
@@ -265,7 +262,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-foreground truncate">{nomeMedico(medico.nome || medico.crm)}</h2>
+              <h2 className="text-xl font-bold text-foreground break-words">{nomeMedico(medico.nome || medico.crm)}</h2>
               <p className="text-sm text-muted-foreground">{medico.especialidade || 'Clínico Geral'}</p>
               <div className="flex flex-wrap gap-2 mt-2">
                  <Badge variant="outline" className="text-[11px] gap-1">
@@ -285,6 +282,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
           </div>
           <div className="flex flex-wrap gap-2 mt-4">
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={onEdit}><Pencil className="h-3 w-3" /> Editar</Button>
+            <Button size="sm" variant="outline" onClick={onAvailability}>Disponibilidade</Button>
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => navigate('/agenda')}><Calendar className="h-3 w-3" /> Agenda</Button>
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => navigate('/prontuarios')}><ClipboardList className="h-3 w-3" /> Prontuários</Button>
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => navigate('/prescricoes')}><Pill className="h-3 w-3" /> Prescrições</Button>
@@ -369,7 +367,8 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
           ))}
         </div>
 
-        <Tabs defaultValue="agenda" className="flex-1 flex flex-col overflow-hidden">
+        <p className="px-5 pt-3 text-xs text-muted-foreground">Resumo dos registros carregados: até 50 agendamentos, 30 prontuários, 30 prescrições e 20 atestados.</p>
+        <Tabs defaultValue="agenda" className="space-y-4">
           <TabsList className="mx-4 mt-3 grid grid-cols-2 sm:grid-cols-4 h-auto sm:h-9">
             <TabsTrigger value="agenda" className="text-[11px] gap-1"><Calendar className="h-3 w-3" /> Agenda</TabsTrigger>
             <TabsTrigger value="prontuarios" className="text-[11px] gap-1"><ClipboardList className="h-3 w-3" /> Prontuários</TabsTrigger>
@@ -377,7 +376,7 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
             <TabsTrigger value="atestados" className="text-[11px] gap-1"><FileText className="h-3 w-3" /> Atestados</TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 px-4 pb-4">
+          <div className="px-4 pb-4">
             <TabsContent value="agenda" className="mt-3 space-y-2">
               {agendamentosQuery.isError && <ErrorState compact title="Não foi possível carregar a agenda deste médico" error={agendamentosQuery.error} onRetry={() => { void agendamentosQuery.refetch(); }} />}
               {agendamentosQuery.isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Carregando agendamentos…</p>}
@@ -468,24 +467,36 @@ function MedicoProfilePanel({ medico, onClose, onEdit }: { medico: any; onClose:
               ))}
               {!atestadosQuery.isLoading && !atestadosQuery.isError && atestados.length === 0 && <div className="text-center py-8 text-muted-foreground"><FileText className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">Nenhum atestado emitido</p></div>}
             </TabsContent>
-          </ScrollArea>
+          </div>
         </Tabs>
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 
 // ─── Main Page ───
-export default function Medicos() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterEspecialidade, setFilterEspecialidade] = useState('todas');
-  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+type DoctorTask = 'new' | 'edit' | 'profile' | 'availability';
+export default function Medicos({ task }: { task?: DoctorTask }) {
+  const location = useLocation();
+  return <MedicosWorkspace key={location.pathname} task={task} />;
+}
+function MedicosWorkspace({ task }: { task?: DoctorTask }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { doctorId } = useParams();
+  const taskPage = !!task;
+  const formPage = task === 'new' || task === 'edit';
+  const editingId = task === 'edit' ? doctorId : undefined;
+  const initialized = useRef(false);
+  const completed = useRef(false);
+  const baseline = useRef(JSON.stringify(initialFormData));
+  const returnTo = typeof location.state?.doctorReturn === 'string' && /^\/equipe(?:\?|$)/.test(location.state.doctorReturn) ? location.state.doctorReturn : '/equipe';
+  const leaveTask = () => navigate(returnTo, { state: { doctorFilters: location.state?.doctorFilters } });
+  const [searchTerm, setSearchTerm] = useState(location.state?.doctorFilters?.search ?? '');
+  const [filterEspecialidade, setFilterEspecialidade] = useState(location.state?.doctorFilters?.specialty ?? 'todas');
+  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo'>(location.state?.doctorFilters?.status ?? 'todos');
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [viewingMedico, setViewingMedico] = useState<any | null>(null);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -526,24 +537,25 @@ export default function Medicos() {
   const totalAtivos = medicos.filter((m: any) => m.ativo).length;
   const totalInativos = medicos.filter((m: any) => !m.ativo).length;
 
-  const handleOpenDialog = (medico?: any) => {
-    if (medico) {
-      setEditingId(medico.id);
-      setEditingUpdatedAt(medico.updated_at ?? null);
-      setFormData({
-         nome: medico.nome || '', email: medico.email || '', crm: medico.crm, tipo_registro: medico.tipo_registro || 'CRM',
-        crm_uf: medico.crm_uf || 'SP', cpf: medico.cpf || '', data_nascimento: medico.data_nascimento || '', rqe: medico.rqe || '',
-        cns: medico.cns || '', especialidade: medico.especialidade || '',
-        telefone: medico.telefone || '', intervalo_consulta: medico.intervalo_consulta ?? 30,
-        ativo: medico.ativo, foto_url: medico.foto_url || '', carimbo_url: medico.carimbo_url || '',
-      });
-    } else {
-      setEditingId(null);
-      setEditingUpdatedAt(null);
-      setFormData(initialFormData);
-    }
-    setIsDialogOpen(true);
-  };
+  const currentDoctor = doctorId ? medicos.find(medico => medico.id === doctorId) : null;
+  useEffect(() => {
+    if (!formPage || initialized.current || (editingId && !currentDoctor)) return;
+    const medico = currentDoctor;
+    const value: FormData = medico ? {
+      nome: medico.nome || '', email: medico.email || '', crm: medico.crm, tipo_registro: medico.tipo_registro || 'CRM',
+      crm_uf: medico.crm_uf || 'SP', cpf: medico.cpf || '', data_nascimento: medico.data_nascimento || '', rqe: medico.rqe || '',
+      cns: medico.cns || '', especialidade: medico.especialidade || '',
+      telefone: medico.telefone || '', intervalo_consulta: medico.intervalo_consulta ?? 30,
+      ativo: medico.ativo, foto_url: medico.foto_url || '', carimbo_url: medico.carimbo_url || '',
+    } : initialFormData;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setEditingUpdatedAt(medico?.updated_at ?? null);
+    setFormData(value);
+  }, [formPage, editingId, currentDoctor]);
+  const openTask = (path: string) => navigate(path, { state: taskPage ? location.state : { doctorReturn: location.pathname + location.search, doctorFilters: { search: searchTerm, specialty: filterEspecialidade, status: filterStatus } } });
+  const handleOpenDialog = (medico?: { id: string }) => openTask(medico ? `/equipe/medicos/${medico.id}/editar` : '/equipe/medicos/novo');
+  const openProfile = (medico: { id: string }) => openTask(`/equipe/medicos/${medico.id}`);
 
   const handleDeleteClick = (id: string) => { setSelectedId(id); setIsDeleteOpen(true); };
 
@@ -682,7 +694,8 @@ export default function Medicos() {
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
       queryClient.invalidateQueries({ queryKey: ['convites-list'] });
-      setIsDialogOpen(false);
+      completed.current = true;
+      leaveTask();
     } catch (error: any) {
       if (error?.code === '23505' && error?.constraint === 'medicos_registro_clinica_unico') {
         toast.error('Já existe um profissional com esse registro nesta clínica.');
@@ -711,7 +724,7 @@ export default function Medicos() {
     } finally { setIsDeleting(false); setIsDeleteOpen(false); }
   };
 
-  if (isLoading) {
+  if (isLoading && !taskPage) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -725,7 +738,7 @@ export default function Medicos() {
     );
   }
 
-  if (medicosQuery.isError) {
+  if (medicosQuery.isError && !taskPage) {
     return <ErrorState title="Não foi possível carregar o corpo clínico" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
 
@@ -744,8 +757,11 @@ export default function Medicos() {
 
   return (
     <TooltipProvider>
-      <div className="space-y-6">
-        <PageHeader
+      <div className="space-y-6 pb-24 lg:pb-8">
+        {formPage && <UnsavedChangesGuard dirty={JSON.stringify(formData) !== baseline.current} busy={isSubmitting || uploadingPhoto || uploadingCarimbo} completed={completed} />}
+      {taskPage && <Button variant="outline" onClick={leaveTask}>Voltar à equipe médica</Button>}
+      {!taskPage && <>
+      <PageHeader
           title="Corpo Clínico"
           description={descricaoHeader}
           icon={<Stethoscope />}
@@ -829,7 +845,7 @@ export default function Medicos() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredMedicos.map((medico: any) => (
             <Card key={medico.id} className={cn('group rounded-2xl border-border/60 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-[#1080CA]/40', !medico.ativo && 'bg-muted/40')}
-              onClick={() => setViewingMedico(medico)}>
+              onClick={() => openProfile(medico)}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
                   <Avatar className={`h-16 w-16 ring-2 ring-[#1080CA]/10 group-hover:ring-[#1080CA]/30 transition-all shadow-md ${!medico.ativo ? 'opacity-70' : ''}`}>
@@ -874,7 +890,7 @@ export default function Medicos() {
                 {/* Actions */}
                 <div className="flex items-center justify-between mt-3">
                   <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs text-[#1080CA] hover:text-[#1080CA] hover:bg-[#1080CA]/10"
-                    onClick={(e) => { e.stopPropagation(); setViewingMedico(medico); }}>
+                    onClick={(e) => { e.stopPropagation(); openProfile(medico); }}>
                     <Eye className="h-3.5 w-3.5" /> Ver Perfil
                   </Button>
                   <div className="flex gap-1">
@@ -928,28 +944,18 @@ export default function Medicos() {
           </Card>
         )}
 
-        {/* Profile Panel */}
-        {viewingMedico && (
-          <MedicoProfilePanel medico={viewingMedico} onClose={() => setViewingMedico(null)}
-            onEdit={() => { handleOpenDialog(viewingMedico); setViewingMedico(null); }} />
-        )}
-
-        {/* ─── Form Dialog ─── */}
-        <Dialog open={isDialogOpen} onOpenChange={open => {
-          if (open || (!isSubmitting && !uploadingPhoto && !uploadingCarimbo)) setIsDialogOpen(open);
-        }}>
-          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Stethoscope className="h-5 w-5 text-primary" />
-                {editingId ? 'Editar Médico' : 'Novo Médico'}
-              </DialogTitle>
-            </DialogHeader>
-
+      </>}
+      {taskPage && (medicosQuery.isError ? <ErrorState title="Não foi possível abrir o profissional" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
+        : isLoading ? <p role="status">Carregando profissional…</p>
+        : doctorId && !currentDoctor ? <p role="status">Profissional não encontrado na clínica atual.</p>
+        : task === 'profile' && currentDoctor ? <MedicoProfilePanel medico={currentDoctor} onEdit={() => handleOpenDialog(currentDoctor)} onAvailability={() => openTask(`/equipe/medicos/${doctorId}/disponibilidade`)} />
+        : task === 'availability' && currentDoctor ? <section className="mx-auto max-w-4xl space-y-5"><header><h1 className="text-2xl font-semibold">Disponibilidade do profissional</h1><p className="mt-2 text-muted-foreground">{nomeMedico(currentDoctor.nome)}</p></header><MedicoAvailabilityManager medico_id={currentDoctor.id} medico_nome={currentDoctor.nome} protectChanges /></section>
+        : <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-4xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5"><p className="text-sm text-muted-foreground">Equipe / Cadastro profissional</p><h1 className="text-2xl font-semibold">{editingId ? 'Editar Médico' : 'Novo Médico'}</h1></header>
             <fieldset disabled={isSubmitting} className="contents">
-            <div className="flex-1 overflow-y-auto space-y-5 pr-2">
+            <div className="space-y-5">
               {/* Foto + Status side by side */}
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <Avatar className="h-16 w-16 ring-2 ring-primary/10">
                     {formData.foto_url && <StorageAvatarImage bucket="patient-photos" path={formData.foto_url} />}
@@ -958,11 +964,11 @@ export default function Medicos() {
                   <div className="space-y-1">
                     <Label htmlFor="foto-upload" className="text-xs font-medium">Foto de Perfil</Label>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="gap-1 text-xs" disabled={uploadingPhoto}
+                      <Button type="button" variant="outline" size="sm" className="gap-1 text-xs" disabled={uploadingPhoto}
                         onClick={() => document.getElementById('foto-upload')?.click()}>
                         <Upload className="h-3 w-3" />{uploadingPhoto ? 'Enviando...' : 'Upload'}
                       </Button>
-                      {formData.foto_url && <Button variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => setFormData(p => ({ ...p, foto_url: '' }))}>Remover</Button>}
+                      {formData.foto_url && <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => setFormData(p => ({ ...p, foto_url: '' }))}>Remover</Button>}
                     </div>
                     <input id="foto-upload" type="file" accept="image/*" className="hidden"
                       onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], 'patient-photos', 'foto_url')} />
@@ -982,7 +988,7 @@ export default function Medicos() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="medico-nome" className="text-xs">Nome Completo <span className="text-destructive">*</span></Label>
-                    <Input id="medico-nome" value={formData.nome} onChange={e => setFormData(p => ({ ...p, nome: e.target.value }))} placeholder="João da Silva"
+                    <Input required id="medico-nome" value={formData.nome} onChange={e => setFormData(p => ({ ...p, nome: e.target.value }))} placeholder="João da Silva"
                       className={!formData.nome && formData.crm ? 'border-destructive/50' : ''} />
                   </div>
                   <div className="space-y-1.5">
@@ -1036,7 +1042,7 @@ export default function Medicos() {
                    </div>
                    <div className="space-y-1.5">
                      <Label htmlFor="medico-crm" className="text-xs">Número <span className="text-destructive">*</span></Label>
-                     <Input id="medico-crm" value={formData.crm}
+                     <Input required id="medico-crm" value={formData.crm}
                        onChange={e => setFormData(p => ({ ...p, crm: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
                        placeholder="123456"
                        className={!formData.crm && formData.nome ? 'border-destructive/50' : ''} />
@@ -1083,16 +1089,8 @@ export default function Medicos() {
                 </div>
               </div>
 
-              {/* Horários de Disponibilidade */}
-              {editingId && (
-                <>
-                  <Separator />
-                  <MedicoAvailabilityManager medico_id={editingId} medico_nome={formData.nome} />
-                </>
-              )}
-
+              {editingId && <div className="space-y-2 border-t pt-5"><h2 className="font-semibold">Disponibilidade</h2><p className="text-sm text-muted-foreground">Dias e horários de atendimento são gerenciados em uma página própria.</p><Button type="button" variant="outline" onClick={() => openTask(`/equipe/medicos/${editingId}/disponibilidade`)}>Gerenciar disponibilidade</Button></div>}
               <Separator />
-
               {/* Carimbo */}
               <div>
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><FileText className="h-4 w-4" /> Carimbo / Assinatura Digital</h4>
@@ -1103,11 +1101,11 @@ export default function Medicos() {
                     <div className="h-16 w-32 border-2 border-dashed rounded-lg flex items-center justify-center text-muted-foreground"><Image className="h-5 w-5" /></div>
                   )}
                   <div className="space-y-1">
-                    <Button variant="outline" size="sm" className="gap-1 text-xs" disabled={uploadingCarimbo}
+                    <Button type="button" variant="outline" size="sm" className="gap-1 text-xs" disabled={uploadingCarimbo}
                       onClick={() => document.getElementById('carimbo-upload')?.click()}>
                       <Upload className="h-3 w-3" />{uploadingCarimbo ? 'Enviando...' : 'Upload Carimbo'}
                     </Button>
-                    {formData.carimbo_url && <Button variant="ghost" size="sm" className="text-xs text-destructive block" onClick={() => setFormData(p => ({ ...p, carimbo_url: '' }))}>Remover</Button>}
+                    {formData.carimbo_url && <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive block" onClick={() => setFormData(p => ({ ...p, carimbo_url: '' }))}>Remover</Button>}
                     <p className="text-[10px] text-muted-foreground">Imagem do carimbo/assinatura para documentos</p>
                   </div>
                   <input id="carimbo-upload" type="file" accept="image/*" className="hidden"
@@ -1117,12 +1115,11 @@ export default function Medicos() {
             </div>
             </fieldset>
 
-            <DialogFooter className="flex-shrink-0 pt-4 border-t">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting || uploadingPhoto || uploadingCarimbo}>Cancelar</Button>
-              <LoadingButton onClick={handleSave} disabled={uploadingPhoto || uploadingCarimbo} isLoading={isSubmitting} loadingText="Salvando...">{editingId ? 'Salvar Alterações' : 'Cadastrar Médico'}</LoadingButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="flex flex-wrap justify-end gap-3 pt-5 border-t">
+              <Button type="button" variant="outline" onClick={leaveTask} disabled={isSubmitting || uploadingPhoto || uploadingCarimbo}>Cancelar</Button>
+              <LoadingButton type="submit" className="scroll-mb-24" disabled={uploadingPhoto || uploadingCarimbo} isLoading={isSubmitting} loadingText="Salvando...">{editingId ? 'Salvar Alterações' : 'Cadastrar Médico'}</LoadingButton>
+            </div>
+          </form>)}
 
         {/* Delete Dialog */}
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

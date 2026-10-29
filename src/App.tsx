@@ -289,6 +289,11 @@ function AppRoutes() {
                               quem estava esperando para chamar o próximo paciente. */}
                           <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AtendimentoFila /></SupabaseProtectedRoute>} />
                           <Route path="/equipe" element={<SupabaseProtectedRoute allowedRoles={['admin']}><EquipePage /></SupabaseProtectedRoute>} />
+                          <Route path="/equipe/medicos" element={<Navigate to="/equipe" replace />} />
+                          <Route path="/equipe/medicos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/equipe/medicos/:doctorId" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="profile" /></SupabaseProtectedRoute>} />
+                          <Route path="/equipe/medicos/:doctorId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="edit" /></SupabaseProtectedRoute>} />
+                          <Route path="/equipe/medicos/:doctorId/disponibilidade" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="availability" /></SupabaseProtectedRoute>} />
                           <Route path="/medicos" element={<Navigate to="/equipe" replace />} />
                           <Route path="/funcionarios" element={<Navigate to="/equipe" replace />} />
                           <Route path="/gestao-fluxo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><GestaoFluxo /></SupabaseProtectedRoute>} />
