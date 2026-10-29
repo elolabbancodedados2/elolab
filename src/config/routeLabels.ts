@@ -60,6 +60,12 @@ const labelsByPath: Record<string, string> = {
   '/contas': 'Contas a receber e a pagar',
   '/fluxo-caixa': 'Fluxo de caixa',
   '/precos-servicos': 'Preços e serviços',
+  '/precos-servicos/exames': 'Exames',
+  '/precos-servicos/exames/particular': 'Particular',
+  '/precos-servicos/exames/particular/novo': 'Novo exame particular',
+  '/precos-servicos/exames/particular/editar': 'Editar exame particular',
+  '/precos-servicos/exames/convenios': 'Preços por convênio',
+  '/precos-servicos/exames/convenios/novo': 'Novo preço',
   '/relatorios': 'Relatórios',
   '/relatorios/salvos': 'Relatórios salvos',
   '/cobranca-inadimplentes': 'Cobrança de inadimplentes',
@@ -125,6 +131,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/atestados\/[^/]+$/.test(path)) return 'Detalhes do atestado';
   if (/^\/encaminhamentos\/[^/]+$/.test(path)) return 'Detalhes do encaminhamento';
   if (/^\/precos-servicos\/tipos\/[^/]+\/editar$/.test(path)) return 'Editar tipo de consulta';
+  if (/^\/precos-servicos\/exames\/convenios\/[^/]+\/editar$/.test(path)) return 'Editar preço';
   if (/^\/precos-servicos\/tipos\/[^/]+\/precos$/.test(path)) return 'Preços por convênio';
   if (/^\/gestao-fluxo\/salas\/[^/]+\/editar$/.test(path)) return 'Editar sala ou leito';
   if (/^\/exames\/laboratorios\/[^/]+\/editar$/.test(path)) return 'Editar laboratório';

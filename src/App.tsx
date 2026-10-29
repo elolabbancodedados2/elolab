@@ -332,6 +332,13 @@ function AppRoutes() {
                           <Route path="/precos-servicos/tipos/:consultationTypeId/precos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><TiposConsulta pricesPage /></SupabaseProtectedRoute>} />
                           <Route path="/precos-servicos/tipos" element={<Navigate to="/precos-servicos?tab=tipos" replace />} />
                           <Route path="/precos-exames" element={<Navigate to="/precos-servicos" replace />} />
+                          <Route path="/precos-servicos/exames" element={<Navigate to="/precos-servicos" replace />} />
+                          <Route path="/precos-servicos/exames/particular" element={<Navigate to="/precos-servicos" replace />} />
+                          <Route path="/precos-servicos/exames/convenios" element={<Navigate to="/precos-servicos" state={{ examPriceTab: 'convenio' }} replace />} />
+                          <Route path="/precos-servicos/exames/particular/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosExames task="particular-new" /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/exames/particular/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosExames task="particular-edit" /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/exames/convenios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosExames task="convenio-new" /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/exames/convenios/:examPriceId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosExames task="convenio-edit" /></SupabaseProtectedRoute>} />
                           <Route path="/tipos-consulta" element={<Navigate to="/precos-servicos?tab=tipos" replace />} />
                           <Route path="/relatorios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Relatorios /></SupabaseProtectedRoute>} />
                           <Route path="/relatorios/salvos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RelatoriosSalvos /></SupabaseProtectedRoute>} />

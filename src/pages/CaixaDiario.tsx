@@ -267,7 +267,7 @@ export default function CaixaDiario() {
   }, []);
 
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState(location.state?.cashTab === 'tipos' ? 'tipos' : 'hoje');
+  const [activeTab, setActiveTab] = useState(['tipos', 'precos'].includes(location.state?.cashTab) ? location.state.cashTab : 'hoje');
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
   const [showAbertura, setShowAbertura] = useState(false);

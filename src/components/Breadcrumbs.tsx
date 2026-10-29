@@ -20,7 +20,7 @@ export function Breadcrumbs() {
         const label = getRouteLabel(path);
         const isLast = index === segments.length - 1;
         // These record segments have edit/work pages, but no standalone detail route.
-        if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|retornos|convenios|convenios\/[^/]+\/exames)\/[^/]+$/.test(path)) return null;
+        if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|precos-servicos\/exames\/convenios|retornos|convenios|convenios\/[^/]+\/exames)\/[^/]+$/.test(path)) return null;
 
         return (
           <span key={path} className="flex items-center gap-1.5">

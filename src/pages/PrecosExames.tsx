@@ -1,5 +1,7 @@
 import { salvarConfigClinica } from '@/lib/configClinica';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -11,7 +13,6 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -232,7 +233,7 @@ function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: st
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-label="Nome do exame" aria-expanded={open}
+        <Button type="button" variant="outline" role="combobox" aria-label="Nome do exame" aria-expanded={open}
           className={cn("w-full justify-between h-11 font-normal text-left", !value && "text-muted-foreground")}>
           <span className="truncate">{value || 'Selecione ou digite um nome de exame...'}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -284,16 +285,42 @@ const parseMoney = (value: string | number) => {
 const temMaisDeDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) > 1e-7;
 
+type PriceTask = 'particular-new' | 'particular-edit' | 'convenio-new' | 'convenio-edit';
+const initialInternal = { nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' };
+const initialAgreementPrice = { convenio_id: '', tipo_exame: '', codigo_tuss: '', descricao: '', valor_tabela: '', valor_filme: '', valor_custo: '', valor_repasse: '' };
+// Legacy particular prices are a JSON array without IDs. Resolve by exact identity,
+// never by row position; ambiguous or renamed records must be reopened from the list.
+const internalIdentity = (item: { nome: string; codigo_tuss?: string }) => JSON.stringify([item.nome, item.codigo_tuss || '']);
+function usePriceNavigation(tab: 'particular' | 'convenio', filters: Record<string, string>) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = typeof location.state?.examPriceReturn === 'string' && /^\/(?:precos-servicos|recepcao)(?:\?|$)/.test(location.state.examPriceReturn) ? location.state.examPriceReturn : '/precos-servicos';
+  return {
+    location,
+    open: (path: string) => navigate(path, { state: { examPriceReturn: location.pathname + location.search, examPriceTab: tab, examPriceFilters: filters } }),
+    leave: () => navigate(returnTo, { state: { ...location.state, examPriceTab: tab, cashTab: returnTo.startsWith('/recepcao') ? 'precos' : undefined } }),
+  };
+}
+
 // ─── Internal/Particular Prices Tab ───
-function PrecosInternos() {
+function PrecosInternos({ task }: { task?: PriceTask }) {
+  const taskPage = !!task;
+  const editingPage = task === 'particular-edit';
+  const location = useLocation();
+  const itemKey = new URLSearchParams(location.search).get('item');
+  const completed = useRef(false);
+  const initialized = useRef(false);
+  const saveLock = useRef(false);
+  const baseline = useRef(JSON.stringify(initialInternal));
+  const loadedTable = useRef<{ items: any[]; updatedAt: string | null } | null>(null);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [search, setSearch] = useState(location.state?.examPriceFilters?.search ?? '');
+  const navigation = usePriceNavigation('particular', { search });
+
   const [precoParaExcluir, setPrecoParaExcluir] = useState<{ idx: number; nome: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
+  const [form, setForm] = useState(initialInternal);
 
   const precosQuery = useQuery({
     queryKey: ['precos-exames-internos', user?.id, profile?.clinica_id],
@@ -318,7 +345,20 @@ function PrecosInternos() {
     },
     enabled: !!user?.id,
   });
-  const precos = precosQuery.data?.items ?? [];
+  const source = taskPage && loadedTable.current ? loadedTable.current : precosQuery.data;
+  const precos = source?.items ?? [];
+  const matches = editingPage ? precos.map((item, index) => internalIdentity(item) === itemKey ? index : -1).filter(index => index >= 0) : [];
+  const editIdx = editingPage && matches.length === 1 ? matches[0] : null;
+  useEffect(() => {
+    if (!taskPage || initialized.current || !precosQuery.data) return;
+    loadedTable.current = precosQuery.data;
+    const p = editingPage && editIdx !== null ? precosQuery.data.items[editIdx] : null;
+    if (editingPage && !p) return;
+    const value = p ? { nome: p.nome, codigo_tuss: p.codigo_tuss || '', descricao: p.descricao || '', valor: String(p.valor), custo: String(p.custo || '') } : initialInternal;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setForm(value);
+  }, [taskPage, editingPage, editIdx, precosQuery.data]);
   const { isLoading } = precosQuery;
 
   const saveAll = async (list: any[]) => {
@@ -331,7 +371,7 @@ function PrecosInternos() {
         userId: user.id,
         chave: 'precos_exames_internos',
         valor: list,
-        expectedUpdatedAt: precosQuery.data?.updatedAt ?? null,
+        expectedUpdatedAt: source?.updatedAt ?? null,
       });
     } else {
       const { error } = await supabase.from('configuracoes_clinica').upsert({
@@ -347,6 +387,8 @@ function PrecosInternos() {
   };
 
   const handleSave = async () => {
+    if (saveLock.current) return;
+    if (editingPage && editIdx === null) { toast.error('Reabra o exame pela tabela antes de editar.'); return; }
     const valor = parseMoney(form.valor);
     const custo = form.custo ? parseMoney(form.custo) : 0;
     if (!form.nome.trim() || !form.valor) { toast.error('Preencha nome e valor'); return; }
@@ -368,18 +410,18 @@ function PrecosInternos() {
     if (editIdx !== null) list[editIdx] = entry;
     else list.push(entry);
     try {
+      saveLock.current = true;
       setIsSaving(true);
       await saveAll(list);
       toast.success(editIdx !== null ? 'Atualizado!' : 'Cadastrado!');
-      setShowForm(false);
-      setEditIdx(null);
-      setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' });
+      completed.current = true;
+      navigation.leave();
     } catch (error: any) {
       if (String(error?.message || '').includes('Outra pessoa')) {
-        await precosQuery.refetch();
-        toast.error(error.message, { description: 'A tabela foi atualizada. Confira os valores atuais antes de tentar novamente.' });
+        toast.error(error.message, { description: 'Seu preenchimento foi preservado. Volte à tabela e reabra o exame para comparar a versão atual.' });
       } else toast.error(error?.message || 'Erro ao salvar exame');
     } finally {
+      saveLock.current = false;
       setIsSaving(false);
     }
   };
@@ -402,12 +444,7 @@ function PrecosInternos() {
     }
   };
 
-  const openEdit = (idx: number) => {
-    const p = precos[idx];
-    setEditIdx(idx);
-    setForm({ nome: p.nome, codigo_tuss: p.codigo_tuss || '', descricao: p.descricao || '', valor: String(p.valor), custo: String(p.custo || '') });
-    setShowForm(true);
-  };
+  const openEdit = (idx: number) => navigation.open(`/precos-servicos/exames/particular/editar?${new URLSearchParams({ item: internalIdentity(precos[idx]) })}`);
 
   const filtered = useMemo(() => {
     const q = normalizarTexto(search.trim());
@@ -417,12 +454,15 @@ function PrecosInternos() {
 
   return (
     <div className="space-y-4">
+      {taskPage && <UnsavedChangesGuard dirty={JSON.stringify(form) !== baseline.current} busy={isSaving} completed={completed} />}
+      {taskPage && <Button variant="outline" onClick={navigation.leave}>Voltar à tabela de preços</Button>}
+      {!taskPage && <>
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
         </div>
-        <Button onClick={() => { setEditIdx(null); setForm({ nome: '', codigo_tuss: '', descricao: '', valor: '', custo: '' }); setShowForm(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+        <Button onClick={() => navigation.open('/precos-servicos/exames/particular/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Exame
         </Button>
       </div>
@@ -499,16 +539,13 @@ function PrecosInternos() {
         </div>
       )}
 
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) setEditIdx(null); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-white">
-                <DollarSign className="h-5 w-5" />
-              </div>
-              {editIdx !== null ? 'Editar Exame' : 'Novo Exame Particular'}
-            </DialogTitle>
-          </DialogHeader>
+      </>}
+      {taskPage && (precosQuery.isError ? <ErrorState title="Não foi possível abrir a tabela particular" error={precosQuery.error} onRetry={() => void precosQuery.refetch()} />
+        : isLoading ? <p role="status">Carregando tabela particular…</p>
+        : editingPage && editIdx === null ? <p role="status">Exame não encontrado ou identificação ambígua. Volte à tabela e abra o registro novamente.</p>
+        : <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-3xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5"><p className="text-sm text-muted-foreground">Preços de exames / Particular</p><h1 className="text-2xl font-semibold">{editingPage ? 'Editar Exame Particular' : 'Novo Exame Particular'}</h1></header>
+          <fieldset disabled={isSaving} className="min-w-0">
           <div className="space-y-5">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Nome do Exame *</Label>
@@ -572,15 +609,15 @@ function PrecosInternos() {
               </div>
             )}
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-full" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!form.nome || !form.valor || isSaving} className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="outline" disabled={isSaving} onClick={navigation.leave}>Cancelar</Button>
+            <Button type="submit" disabled={!form.nome || !form.valor || isSaving} className="gap-2 scroll-mb-24">
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {editIdx !== null ? 'Salvar Alterações' : 'Cadastrar Exame'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>)}
       <DeleteConfirmDialog
         open={!!precoParaExcluir}
         onOpenChange={(open) => { if (!open && !isSaving) setPrecoParaExcluir(null); }}
@@ -594,11 +631,18 @@ function PrecosInternos() {
 }
 
 // ─── Convênio Prices Tab ───
-function PrecosConvenio() {
+function PrecosConvenio({ task }: { task?: PriceTask }) {
+  const taskPage = !!task;
+  const { examPriceId } = useParams();
+  const location = useLocation();
+  const completed = useRef(false);
+  const initialized = useRef(false);
+  const saveLock = useRef(false);
+  const baseline = useRef(JSON.stringify(initialAgreementPrice));
   const { profile } = useSupabaseAuth();
-  const [search, setSearch] = useState('');
-  const [filterConvenio, setFilterConvenio] = useState('all');
-  const [showNew, setShowNew] = useState(false);
+  const [search, setSearch] = useState(location.state?.examPriceFilters?.search ?? '');
+  const [filterConvenio, setFilterConvenio] = useState(location.state?.examPriceFilters?.convenio ?? 'all');
+  const navigation = usePriceNavigation('convenio', { search, convenio: filterConvenio });
   const [editing, setEditing] = useState<any>(null);
   /** Remover preço ficava a um clique, sem confirmar nem permitir desfazer. */
   const [precoParaExcluir, setPrecoParaExcluir] = useState<any>(null);
@@ -672,8 +716,8 @@ function PrecosConvenio() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['precos-exames'] });
       toast.success(editing ? 'Preço atualizado!' : 'Preço cadastrado!');
-      setShowNew(false);
-      setEditing(null);
+      completed.current = true;
+      navigation.leave();
     },
     onError: (e: any) => toast.error(e.message?.includes('unique') ? 'Já existe preço para este exame neste convênio' : (e.message || 'Erro ao salvar')),
   });
@@ -702,22 +746,43 @@ function PrecosConvenio() {
     return matchSearch && matchConvenio;
   });
 
-  const [form, setForm] = useState({
-    convenio_id: '', tipo_exame: '', codigo_tuss: '', descricao: '', valor_tabela: '', valor_filme: '', valor_custo: '', valor_repasse: '',
+  const [form, setForm] = useState(initialAgreementPrice);
+  const recordQuery = useQuery({
+    queryKey: ['preco-exame-pagina', profile?.clinica_id, examPriceId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('precos_exames_convenio').select('*').eq('id', examPriceId!).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!examPriceId && !!profile?.clinica_id,
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
   });
-
-  const openEdit = (p: any) => {
-    setEditing(p);
-    setForm({
+  useEffect(() => {
+    if (!taskPage || initialized.current || (examPriceId && !recordQuery.data)) return;
+    const p = recordQuery.data;
+    const value = p ? {
       convenio_id: p.convenio_id, tipo_exame: p.tipo_exame, codigo_tuss: p.codigo_tuss || '',
       descricao: p.descricao || '', valor_tabela: String(p.valor_tabela), valor_filme: String(p.valor_filme || ''),
       valor_custo: String(p.valor_custo || ''), valor_repasse: String(p.valor_repasse || ''),
-    });
-    setShowNew(true);
+    } : initialAgreementPrice;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setEditing(p ?? null);
+    setForm(value);
+  }, [taskPage, examPriceId, recordQuery.data]);
+  const openEdit = (p: { id: string }) => navigation.open(`/precos-servicos/exames/convenios/${p.id}/editar`);
+  const submit = async () => {
+    if (saveLock.current) return;
+    saveLock.current = true;
+    try { await saveMutation.mutateAsync(form); } catch { /* Mutation presents the recoverable error. */ }
+    finally { saveLock.current = false; }
   };
 
   return (
     <div className="space-y-4">
+      {taskPage && <UnsavedChangesGuard dirty={JSON.stringify(form) !== baseline.current} busy={saveMutation.isPending} completed={completed} />}
+      {taskPage && <Button variant="outline" onClick={navigation.leave}>Voltar à tabela de preços</Button>}
+      {!taskPage && <>
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -730,7 +795,7 @@ function PrecosConvenio() {
             {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button onClick={() => { setEditing(null); setForm({ convenio_id: '', tipo_exame: '', codigo_tuss: '', descricao: '', valor_tabela: '', valor_filme: '', valor_custo: '', valor_repasse: '' }); setShowNew(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+        <Button onClick={() => navigation.open('/precos-servicos/exames/convenios/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Preço
         </Button>
       </div>
@@ -795,10 +860,16 @@ function PrecosConvenio() {
         </CardContent>
       </Card>
 
-      <Dialog open={showNew} onOpenChange={(v) => { setShowNew(v); if (!v) setEditing(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? 'Editar Preço' : 'Novo Preço de Exame por Convênio'}</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(form); }} className="space-y-4">
+      </>}
+      {taskPage && (examPriceId && recordQuery.isError ? <ErrorState title="Não foi possível abrir o preço" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+        : examPriceId && recordQuery.isPending ? <p role="status">Carregando preço…</p>
+        : examPriceId && !recordQuery.data ? <p role="status">Preço não encontrado na clínica atual.</p>
+        : <form onSubmit={event => { event.preventDefault(); void submit(); }} className="mx-auto max-w-3xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5"><p className="text-sm text-muted-foreground">Preços de exames / Convênio</p><h1 className="text-2xl font-semibold">{examPriceId ? 'Editar Preço' : 'Novo Preço de Exame por Convênio'}</h1></header>
+          {conveniosQuery.isError && <ErrorState compact title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />}
+          {precosQuery.isError && <ErrorState compact title="Não foi possível carregar a tabela para conferir duplicidade" error={precosQuery.error} onRetry={() => void precosQuery.refetch()} />}
+          {precosAtingiramLimite && <p role="alert">A tabela atingiu o limite de leitura. Revise os registros antes de cadastrar.</p>}
+          <fieldset disabled={saveMutation.isPending} className="min-w-0 space-y-4">
             <div>
               <Label htmlFor="preco-exame-convenio">Convênio *</Label>
               <Select value={form.convenio_id} onValueChange={(v) => setForm(p => ({ ...p, convenio_id: v }))}>
@@ -819,16 +890,15 @@ function PrecosConvenio() {
               <div><Label htmlFor="preco-convenio-custo">Custo (R$)</Label><Input id="preco-convenio-custo" type="number" min="0" step="0.01" value={form.valor_custo} onChange={(e) => setForm(p => ({ ...p, valor_custo: e.target.value }))} /></div>
               <div><Label htmlFor="preco-convenio-repasse">Repasse (R$)</Label><Input id="preco-convenio-repasse" type="number" min="0" step="0.01" value={form.valor_repasse} onChange={(e) => setForm(p => ({ ...p, valor_repasse: e.target.value }))} /></div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" type="button" className="rounded-full" onClick={() => setShowNew(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!form.convenio_id || !form.tipo_exame || !form.valor_tabela || saveMutation.isPending} className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+            </fieldset>
+            <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+              <Button variant="outline" type="button" disabled={saveMutation.isPending} onClick={navigation.leave}>Cancelar</Button>
+              <Button type="submit" disabled={!form.convenio_id || !form.tipo_exame || !form.valor_tabela || saveMutation.isPending} className="scroll-mb-24">
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {editing ? 'Salvar' : 'Cadastrar'}
               </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </form>)}
 
       {precoParaExcluir && (
         <DeleteConfirmDialog
@@ -882,7 +952,14 @@ function usePrecosExamesCounts() {
   };
 }
 
-export default function PrecosExames() {
+export default function PrecosExames({ task }: { task?: PriceTask }) {
+  const location = useLocation();
+  if (task) return <div className="pb-24 lg:pb-8" key={location.pathname + location.search}>{task.startsWith('particular') ? <PrecosInternos task={task} /> : <PrecosConvenio task={task} />}</div>;
+  return <PrecosExamesList />;
+}
+
+function PrecosExamesList() {
+  const location = useLocation();
   const counts = usePrecosExamesCounts();
   const description = `${counts.particular} exame(s) particular(es) · ${counts.convenio} preço(s) de convênio`;
 
@@ -894,7 +971,7 @@ export default function PrecosExames() {
         icon={<DollarSign />}
       />
 
-      <Tabs defaultValue="particular" className="space-y-4">
+      <Tabs defaultValue={location.state?.examPriceTab === 'convenio' ? 'convenio' : 'particular'} className="space-y-4">
         <TabsList className="rounded-xl border border-border/60 bg-[#F3F8FC] p-1 text-muted-foreground">
           <TabsTrigger value="particular" className="gap-1.5 rounded-lg data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
             <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno

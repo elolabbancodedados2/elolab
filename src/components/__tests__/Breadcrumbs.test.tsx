@@ -10,6 +10,7 @@ describe('Breadcrumbs', () => {
     '/precos-servicos/tipos/record-qa/precos',
     '/retornos/record-qa/agendar',
     '/convenios/record-qa/editar',
+    '/precos-servicos/exames/convenios/record-qa/editar',
   ])('não cria links para segmentos de registro sem página em %s', path => {
     render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);
     expect(screen.queryByText('Record qa')).not.toBeInTheDocument();
