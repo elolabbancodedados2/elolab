@@ -208,3 +208,7 @@ Arquivos: `src/pages/Exames.tsx`, `src/components/exames/LancarResultado.tsx`, `
 ### Limites e sequência
 
 Testes de gravação, upload e automação foram executados com respostas interceptadas e dados sintéticos; nenhum exame real foi solicitado ou liberado. Integrações externas não foram rehomologadas. Cadastro de laboratórios/fornecedores ainda usa o gerenciador anterior e será tratado como fluxo próprio em entrega posterior. Confirmações curtas de cancelamento, exclusão e descarte permanecem em diálogos. A diretriz confirmada pelo responsável é migrar todos os formulários e tarefas longas gradualmente, mantendo particularidades de cada módulo.
+
+### Publicação
+
+Deploy concluído em 29/10/2026: `f749c0369ade733b71a2bfa4fc658e5bfc42b9af`, imagem `easypanel/elolab/app:deploy-20261029-f749c03`. Swarm concluiu a atualização; versão pública conferida e `/healthz` respondeu `ok`. A guia vazia foi aberta e efetivamente visualizada em produção: página própria, zero diálogos, campos e ações presentes. Nenhum pedido ou resultado real foi salvo. Rollback preservado: imagem `deploy-20261029-f5a8eae` e fonte `code.before-20261029-f749c03`. Capturas sintéticas em `.qa-artifacts/exames-20261029/`, fora do Git. Sem migration ou deploy de Edge Functions.
