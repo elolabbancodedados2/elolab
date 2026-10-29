@@ -1,0 +1,31 @@
+import { type RefObject, useCallback } from 'react';
+import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
+/** Keeps sensitive drafts in memory and protects both app navigation and reload. */
+export function UnsavedChangesGuard({ dirty, busy = false, completed }: {
+  dirty: boolean;
+  busy?: boolean;
+  completed: RefObject<boolean>;
+}) {
+  const shouldBlock = useCallback(() => (dirty || busy) && !completed.current, [dirty, busy, completed]);
+  const blocker = useBlocker(shouldBlock);
+  useBeforeUnload(useCallback((event: BeforeUnloadEvent) => {
+    if (!shouldBlock()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }, [shouldBlock]));
+
+  return <AlertDialog open={blocker.state === 'blocked'} onOpenChange={open => { if (!open && blocker.state === 'blocked') blocker.reset(); }}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>{busy ? 'Aguarde a conclusão' : 'Sair sem salvar?'}</AlertDialogTitle>
+        <AlertDialogDescription>{busy ? 'A operação está em andamento. Aguarde a resposta para evitar uma segunda tentativa.' : 'As alterações desta página ainda não foram salvas. Você pode continuar preenchendo ou descartá-las.'}</AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Continuar nesta página</AlertDialogCancel>
+        <AlertDialogAction disabled={busy} onClick={event => { event.preventDefault(); if (blocker.state === 'blocked') blocker.proceed(); }}>Descartar e sair</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>;
+}

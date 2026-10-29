@@ -491,7 +491,9 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       // receber os registros sintéticos de hoje.
       const filters = [...requestUrl.searchParams.entries()];
       const antigos = filters.some(([key, value]) => key === 'data' && value.startsWith('lt.'));
-      await json(route, antigos ? [] : syntheticAppointments);
+      const requestedId = requestUrl.searchParams.get('id');
+      const rows = requestedId?.startsWith('eq.') ? syntheticAppointments.filter(item => item.id === requestedId.slice(3)) : syntheticAppointments;
+      await json(route, antigos ? [] : rows);
       return;
     }
 

@@ -21,6 +21,7 @@ const labelsByPath: Record<string, string> = {
   '/indicadores': 'Indicadores de produtividade',
   '/treinamento': 'Treinamento',
   '/agenda': 'Agenda',
+  '/agenda/nova': 'Nova consulta',
   '/prontuarios': 'Prontuários',
   '/documentos-clinicos': 'Documentos clínicos',
   '/exames': 'Exames',
@@ -99,6 +100,7 @@ export function getRouteLabel(pathname: string): string {
   const path = pathname.replace(/\/+$/, '') || '/';
   const explicit = labelsByPath[path] || labelsByMenuPath[path];
   if (explicit) return explicit;
+  if (/^\/agenda\/[^/]+\/editar$/.test(path)) return 'Editar consulta';
   if (path.startsWith('/agendar/')) return 'Agendamento online';
   if (path.startsWith('/portal-guias/')) return 'Portal de guias';
   if (path.startsWith('/verificar-assinatura/')) return 'Verificar assinatura';

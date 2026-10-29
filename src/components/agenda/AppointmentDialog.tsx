@@ -1,7 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
-import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useEffect, useRef, useState } from 'react';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
-import { CircleX, History, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, CircleX, History, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -36,21 +35,26 @@ interface Props {
   onSaved?: () => void | Promise<void>;
 }
 
-export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos, salas, onSaved }: Props) {
+export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, salas, onSaved }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth() as any;
   const editing = !!initial?.id;
-  const [tab, setTab] = useState('paciente');
+  const setTab = (section: string) => {
+    const id = section === 'paciente' ? 'appointment-patient' : section === 'consulta' ? 'appointment-doctor' : 'appointment-notes';
+    document.getElementById(id)?.focus();
+  };
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [form, setForm] = useState<any>({});
+  const [initialSnapshot, setInitialSnapshot] = useState('{}');
+  const completed = useRef(false);
   const [foraExpediente, setForaExpediente] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setForm({
+      const value = {
         paciente_id: initial?.paciente_id || '',
         medico_id: initial?.medico_id || '',
         data: initial?.data || todaySaoPauloDateOnly(),
@@ -61,8 +65,10 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
         sala_id: initial?.sala_id || '',
         observacoes: initial?.observacoes || '',
         send_whatsapp: false,
-      });
-      setTab('paciente');
+      };
+      setForm(value);
+      setInitialSnapshot(JSON.stringify(value));
+      completed.current = false;
       setMotivoCancelamento('');
     }
   }, [open, initial]);
@@ -392,6 +398,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       } catch (error) {
         toast.warning('Consulta salva, mas uma atualização complementar falhou.', { description: mensagemDeErro(error) });
       }
+      completed.current = true;
       onOpenChange(false);
     } catch (e: any) {
       // A constraint agendamentos_sem_sobreposicao é a rede de segurança para o
@@ -441,6 +448,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
       toast.success('Consulta cancelada; o histórico foi preservado.');
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       setConfirmCancel(false);
+      completed.current = true;
       onOpenChange(false);
     } catch (error) {
       toast.error('Não foi possível cancelar a consulta.', { description: mensagemDeErro(error) });
@@ -450,29 +458,27 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
   };
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!saving && !deleting) onOpenChange(nextOpen); }}>
-      <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-lg">
-        <DialogHeader>
-          <DialogTitle>{editing ? 'Editar consulta' : 'Nova consulta'}</DialogTitle>
-          <DialogDescription>
-            {form.data} · {form.hora_inicio || '—'}
-          </DialogDescription>
+    <>
+      <UnsavedChangesGuard dirty={JSON.stringify(form) !== initialSnapshot} busy={saving || deleting} completed={completed} />
+      <div className="mx-auto w-full max-w-5xl space-y-6 pb-6">
+        <header className="space-y-3 border-b border-border pb-5">
+          <Button variant="ghost" className="-ml-3 gap-2" onClick={() => onOpenChange(false)} disabled={saving || deleting}><ArrowLeft className="h-4 w-4" />Voltar à agenda</Button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{editing ? 'Editar consulta' : 'Nova consulta'}</h1>
+            <span className="text-sm text-muted-foreground">{JSON.stringify(form) !== initialSnapshot ? 'Alterações não salvas' : 'Agendamento'}</span>
+          </div>
+          <p className="text-sm text-muted-foreground">Identifique o paciente, escolha o horário e confira os dados antes de agendar.</p>
           {editing && form.status === 'cancelado' && (
             <p className="text-sm text-muted-foreground">
               Motivo do cancelamento: <span className="font-medium text-foreground">{appointmentCancellationReasonLabel(initial?.motivo_cancelamento) ?? 'Não informado'}</span>
             </p>
           )}
-        </DialogHeader>
+        </header>
 
         <fieldset disabled={saving || deleting || consultaSomenteLeitura} className="min-w-0">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid grid-cols-3">
-            <TabsTrigger value="paciente">Paciente</TabsTrigger>
-            <TabsTrigger value="consulta">Consulta</TabsTrigger>
-            <TabsTrigger value="obs">Observações</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="paciente" className="space-y-3 mt-4">
+        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+          <section aria-labelledby="appointment-patient-heading" className="min-w-0 space-y-4">
+            <h2 id="appointment-patient-heading" className="text-lg font-semibold">Paciente</h2>
             <Label htmlFor="appointment-patient">Buscar paciente</Label>
             <PacienteCombobox id="appointment-patient" value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
             {paciente && (
@@ -502,12 +508,10 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
                 )}
               </div>
             )}
-            <div className="flex justify-end">
-              <Button size="sm" onClick={() => setTab('consulta')} disabled={!form.paciente_id}>Próximo →</Button>
-            </div>
-          </TabsContent>
+          </section>
 
-          <TabsContent value="consulta" className="space-y-3 mt-4">
+          <section aria-labelledby="appointment-details-heading" className="min-w-0 space-y-4 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+            <h2 id="appointment-details-heading" className="text-lg font-semibold">Dados da consulta</h2>
             <div>
               <Label htmlFor="appointment-doctor">Médico *</Label>
               <Select value={form.medico_id} onValueChange={(v) => setForm({ ...form, medico_id: v })}>
@@ -591,9 +595,7 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
                 </Select>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="obs" className="space-y-3 mt-4">
+          <div className="space-y-4 border-t border-border pt-4">
             <div>
               <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
               <Textarea id="appointment-notes" rows={4} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
@@ -607,11 +609,12 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
                 <Switch id="appointment-whatsapp" checked={form.send_whatsapp} onCheckedChange={(v) => setForm({ ...form, send_whatsapp: v })} />
               </div>
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+          </section>
+        </div>
         </fieldset>
 
-        <DialogFooter className="gap-2 sm:justify-between">
+        <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-border bg-background py-4">
           <div>
             {podeCancelarConsulta && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)} disabled={saving || deleting} className="text-destructive">
@@ -630,14 +633,14 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Fechar</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Voltar à agenda</Button>
             <Button onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura}>
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar' : 'Agendar'}
             </Button>
           </div>
-        </DialogFooter>
-      </DialogContent>
+        </footer>
+      </div>
       <AlertDialog open={!!foraExpediente} onOpenChange={(o) => !o && setForaExpediente(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -677,6 +680,6 @@ export function AppointmentDialog({ open, onOpenChange, initial, medicos, tipos,
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Dialog>
+    </>
   );
 }

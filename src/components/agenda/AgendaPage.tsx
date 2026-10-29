@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { addDays, addMonths, addWeeks, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, KeyboardSensor, MouseSensor,
@@ -17,7 +17,6 @@ import { AgendaHeader } from './AgendaHeader';
 import { DailyMultiDoctorView } from './views/DailyMultiDoctorView';
 import { WeeklyView } from './views/WeeklyView';
 import { MonthlyView } from './views/MonthlyView';
-import { AppointmentDialog } from './AppointmentDialog';
 import { WaitingListSidebar } from './WaitingListSidebar';
 import { ColorSchemeDialog } from './ColorSchemeDialog';
 import { BloqueioAgenda } from './BloqueioAgenda';
@@ -137,6 +136,8 @@ function toMinutes(t: string) {
 
 export function AgendaPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const searchString = searchParams.toString();
   const { profile } = useSupabaseAuth();
@@ -211,13 +212,33 @@ export function AgendaPage() {
 
   useEffect(() => { salvarPreferenciaAgenda('agenda:date', activeDate); }, [activeDate]);
   useEffect(() => { salvarPreferenciaAgenda('agenda:view', activeView); }, [activeView]);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [medicoFilter, setMedicoFilter] = useState<string[]>([]);
+  const [search, setSearch] = useState<string>(() => location.state?.agendaFilters?.search || '');
+  const [statusFilter, setStatusFilter] = useState<string[]>(() => location.state?.agendaFilters?.status || []);
+  const [medicoFilter, setMedicoFilter] = useState<string[]>(() => location.state?.agendaFilters?.medicos || []);
   const [waitingOpen, setWaitingOpen] = useState(true);
   const [colorOpen, setColorOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
   const [dialogState, setDialogState] = useState<{ open: boolean; initial: any | null }>({ open: false, initial: null });
+  const openingAppointment = useRef(false);
+  useEffect(() => {
+    if (!dialogState.open || openingAppointment.current) return;
+    openingAppointment.current = true;
+    const query = new URLSearchParams(searchParams);
+    for (const key of ['agendamento', 'reagendar', 'espera', 'paciente']) query.delete(key);
+    query.set('data', activeDate);
+    query.set('view', activeView);
+    const initial = dialogState.initial;
+    const agendaFilters = { search, status: statusFilter, medicos: medicoFilter };
+    // Keep filters on the originating history entry as well as the return action.
+    navigate(`/agenda?${query}`, { replace: true, state: { agendaFilters } });
+    navigate(initial?.id ? `/agenda/${initial.id}/editar` : `/agenda/nova?data=${initial?.data || activeDate}`, {
+      state: {
+        initial: initial?.id ? undefined : initial,
+        returnTo: `/agenda?${query}`,
+        agendaFilters,
+      },
+    });
+  }, [dialogState, searchParams, activeDate, activeView, search, statusFilter, medicoFilter, navigate]);
   const [activeDrag, setActiveDrag] = useState<any>(null);
   const [moveForaExpediente, setMoveForaExpediente] = useState<{ agendamento: any; slot: any; faixa: string } | null>(null);
 
@@ -917,40 +938,6 @@ export function AgendaPage() {
         onRetry={() => void waitingQuery.refetch()}
       />
 
-      <AppointmentDialog
-        open={dialogState.open}
-        onOpenChange={(o) => setDialogState({ open: o, initial: o ? dialogState.initial : null })}
-        initial={dialogState.initial}
-        medicos={visibleMedicos}
-        tipos={tipos}
-        salas={salas}
-        onSaved={async () => {
-          const w = dialogState.initial?._waiting_id;
-          if (w) {
-            try {
-              const { data, error } = await (supabase.from('lista_espera' as any)
-                .update({ status: 'agendado' })
-                .eq('id', w)
-                .eq('clinica_id', profile?.clinica_id || '')
-                .eq('status', dialogState.initial?._waiting_status || 'aguardando')
-                .select('id')
-                .maybeSingle() as any);
-              if (error) throw error;
-              if (!data) {
-                toast.error('Consulta salva, mas a vaga da lista de espera não foi atualizada.', {
-                  description: 'Ela pode ter sido agendada em outra tela ou não estar mais aguardando.',
-                });
-              }
-            } catch (error) {
-              toast.error('Consulta salva, mas não foi possível atualizar a lista de espera.', {
-                description: error instanceof Error ? error.message : 'Tente atualizar a lista de espera.',
-              });
-            } finally {
-              void queryClient.invalidateQueries({ queryKey: ['lista_espera'] });
-            }
-          }
-        }}
-      />
 
       <AlertDialog open={!!moveForaExpediente} onOpenChange={open => { if (!open) setMoveForaExpediente(null); }}>
         <AlertDialogContent>

@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/components/ErrorState";
-import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
 import { useWhatsAppBookingNotifications } from "@/hooks/useWhatsAppBookingNotifications";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -25,6 +25,7 @@ const DemonstracaoClinica = lazy(() => import("@/pages/DemonstracaoClinica"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MinhaFilaTarefas = lazy(() => import("@/pages/MinhaFilaTarefas"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
+const AppointmentPage = lazy(() => import("@/pages/AppointmentPage"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
 const Prontuarios = lazy(() => import("@/pages/Prontuarios"));
@@ -187,22 +188,9 @@ function getRoutingMode(): 'landing' | 'app' {
   return 'app';
 }
 
-function App() {
+function AppRoutes() {
   const mode = getRoutingMode();
-
-  // Nota: o antigo autoSetupDatabase() rodava a cada carregamento da aplicação e
-  // chamava a edge function auto-migrate (DDL com service_role, sem checagem de
-  // papel). Removido — migrações passam pelo fluxo normal do Supabase.
-
   return (
-    <MotionConfig reducedMotion="user">
-      <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
               <SupabaseAuthProvider>
                 <OperationalGuard><AppInitializer>
                 <NotificationBanner />
@@ -263,6 +251,8 @@ function App() {
                           <Route path="/indicadores" element={<IndicadoresProdutividade />} />
                           <Route path="/treinamento" element={<Treinamento />} />
                           <Route path="/agenda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Agenda /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
@@ -369,7 +359,28 @@ function App() {
                 <CookieConsent />
                 </AppInitializer></OperationalGuard>
               </SupabaseAuthProvider>
-            </BrowserRouter>
+
+  );
+}
+
+// Data router enables supported navigation blocking for unsaved task pages.
+const router = createBrowserRouter([{ path: "*", element: <AppRoutes /> }]);
+
+function App() {
+
+  // Nota: o antigo autoSetupDatabase() rodava a cada carregamento da aplicação e
+  // chamava a edge function auto-migrate (DDL com service_role, sem checagem de
+  // papel). Removido — migrações passam pelo fluxo normal do Supabase.
+
+  return (
+    <MotionConfig reducedMotion="user">
+      <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <RouterProvider router={router} />
           </TooltipProvider>
         </ThemeProvider>
       </QueryClientProvider>

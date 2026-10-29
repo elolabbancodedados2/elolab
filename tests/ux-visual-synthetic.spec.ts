@@ -643,9 +643,10 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
 
     await card.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('dialog').getByRole('heading', { name: 'Editar consulta' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Editar consulta', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Voltar à agenda', exact: true }).first().click();
+    await expect(main.getByRole('heading', { name: 'Terça-feira, 13 de out' })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`agenda-semantic-status-${viewport.width}.png`), animations: 'disabled' });
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -661,7 +662,7 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('agenda-daily-mobile.png'), fullPage: true, animations: 'disabled' });
   await firstMobileAppointment.click();
-  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Editar consulta' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Editar consulta', exact: true })).toBeVisible();
   expect(duplicateKeyWarnings).toEqual([]);
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
@@ -733,9 +734,10 @@ test('Agenda restores date and view through its URL and browser history', async 
 
   const appointmentId = '00000000-0000-4000-9000-000000000010';
   await page.goto(`/agenda?data=2026-10-13&view=daily&agendamento=${appointmentId}`);
-  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Editar consulta' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Editar consulta', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/agenda/${appointmentId}/editar$`));
+  await page.getByRole('button', { name: 'Voltar à agenda', exact: true }).first().click();
   await expect(page).toHaveURL(/data=2026-10-13&view=daily$/);
-  await page.keyboard.press('Escape');
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
   await expect(page.getByText('Não conseguimos carregar estas informações agora. Tente novamente em instantes.')).toBeHidden({ timeout: 10_000 });
   await page.screenshot({ path: testInfo.outputPath('agenda-url-state-desktop.png'), animations: 'disabled' });
@@ -799,14 +801,13 @@ test('agenda keeps a conflicting clinician slot unsaved and explains the conflic
   await page.goto(`/agenda?data=${appointmentDate}&view=daily`);
   const main = page.locator('#main-content');
   await main.getByRole('button', { name: 'Nova consulta' }).click();
-  const dialog = page.getByRole('dialog');
+  const dialog = page.locator('#main-content');
   await expect(dialog.getByRole('heading', { name: 'Nova consulta' })).toBeVisible();
   await dialog.locator('#appointment-patient').click();
   await page.getByPlaceholder('Buscar paciente...').fill('Paciente QA Agenda');
   const patientOption = page.getByRole('option', { name: /Paciente QA Agenda/ });
   await expect(patientOption).toBeVisible();
   await patientOption.click();
-  await dialog.getByRole('tab', { name: 'Consulta' }).click();
   await dialog.locator('#appointment-doctor').click();
   await page.getByRole('option', { name: /Dra\. Marina Ribeiro/ }).click();
   await expect(dialog.locator('#appointment-date')).toHaveValue(appointmentDate);
