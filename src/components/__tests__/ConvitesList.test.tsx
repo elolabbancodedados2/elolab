@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
   invites: [] as Array<Record<string, unknown>>,
@@ -85,7 +86,7 @@ describe('ConvitesList — gestão de convites expirados', () => {
   });
 
   it('gera um novo convite somente para o destinatário expirado selecionado', async () => {
-    render(<ConvitesList />);
+    render(<MemoryRouter><ConvitesList /></MemoryRouter>);
 
     expect(screen.getByText('Expirado')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reenviar convite para profissional@example.test' }));
@@ -97,7 +98,7 @@ describe('ConvitesList — gestão de convites expirados', () => {
   });
 
   it('expira apenas o convite legado selecionado e restringe a operação à clínica ativa', async () => {
-    render(<ConvitesList />);
+    render(<MemoryRouter><ConvitesList /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar convite para profissional@example.test' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar convite' }));
@@ -112,7 +113,7 @@ describe('ConvitesList — gestão de convites expirados', () => {
 
   it('remove somente o convite novo selecionado ao cancelar', async () => {
     mocks.invites = [expiredInvite({ source: 'convites_funcionario' })];
-    render(<ConvitesList />);
+    render(<MemoryRouter><ConvitesList /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar convite para profissional@example.test' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar convite' }));

@@ -20,7 +20,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppRole, useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
@@ -156,7 +155,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
         .eq('clinica_id', profile.clinica_id)
         .maybeSingle();
       if (error) throw error;
-      return data?.valor as unknown as RoleCustomizations | null;
+      return (data?.valor ?? null) as unknown as RoleCustomizations | null;
     },
     enabled: !!profile?.clinica_id,
   });
@@ -618,13 +617,9 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void funcionariosQuery.refetch()} aria-label="Atualizar funcionários" title="Atualizar funcionários">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <ConvidarFuncionarioDialog
-              trigger={
-                <Button variant="outline" className="shrink-0 gap-2 rounded-full">
-                  <Mail className="h-4 w-4" />Convidar por e-mail
-                </Button>
-              }
-            />
+            <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => navigate('/equipe/convites/novo', { state: { inviteReturn: location.pathname + location.search, inviteReturnState: { employeeFilters: { search: searchTerm, status: filterStatus } } } })}>
+              <Mail className="h-4 w-4" />Convidar por e-mail
+            </Button>
             <Button variant="outline" onClick={handleOpenCustomize} className="shrink-0 gap-2 rounded-full">
               <Settings2 className="h-4 w-4" />Personalizar perfis
             </Button>

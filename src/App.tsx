@@ -43,6 +43,7 @@ const Atestados = lazy(() => import("@/pages/Atestados"));
 const Convenios = lazy(() => import("@/pages/Convenios"));
 const ContasReceber = lazy(() => import("@/pages/ContasReceber"));
 const ContasPagar = lazy(() => import("@/pages/ContasPagar"));
+const ConvidarFuncionario = lazy(() => import("@/pages/ConvidarFuncionario"));
 const Funcionarios = lazy(() => import("@/pages/Funcionarios"));
 const GerenciadorLaboratorios = lazy(() => import("@/components/GerenciadorLaboratorios"));
 const Exames = lazy(() => import("@/pages/Exames"));
@@ -290,6 +291,8 @@ function AppRoutes() {
                           <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AtendimentoFila /></SupabaseProtectedRoute>} />
                           <Route path="/equipe" element={<SupabaseProtectedRoute allowedRoles={['admin']}><EquipePage /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/medicos" element={<Navigate to="/equipe" replace />} />
+                          <Route path="/equipe/convites" element={<Navigate to="/equipe?aba=convites" replace />} />
+                          <Route path="/equipe/convites/novo" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConvidarFuncionario /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/funcionarios" element={<Navigate to="/equipe?aba=funcionarios" replace />} />
                           <Route path="/equipe/funcionarios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Funcionarios task="new" /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/funcionarios/:employeeId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Funcionarios task="edit" /></SupabaseProtectedRoute>} />

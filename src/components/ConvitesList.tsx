@@ -1,3 +1,4 @@
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
@@ -12,13 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
-import { ConvidarFuncionarioDialog } from '@/components/ConvidarFuncionarioDialog';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { cn } from '@/lib/utils';
 
@@ -80,6 +79,7 @@ function StatusBadge({ status }: { status: InviteStatus }) {
 
 export function ConvitesList() {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const { profile, isPlatformAdmin } = useSupabaseAuth();
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [linkManual, setLinkManual] = useState('');
@@ -87,7 +87,7 @@ export function ConvitesList() {
   const resendLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const [cancelando, setCancelando] = useState<Invite | null>(null);
-  const [filtro, setFiltro] = useState<InviteStatus | 'todos'>('todos');
+  const [filtro, setFiltro] = useState<InviteStatus | 'todos'>(() => ['aceito', 'expirado', 'pendente'].includes(location.state?.inviteFilter) ? location.state.inviteFilter : 'todos');
 
   const invitesQuery = useQuery({
     queryKey: ['convites-list', profile?.clinica_id, isPlatformAdmin],
@@ -301,16 +301,18 @@ export function ConvitesList() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void invitesQuery.refetch()} aria-label="Atualizar convites" title="Atualizar convites">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <ConvidarFuncionarioDialog
-              trigger={
-                <Button className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
-                  <Plus className="h-4 w-4" /> Novo convite
-                </Button>
-              }
-            />
+            <Button asChild className="shrink-0 gap-2">
+              <Link to="/equipe/convites/novo" state={{ inviteReturn: location.pathname + location.search, inviteReturnState: { inviteFilter: filtro } }}><Plus className="h-4 w-4" /> Novo convite</Link>
+            </Button>
           </>
         )}
       />
+      {linkManual && <section aria-labelledby="manual-invite-title" className="space-y-3 rounded-lg border bg-card p-4">
+        <h2 id="manual-invite-title" className="font-semibold">Copiar link do convite</h2>
+        <p className="text-sm text-muted-foreground">Selecione o link e copie com Ctrl+C ou ⌘C para compartilhar com o funcionário.</p>
+        <Input ref={linkManualInputRef} value={linkManual} readOnly aria-label="Link de aceitação do convite" onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()} autoFocus />
+        <Button variant="outline" onClick={() => setLinkManual('')}>Fechar link</Button>
+      </section>}
       <Alert>
         <Mail className="h-4 w-4" />
         <AlertTitle>Como funciona o convite</AlertTitle>
@@ -546,28 +548,7 @@ export function ConvitesList() {
         onConfirm={confirmarCancelamento}
       />
 
-      <Dialog open={!!linkManual} onOpenChange={(open) => { if (!open) setLinkManual(''); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Copiar link do convite</DialogTitle>
-            <DialogDescription>
-              Selecione o link abaixo e copie com Ctrl+C ou ⌘C para compartilhar com o funcionário.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            ref={linkManualInputRef}
-            value={linkManual}
-            readOnly
-            aria-label="Link de aceitação do convite"
-            onFocus={(event) => event.currentTarget.select()}
-            onClick={(event) => event.currentTarget.select()}
-            autoFocus
-          />
-          <DialogFooter>
-            <Button className="rounded-full" onClick={() => setLinkManual('')}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   );
 }

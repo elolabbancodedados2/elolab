@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConvidarFuncionarioDialog } from '../ConvidarFuncionarioDialog';
+import ConvidarFuncionario from '@/pages/ConvidarFuncionario';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 vi.mock('@/hooks/usePlanLimits', () => ({
   usePlanLimits: () => ({ data: undefined }),
 }));
 
-describe('ConvidarFuncionarioDialog', () => {
+describe('ConvidarFuncionario', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('ResizeObserver', class {
@@ -22,11 +23,10 @@ describe('ConvidarFuncionarioDialog', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <ConvidarFuncionarioDialog trigger={<button>Convidar equipe</button>} />
+        <RouterProvider router={createMemoryRouter([{ path: "/", element: <ConvidarFuncionario /> }])} />
       </QueryClientProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Convidar equipe' }));
     expect(screen.getByRole('region', { name: 'Prévia de acesso' })).toBeInTheDocument();
     expect(screen.getByText(/Selecione um papel/)).toBeInTheDocument();
 
