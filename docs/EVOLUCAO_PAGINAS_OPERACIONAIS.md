@@ -110,3 +110,7 @@ Etapas preservadas: selecionar paciente e médico ativo → redigir ou aplicar m
 ### Limites
 
 Gravações, uploads e auditoria dos testes foram interceptados com dados sintéticos; nenhuma receita real foi emitida. Memed e assinatura externa foram preservadas, mas não homologadas com serviços reais nesta entrega. Recarregar a tela de conclusão inicia uma nova redação; o documento já salvo continua acessível no histórico. Demais módulos seguem no plano incremental.
+
+### Publicação
+
+Deploy em 29/10/2026: `bbb522d21cca1032c219b53eeabfed28fe82c87b`, imagem `easypanel/elolab/app:deploy-20261029-bbb522d`. Swarm concluiu a atualização, `/version.json` confirmou o build e `/healthz` respondeu `ok`. Na substituição houve resposta transitória de serviço indisponível; o serviço recuperou e a nova página foi recarregada e inspecionada em produção, com zero diálogos e sem emissão real. Rollback preservado: imagem `deploy-20261029-5814890` e fonte `code.before-20261029-bbb522d`.
