@@ -312,3 +312,15 @@ Implementação: `/equipe/medicos/novo`, `/:doctorId/editar`, `/:doctorId` e `/:
 Validação: oito cenários Playwright passaram (desktop/tablet/celular, edição, perfil, retorno filtrado, descarte, erro recuperável, cadastro com convite malsucedido, disponibilidade, ausência de registro e permissão). Três testes de componente de disponibilidade passaram, incluindo domingo e faixa inválida. TypeScript, build e lint focal passaram; lint com 30 avisos, zero erros. Capturas de cadastro desktop e perfil mobile efetivamente visualizadas em `.qa-artifacts/medicos-20261029/`. Testes de escrita, vínculo e convite inteiramente interceptados. APIs e banco não foram migrados.
 
 Arquivos: `Medicos.tsx`, `MedicoAvailabilityManager.tsx`, `App.tsx`, `routeLabels.ts` e `tests/doctor-pages.spec.ts`. Permanecem as confirmações curtas de inativação e remoção de horário. Funcionários, convites e usuários são entregas seguintes, ainda não declaradas concluídas.
+
+Publicação da equipe médica: build `2b44e9b1ca71236a4f1b49972af8720d8656367d`, imagem `easypanel/elolab/app:deploy-20261029-2b44e9b1`. Swarm concluído, versão e healthcheck conferidos. Cadastro vazio efetivamente visualizado em produção. Capturas adicionais de rodapé do cadastro e disponibilidade mobile foram visualizadas; teste de disponibilidade repetido com captura passou. Rollback: imagem `deploy-20261029-53d490de` e fonte `code.before-20261029-2b44e9b1`.
+
+## Funcionários — ficha e nomes dos perfis (29/10/2026)
+
+Diagnóstico: ficha profissional, acesso e descrições dos perfis dependiam de modais extensos. Conflito de edição fechava o formulário, perdendo a referência do preenchimento; falha de permissões após atualizar mantinha uma versão antiga aberta, induzindo nova tentativa sem conferência.
+
+Implementação: `/equipe/funcionarios/novo`, `/:employeeId/editar` e `/perfis`. Mantidas RPC administrativa, validações, tipo profissional/campos condicionais, prévia de acesso, proteção do último administrador e compare-and-set por `edit_version`. Troca de papéis continua pela RPC atômica e versionada. Conflito anterior à gravação preserva o rascunho e orienta reabertura; dados já persistidos com falha de vínculo/permissões retornam à lista com aviso específico para recuperação, sem duplicar cadastro. Personalização altera nomes/descrições, sem ampliar autorização. Proteção contra descarte e envio repetido; volta preserva filtros.
+
+Validação: nove cenários Playwright passaram, incluindo três larguras, criação, edição, versões, falhas parciais, recuperação, nomes dos perfis, registros ausentes e perfil sem autorização. Dezoito testes unitários passaram em contratos de concorrência/revogação e breadcrumbs. TypeScript e build passaram; lint focal com 19 avisos, zero erros. Cadastro desktop, rodapé mobile e nomes dos perfis mobile efetivamente inspecionados em `.qa-artifacts/funcionarios-20261029/`. Escritas e alterações de acesso foram interceptadas em todos os testes; nenhuma conta real foi modificada.
+
+Arquivos: `Funcionarios.tsx`, `App.tsx`, `routeLabels.ts`, breadcrumbs e `tests/employee-pages.spec.ts`. Convites continuam na próxima etapa. Confirmação curta de exclusão preservada.

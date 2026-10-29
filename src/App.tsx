@@ -290,6 +290,10 @@ function AppRoutes() {
                           <Route path="/fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AtendimentoFila /></SupabaseProtectedRoute>} />
                           <Route path="/equipe" element={<SupabaseProtectedRoute allowedRoles={['admin']}><EquipePage /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/medicos" element={<Navigate to="/equipe" replace />} />
+                          <Route path="/equipe/funcionarios" element={<Navigate to="/equipe?aba=funcionarios" replace />} />
+                          <Route path="/equipe/funcionarios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Funcionarios task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/equipe/funcionarios/:employeeId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Funcionarios task="edit" /></SupabaseProtectedRoute>} />
+                          <Route path="/equipe/funcionarios/perfis" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Funcionarios task="labels" /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/medicos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="new" /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/medicos/:doctorId" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="profile" /></SupabaseProtectedRoute>} />
                           <Route path="/equipe/medicos/:doctorId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Medicos task="edit" /></SupabaseProtectedRoute>} />

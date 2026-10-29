@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Plus, Search, Pencil, Trash2, Users, Mail, Phone, Loader2, Send, CheckCircle, Stethoscope, Briefcase, Settings2, Save, RotateCcw, RefreshCw, X, ShieldCheck, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -111,16 +112,33 @@ const initialFormData: FormDataType = {
   especialidade: '', data_nascimento: '', cpf: '', carga_horaria: '', turno: 'integral',
 };
 
-export default function Funcionarios() {
+type EmployeeTask = 'new' | 'edit' | 'labels';
+export default function Funcionarios({ task }: { task?: EmployeeTask }) {
+  const location = useLocation();
+  return <FuncionariosWorkspace key={location.pathname} task={task} />;
+}
+function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { employeeId } = useParams();
+  const formPage = task === 'new' || task === 'edit';
+  const labelsPage = task === 'labels';
+  const taskPage = !!task;
+  const initialized = useRef(false);
+  const completed = useRef(false);
+  const saveLock = useRef(false);
+  const baseline = useRef(JSON.stringify(initialFormData));
+  const labelsBaseline = useRef('{}');
+  const returnTo = typeof location.state?.employeeReturn === 'string' && /^\/equipe(?:\?|$)/.test(location.state.employeeReturn) ? location.state.employeeReturn : '/equipe?aba=funcionarios';
+  const leaveTask = () => navigate(returnTo, { state: { employeeFilters: location.state?.employeeFilters } });
+  const finishTask = () => { completed.current = true; leaveTask(); };
   const { user, profile } = useSupabaseAuth();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo' | 'sem_permissao'>('todos');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(location.state?.employeeFilters?.search ?? '');
+  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo' | 'sem_permissao'>(location.state?.employeeFilters?.status ?? 'todos');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [funcionarioToDelete, setFuncionarioToDelete] = useState<string | null>(null);
   const [editingFunc, setEditingFunc] = useState<FuncionarioWithRoles | null>(null);
   const [formData, setFormData] = useState<FormDataType>({ ...initialFormData });
-  const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [customRoles, setCustomRoles] = useState<RoleCustomizations>({});
   const [editingCustomRoles, setEditingCustomRoles] = useState<RoleCustomizations>({});
 
@@ -192,28 +210,29 @@ export default function Funcionarios() {
       setCustomRoles(customizations);
       queryClient.invalidateQueries({ queryKey: ['role-customization'] });
       toast.success('Nomes e descrições dos perfis salvos!');
-      setIsCustomizeOpen(false);
+      finishTask();
     },
     onError: (e: any) => toast.error('Erro ao salvar: ' + e.message),
   });
 
-  const handleOpenCustomize = () => {
+  const openTask = (path: string) => navigate(path, { state: { employeeReturn: location.pathname + location.search, employeeFilters: { search: searchTerm, status: filterStatus } } });
+  const handleOpenCustomize = () => openTask('/equipe/funcionarios/perfis');
+  useEffect(() => {
+    if (!labelsPage || initialized.current || roleConfigQuery.isPending || roleConfigQuery.isError) return;
     const initial: RoleCustomizations = {};
     DEFAULT_ROLE_CONFIG.forEach(def => {
-      const custom = customRoles[def.role];
-      initial[def.role] = {
-        label: custom?.label || def.label,
-        description: custom?.description || def.description,
-        color: custom?.color || def.color,
-        modules: custom?.modules || [...def.modules],
-      };
+      const custom = savedRoleConfig?.[def.role];
+      initial[def.role] = { label: custom?.label || def.label, description: custom?.description || def.description, color: custom?.color || def.color, modules: custom?.modules || [...def.modules] };
     });
+    labelsBaseline.current = JSON.stringify(initial);
+    initialized.current = true;
     setEditingCustomRoles(initial);
-    setIsCustomizeOpen(true);
-  };
-
-  const handleSaveCustomization = () => {
-    saveCustomizationMutation.mutate(editingCustomRoles);
+  }, [labelsPage, savedRoleConfig, roleConfigQuery.isPending, roleConfigQuery.isError]);
+  const handleSaveCustomization = async () => {
+    if (saveLock.current) return;
+    saveLock.current = true;
+    try { await saveCustomizationMutation.mutateAsync(editingCustomRoles); } catch { /* Mutation reports errors. */ }
+    finally { saveLock.current = false; }
   };
 
   const handleResetCustomization = () => {
@@ -304,12 +323,12 @@ export default function Funcionarios() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
       toast.success('Funcionário cadastrado com sucesso!');
-      setIsDialogOpen(false);
+      finishTask();
     },
     onError: (error: any) => {
       if (error?.funcionarioCriado) {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-        setIsDialogOpen(false);
+        finishTask();
         toast.warning('Funcionário cadastrado, mas as permissões não foram sincronizadas.', {
           description: 'O registro está na lista. Abra a edição e salve novamente para concluir o vínculo e as permissões.',
         });
@@ -388,24 +407,24 @@ export default function Funcionarios() {
           description: 'Uma sessão já aberta pode continuar válida até o token atual expirar.',
         });
       }
-      setIsDialogOpen(false);
+      finishTask();
     },
     onError: (error: any) => {
       if (error?.name === 'EmployeeEditConflictError') {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
-        toast.error('A ficha mudou desde que você abriu a edição.', { description: error.message });
-        setIsDialogOpen(false);
+        toast.error('A ficha mudou desde que você abriu a edição.', { description: 'Seu preenchimento foi preservado. Volte à lista e reabra a ficha para comparar os dados atuais.' });
       } else if (error?.conflitoConcorrencia) {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
         toast.warning('Dados cadastrais salvos; permissões não alteradas.', {
           description: 'Outra pessoa atualizou esta ficha antes da confirmação dos papéis. Reabra a edição para conferir os dados atuais.',
         });
-        setIsDialogOpen(false);
+        finishTask();
       } else if (error?.funcionarioAtualizado) {
         queryClient.invalidateQueries({ queryKey: ['funcionarios-with-roles'] });
         toast.warning('Dados atualizados, mas as permissões não foram sincronizadas.', {
           description: 'Revise o funcionário na lista e salve novamente para concluir o vínculo e as permissões.',
         });
+        finishTask();
       } else toast.error('Erro ao atualizar: ' + error.message);
     },
   });
@@ -485,32 +504,29 @@ export default function Funcionarios() {
     return matchSearch && matchStatus;
   });
 
-  const handleOpenDialog = (func?: FuncionarioWithRoles) => {
-    if (func) {
-      const raw = func as any;
-      setEditingFunc(func);
-      setFormData({
-        nome: func.nome, email: func.email || '', telefone: func.telefone || '',
-        cargo: func.cargo || '', departamento: func.departamento || '',
-        ativo: func.ativo ?? true, selectedRoles: func.roles || [],
-        tipo_funcionario: raw.tipo_funcionario || 'atendente',
-        registro_profissional: raw.registro_profissional || '',
-        tipo_registro: raw.tipo_registro || '',
-        uf_registro: raw.uf_registro || 'SP',
-        especialidade: raw.especialidade || '',
-        data_nascimento: raw.data_nascimento || '',
-        cpf: raw.cpf || '',
-        carga_horaria: raw.carga_horaria ? String(raw.carga_horaria) : '',
-        turno: raw.turno || 'integral',
-      });
-    } else {
-      setEditingFunc(null);
-      setFormData({ ...initialFormData });
-    }
-    setIsDialogOpen(true);
-  };
+  const currentEmployee = employeeId ? funcionarios.find(employee => employee.id === employeeId) : null;
+  useEffect(() => {
+    if (!formPage || initialized.current || (employeeId && !currentEmployee)) return;
+    const func = currentEmployee;
+    const raw = func as any;
+    const value: FormDataType = func ? {
+      nome: func.nome, email: func.email || '', telefone: func.telefone || '',
+      cargo: func.cargo || '', departamento: func.departamento || '',
+      ativo: func.ativo ?? true, selectedRoles: func.roles || [],
+      tipo_funcionario: raw.tipo_funcionario || 'atendente', registro_profissional: raw.registro_profissional || '',
+      tipo_registro: raw.tipo_registro || '', uf_registro: raw.uf_registro || 'SP', especialidade: raw.especialidade || '',
+      data_nascimento: raw.data_nascimento || '', cpf: raw.cpf || '', carga_horaria: raw.carga_horaria ? String(raw.carga_horaria) : '', turno: raw.turno || 'integral',
+    } : { ...initialFormData };
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setEditingFunc(func ?? null);
+    setFormData(value);
+  }, [formPage, employeeId, currentEmployee]);
+  const handleOpenDialog = (func?: FuncionarioWithRoles) => openTask(func ? `/equipe/funcionarios/${func.id}/editar` : '/equipe/funcionarios/novo');
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saveLock.current) return;
+    if (roleConfigQuery.isError || roleConfigQuery.isPending) { toast.error('Carregue as configurações dos perfis antes de salvar.'); return; }
     const normalizedData = {
       ...formData,
       nome: formData.nome.trim(),
@@ -524,11 +540,12 @@ export default function Funcionarios() {
       toast.error(`Informe o número do ${registroExigido}.`);
       return;
     }
-    if (editingFunc) {
-      updateMutation.mutate({ id: editingFunc.id, data: normalizedData, userId: editingFunc.user_id, expectedVersion: editingFunc.edit_version });
-    } else {
-      createMutation.mutate(normalizedData);
-    }
+    saveLock.current = true;
+    try {
+      if (editingFunc) await updateMutation.mutateAsync({ id: editingFunc.id, data: normalizedData, userId: editingFunc.user_id, expectedVersion: editingFunc.edit_version });
+      else await createMutation.mutateAsync(normalizedData);
+    } catch { /* Mutation distinguishes failure from partial persistence. */ }
+    finally { saveLock.current = false; }
   };
 
   const handleDeleteClick = (id: string) => { setFuncionarioToDelete(id); setDeleteDialogOpen(true); };
@@ -561,17 +578,17 @@ export default function Funcionarios() {
   const selectedTipoConfig = TIPO_FUNCIONARIO_CONFIG.find(t => t.value === formData.tipo_funcionario);
   const hasRegistro = !!selectedTipoConfig?.registroLabel;
 
-  if (isLoading) {
+  if (isLoading && !taskPage) {
     return <SectionFallback rows={6} />;
   }
   if (!profile?.clinica_id) {
     return <ErrorState title="Clínica não identificada" description="Não é possível carregar ou alterar funcionários sem identificar a clínica atual." />;
   }
 
-  if (funcionariosQuery.isError) {
+  if (funcionariosQuery.isError && !taskPage) {
     return <ErrorState title="Não foi possível carregar a equipe" error={funcionariosQuery.error} onRetry={() => void funcionariosQuery.refetch()} />;
   }
-  if (roleConfigQuery.isError) {
+  if (roleConfigQuery.isError && !taskPage) {
     return <ErrorState title="Não foi possível carregar as configurações de função" description="A tela foi pausada para evitar salvar rótulos com base em uma configuração incompleta." error={roleConfigQuery.error} onRetry={() => void roleConfigQuery.refetch()} />;
   }
 
@@ -587,7 +604,11 @@ export default function Funcionarios() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      {taskPage && <UnsavedChangesGuard dirty={labelsPage ? JSON.stringify(editingCustomRoles) !== labelsBaseline.current : JSON.stringify(formData) !== baseline.current} busy={salvandoFuncionario || saveCustomizationMutation.isPending} completed={completed} />}
+      {taskPage && <Button variant="outline" onClick={leaveTask}>Voltar aos funcionários</Button>}
+      {taskPage && roleConfigQuery.isError && <ErrorState title="Não foi possível carregar as configurações de função" error={roleConfigQuery.error} onRetry={() => void roleConfigQuery.refetch()} />}
+      {!taskPage && <>
       <PageHeader
         title="Funcionários"
         description={descricaoHeader}
@@ -797,16 +818,12 @@ export default function Funcionarios() {
         </CardContent>
       </Card>
 
-      {/* Dialog de Cadastro/Edição */}
-      <Dialog open={isDialogOpen} onOpenChange={open => { if (open || !salvandoFuncionario) setIsDialogOpen(open); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingFunc ? 'Editar Funcionário' : 'Novo Funcionário'}</DialogTitle>
-            <DialogDescription>
-              {editingFunc ? 'Atualize os dados e permissões.' : 'Cadastre um novo funcionário com seus dados profissionais.'}
-            </DialogDescription>
-          </DialogHeader>
-
+      </>}
+      {formPage && (funcionariosQuery.isError ? <ErrorState title="Não foi possível abrir o funcionário" error={funcionariosQuery.error} onRetry={() => void funcionariosQuery.refetch()} />
+        : isLoading ? <p role="status">Carregando funcionário…</p>
+        : employeeId && !currentEmployee ? <p role="status">Funcionário não encontrado na clínica atual.</p>
+        : <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-4xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5"><p className="text-sm text-muted-foreground">Equipe / Funcionários</p><h1 className="text-2xl font-semibold">{editingFunc ? 'Editar Funcionário' : 'Novo Funcionário'}</h1><p className="text-sm text-muted-foreground">{editingFunc ? 'Atualize os dados e permissões do funcionário.' : 'Cadastre um novo funcionário com seus dados profissionais.'}</p></header>
           <fieldset disabled={salvandoFuncionario} className="contents">
           <div className="space-y-6 py-4">
             {/* Tipo de Profissional */}
@@ -831,7 +848,7 @@ export default function Funcionarios() {
               <h3 className="text-sm font-semibold">Dados Pessoais</h3>
               <div className="space-y-2">
                 <Label htmlFor="func-nome" className="text-xs">Nome completo *</Label>
-                <Input id="func-nome" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome Sobrenome" />
+                <Input required id="func-nome" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome Sobrenome" />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -984,15 +1001,14 @@ export default function Funcionarios() {
           </div>
           </fieldset>
 
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setIsDialogOpen(false)} disabled={salvandoFuncionario}>Cancelar</Button>
-            <Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={handleSave} disabled={salvandoFuncionario}>
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="outline" onClick={leaveTask} disabled={salvandoFuncionario}>Cancelar</Button>
+            <Button type="submit" className="scroll-mb-24" disabled={salvandoFuncionario || roleConfigQuery.isError || roleConfigQuery.isPending}>
               {salvandoFuncionario && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingFunc ? 'Salvar' : 'Cadastrar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>)}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
@@ -1009,18 +1025,9 @@ export default function Funcionarios() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog de rótulos e descrições dos perfis */}
-      <Dialog open={isCustomizeOpen} onOpenChange={setIsCustomizeOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5" />Personalizar perfis
-            </DialogTitle>
-            <DialogDescription>
-              Personalize os nomes e as descrições dos perfis. O acesso efetivo continua definido pelas funções do sistema.
-            </DialogDescription>
-          </DialogHeader>
-
+      {labelsPage && !roleConfigQuery.isError && (roleConfigQuery.isPending ? <p role="status">Carregando nomes dos perfis…</p> : <form onSubmit={event => { event.preventDefault(); void handleSaveCustomization(); }} className="mx-auto max-w-4xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+        <header className="space-y-2 border-b pb-5"><h1 className="text-2xl font-semibold">Personalizar perfis</h1><p className="text-sm text-muted-foreground">Personalize os nomes e as descrições dos perfis. O acesso efetivo continua definido pelas funções do sistema.</p></header>
+        <fieldset disabled={saveCustomizationMutation.isPending} className="min-w-0">
           <div className="space-y-6 py-4">
             {DEFAULT_ROLE_CONFIG.map((def) => {
               const custom = editingCustomRoles[def.role];
@@ -1068,18 +1075,18 @@ export default function Funcionarios() {
             })}
           </div>
 
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={handleResetCustomization} className="gap-2 mr-auto rounded-full">
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="ghost" disabled={saveCustomizationMutation.isPending} onClick={handleResetCustomization} className="gap-2 mr-auto rounded-full">
               <RotateCcw className="h-4 w-4" />Restaurar nomes padrão
             </Button>
-            <Button variant="outline" className="rounded-full" onClick={() => setIsCustomizeOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveCustomization} disabled={saveCustomizationMutation.isPending} className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+            <Button type="button" variant="outline" disabled={saveCustomizationMutation.isPending} onClick={leaveTask}>Cancelar</Button>
+            <Button type="submit" disabled={saveCustomizationMutation.isPending} className="gap-2 scroll-mb-24">
               {saveCustomizationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Salvar nomes e descrições
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>)}
     </div>
   );
 }

@@ -68,6 +68,9 @@ const labelsByPath: Record<string, string> = {
   '/precos-servicos/exames/convenios/novo': 'Novo preço',
   '/equipe/medicos': 'Equipe médica',
   '/equipe/medicos/novo': 'Novo médico',
+  '/equipe/funcionarios': 'Funcionários',
+  '/equipe/funcionarios/novo': 'Novo funcionário',
+  '/equipe/funcionarios/perfis': 'Nomes dos perfis',
   '/relatorios': 'Relatórios',
   '/relatorios/salvos': 'Relatórios salvos',
   '/cobranca-inadimplentes': 'Cobrança de inadimplentes',
@@ -134,6 +137,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/encaminhamentos\/[^/]+$/.test(path)) return 'Detalhes do encaminhamento';
   if (/^\/precos-servicos\/tipos\/[^/]+\/editar$/.test(path)) return 'Editar tipo de consulta';
   if (/^\/equipe\/medicos\/[^/]+\/editar$/.test(path)) return 'Editar médico';
+  if (/^\/equipe\/funcionarios\/[^/]+\/editar$/.test(path)) return 'Editar funcionário';
   if (/^\/equipe\/medicos\/[^/]+\/disponibilidade$/.test(path)) return 'Disponibilidade';
   if (/^\/equipe\/medicos\/[^/]+$/.test(path)) return 'Perfil do médico';
   if (/^\/precos-servicos\/exames\/convenios\/[^/]+\/editar$/.test(path)) return 'Editar preço';
