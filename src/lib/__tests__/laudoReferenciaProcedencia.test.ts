@@ -30,7 +30,7 @@ describe('procedência técnica do resultado', () => {
     const pdf = readFileSync('src/lib/pdfGenerator.ts', 'utf8');
     expect(pdf).toMatch(/formatarReferenciaLaudo\(r\)/);
     expect(pdf).toMatch(/procedenciaResultadoLaudo\(\{[\s\S]*?laboratorio: r\.laboratorio \|\| clinica\.nome/);
-    const tela = readFileSync('src/pages/LaudosLab.tsx', 'utf8');
+    const tela = readFileSync('src/pages/laboratorio/LaudoPage.tsx', 'utf8');
     expect(tela).toMatch(/laboratorios\(nome\)/);
     expect(tela).toMatch(/Resultado observado/);
   });

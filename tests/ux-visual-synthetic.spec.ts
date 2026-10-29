@@ -2657,10 +2657,10 @@ test('lab reports keep critical results clear and block release before technical
     await expect(reportRow.getByRole('button', { name: 'Ver Laudo' })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`laudos-linha-${viewport.width}.png`), animations: 'disabled' });
     await reportRow.getByRole('button', { name: 'Ver Laudo' }).click();
-    const dialog = page.getByRole('dialog');
+    const dialog = page.getByRole('main');
     await expect(dialog.getByRole('heading', { name: /Laudo — QA-LAUDO-001/ })).toBeVisible();
     if (viewport.width < 768) {
-      await expect(dialog.getByRole('heading', { name: /Paciente: Pessoa Exemplo QA/ })).toBeVisible();
+      await expect(dialog.getByText('Pessoa Exemplo QA', { exact: true })).toBeVisible();
     }
     await expect(dialog.getByText('Hemoglobina', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Resultado crítico aguardando ciência e conduta.')).toBeVisible();
@@ -2681,14 +2681,14 @@ test('lab reports keep critical results clear and block release before technical
       expect(badgesTop, 'os estados devem ficar abaixo do parâmetro no detalhe mobile').toBeGreaterThanOrEqual(titleBottom - 1);
     }
     await page.screenshot({ path: testInfo.outputPath(`laudos-detalhe-critico-${viewport.width}.png`), animations: 'disabled' });
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
+    await page.getByRole('link', { name: 'Voltar aos laudos' }).click();
+    await expect(page).toHaveURL(/\/laudos-lab$/);
   }
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/laudos-lab?coleta=${coletaId}`);
-  await expect(page.getByRole('dialog').getByRole('heading', { name: /Laudo — QA-LAUDO-001/ })).toBeVisible();
-  await expect(page).toHaveURL(/\/laudos-lab$/);
+  await expect(page.getByRole('main').getByRole('heading', { name: /Laudo — QA-LAUDO-001/ })).toBeVisible();
+  await expect(page).toHaveURL(`/laudos-lab/${coletaId}`);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
@@ -2776,7 +2776,7 @@ test('nursing can view critical lab results but cannot document clinical acknowl
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/laudos-lab?coleta=${coletaId}`);
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('main');
   await expect(dialog.getByRole('heading', { name: /Laudo — QA-LAUDO-ENF-001/ })).toBeVisible();
   await expect(dialog.getByText('Resultado crítico aguardando ciência e conduta.')).toBeVisible();
   await expect(dialog.getByText('Somente médico ou administrador da clínica pode registrar ciência e conduta.')).toBeVisible();

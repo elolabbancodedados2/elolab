@@ -127,6 +127,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/laudos-lab\/[^/]+$/.test(pathname)) return 'Conferência do laudo';
   if (/^\/guias-externas\/(?!nova$|portal$)[^/]+$/.test(pathname)) return 'Detalhe da guia';
   if (pathname === '/guias-externas/nova') return 'Nova guia externa';
   if (/^\/mapa-coleta\/[^/]+$/.test(pathname)) return 'Detalhes da coleta';

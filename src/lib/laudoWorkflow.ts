@@ -1,3 +1,23 @@
+export const parseResultadoNumerico = (value: unknown): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^[-+]?(?:\d[\d\s.,]*|\.\d+)/);
+  if (!match) return null;
+  const token = match[0].replace(/\s/g, '');
+  const ultimaVirgula = token.lastIndexOf(',');
+  const ultimoPonto = token.lastIndexOf('.');
+  let normalizado = token;
+  if (ultimaVirgula >= 0 && ultimoPonto >= 0) {
+    normalizado = ultimaVirgula > ultimoPonto
+      ? token.replace(/\./g, '').replace(',', '.')
+      : token.replace(/,/g, '');
+  } else if (ultimaVirgula >= 0) {
+    normalizado = token.replace(/,/g, (_virgula, offset) => offset === ultimaVirgula ? '.' : '');
+  }
+  const parsed = Number(normalizado);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 export function podeRetificarResultado(statusColeta: string | null | undefined, liberado: boolean): boolean {
   return liberado || statusColeta === 'validado';
 }

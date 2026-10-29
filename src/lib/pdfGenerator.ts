@@ -1403,9 +1403,13 @@ export async function downloadLaudoPDF(dados: LaudoData): Promise<void> {
   downloadPDF(doc, `laudo-${dados.codigoAmostra}`);
 }
 
-export async function printLaudoPDF(dados: LaudoData): Promise<void> {
+export async function printLaudoPDF(dados: LaudoData, previewWindow?: Window | null): Promise<void> {
   const doc = await gerarLaudoPDF(dados);
-  openPDF(doc);
+  if (previewWindow) {
+    previewWindow.document.title = 'Laudo pronto';
+    previewWindow.document.body.textContent = 'Abrindo o PDF…';
+  }
+  openPDF(doc, previewWindow);
 }
 
 // Download PDF
@@ -1414,10 +1418,19 @@ export function downloadPDF(doc: jsPDF, filename: string) {
 }
 
 // Abrir PDF em nova janela
-export function openPDF(doc: jsPDF) {
+export function openPDF(doc: jsPDF, previewWindow?: Window | null) {
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
+  if (previewWindow) {
+    previewWindow.document.title = 'Pré-visualização do laudo';
+    previewWindow.document.body.replaceChildren();
+    previewWindow.document.body.style.cssText = 'margin:0;overflow:hidden';
+    const frame = previewWindow.document.createElement('iframe');
+    frame.title = 'Pré-visualização do laudo em PDF';
+    frame.src = url;
+    frame.style.cssText = 'display:block;width:100vw;height:100vh;border:0';
+    previewWindow.document.body.append(frame);
+  } else window.open(url, '_blank');
 }
 
 // Share PDF via WhatsApp (opens WhatsApp with a message; browser limitation prevents direct file attach)

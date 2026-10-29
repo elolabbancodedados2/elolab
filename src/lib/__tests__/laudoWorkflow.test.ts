@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { podeRetificarResultado, deveNotificarRetificacao, perfilPodeRetificarResultado } from '../laudoWorkflow';
+import { parseResultadoNumerico, podeRetificarResultado, deveNotificarRetificacao, perfilPodeRetificarResultado } from '../laudoWorkflow';
 
 describe('correção de resultados laboratoriais', () => {
+  it('interpreta resultados decimais brasileiros e americanos sem inventar números', () => {
+    expect(parseResultadoNumerico('1.234,56 mg/dL')).toBe(1234.56);
+    expect(parseResultadoNumerico('1,234.56 mg/dL')).toBe(1234.56);
+    expect(parseResultadoNumerico('13,8')).toBe(13.8);
+    expect(parseResultadoNumerico('qualitativo')).toBeNull();
+    expect(parseResultadoNumerico(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
   it('permite correção antes da liberação apenas após validação técnica', () => {
     expect(podeRetificarResultado('validado', false)).toBe(true);
     expect(podeRetificarResultado('liberado', true)).toBe(true);

@@ -36,7 +36,7 @@ describe('trilha completa da retificação de resultado', () => {
   });
 
   it('o histórico mostra autor e alterações na tela de laudos', () => {
-    const tela = readFileSync('src/pages/LaudosLab.tsx', 'utf8');
+    const tela = readFileSync('src/pages/laboratorio/LaudoPage.tsx', 'utf8');
     expect(tela).toMatch(/autor:profiles!resultados_laboratorio_versoes_alterado_por_fkey\(nome\)/);
     expect(tela).toMatch(/trilhaDeVersoes\(historicoResultado, res\)/);
   });
