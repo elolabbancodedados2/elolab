@@ -25,8 +25,6 @@ const SLOT_PX = 7;
 // Visual hour rows only (labels + strong borders every hour).
 const HOUR_PX = (60 / SLOT_MINUTES) * SLOT_PX;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
-// Fixed doctor header height (sticky strip above the grid).
-const DOCTOR_HEADER_PX = 75;
 
 function toMinutes(t: string) {
   const [h, m] = t.split(':').map(Number);
@@ -99,10 +97,9 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
     <div
       data-testid="agenda-doctor-header"
       className={cn(
-        'flex-1 min-w-[240px] border-r border-border/60 last:border-r-0 px-3 py-2',
+        'flex-1 min-w-[240px] min-h-24 border-r border-border/60 last:border-r-0 px-3 py-2',
         columnIndex % 2 === 1 && 'bg-muted/[0.15]'
       )}
-      style={{ height: DOCTOR_HEADER_PX }}
     >
       <div className="flex items-center gap-2">
         <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm', inactive ? 'bg-muted-foreground/50' : 'bg-gradient-primary')}>

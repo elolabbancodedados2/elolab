@@ -25,7 +25,6 @@ describe('DailyMultiDoctorView', () => {
       </DndContext>,
     );
 
-    expect(screen.getByTestId('agenda-doctor-header')).toHaveStyle({ height: '75px' });
     expect(screen.getByTestId('agenda-doctor-header-strip').closest('.sticky')).toHaveClass('top-0');
 
     const firstTabStop = screen.getByRole('button', { name: 'Criar consulta 06:00 com Dr(a). Ana Silva' });
