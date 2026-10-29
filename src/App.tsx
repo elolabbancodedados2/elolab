@@ -328,6 +328,8 @@ function AppRoutes() {
                           <Route path="/todos-templates" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><TemplatesUnificado /></SupabaseProtectedRoute>} />
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />
+                          <Route path="/tarefas/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/tarefas/:taskId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas task="edit" /></SupabaseProtectedRoute>} />
                           <Route path="/tarefas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas /></SupabaseProtectedRoute>} />
                           <Route path="/minha-fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><MinhaFilaTarefas /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />

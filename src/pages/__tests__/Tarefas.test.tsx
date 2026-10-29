@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockMatchMedia = (hasCoarsePointer: boolean) => vi.fn((query: string) => ({
@@ -42,6 +42,14 @@ vi.mock('@/components/patients/PacienteCombobox', () => ({ PacienteCombobox: () 
 
 import Tarefas from '../Tarefas';
 
+function TaskTestRouter() {
+  return <RouterProvider router={createMemoryRouter([
+    { path: '/tarefas', element: <Tarefas /> },
+    { path: '/tarefas/nova', element: <Tarefas task="new" /> },
+    { path: '/tarefas/:taskId/editar', element: <Tarefas task="edit" /> },
+  ], { initialEntries: ['/tarefas'] })} />;
+}
+
 describe('Tarefas', () => {
   beforeEach(() => {
     mocks.mutateTask.mockClear();
@@ -56,7 +64,7 @@ describe('Tarefas', () => {
   });
 
   it('abre a lista em touch e mantém as ações da tarefa acessíveis', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
 
     expect(screen.getByRole('heading', { name: 'Tarefas da equipe' })).toBeInTheDocument();
     expect(screen.getByText('Confirmar agenda da manhã')).toBeInTheDocument();
@@ -64,7 +72,7 @@ describe('Tarefas', () => {
   });
 
   it('expõe o filtro ativo dos indicadores para tecnologias assistivas', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const total = screen.getByRole('button', { name: /Total/ });
     const vencidas = screen.getByRole('button', { name: /Vencidas/ });
 
@@ -75,7 +83,7 @@ describe('Tarefas', () => {
   });
 
   it('usa o token destrutivo no indicador de tarefas vencidas', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const vencidas = screen.getByRole('button', { name: /Vencidas/ });
     const iconSurface = vencidas.querySelector('svg')?.parentElement;
 
@@ -83,7 +91,7 @@ describe('Tarefas', () => {
   });
 
   it('permite buscar por categoria, informa o total e limpa a busca com Escape', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });
 
     expect(screen.getByRole('combobox', { name: 'Filtrar tarefas por status' })).toBeInTheDocument();
@@ -98,7 +106,7 @@ describe('Tarefas', () => {
   it('filtra tarefas atribuídas ao usuário e limpa o filtro pessoal', () => {
     mocks.tarefas[0].responsavel_id = 'staff-1';
     mocks.tarefas.push({ ...mocks.tarefas[0], id: 'task-2', titulo: 'Acompanhar retorno', responsavel_id: null });
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const minhasTarefas = screen.getByRole('button', { name: 'Minhas tarefas' });
 
     expect(minhasTarefas).toHaveAttribute('aria-pressed', 'false');
@@ -119,26 +127,28 @@ describe('Tarefas', () => {
   });
 
   it('foca a busca com o atalho / quando o foco não está em um campo de texto', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });
 
     fireEvent.keyDown(window, { key: '/' });
     expect(search).toHaveFocus();
   });
 
-  it('preserva o foco do diálogo enquanto um modal está aberto', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+  it('mantém o foco no formulário da página de nova tarefa', () => {
+    render(<TaskTestRouter />);
     const search = screen.getByRole('textbox', { name: 'Buscar tarefas' });
     fireEvent.click(screen.getByRole('button', { name: 'Nova Tarefa' }));
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const title = screen.getByLabelText('Título *');
+    title.focus();
     fireEvent.keyDown(window, { key: '/' });
-    expect(search).not.toHaveFocus();
+    expect(title).toHaveFocus();
   });
 
   it('mantém o Kanban no ponteiro preciso', () => {
     window.matchMedia = mockMatchMedia(false);
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const iniciar = screen.getByRole('button', { name: 'Iniciar tarefa Confirmar agenda da manhã' });
     fireEvent.click(iniciar);
     expect(mocks.mutateTask).toHaveBeenCalledWith({ id: 'task-1', expectedUpdatedAt: '2026-10-10T12:00:00Z', status: 'em_andamento' });
@@ -147,14 +157,14 @@ describe('Tarefas', () => {
 
   it('opens the linked patient for doctors in list and Kanban views', () => {
     mocks.roles = ['medico'];
-    const { unmount } = render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    const { unmount } = render(<TaskTestRouter />);
 
     expect(screen.getByText('Paciente Exemplo')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Paciente Exemplo/ })).toHaveAttribute('href', '/pacientes?paciente=patient-1');
 
     unmount();
     window.matchMedia = mockMatchMedia(false);
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     expect(screen.getByText('Paciente Exemplo')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Paciente Exemplo/ })).toHaveAttribute('href', '/pacientes?paciente=patient-1');
   });
@@ -162,14 +172,14 @@ describe('Tarefas', () => {
   it('reopens a completed task by keyboard', () => {
     mocks.tarefas[0].status = 'concluida';
     window.matchMedia = mockMatchMedia(false);
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
 
     fireEvent.click(screen.getByRole('button', { name: /Reabrir tarefa/ }));
 
     expect(mocks.mutateTask).toHaveBeenCalledWith({ id: 'task-1', expectedUpdatedAt: '2026-10-10T12:00:00Z', status: 'pendente' });
   });
   it('associa rótulos acessíveis aos campos da tarefa', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     fireEvent.click(screen.getByRole('button', { name: 'Nova Tarefa' }));
 
     expect(screen.getByLabelText('Título *')).toBeInTheDocument();
@@ -181,7 +191,7 @@ describe('Tarefas', () => {
   });
 
   it('revela as ações do cartão quando recebem foco no modo lista', () => {
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const excluir = screen.getByRole('button', { name: /Excluir tarefa/ });
 
     expect(excluir.parentElement).toHaveClass('md:group-focus-within:opacity-100');
@@ -189,7 +199,7 @@ describe('Tarefas', () => {
 
   it('revela as ações do cartão quando recebem foco no Kanban', () => {
     window.matchMedia = mockMatchMedia(false);
-    render(<MemoryRouter><Tarefas /></MemoryRouter>);
+    render(<TaskTestRouter />);
     const excluir = screen.getByRole('button', { name: /Excluir tarefa/ });
 
     expect(excluir).toHaveClass('md:group-focus-within:opacity-100');

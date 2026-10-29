@@ -52,6 +52,7 @@ const labelsByPath: Record<string, string> = {
   '/gestao-fluxo': 'Salas e lista de espera',
   '/estoque': 'Estoque',
   '/estoque/novo': 'Novo produto',
+  '/tarefas/nova': 'Nova tarefa',
   '/convenios': 'Convênios',
   '/faturamento-convenios': 'Faturamento de convênios',
   '/repasses-medicos': 'Repasses médicos',
@@ -125,6 +126,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/tarefas\/[^/]+\/editar$/.test(pathname)) return 'Editar tarefa';
   const stockAction = pathname.match(/^\/estoque\/[^/]+\/(editar|entrada|saida|historico)$/)?.[1];
   if (stockAction) return ({ editar: 'Editar produto', entrada: 'Entrada de estoque', saida: 'Saída de estoque', historico: 'Histórico de movimentações' } as Record<string, string>)[stockAction];
   if (/^\/usuarios\/[^/]+\/editar$/.test(pathname)) return 'Editar usuário';

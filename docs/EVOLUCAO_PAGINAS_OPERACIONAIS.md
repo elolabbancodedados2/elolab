@@ -362,3 +362,15 @@ Validação: dez novos cenários Playwright passaram (três larguras, edição, 
 Correção de navegação verificada junto desta entrega: subrotas de Usuários conservam o menu da plataforma; grupos abrem também na página filha, respeitando itens com correspondência exata. Vinte e um testes de configuração do menu, onze de Sidebar e o cenário de edição de conta desktop passaram. O teste de componente aguarda a transição visual antes de verificar visibilidade.
 
 Arquivos: `Estoque.tsx`, rotas/rótulos/breadcrumbs, Sidebar/configuração do menu e testes. API, histórico, idempotência e autorização do servidor preservados. Listagem continua com o limite de consulta preexistente; não foi simulada paginação inexistente. Histórico também testado e efetivamente visualizado a 390px, com origem, quantidade, data e motivo legíveis, sem sobreposição.
+
+Publicação: build `9ffe8f94d95bf1c65e5e13012013ade7ab758056`, imagem `easypanel/elolab/app:deploy-20261029-9ffe8f94`. Swarm concluído e versão/healthcheck conferidos. Novo produto efetivamente visualizado em produção, sem cadastro. Navegação administrativa na edição de conta também conferida após a correção. Rollback: `deploy-20261029-da57b1d6` e fonte `code.before-20261029-9ffe8f94`.
+
+## Tarefas — criação e edição com contexto (29/10/2026)
+
+Diagnóstico: o formulário aparecia sobre a lista/quadro; saída apagava a edição sem confirmação e o envio não bloqueava o restante dos campos. O modo de visão, a busca e os filtros precisavam acompanhar a transição para uma rota real.
+
+Implementação: `/tarefas/nova` e `/:taskId/editar`. Retorno recupera busca, status, filtro rápido, ordenação, filtro pessoal e visão. Leitura da edição filtra ID e clínica; baseline e versão não são substituídos por atualizações periódicas. Mantidas criação com autor/clínica, proteção por `updated_at`, vínculos de responsáveis e pacientes, papéis de acesso, ações da lista/quadro e rascunho de criação na sessão já existente. Proteção de navegação, formulário nativo, bloqueio durante envio e recuperação da consulta de responsáveis. O atalho da busca fica restrito à lista. Confirmação curta de exclusão mantida.
+
+Validação: oito cenários Playwright distintos passaram (três larguras, edição, conflito, retorno filtrado, criação, recuperação/limpeza de rascunho, erro recuperável, limites do perfil financeiro e registro ausente). A repetição responsiva final passou nas três larguras após corrigir a largura mínima do fieldset; no tablet o teste realiza rolagem explícita para conferir as ações acima da barra inferior. Vinte testes unitários de tarefas e integridade passaram. TypeScript, build e diff-check passaram; lint focal com zero erros e 39 avisos. Formulário desktop e rodapés tablet/celular efetivamente visualizados em `.qa-artifacts/tarefas-20261029/`. Todas as escritas interceptadas.
+
+Arquivos: `Tarefas.tsx`, rotas/rótulos/breadcrumbs, testes de componente e `tests/task-editor-pages.spec.ts`. Não há migração de banco. Limitação existente: criação usa INSERT sem chave de idempotência de servidor; o bloqueio impede cliques simultâneos, mas não promete resolver uma resposta de rede ambígua após persistência.

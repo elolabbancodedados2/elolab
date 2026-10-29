@@ -3,7 +3,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -306,20 +306,32 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
 }
 
 // ─── Main Page ─────────────────────────────────────────────
-export default function Tarefas() {
+export default function Tarefas({ task }: { task?: 'new' | 'edit' }) {
+  const location = useLocation();
+  return <TarefasWorkspace key={location.pathname} task={task} />;
+}
+function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { taskId } = useParams<{ taskId: string }>();
+  const completed = useRef(false);
+  const saveLock = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef(JSON.stringify(formVazio));
+  const leave = () => navigate('/tarefas', { state: { taskFilters: location.state?.taskFilters } });
+  const finish = () => { completed.current = true; leave(); };
   const { user, profile, isAdmin, hasRole } = useSupabaseAuth();
   const podeVincularPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem') || hasRole('medico');
   const podeAbrirPaciente = podeVincularPaciente;
   const [agora, setAgora] = useState(() => new Date());
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(location.state?.taskFilters?.search ?? '');
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>('none');
-  const [ordenacao, setOrdenacao] = useState<Ordenacao>('recentes');
-  const [onlyMine, setOnlyMine] = useState(false);
-  const [showNew, setShowNew] = useState(false);
+  const [filterStatus, setFilterStatus] = useState(location.state?.taskFilters?.status ?? 'all');
+  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>(location.state?.taskFilters?.quick ?? 'none');
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>(location.state?.taskFilters?.sort ?? 'recentes');
+  const [onlyMine, setOnlyMine] = useState(location.state?.taskFilters?.mine ?? false);
   const [editing, setEditing] = useState<any | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => getInitialTaskView(
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => location.state?.taskFilters?.view ?? getInitialTaskView(
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(any-pointer: coarse)').matches
       : false,
@@ -340,6 +352,7 @@ export default function Tarefas() {
   }, []);
 
   useEffect(() => {
+    if (task) return;
     const handleSearchShortcut = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const typing = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '');
@@ -354,7 +367,7 @@ export default function Tarefas() {
     };
     window.addEventListener('keydown', handleSearchShortcut);
     return () => window.removeEventListener('keydown', handleSearchShortcut);
-  }, [search]);
+  }, [search, task]);
 
   const profilesQuery = useQuery({
     queryKey: ['profiles-tarefas', profile?.clinica_id, profile?.id],
@@ -372,15 +385,14 @@ export default function Tarefas() {
   });
 
   const tarefasQuery = useQuery({
-    queryKey: ['tarefas', profile?.clinica_id, profile?.id],
+    queryKey: ['tarefas', profile?.clinica_id, profile?.id, taskId ?? null],
     refetchInterval: 60_000,
     queryFn: async () => {
-      const data = await withSafeRetry(() => buscarEmBlocos<any>(() => supabase
-        .from('tarefas')
-        .select('*')
-        .eq('clinica_id', profile!.clinica_id)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: true })));
+      const data = await withSafeRetry(() => buscarEmBlocos<any>(() => {
+        let query = supabase.from('tarefas').select('*').eq('clinica_id', profile!.clinica_id).order('created_at', { ascending: false }).order('id', { ascending: true });
+        if (taskId) query = query.eq('id', taskId);
+        return query;
+      }));
       return data || [];
     },
     refetchOnWindowFocus: true,
@@ -414,11 +426,22 @@ export default function Tarefas() {
     initialValue: formVazio,
     onRestore: setForm,
     storage: 'session',
-    enabled: showNew && !editing && !!profile?.clinica_id && !!user?.id,
+    enabled: task === 'new' && !!profile?.clinica_id && !!user?.id,
   });
 
-  const fecharDialogo = () => { setShowNew(false); setEditing(null); setForm(formVazio); };
-  const abrirEdicao = (tarefa: any) => { setEditing(tarefa); setForm(formDaTarefa(tarefa)); setShowNew(true); };
+  const openTask = (path: string) => navigate(path, { state: { taskFilters: { search, status: filterStatus, quick: filtroRapido, sort: ordenacao, mine: onlyMine, view: viewMode } } });
+  const abrirNova = () => openTask('/tarefas/nova');
+  const abrirEdicao = (tarefa: any) => openTask(`/tarefas/${tarefa.id}/editar`);
+  useEffect(() => {
+    if (task !== 'edit' || initialized.current || tarefasQuery.isLoading || tarefasQuery.isError) return;
+    const current = tarefas?.find(item => item.id === taskId);
+    if (!current) return;
+    const initial = formDaTarefa(current);
+    initialized.current = true;
+    baseline.current = JSON.stringify(initial);
+    setEditing(current);
+    setForm(initial);
+  }, [task, taskId, tarefas, tarefasQuery.isLoading, tarefasQuery.isError]);
 
   const createTarefa = useMutation({
     mutationFn: async (dados: any) => {
@@ -429,9 +452,10 @@ export default function Tarefas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.success('Tarefa criada!');
-      fecharDialogo();
       draft.clear();
+      finish();
     },
+    onSettled: () => { saveLock.current = false; },
     onError: (err: any) => {
       toast.error('Erro ao criar tarefa: ' + (err?.message || 'Erro desconhecido'));
     },
@@ -450,8 +474,9 @@ export default function Tarefas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.success('Tarefa atualizada');
-      if (editing) fecharDialogo();
+      if (task === 'edit') finish();
     },
+    onSettled: () => { saveLock.current = false; },
     onError: (error: Error) => {
       queryClient.invalidateQueries({ queryKey: ['tarefas'] });
       toast.error('Não foi possível atualizar a tarefa: ' + error.message);
@@ -526,6 +551,7 @@ export default function Tarefas() {
 
   const salvarFormulario = (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveLock.current || profilesQuery.isLoading || profilesQuery.isError || tarefasQuery.isError || (task === 'edit' && !editing)) return;
     if (!form.titulo.trim()) { toast.error('Título é obrigatório'); return; }
     const dados = {
       titulo: form.titulo.trim(),
@@ -536,6 +562,7 @@ export default function Tarefas() {
       categoria: form.categoria || null,
       paciente_id: form.paciente_id || null,
     };
+    saveLock.current = true;
     if (editing) updateTarefa.mutate({ id: editing.id, expectedUpdatedAt: editing.updated_at, ...dados });
     else createTarefa.mutate(dados);
   };
@@ -580,7 +607,10 @@ export default function Tarefas() {
   ];
 
   return (
-    <div className="space-y-5 pb-8">
+    <div className="space-y-5 pb-24 lg:pb-8">
+      {task && <UnsavedChangesGuard dirty={JSON.stringify(form) !== baseline.current} busy={createTarefa.isPending || updateTarefa.isPending} completed={completed} />}
+      {task && <Button variant="outline" onClick={leave} disabled={createTarefa.isPending || updateTarefa.isPending}>Voltar às tarefas</Button>}
+      {!task && <>
       {/* Header */}
       <PageHeader
         title="Tarefas da equipe"
@@ -606,7 +636,7 @@ export default function Tarefas() {
                 <LayoutList className="h-3.5 w-3.5" /> Lista
               </Button>
             </div>
-            <Button onClick={() => { setEditing(null); setForm(formVazio); setShowNew(true); }} className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110 sm:w-auto">
+            <Button onClick={abrirNova} className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110 sm:w-auto">
               <Plus className="h-4 w-4" /> Nova Tarefa
             </Button>
           </>
@@ -755,7 +785,7 @@ export default function Tarefas() {
                   : 'Tente outro termo ou remova os filtros para voltar a ver suas tarefas.'}
                 actionLabel={enrichedTarefas.length === 0 ? 'Nova tarefa' : 'Limpar busca e filtro'}
                 onAction={enrichedTarefas.length === 0
-                  ? () => { setEditing(null); setForm(formVazio); setShowNew(true); }
+                  ? abrirNova
                   : limparFiltros}
                 actionIcon={enrichedTarefas.length === 0 ? Plus : undefined}
                 className="py-12"
@@ -815,18 +845,15 @@ export default function Tarefas() {
         </div>
       )}
 
-      {/* Dialog Nova / Editar Tarefa */}
-      <Dialog open={showNew} onOpenChange={(open) => { if (!open) fecharDialogo(); }}>
-        <DialogContent className="max-h-[100dvh] w-full max-w-lg overflow-y-auto rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[90vh] sm:w-[calc(100%-2rem)] sm:rounded-[22px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-white">
-                {editing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              </span>
-              {editing ? 'Editar Tarefa' : 'Nova Tarefa'}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={salvarFormulario} className="space-y-4">
+      </>}
+      {task && <section className="mx-auto max-w-4xl space-y-5">
+        <PageHeader title={task === 'edit' ? 'Editar tarefa' : 'Nova tarefa'} description="Defina o trabalho, o prazo e a pessoa responsável. Vincule um paciente apenas quando necessário para a operação." icon={<ListTodo />} />
+        {tarefasQuery.isError && <ErrorState title="Não foi possível carregar as tarefas" error={tarefasQuery.error} onRetry={() => void tarefasQuery.refetch()} />}
+        {profilesQuery.isError && <ErrorState title="Não foi possível carregar os responsáveis" error={profilesQuery.error} onRetry={() => void profilesQuery.refetch()} />}
+        {task === 'edit' && isLoading && <p role="status" className="py-6 text-sm text-muted-foreground">Carregando tarefa…</p>}
+        {task === 'edit' && !isLoading && !tarefasQuery.isError && !editing && !tarefas?.some(item => item.id === taskId) && <ErrorState title="Tarefa não encontrada" description="O registro não está disponível nesta clínica. Volte à lista para conferir." />}
+        {(task === 'new' || editing) && <form onSubmit={salvarFormulario} className="rounded-xl border bg-card p-5 sm:p-6">
+          <fieldset disabled={createTarefa.isPending || updateTarefa.isPending} className="min-w-0 space-y-5">
             {!editing && draft.restorable && (
               <DraftRecoveryNotice
                 savedAt={draft.restorable.savedAt}
@@ -836,7 +863,7 @@ export default function Tarefas() {
             )}
             <div className="space-y-2">
               <Label htmlFor="task-title">Título *</Label>
-              <Input id="task-title" value={form.titulo} onChange={(e) => setForm(p => ({ ...p, titulo: e.target.value }))} placeholder="O que precisa ser feito?" autoFocus />
+              <Input id="task-title" value={form.titulo} onChange={(e) => setForm(p => ({ ...p, titulo: e.target.value }))} placeholder="O que precisa ser feito?" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="task-description">Descrição</Label>
@@ -911,21 +938,21 @@ export default function Tarefas() {
                 </Select>
               </div>
             </div>
-            <DialogFooter>
-              <span className="mr-auto self-center text-xs text-muted-foreground" aria-live="polite">
+          </fieldset>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-5 mt-5 scroll-mb-24">
+              <span className="mr-auto w-full self-center text-xs text-muted-foreground sm:w-auto" aria-live="polite">
                 {editing
                   ? 'Alterações são salvas ao confirmar'
                   : draft.savedAt ? `Rascunho salvo às ${draft.savedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : draft.dirty ? 'Salvando rascunho…' : 'Sem alterações'}
               </span>
-              <Button variant="outline" type="button" className="rounded-full" onClick={fecharDialogo}>Cancelar</Button>
-              <Button type="submit" className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={!form.titulo.trim() || createTarefa.isPending || updateTarefa.isPending}>
+              <Button variant="outline" type="button" className="rounded-full" onClick={leave} disabled={createTarefa.isPending || updateTarefa.isPending}>Cancelar</Button>
+              <Button type="submit" className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={!form.titulo.trim() || createTarefa.isPending || updateTarefa.isPending || profilesQuery.isLoading || profilesQuery.isError || tarefasQuery.isError}>
                 {(createTarefa.isPending || updateTarefa.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
                 {editing ? 'Salvar alterações' : 'Criar Tarefa'}
               </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </form>}
+      </section>}
 
       {/* Confirm delete dialog */}
       <AlertDialog open={!!deleteTaskId} onOpenChange={(open) => !open && setDeleteTaskId(null)}>
