@@ -6,11 +6,11 @@ import { toast } from 'sonner';
 import { useState } from 'react';
 
 export function ImpersonationBanner() {
-  const { isPlatformAdmin, profile, refreshProfile } = useSupabaseAuth();
+  const { isPlatformAdmin, isClinicaOwner, isLoading, profile, refreshProfile } = useSupabaseAuth();
   const [loading, setLoading] = useState(false);
 
-  // Only show when platform admin currently has a clinica_id (= impersonating)
-  if (!isPlatformAdmin || !profile?.clinica_id) return null;
+  // O vínculo permanente da conta dona não é uma sessão de suporte.
+  if (isLoading || !isPlatformAdmin || !profile?.clinica_id || isClinicaOwner) return null;
 
   const handleStop = async () => {
     setLoading(true);
