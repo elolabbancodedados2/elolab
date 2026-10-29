@@ -18,8 +18,9 @@ export function Breadcrumbs() {
       {segments.map((segment, index) => {
         const path = `/${segments.slice(0, index + 1).join('/')}`;
         const label = getRouteLabel(path);
+        const emailModels = path === '/todos-templates' && location.pathname.startsWith('/todos-templates/email/');
         const isLast = index === segments.length - 1;
-        if (!isLast && /^\/todos-templates\/(?:prescricoes|atestados)(?:\/[^/]+)?$/.test(path)) return null;
+        if (!isLast && /^\/todos-templates\/(?:prescricoes|atestados|email)(?:\/[^/]+)?$/.test(path)) return null;
         // These record segments have edit/work pages, but no standalone detail route.
         if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|precos-servicos\/exames\/convenios|equipe\/funcionarios|usuarios|estoque|tarefas|retornos|convenios|convenios\/[^/]+\/exames)\/[^/]+$/.test(path)) return null;
 
@@ -29,7 +30,7 @@ export function Breadcrumbs() {
             {isLast ? (
               <span aria-current="page" className="font-medium text-foreground">{label}</span>
             ) : (
-              <Link to={path} className="transition-colors hover:text-foreground">{label}</Link>
+              <Link to={emailModels ? '/todos-templates?tab=email' : path} className="transition-colors hover:text-foreground">{emailModels ? 'Modelos de e-mail' : label}</Link>
             )}
           </span>
         );

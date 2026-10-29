@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, type ReactNode } from 'react';
+import { useState, useRef, useMemo, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { PageHeader } from '@/components/PageHeader';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,11 +58,27 @@ const sanitizeTemplateHtml = (html: string) => DOMPurify.sanitize(html, {
   FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
 });
 
-export default function TemplatesEmail() {
+type EmailTask = 'new' | 'edit' | 'activate' | 'history';
+export default function TemplatesEmail({ task }: { task?: EmailTask }) {
+  const location = useLocation();
+  const { profile } = useSupabaseAuth();
+  return <EmailWorkspace key={`${location.pathname}:${profile?.clinica_id ?? ''}`} task={task} />;
+}
+
+function EmailWorkspace({ task }: { task?: EmailTask }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { templateId } = useParams();
+  const filters = location.state?.emailTemplateFilters;
+  const initialized = useRef(false);
+  const completed = useRef(false);
+  const saveLock = useRef(false);
+  const baseline = useRef(JSON.stringify({ nome: '', categoria: '', assunto: '', conteudo: '', ativo: true }));
+  const expectedVersion = useRef<string | null>(null);
+  const editingForm = task === 'new' || task === 'edit';
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
   const podeGerenciar = podeGerenciarTemplatesEmail(profile);
-  const [showDialog, setShowDialog] = useState(false);
   const [form, setForm] = useState({
     nome: '',
     categoria: '',
@@ -69,31 +86,43 @@ export default function TemplatesEmail() {
     conteudo: '',
     ativo: true,
   });
-  const [editId, setEditId] = useState<string | null>(null);
+  const editId = task === 'edit' ? templateId : null;
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [activationCandidate, setActivationCandidate] = useState<any | null>(null);
-  const [historyTemplate, setHistoryTemplate] = useState<{ id: string; name: string } | null>(null);
   const [previewTab, setPreviewTab] = useState('editar');
-  const [search, setSearch] = useState('');
-  const [categoriaFilter, setCategoriaFilter] = useState('todas');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
+  const [search, setSearch] = useState(filters?.search ?? '');
+  const [categoriaFilter, setCategoriaFilter] = useState(filters?.categoriaFilter ?? 'todas');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(filters?.statusFilter ?? 'todos');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const templatesQuery = useQuery({
-    queryKey: ['templates', profile?.clinica_id],
+    queryKey: ['templates', profile?.clinica_id, task, templateId],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data, error } = await supabase
-        .from('notification_templates')
-        .select('*')
-        .eq('clinica_id', profile.clinica_id)
-        .order('nome');
+      let query = supabase.from('notification_templates').select('*').eq('clinica_id', profile.clinica_id).order('nome');
+      if (task) query = query.eq('id', templateId!);
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && task !== 'new',
   });
   const templates = useMemo(() => templatesQuery.data || [], [templatesQuery.data]);
+
+  const selectedTemplate = task && task !== 'new' ? templates[0] : null;
+  const activationCandidate = task === 'activate' ? selectedTemplate : null;
+  const historyTemplate = task === 'history' && selectedTemplate ? { id: selectedTemplate.id, name: selectedTemplate.nome } : null;
+  useEffect(() => {
+    if (task !== 'edit' || !selectedTemplate || initialized.current) return;
+    const initial = { nome: selectedTemplate.nome, categoria: selectedTemplate.categoria, assunto: selectedTemplate.assunto || '', conteudo: selectedTemplate.conteudo || '', ativo: selectedTemplate.ativo ?? false };
+    setForm(initial);
+    baseline.current = JSON.stringify(initial);
+    expectedVersion.current = selectedTemplate.updated_at;
+    initialized.current = true;
+  }, [selectedTemplate, task]);
+  const listState = { emailTemplateFilters: { search, categoriaFilter, statusFilter } };
+  const back = () => navigate('/todos-templates?tab=email', { state: listState });
+  const openTask = (destination: EmailTask, id?: string) => navigate(`/todos-templates/email/${destination === 'new' ? 'novo' : `${id}/${({ edit: 'editar', activate: 'ativar', history: 'historico' } as const)[destination]}`}`, { state: listState });
+  const dirty = editingForm && JSON.stringify(form) !== baseline.current;
 
   const historyQuery = useQuery({
     queryKey: ['notification-template-versions', profile?.clinica_id, historyTemplate?.id],
@@ -113,6 +142,7 @@ export default function TemplatesEmail() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!podeGerenciar || templatesQuery.isError || (task === 'edit' && !initialized.current)) throw new Error('Modelo indisponível para edição.');
       if (!form.nome.trim() || !form.categoria || !form.assunto.trim() || !form.conteudo.trim()) {
         throw new Error('Preencha todos os campos');
       }
@@ -142,10 +172,11 @@ export default function TemplatesEmail() {
           })
           .eq('id', editId)
           .eq('clinica_id', profile.clinica_id)
+          .filter('updated_at', expectedVersion.current == null ? 'is' : 'eq', expectedVersion.current)
           .select('id')
           .maybeSingle();
         if (error) throw error;
-        if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
+        if (!data) throw new Error('Este modelo foi alterado ou removido. Seu texto foi preservado; volte à lista e reabra a versão atual antes de salvar.');
       } else {
         const { error } = await supabase
           .from('notification_templates')
@@ -164,31 +195,36 @@ export default function TemplatesEmail() {
     onSuccess: () => {
       toast.success(editId ? 'Template atualizado!' : 'Template criado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
-      setShowDialog(false);
-      setActivationCandidate(null);
-      setForm({ nome: '', categoria: '', assunto: '', conteudo: '', ativo: true });
-      setEditId(null);
+      completed.current = true;
+      back();
     },
     onError: (error: any) => toast.error(error.message),
+    onSettled: () => { saveLock.current = false; },
   });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, ativo }: { id: string; ativo: boolean }) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada');
-      const { data, error } = await supabase
+      if (!podeGerenciar || templatesQuery.isError) throw new Error('Operação indisponível. Atualize o modelo e tente novamente.');
+      if (!ativo) {
+        if (!activationCandidate || activationCandidate.id !== id || activationCandidate.ativo) throw new Error('Este modelo não está disponível para ativação.');
+        const preview = analyzeTemplatePreview({ name: activationCandidate.nome, category: activationCandidate.categoria, subject: activationCandidate.assunto || '', content: sanitizeTemplateHtml(activationCandidate.conteudo || '') });
+        if (preview.missingVariables.length) throw new Error('Corrija as variáveis da mensagem antes de ativar.');
+      }
+      let query = supabase
         .from('notification_templates')
         .update({ ativo: !ativo })
         .eq('id', id)
-        .eq('clinica_id', profile.clinica_id)
-        .select('id')
-        .maybeSingle();
+        .eq('clinica_id', profile.clinica_id);
+      if (task === 'activate') query = query.filter('updated_at', activationCandidate?.updated_at == null ? 'is' : 'eq', activationCandidate?.updated_at ?? null);
+      const { data, error } = await query.select('id').maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
     },
     onSuccess: () => {
       toast.success('Template atualizado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
-      setActivationCandidate(null);
+      if (task === 'activate') { completed.current = true; back(); }
     },
     onError: (error: any) => toast.error(error.message),
   });
@@ -244,19 +280,8 @@ export default function TemplatesEmail() {
     onError: (error: any) => toast.error(error.message),
   });
 
-  const openNew = () => {
-    setForm({ nome: '', categoria: '', assunto: '', conteudo: '', ativo: true });
-    setEditId(null);
-    setPreviewTab('editar');
-    setShowDialog(true);
-  };
-
-  const openEdit = (template: any) => {
-    setForm(template);
-    setEditId(template.id);
-    setPreviewTab('editar');
-    setShowDialog(true);
-  };
+  const openNew = () => openTask('new');
+  const openEdit = (template: { id: string }) => openTask('edit', template.id);
 
   const insertVariable = (varName: string) => {
     const textarea = textareaRef.current;
@@ -346,6 +371,228 @@ export default function TemplatesEmail() {
 
   const temFiltro = search.trim() !== '' || categoriaFilter !== 'todas' || statusFilter !== 'todos';
   const limparFiltros = () => { setSearch(''); setCategoriaFilter('todas'); setStatusFilter('todos'); };
+
+  if (task) {
+    const busy = saveMutation.isPending || toggleMutation.isPending;
+    const title = task === 'new' ? 'Novo modelo de e-mail' : task === 'edit' ? 'Editar modelo de e-mail' : task === 'activate' ? 'Prévia antes de ativar' : `Histórico: ${historyTemplate?.name || 'modelo de e-mail'}`;
+    const ready = task === 'new' || (task === 'edit' ? initialized.current : !!selectedTemplate);
+    return <div className="space-y-5 pb-24 lg:pb-8">
+      <UnsavedChangesGuard dirty={dirty} busy={busy} completed={completed} />
+      <Button asChild variant="outline"><Link to="/todos-templates?tab=email" state={listState}>Voltar aos modelos de e-mail</Link></Button>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader title={title} icon={<Mail />} description={task === 'history' ? 'Versões registradas pelo banco, com autoria e conteúdo preservados.' : 'Configure e revise a mensagem. As prévias usam exemplos sintéticos, sem dados de pacientes reais.'} />
+        {templatesQuery.isError && <ErrorState title="Não foi possível carregar o modelo de e-mail" error={templatesQuery.error} onRetry={() => void templatesQuery.refetch()} />}
+        {!ready && templatesQuery.isLoading ? <Skeleton className="h-80" /> : !ready && !templatesQuery.isError ? <p role="status" className="rounded-xl border bg-card p-6">Modelo indisponível nesta clínica. Volte à lista e escolha um modelo existente.</p> : null}
+        {ready && editingForm && <form onSubmit={event => { event.preventDefault(); if (saveLock.current) return; saveLock.current = true; saveMutation.mutate(); }} className="rounded-xl border border-border bg-card p-4 sm:p-6">
+          <fieldset className="min-w-0" disabled={busy || templatesQuery.isError || !podeGerenciar}>
+            <legend className="sr-only">Conteúdo e disponibilidade do modelo</legend>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="email-template-nome" className="block text-sm font-medium mb-1">Nome</label>
+                <Input
+                  id="email-template-nome" required
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                />
+              </div>
+              <div>
+                <label htmlFor="email-template-categoria" className="block text-sm font-medium mb-1">Categoria</label>
+                <select
+                  id="email-template-categoria" required
+                  value={form.categoria}
+                  onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                   className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                 >
+                  <option value="">Selecione</option>
+                  {CATEGORIAS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label htmlFor="email-template-ativo" className="block text-sm font-medium mb-1">Ativo</label>
+                  <div className="flex items-center gap-2 h-10">
+                    <Switch
+                      id="email-template-ativo"
+                      checked={form.ativo}
+                      onCheckedChange={(checked) =>
+                        setForm({ ...form, ativo: checked })
+                      }
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {form.ativo ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="email-template-assunto" className="block text-sm font-medium mb-1">Assunto</label>
+              <Input
+                id="email-template-assunto" required
+                value={form.assunto}
+                onChange={(e) => setForm({ ...form, assunto: e.target.value })}
+                placeholder="Ex: {{paciente_nome}}, sua consulta foi confirmada"
+              />
+              {previewTab === 'editar' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Preview: {getRenderedPreview() || '(vazio)'}
+                </p>
+              )}
+            </div>
+
+            <Tabs activationMode="manual" value={previewTab} onValueChange={setPreviewTab}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="editar">Editar Conteúdo</TabsTrigger>
+                <TabsTrigger value="preview">Preview</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="editar" className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2">
+                    <label htmlFor="email-template-conteudo" className="block text-sm font-medium mb-1">
+                      Conteúdo (HTML)
+                    </label>
+                    <Textarea
+                      id="email-template-conteudo" required
+                      ref={textareaRef}
+                      value={form.conteudo}
+                      onChange={(e) =>
+                        setForm({ ...form, conteudo: e.target.value })
+                      }
+                      className="min-h-64 font-mono text-sm"
+                      placeholder="Cole aqui seu HTML ou texto. Use {{variável}} para placeholders."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Variáveis Disponíveis
+                    </label>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {Object.entries(VARIAVEIS_GRUPOS).map(([grupo, vars]) => (
+                        <div key={grupo}>
+                          <p className="text-xs font-semibold text-foreground mb-1">
+                            {grupo}
+                          </p>
+                          <div className="space-y-1">
+                            {vars.map((v) => (
+                              <Button
+                                type="button"
+                                key={v}
+                                size="sm"
+                                variant="outline"
+                                className="w-full justify-start text-xs h-8 gap-1"
+                                onClick={() => insertVariable(v)}
+                              >
+                                <Copy className="h-3 w-3" />
+                                {v}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="preview" className="space-y-4">
+                <p className="text-sm text-muted-foreground">Prévia sintética: os dados exibidos são exemplos e não pertencem a pacientes reais.</p>
+                {formPreview.missingVariables.length > 0 && <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+                  <p className="font-medium">Variáveis que precisam ser corrigidas antes de ativar:</p>
+                  <ul className="mt-1 list-inside list-disc">
+                    {formPreview.missingVariables.map(variable => <li key={variable}><code>{`{{${variable}}}`}</code></li>)}
+                  </ul>
+                </div>}
+                <div className="border rounded-lg p-4 bg-card">
+                  <div className="mb-4 pb-4 border-b">
+                    <p className="text-xs text-muted-foreground mb-1">Assunto:</p>
+                    <p className="font-semibold text-foreground">{getRenderedPreview() || '(vazio)'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">Conteúdo:</p>
+                    <div
+                      dangerouslySetInnerHTML={{ __html: getContentPreview() }}
+                      className="prose prose-sm max-w-none"
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t pt-4 scroll-mb-24">
+              <span role="status" className="mr-auto w-full text-xs text-muted-foreground sm:w-auto">{busy ? 'Salvando…' : dirty ? 'Alterações não salvas' : 'Sem alterações'}</span>
+              <Button type="button" variant="outline" onClick={back}>Cancelar</Button>
+              <Button type="submit">{editId ? 'Atualizar' : 'Criar'}</Button>
+            </div>
+          </fieldset>
+        </form>}
+        {ready && task === 'activate' && <section className="space-y-5 rounded-xl border bg-card p-4 sm:p-6">
+          {activationCandidate && activationPreview && <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Modelo: <span className="font-medium text-foreground">{activationCandidate.nome}</span></p>
+            {activationPreview.missingVariables.length > 0 && <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+              <p className="font-medium">Corrija estas variáveis antes de ativar:</p>
+              <ul className="mt-1 list-inside list-disc">
+                {activationPreview.missingVariables.map(variable => <li key={variable}><code>{`{{${variable}}}`}</code></li>)}
+              </ul>
+            </div>}
+            <div className="rounded-lg border bg-card p-4">
+              <p className="mb-1 text-xs text-muted-foreground">Assunto</p>
+              <p className="mb-4 border-b pb-4 font-semibold">{activationPreview.renderedSubject || '(vazio)'}</p>
+              <p className="mb-2 text-xs text-muted-foreground">Conteúdo</p>
+              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(activationPreview.renderedContent) }} />
+            </div>
+          </div>}
+
+          {activationCandidate?.ativo && <p role="status">Este modelo já está ativo.</p>}
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-4 scroll-mb-24">
+            <Button variant="outline" onClick={back} disabled={busy}>Cancelar</Button>
+            <Button variant="outline" disabled={busy} onClick={() => selectedTemplate && openEdit(selectedTemplate)}>Editar modelo</Button>
+            <Button disabled={!activationCandidate || activationCandidate.ativo || !activationPreview || activationPreview.missingVariables.length > 0 || busy || templatesQuery.isError || !podeGerenciar} onClick={() => activationCandidate && toggleMutation.mutate({ id: activationCandidate.id, ativo: false })}>Ativar modelo</Button>
+          </div>
+        </section>}
+        {ready && task === 'history' && <section className="rounded-xl border bg-card p-4 sm:p-6">
+          {historyQuery.isLoading ? <p role="status">Carregando histórico…</p>
+            : historyQuery.isError ? <ErrorState title="Não foi possível carregar o histórico" error={historyQuery.error} onRetry={() => void historyQuery.refetch()} />
+              : (historyQuery.data || []).length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma versão disponível para este modelo.</p>
+                : <ol className="space-y-3">
+                  {(historyQuery.data || []).map((version) => {
+                    const snapshot = version.snapshot && typeof version.snapshot === 'object' && !Array.isArray(version.snapshot)
+                      ? version.snapshot as Record<string, unknown>
+                      : {};
+                    const actionLabel = {
+                      baseline: 'Estado inicial, autor não registrado',
+                      created: 'Criado',
+                      updated: 'Alterado',
+                      deleted: 'Removido',
+                    }[version.action] || version.action;
+                    const authorLabel = version.author_name || (version.actor_type === 'legacy' ? 'Autor não registrado' : 'Sistema');
+                    return <li key={version.id} className="rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium">Versão {version.revision} · {actionLabel}</p>
+                        <time className="text-xs text-muted-foreground" dateTime={version.created_at}>{new Date(version.created_at).toLocaleString('pt-BR')}</time>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">Autor: {authorLabel}</p>
+                      <p className="mt-2 text-sm">Assunto: {String(snapshot.assunto || '(sem assunto)')}</p>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-sm font-medium">Ver conteúdo salvo</summary>
+                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{String(snapshot.conteudo || '(vazio)')}</pre>
+                      </details>
+                    </li>;
+                  })}
+                </ol>}
+
+        </section>}
+      </div>
+    </div>;
+  }
 
   if (templatesQuery.isError) {
     return <ErrorState title="Não foi possível carregar os modelos de e-mail" error={templatesQuery.error} onRetry={() => void templatesQuery.refetch()} />;
@@ -497,7 +744,7 @@ export default function TemplatesEmail() {
                         aria-label={template.ativo ? `Desativar modelo ${template.nome}` : `Ativar modelo ${template.nome}`}
                         onClick={() => template.ativo
                           ? toggleMutation.mutate({ id: template.id, ativo: true })
-                          : setActivationCandidate(template)}
+                          : openTask('activate', template.id)}
                         disabled={toggleMutation.isPending}
                         className={cn('h-8 w-8 shrink-0 rounded-full', template.ativo ? 'text-success' : 'text-muted-foreground')}
                       >
@@ -527,7 +774,7 @@ export default function TemplatesEmail() {
                       <Button size="sm" className="h-9 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110" aria-label={`Editar modelo ${template.nome}`} onClick={() => openEdit(template)}>
                         <Edit2 className="h-3.5 w-3.5" /> Editar
                       </Button>
-                      <Button size="icon" variant="outline" className="h-9 w-9 rounded-full" aria-label={`Histórico do modelo ${template.nome}`} title="Histórico" onClick={() => setHistoryTemplate({ id: template.id, name: template.nome })}>
+                      <Button size="icon" variant="outline" className="h-9 w-9 rounded-full" aria-label={`Histórico do modelo ${template.nome}`} title="Histórico" onClick={() => openTask('history', template.id)}>
                         <History className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" aria-label={`Excluir modelo ${template.nome}`} title="Excluir" onClick={() => setDeleteId(template.id)}>
@@ -541,240 +788,6 @@ export default function TemplatesEmail() {
           </section>
         ))
       )}
-
-      <Dialog open={showDialog} onOpenChange={(open) => { if (!saveMutation.isPending) setShowDialog(open); }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editId ? 'Editar' : 'Novo'} Template</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="email-template-nome" className="block text-sm font-medium mb-1">Nome</label>
-                <Input
-                  id="email-template-nome"
-                  value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                />
-              </div>
-              <div>
-                <label htmlFor="email-template-categoria" className="block text-sm font-medium mb-1">Categoria</label>
-                <select
-                  id="email-template-categoria"
-                  value={form.categoria}
-                  onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                   className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
-                 >
-                  <option value="">Selecione</option>
-                  {CATEGORIAS.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label htmlFor="email-template-ativo" className="block text-sm font-medium mb-1">Ativo</label>
-                  <div className="flex items-center gap-2 h-10">
-                    <Switch
-                      id="email-template-ativo"
-                      checked={form.ativo}
-                      onCheckedChange={(checked) =>
-                        setForm({ ...form, ativo: checked })
-                      }
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {form.ativo ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="email-template-assunto" className="block text-sm font-medium mb-1">Assunto</label>
-              <Input
-                id="email-template-assunto"
-                value={form.assunto}
-                onChange={(e) => setForm({ ...form, assunto: e.target.value })}
-                placeholder="Ex: {{paciente_nome}}, sua consulta foi confirmada"
-              />
-              {previewTab === 'editar' && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Preview: {getRenderedPreview() || '(vazio)'}
-                </p>
-              )}
-            </div>
-
-            <Tabs value={previewTab} onValueChange={setPreviewTab}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="editar">Editar Conteúdo</TabsTrigger>
-                <TabsTrigger value="preview">Preview</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="editar" className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-2">
-                    <label htmlFor="email-template-conteudo" className="block text-sm font-medium mb-1">
-                      Conteúdo (HTML)
-                    </label>
-                    <Textarea
-                      id="email-template-conteudo"
-                      ref={textareaRef}
-                      value={form.conteudo}
-                      onChange={(e) =>
-                        setForm({ ...form, conteudo: e.target.value })
-                      }
-                      className="min-h-64 font-mono text-sm"
-                      placeholder="Cole aqui seu HTML ou texto. Use {{variável}} para placeholders."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Variáveis Disponíveis
-                    </label>
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                      {Object.entries(VARIAVEIS_GRUPOS).map(([grupo, vars]) => (
-                        <div key={grupo}>
-                          <p className="text-xs font-semibold text-foreground mb-1">
-                            {grupo}
-                          </p>
-                          <div className="space-y-1">
-                            {vars.map((v) => (
-                              <Button
-                                key={v}
-                                size="sm"
-                                variant="outline"
-                                className="w-full justify-start text-xs h-8 gap-1"
-                                onClick={() => insertVariable(v)}
-                              >
-                                <Copy className="h-3 w-3" />
-                                {v}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="preview" className="space-y-4">
-                <p className="text-sm text-muted-foreground">Prévia sintética: os dados exibidos são exemplos e não pertencem a pacientes reais.</p>
-                {formPreview.missingVariables.length > 0 && <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
-                  <p className="font-medium">Variáveis que precisam ser corrigidas antes de ativar:</p>
-                  <ul className="mt-1 list-inside list-disc">
-                    {formPreview.missingVariables.map(variable => <li key={variable}><code>{`{{${variable}}}`}</code></li>)}
-                  </ul>
-                </div>}
-                <div className="border rounded-lg p-4 bg-card">
-                  <div className="mb-4 pb-4 border-b">
-                    <p className="text-xs text-muted-foreground mb-1">Assunto:</p>
-                    <p className="font-semibold text-foreground">{getRenderedPreview() || '(vazio)'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-2">Conteúdo:</p>
-                    <div
-                      dangerouslySetInnerHTML={{ __html: getContentPreview() }}
-                      className="prose prose-sm max-w-none"
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saveMutation.isPending}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-            >
-              {editId ? 'Atualizar' : 'Criar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!activationCandidate} onOpenChange={(open) => {
-        if (!toggleMutation.isPending && !open) setActivationCandidate(null);
-      }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Prévia antes de ativar</DialogTitle>
-            <DialogDescription>Confira a mensagem com valores sintéticos. A ativação fica bloqueada se houver variável sem suporte ou sem valor de exemplo.</DialogDescription>
-          </DialogHeader>
-          {activationCandidate && activationPreview && <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Modelo: <span className="font-medium text-foreground">{activationCandidate.nome}</span></p>
-            {activationPreview.missingVariables.length > 0 && <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
-              <p className="font-medium">Corrija estas variáveis antes de ativar:</p>
-              <ul className="mt-1 list-inside list-disc">
-                {activationPreview.missingVariables.map(variable => <li key={variable}><code>{`{{${variable}}}`}</code></li>)}
-              </ul>
-            </div>}
-            <div className="rounded-lg border bg-card p-4">
-              <p className="mb-1 text-xs text-muted-foreground">Assunto</p>
-              <p className="mb-4 border-b pb-4 font-semibold">{activationPreview.renderedSubject || '(vazio)'}</p>
-              <p className="mb-2 text-xs text-muted-foreground">Conteúdo</p>
-              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(activationPreview.renderedContent) }} />
-            </div>
-          </div>}
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setActivationCandidate(null)} disabled={toggleMutation.isPending}>Cancelar</Button>
-            {activationCandidate && <Button variant="outline" onClick={() => {
-              const candidate = activationCandidate;
-              setActivationCandidate(null);
-              openEdit(candidate);
-            }}>Editar modelo</Button>}
-            <Button
-              disabled={!activationCandidate || !activationPreview || activationPreview.missingVariables.length > 0 || toggleMutation.isPending}
-              onClick={() => activationCandidate && toggleMutation.mutate({ id: activationCandidate.id, ativo: false })}
-            >Ativar modelo</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!historyTemplate} onOpenChange={(open) => { if (!open) setHistoryTemplate(null); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Histórico: {historyTemplate?.name}</DialogTitle>
-            <DialogDescription>Versões registradas pelo banco com a autoria disponível no momento da alteração.</DialogDescription>
-          </DialogHeader>
-          {historyQuery.isLoading ? <p role="status">Carregando histórico…</p>
-            : historyQuery.isError ? <p role="alert" className="text-sm text-destructive">Não foi possível carregar o histórico. Tente novamente.</p>
-              : (historyQuery.data || []).length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma versão disponível para este modelo.</p>
-                : <ol className="space-y-3">
-                  {(historyQuery.data || []).map((version) => {
-                    const snapshot = version.snapshot && typeof version.snapshot === 'object' && !Array.isArray(version.snapshot)
-                      ? version.snapshot as Record<string, unknown>
-                      : {};
-                    const actionLabel = {
-                      baseline: 'Estado inicial, autor não registrado',
-                      created: 'Criado',
-                      updated: 'Alterado',
-                      deleted: 'Removido',
-                    }[version.action] || version.action;
-                    const authorLabel = version.author_name || (version.actor_type === 'legacy' ? 'Autor não registrado' : 'Sistema');
-                    return <li key={version.id} className="rounded-lg border p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-medium">Versão {version.revision} · {actionLabel}</p>
-                        <time className="text-xs text-muted-foreground" dateTime={version.created_at}>{new Date(version.created_at).toLocaleString('pt-BR')}</time>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">Autor: {authorLabel}</p>
-                      <p className="mt-2 text-sm">Assunto: {String(snapshot.assunto || '(sem assunto)')}</p>
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-sm font-medium">Ver conteúdo salvo</summary>
-                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{String(snapshot.conteudo || '(vazio)')}</pre>
-                      </details>
-                    </li>;
-                  })}
-                </ol>}
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog open={!!deleteId} onOpenChange={(open) => {
         if (!deleteMutation.isPending && !open) setDeleteId(null);

@@ -329,6 +329,10 @@ function AppRoutes() {
                           <Route path="/todos-templates/prescricoes/:templateId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="prescription" /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates/atestados/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="certificate" /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates/atestados/:templateId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="certificate" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/email/novo" element={<SupabaseProtectedRoute allowedRoles={['admin']}><TemplatesEmail task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/email/:templateId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin']}><TemplatesEmail task="edit" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/email/:templateId/ativar" element={<SupabaseProtectedRoute allowedRoles={['admin']}><TemplatesEmail task="activate" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/email/:templateId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin']}><TemplatesEmail task="history" /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><TemplatesUnificado /></SupabaseProtectedRoute>} />
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />

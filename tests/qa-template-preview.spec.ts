@@ -31,6 +31,9 @@ test('impede ativar modelo com variável incompatível e mostra prévia sintéti
   await expect(page.getByRole('alert')).toContainText('{{data}}');
   await expect(page.getByRole('button', { name: 'Ativar modelo', exact: true })).toBeDisabled();
   await expect(page.getByText('Parabéns, João Silva')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 960 });
+  await page.screenshot({ path: '.qa-artifacts/email-templates-20261029/activation-390.png' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

@@ -126,6 +126,9 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (pathname === '/todos-templates/email/novo') return 'Novo modelo de e-mail';
+  const emailAction = pathname.match(/^\/todos-templates\/email\/[^/]+\/(editar|ativar|historico)$/)?.[1];
+  if (emailAction) return ({ editar: 'Editar modelo de e-mail', ativar: 'Revisar ativação', historico: 'Histórico do modelo' } as Record<string, string>)[emailAction];
   const clinicalTemplate = pathname.match(/^\/todos-templates\/(prescricoes|atestados)\/(novo|[^/]+\/editar)$/);
   if (clinicalTemplate) return `${clinicalTemplate[2] === 'novo' ? 'Novo' : 'Editar'} modelo de ${clinicalTemplate[1] === 'prescricoes' ? 'prescrição' : 'atestado'}`;
   if (/^\/tarefas\/[^/]+\/editar$/.test(pathname)) return 'Editar tarefa';

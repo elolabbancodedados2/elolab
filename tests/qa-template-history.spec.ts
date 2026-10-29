@@ -45,5 +45,7 @@ test('mostra snapshots e autoria preservada no histórico do modelo', async ({ p
   await expect(page.getByText('Admin QA')).toBeVisible();
   await expect(page.getByText('Assunto anterior')).toBeVisible();
   await expect(page.getByText('Autor não registrado').first()).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: '.qa-artifacts/email-templates-20261029/history-1440.png' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
