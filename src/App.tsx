@@ -53,7 +53,7 @@ const HigieneSalas = lazy(() => import("@/pages/HigieneSalas"));
 const PatrimonioEquipamentos = lazy(() => import("@/pages/PatrimonioEquipamentos"));
 const ListaEspera = lazy(() => import("@/pages/ListaEspera"));
 const FluxoCaixa = lazy(() => import("@/pages/FluxoCaixa"));
-const Templates = lazy(() => import("@/pages/Templates"));
+const ClinicalTemplateEditor = lazy(() => import("@/pages/ClinicalTemplateEditor"));
 const Encaminhamentos = lazy(() => import("@/pages/Encaminhamentos"));
 const Automacoes = lazy(() => import("@/pages/Automacoes"));
 const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
@@ -325,6 +325,10 @@ function AppRoutes() {
                           <Route path="/faturamento-convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FaturamentoConvenios /></SupabaseProtectedRoute>} />
                           <Route path="/repasses-medicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassesMedicos /></SupabaseProtectedRoute>} />
                           <Route path="/interoperabilidade" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Interoperabilidade /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/prescricoes/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="prescription" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/prescricoes/:templateId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="prescription" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/atestados/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="certificate" /></SupabaseProtectedRoute>} />
+                          <Route path="/todos-templates/atestados/:templateId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="certificate" /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><TemplatesUnificado /></SupabaseProtectedRoute>} />
                           <Route path="/templates" element={<Navigate to="/todos-templates" replace />} />
                           <Route path="/lista-espera" element={<Navigate to="/gestao-fluxo?tab=espera" replace />} />
