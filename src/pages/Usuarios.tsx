@@ -1,6 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Ban, Edit, Shield, UserCheck, UserX, Loader2, Clock, Circle, Search, Users, RefreshCw, LayoutDashboard, X, UserRoundX } from 'lucide-react';
@@ -10,9 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -88,29 +86,43 @@ function getUltimoAcessoInfo(ultimo_acesso: string | null) {
   return { text, isOnline, fullDate: format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) };
 }
 
-export default function Usuarios() {
-  const [isFormOpen, setIsFormOpen] = useState(false);
+export default function Usuarios({ editing = false }: { editing?: boolean }) {
+  const location = useLocation();
+  return <UsuariosWorkspace key={location.pathname} editing={editing} />;
+}
+function UsuariosWorkspace({ editing }: { editing: boolean }) {
+  const { accountId } = useParams<{ accountId: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const completed = useRef(false);
+  const saving = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef('{}');
+  const leave = () => navigate('/usuarios', { state: { accountFilters: location.state?.accountFilters } });
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<PlatformUser | null>(null);
   const [formData, setFormData] = useState<Partial<Profile & { roles: AppRole[] }>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filtro, setFiltro] = useState<FiltroConta>('todos');
+  const [searchTerm, setSearchTerm] = useState(location.state?.accountFilters?.search ?? '');
+  const [filtro, setFiltro] = useState<FiltroConta>(location.state?.accountFilters?.status ?? 'todos');
 
   const queryClient = useQueryClient();
   const { user: currentUser } = useSupabaseAuth();
 
   const { data: profiles = [], isLoading: loadingProfiles, error: profilesError, refetch: refetchProfiles } = useSupabaseQuery<Profile>('profiles', {
     select: 'id,nome,email,telefone,avatar,created_at,ultimo_acesso',
+    filters: editing ? [{ column: 'id', operator: 'eq', value: accountId }] : undefined,
     orderBy: { column: 'nome', ascending: true },
   });
 
   const { data: userRoles = [], isLoading: loadingRoles, error: rolesError, refetch: refetchRoles } = useSupabaseQuery<UserRole>('user_roles', {
     select: 'id,user_id,role',
+    filters: editing ? [{ column: 'user_id', operator: 'eq', value: accountId }] : undefined,
   });
 
   const { data: situacoes = [], isLoading: loadingSituacoes, error: situacoesError, refetch: refetchSituacoes } = useQuery({
     queryKey: ['admin-situacao-contas'],
+    enabled: !editing,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('admin_situacao_contas');
       if (error) throw error;
@@ -160,16 +172,17 @@ export default function Usuarios() {
   const limparFiltros = () => { setSearchTerm(''); setFiltro('todos'); };
   const refetchAll = () => { void refetchProfiles(); void refetchRoles(); void refetchSituacoes(); };
 
-  const handleEdit = (user: PlatformUser) => {
-    setSelectedUser(user);
-    setFormData({
-      nome: user.nome,
-      email: user.email,
-      telefone: user.telefone || '',
-      roles: user.roles.length ? user.roles : ['recepcao'],
-    });
-    setIsFormOpen(true);
-  };
+  const handleEdit = (user: PlatformUser) => navigate(`/usuarios/${user.id}/editar`, { state: { accountFilters: { search: searchTerm, status: filtro } } });
+  useEffect(() => {
+    if (!editing || initialized.current || isLoading || profilesError || rolesError) return;
+    const account = usuarios.find(item => item.id === accountId);
+    if (!account) return;
+    const initial = { nome: account.nome, email: account.email, telefone: account.telefone || '', roles: account.roles };
+    initialized.current = true;
+    baseline.current = JSON.stringify(initial);
+    setSelectedUser(account);
+    setFormData(initial);
+  }, [editing, accountId, isLoading, profilesError, rolesError, usuarios]);
 
   const handleDeleteClick = (user: PlatformUser) => {
     setSelectedUser(user);
@@ -199,11 +212,13 @@ export default function Usuarios() {
   };
 
   const handleSave = async () => {
+    if (saving.current || selectedUser?.id === currentUser?.id) return;
     if (!selectedUser || !formData.nome?.trim() || !formData.roles?.length) {
       toast.error('Preencha todos os campos obrigatórios.');
       return;
     }
 
+    saving.current = true;
     setIsSaving(true);
     try {
       const { error } = await (supabase as any).rpc('platform_update_clinic_user', {
@@ -218,12 +233,14 @@ export default function Usuarios() {
       queryClient.invalidateQueries({ queryKey: ['user_roles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-user-roles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
-      setIsFormOpen(false);
+      completed.current = true;
+      leave();
       toast.success('Usuário atualizado com sucesso.');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving user:', error);
       toast.error('Erro ao salvar usuário.', { description: mensagemDeErro(error) });
     } finally {
+      saving.current = false;
       setIsSaving(false);
     }
   };
@@ -247,7 +264,7 @@ export default function Usuarios() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && (!editing || !selectedUser)) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -256,11 +273,15 @@ export default function Usuarios() {
     );
   }
 
-  if (profilesError || rolesError || situacoesError) return <ErrorState error={profilesError || rolesError || situacoesError} onRetry={refetchAll} />;
+  if ((profilesError || rolesError || situacoesError) && (!editing || !selectedUser)) return <ErrorState error={profilesError || rolesError || situacoesError} onRetry={refetchAll} />;
+
+  if (editing && (!usuarios.some(item => item.id === accountId) || accountId === currentUser?.id)) return <div className="space-y-4"><Button variant="outline" onClick={leave}>Voltar aos usuários</Button><ErrorState title={accountId === currentUser?.id ? 'Esta tela não permite editar sua própria conta' : 'Usuário não encontrado'} description="Volte à lista para selecionar uma conta disponível." /></div>;
 
   return (
     <TooltipProvider>
-      <div className="space-y-6">
+      <div className="space-y-6 pb-24 lg:pb-8">
+        {editing && <UnsavedChangesGuard dirty={JSON.stringify(formData) !== baseline.current} busy={isSaving} completed={completed} />}
+        {!editing && <>
         <PageHeader
           title="Usuários"
           description={`${contagens.todos} conta${contagens.todos === 1 ? '' : 's'} · ${contagens.online} ativa${contagens.online === 1 ? '' : 's'} recentemente · ${contagens.bloqueados} bloqueada${contagens.bloqueados === 1 ? '' : 's'}`}
@@ -458,26 +479,23 @@ export default function Usuarios() {
           </CardContent>
         </Card>
 
-        {/* Form Dialog */}
-        <Dialog open={isFormOpen} onOpenChange={open => {
-          if (open || !isSaving) setIsFormOpen(open);
-        }}>
-          <DialogContent aria-busy={isSaving}>
-            <DialogHeader>
-              <DialogTitle>Editar Usuário</DialogTitle>
-            </DialogHeader>
+        </>}
+        {editing && <div className="mx-auto max-w-3xl space-y-5">
+          <Button variant="outline" onClick={leave} disabled={isSaving}>Voltar aos usuários</Button>
+          <PageHeader title="Editar usuário" description="Atualize os dados de contato e as funções desta conta. O e-mail de autenticação permanece somente para consulta." icon={<Users />} />
+          <form onSubmit={event => { event.preventDefault(); void handleSave(); }} aria-busy={isSaving} className="rounded-xl border bg-card p-5 sm:p-6">
             <fieldset disabled={isSaving} className="space-y-4 border-0 p-0 py-4">
               <div className="space-y-2">
-                <Label>Nome Completo *</Label>
-                <Input value={formData.nome || ''} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} />
+                <Label htmlFor="account-name">Nome Completo *</Label>
+                <Input id="account-name" required minLength={2} maxLength={150} value={formData.nome || ''} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Email</Label>
-                <Input type="email" value={formData.email || ''} disabled className="bg-muted" />
+                <Label htmlFor="account-email">Email</Label>
+                <Input id="account-email" type="email" value={formData.email || ''} disabled className="bg-muted" />
               </div>
               <div className="space-y-2">
-                <Label>Telefone</Label>
-                <Input value={formData.telefone || ''} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} placeholder="(00) 00000-0000" />
+                <Label htmlFor="account-phone">Telefone</Label>
+                <Input id="account-phone" maxLength={30} value={formData.telefone || ''} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} placeholder="(00) 00000-0000" />
               </div>
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium">Funções do usuário</legend>
@@ -500,15 +518,15 @@ export default function Usuarios() {
                 {!formData.roles?.length && <p role="alert" className="text-xs text-destructive">Selecione ao menos uma função.</p>}
               </fieldset>
             </fieldset>
-            <DialogFooter>
-              <Button variant="outline" className="rounded-full" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-              <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={handleSave} disabled={isSaving || !formData.roles?.length || !formData.nome?.trim()}>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-5 scroll-mb-24">
+              <Button variant="outline" className="rounded-full" type="button" onClick={leave} disabled={isSaving}>Cancelar</Button>
+              <Button type="submit" disabled={isSaving || !formData.roles?.length || !formData.nome?.trim()}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Salvar
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+          </form>
+        </div>}
 
         {/* Delete Dialog */}
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

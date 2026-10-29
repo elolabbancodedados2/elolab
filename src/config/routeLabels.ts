@@ -124,6 +124,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/usuarios\/[^/]+\/editar$/.test(pathname)) return 'Editar usuário';
   const path = pathname.replace(/\/+$/, '') || '/';
   const explicit = labelsByPath[path] || labelsByMenuPath[path];
   if (explicit) return explicit;
