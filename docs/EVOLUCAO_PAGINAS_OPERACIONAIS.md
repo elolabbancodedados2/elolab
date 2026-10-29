@@ -175,3 +175,7 @@ Arquivos: `src/pages/Encaminhamentos.tsx`, `src/components/clinical/Encaminhamen
 - TypeScript com `tsconfig.app.json` e build de produção passaram. ESLint focal sem erros; 12 avisos no arquivo de página (8 de `any`, 4 de dependências de hooks).
 - Capturas de criação desktop/tablet, rodapé mobile e detalhe desktop/mobile efetivamente visualizadas. Campos usam rolagem da página, sem overlay; ações de criação no celular ficam acima da navegação inferior.
 - Dados, gravações e auditoria dos testes foram interceptados com fixtures sintéticas. Não houve encaminhamento real criado, iniciado, concluído ou cancelado. Isolamento do backend e integrações externas não foram rehomologados nesta entrega.
+
+### Publicação
+
+Deploy concluído em 29/10/2026: `f5a8eae0db6185ac04abdeddf124d31491975294`, imagem `easypanel/elolab/app:deploy-20261029-f5a8eae`. Swarm confirmou atualização concluída; `/version.json` confirmou a versão e `/healthz` respondeu `ok`. Houve indisponibilidade transitória durante a troca, seguida de recuperação confirmada. A navegação da lista para o detalhe do registro de demonstração foi conferida em produção: página própria, zero diálogos, auditoria de leitura concluída e histórico visível. Não houve alteração de status ou texto clínico. Rollback preservado: imagem `deploy-20261029-763ab16` e fonte `code.before-20261029-f5a8eae`. Capturas sintéticas locais em `.qa-artifacts/encaminhamentos-20261029/`, fora do Git. Sem migration ou deploy de Edge Functions.
