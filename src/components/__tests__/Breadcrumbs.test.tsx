@@ -4,6 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 
 describe('Breadcrumbs', () => {
+  it.each([
+    '/exames/laboratorios/record-qa/editar',
+    '/gestao-fluxo/salas/record-qa/editar',
+    '/precos-servicos/tipos/record-qa/precos',
+  ])('não cria links para segmentos de registro sem página em %s', path => {
+    render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.queryByText('Record qa')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes('record-qa'))).toBe(false);
+  });
   it('exibe o nome correto da Central de Notificações', () => {
     render(
       <MemoryRouter initialEntries={['/notificacoes']}>

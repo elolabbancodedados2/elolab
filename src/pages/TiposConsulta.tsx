@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import {
   Plus, Search, Edit, Trash2, DollarSign, Clock, Palette, AlertTriangle,
   Loader2, Building2, Check, X, Stethoscope, CheckCircle2, PauseCircle, Layers,
@@ -12,9 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -45,10 +43,7 @@ const fmt = (v: number) =>
 const temNoMaximoDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
 
-const CORES = [
-  '#1080CA', '#10b981', '#f59e0b', '#ef4444', '#320ee9',
-  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6a648b',
-];
+const CORES = ['#1456C0', '#0B2346', '#06B6D4', '#61748B'];
 
 interface TipoConsulta {
   id: string;
@@ -82,20 +77,37 @@ interface TipoForm {
 
 const initialForm: TipoForm = {
   nome: '', descricao: '', instrucoes_preparo: '', duracao_minutos: 30,
-  cor: '#1080CA', ativo: true, valor_particular: 0,
+  cor: '#1456C0', ativo: true, valor_particular: 0,
 };
 
-export default function TiposConsulta() {
-  const [search, setSearch] = useState('');
-  const [formOpen, setFormOpen] = useState(false);
+export default function TiposConsulta({ creationPage = false, pricesPage = false }: { creationPage?: boolean; pricesPage?: boolean }) {
+  const location = useLocation();
+  return <TiposConsultaWorkspace key={location.pathname} creationPage={creationPage} pricesPage={pricesPage} />;
+}
+
+function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: boolean; pricesPage: boolean }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { consultationTypeId } = useParams();
+  const formOpen = creationPage || (!!consultationTypeId && !pricesPage);
+  const precosOpen = pricesPage;
+  const taskPage = formOpen || pricesPage;
+  const completed = useRef(false);
+  const saveLock = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef(JSON.stringify(initialForm));
+  const [rowStates, setRowStates] = useState<Record<string, { dirty: boolean; busy: boolean }>>({});
+  const updateRowState = useCallback((id: string, value: { dirty: boolean; busy: boolean }) => setRowStates(previous => previous[id]?.dirty === value.dirty && previous[id]?.busy === value.busy ? previous : { ...previous, [id]: value }), []);
+  const returnTo = typeof location.state?.returnTo === 'string' && /^\/(?:precos-servicos|recepcao)(?:\?|$)/.test(location.state.returnTo) ? location.state.returnTo : '/precos-servicos?tab=tipos';
+  const leaveTask = () => navigate(returnTo, { state: { typeFilters: location.state?.typeFilters, cashTab: returnTo.startsWith('/recepcao') ? 'tipos' : undefined } });
+  const [search, setSearch] = useState(location.state?.typeFilters?.search ?? '');
   const [editTarget, setEditTarget] = useState<TipoConsulta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TipoConsulta | null>(null);
-  const [precosOpen, setPrecosOpen] = useState(false);
   const [precosTipo, setPrecosTipo] = useState<TipoConsulta | null>(null);
   const [form, setForm] = useState<TipoForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>(location.state?.typeFilters?.status ?? 'todos');
 
   const { user, profile, isAdmin } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -153,23 +165,32 @@ export default function TiposConsulta() {
   const temFiltro = !!search.trim() || filtroStatus !== 'todos';
   const limparFiltros = () => { setSearch(''); setFiltroStatus('todos'); };
 
-  const openCreate = () => {
-    setEditTarget(null);
-    setForm(initialForm);
-    setFormOpen(true);
-  };
-
-  const openEdit = (t: TipoConsulta) => {
-    setEditTarget(t);
-    setForm({
-      nome: t.nome, descricao: t.descricao || '', duracao_minutos: t.duracao_minutos,
-      instrucoes_preparo: t.instrucoes_preparo || '',
-      cor: t.cor, ativo: t.ativo, valor_particular: t.valor_particular,
-    });
-    setFormOpen(true);
-  };
+  const recordQuery = useQuery({
+    queryKey: ['tipo-consulta-pagina', profile?.clinica_id, consultationTypeId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('tipos_consulta').select('*').eq('id', consultationTypeId!).eq('clinica_id', profile!.clinica_id!).maybeSingle();
+      if (error) throw error;
+      return data as TipoConsulta | null;
+    },
+    enabled: !!profile?.clinica_id && !!consultationTypeId,
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (!taskPage || initialized.current || (consultationTypeId && !recordQuery.data)) return;
+    const t = recordQuery.data;
+    const value: TipoForm = t ? { nome: t.nome, descricao: t.descricao || '', duracao_minutos: t.duracao_minutos, instrucoes_preparo: t.instrucoes_preparo || '', cor: t.cor, ativo: t.ativo, valor_particular: t.valor_particular } : initialForm;
+    baseline.current = JSON.stringify(value);
+    initialized.current = true;
+    setEditTarget(t ?? null);
+    setPrecosTipo(t ?? null);
+    setForm(value);
+  }, [taskPage, consultationTypeId, recordQuery.data]);
+  const openTask = (path: string) => navigate(path, { state: { returnTo: location.pathname + location.search, typeFilters: { search, status: filtroStatus } } });
+  const openCreate = () => openTask('/precos-servicos/tipos/novo');
+  const openEdit = (t: TipoConsulta) => openTask(`/precos-servicos/tipos/${t.id}/editar`);
 
   const handleSave = async () => {
+    if (saveLock.current || !isAdmin()) return;
     const nome = form.nome.trim();
     const duracaoMinutos = form.duracao_minutos;
     const valorParticular = form.valor_particular;
@@ -186,6 +207,7 @@ export default function TiposConsulta() {
     if (typeof valorParticular !== 'number' || !Number.isFinite(valorParticular) || valorParticular < 0) { toast.error('Informe um valor particular válido, igual ou maior que zero.'); return; }
     if (Math.abs(valorParticular * 100 - Math.round(valorParticular * 100)) > 1e-7) { toast.error('Informe o valor particular com no máximo duas casas decimais.'); return; }
     if (form.instrucoes_preparo.length > 2000) { toast.error('As instruções de preparo podem ter até 2.000 caracteres.'); return; }
+    saveLock.current = true;
     setSaving(true);
     try {
       const payload = {
@@ -208,10 +230,11 @@ export default function TiposConsulta() {
         toast.success('Tipo criado!');
       }
       await queryClient.invalidateQueries({ queryKey: ['tipos_consulta'] });
-      setFormOpen(false);
+      completed.current = true;
+      leaveTask();
     } catch (e: any) {
       toast.error(e.message);
-    } finally { setSaving(false); }
+    } finally { saveLock.current = false; setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -232,10 +255,7 @@ export default function TiposConsulta() {
     }
   };
 
-  const openPrecos = (t: TipoConsulta) => {
-    setPrecosTipo(t);
-    setPrecosOpen(true);
-  };
+  const openPrecos = (t: TipoConsulta) => openTask(`/precos-servicos/tipos/${t.id}/precos`);
 
   const handleSavePreco = async (convenioId: string, valor: number) => {
     if (!precosTipo || !profile?.clinica_id) throw new Error('Clínica ou tipo de consulta não identificado.');
@@ -271,7 +291,14 @@ export default function TiposConsulta() {
   };
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      <UnsavedChangesGuard dirty={(formOpen && JSON.stringify(form) !== baseline.current) || Object.values(rowStates).some(row => row.dirty)} busy={saving || Object.values(rowStates).some(row => row.busy)} completed={completed} />
+      {taskPage && <Button variant="outline" onClick={leaveTask}>Voltar aos tipos de consulta</Button>}
+      {taskPage && consultationTypeId && (recordQuery.isError ? <ErrorState title="Não foi possível abrir o tipo de consulta" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
+        : recordQuery.isPending ? <p role="status">Carregando tipo de consulta…</p>
+        : !recordQuery.data ? <p role="status">Tipo de consulta não encontrado na clínica atual.</p> : null)}
+      {formOpen && !isAdmin() && <p role="status">Somente administradores podem cadastrar e editar tipos de consulta.</p>}
+      {!taskPage && <>
       <PageHeader
         title="Tipos & Preços de Consulta"
         description={tipos.length > 0
@@ -425,18 +452,19 @@ export default function TiposConsulta() {
         </div>
       )}
 
-      {/* Form Dialog */}
-      <Dialog open={formOpen} onOpenChange={open => { if (!saving) setFormOpen(open); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editTarget ? 'Editar Tipo' : 'Novo Tipo de Consulta'}</DialogTitle>
-            <DialogDescription>Defina os dados do atendimento e as orientações que poderão aparecer no Portal do Paciente.</DialogDescription>
-          </DialogHeader>
-          <fieldset disabled={saving} className="contents">
+      </>}
+      {formOpen && isAdmin() && (!consultationTypeId || (recordQuery.data && !recordQuery.isError)) && <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-3xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5">
+            <p className="text-sm text-muted-foreground">Preços e serviços / Tipos de consulta</p>
+            <h1 className="text-2xl font-semibold">{editTarget ? 'Editar Tipo' : 'Novo Tipo de Consulta'}</h1>
+            <p className="text-sm text-muted-foreground">Defina os dados do atendimento e as orientações que poderão aparecer no Portal do Paciente.</p>
+          </header>
+          {tiposQuery.isError && <ErrorState compact title="Atualize os tipos antes de salvar" error={tiposQuery.error} onRetry={() => void tiposQuery.refetch()} />}
+          <fieldset disabled={saving} className="min-w-0">
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="tipo-nome" className="text-xs">Nome *</Label>
-              <Input id="tipo-nome" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Consulta Inicial" />
+              <Input id="tipo-nome" required value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Consulta Inicial" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tipo-descricao" className="text-xs">Descrição</Label>
@@ -460,6 +488,7 @@ export default function TiposConsulta() {
             <div className="space-y-1.5">
               <Label className="text-xs">Cor</Label>
               <div className="flex gap-2 flex-wrap">
+                {!CORES.includes(form.cor) && <span className="text-xs text-muted-foreground">Cor salva será preservada</span>}
                 {CORES.map(c => (
                   <button type="button" key={c} aria-label={`Cor ${c}`} aria-pressed={form.cor === c} onClick={() => setForm({ ...form, cor: c })}
                     className={cn('h-8 w-8 rounded-lg border-2 transition-all', form.cor === c ? 'border-foreground scale-110' : 'border-transparent')}
@@ -473,28 +502,25 @@ export default function TiposConsulta() {
             </div>
           </div>
           </fieldset>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setFormOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving} className="rounded-full bg-gradient-primary text-white hover:brightness-110">
+          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+            <Button type="button" variant="outline" onClick={leaveTask} disabled={saving}>Cancelar</Button>
+            <Button type="submit" disabled={saving || tiposQuery.isLoading || tiposQuery.isError} className="scroll-mb-24">
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
               {editTarget ? 'Salvar' : 'Criar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>}
 
-      {/* Preços por Convênio Dialog */}
-      <Dialog open={precosOpen} onOpenChange={setPrecosOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      {precosOpen && recordQuery.data && !recordQuery.isError && <section className="space-y-6 rounded-xl border bg-card p-5 sm:p-8">
+          <header className="space-y-2 border-b pb-5">
+            <h1 className="text-2xl font-semibold flex items-center gap-2">
               <Building2 className="h-5 w-5 text-[#1080CA]" />
               Preços — {precosTipo?.nome}
-            </DialogTitle>
-            <DialogDescription>
+            </h1>
+            <p className="text-sm text-muted-foreground">
               Valor particular: {precosTipo && fmt(precosTipo.valor_particular)}. Configure valores por convênio abaixo.
-            </DialogDescription>
-          </DialogHeader>
+            </p>
+          </header>
           {conveniosQuery.isError ? (
             <ErrorState compact title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />
           ) : precosQuery.isError ? (
@@ -508,7 +534,7 @@ export default function TiposConsulta() {
               <p className="text-xs">Cadastre convênios primeiro em <Link to="/convenios" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Operacional → Convênios</Link>.</p>
             </div>
           ) : (
-            <div className="max-h-[400px] overflow-auto rounded-xl border border-border/60">
+            <div className="overflow-x-auto rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -523,15 +549,14 @@ export default function TiposConsulta() {
                     const preco = precosTipo ? getPrecoConvenio(precosTipo.id, conv.id) : null;
                     return (
                       <PrecoRow key={conv.id} convenio={conv} precoAtual={preco?.valor ?? null}
-                        onSave={(valor) => handleSavePreco(conv.id, valor)} />
+                        onSave={(valor) => handleSavePreco(conv.id, valor)} onStateChange={value => updateRowState(conv.id, value)} />
                     );
                   })}
                 </TableBody>
               </Table>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </section>}
 
       {/* Delete Confirm */}
       <ConfirmDialog
@@ -549,22 +574,28 @@ export default function TiposConsulta() {
 }
 
 // Sub-component for inline price editing
-function PrecoRow({ convenio, precoAtual, onSave }: {
+function PrecoRow({ convenio, precoAtual, onSave, onStateChange }: {
   convenio: any; precoAtual: number | null; onSave: (valor: number) => Promise<void>;
+  onStateChange: (value: { dirty: boolean; busy: boolean }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [valor, setValor] = useState(precoAtual?.toString() ?? '');
+  const lock = useRef(false);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => onStateChange({ dirty: editing && valor !== (precoAtual?.toString() ?? ''), busy: saving }), [editing, valor, precoAtual, saving, onStateChange]);
+
   const save = async () => {
+    if (lock.current) return;
     const texto = valor.trim();
     const v = texto ? Number(texto.replace(',', '.')) : Number.NaN;
     if (!Number.isFinite(v) || v < 0) { toast.error('Informe um valor válido igual ou maior que zero.'); return; }
     if (!temNoMaximoDuasCasasDecimais(v)) { toast.error('Informe o preço com no máximo duas casas decimais.'); return; }
+    lock.current = true;
     setSaving(true);
     try { await onSave(v); setEditing(false); }
     catch { /* O componente pai já apresenta a falha; mantém o campo aberto para correção ou nova tentativa. */ }
-    finally { setSaving(false); }
+    finally { lock.current = false; setSaving(false); }
   };
 
   return (

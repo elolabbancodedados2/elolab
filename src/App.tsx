@@ -319,6 +319,10 @@ function AppRoutes() {
                               links salvos abrirem dados incompletos. */}
                           <Route path="/pagamentos" element={<Navigate to="/contas?tab=receber" replace />} />
                           <Route path="/precos-servicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosServicos /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/tipos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><TiposConsulta creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/tipos/:consultationTypeId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><TiposConsulta /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/tipos/:consultationTypeId/precos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><TiposConsulta pricesPage /></SupabaseProtectedRoute>} />
+                          <Route path="/precos-servicos/tipos" element={<Navigate to="/precos-servicos?tab=tipos" replace />} />
                           <Route path="/precos-exames" element={<Navigate to="/precos-servicos" replace />} />
                           <Route path="/tipos-consulta" element={<Navigate to="/precos-servicos?tab=tipos" replace />} />
                           <Route path="/relatorios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Relatorios /></SupabaseProtectedRoute>} />

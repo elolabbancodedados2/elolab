@@ -236,3 +236,17 @@ Arquivos: `Salas.tsx`, `App.tsx`, `routeLabels.ts`, `tests/room-pages.spec.ts` e
 Validação: nove cenários Playwright passaram, incluindo os dois cenários existentes de ocupação/perfis; três larguras (1440/768/390), entrada pela lista e URL direta, recarga, filtros, rascunhos, erro e sucesso de gravação, conflito de versão, registro ausente e leitos. Nove testes unitários passaram em quatro arquivos (ocupação, abas e contratos SQL de acesso). TypeScript e build passaram; ESLint focal sem erros e 26 avisos. Capturas do formulário desktop e do rodapé mobile efetivamente inspecionadas, com botões acima da navegação inferior. Evidências em `.qa-artifacts/salas-20261029/`.
 
 Limites: testes de escrita foram interceptados e as verificações SQL não executam migrations. Não criamos salas reais nem modificamos ocupações em produção. Configurações possui um cadastro simplificado de salas separado; será tratado na etapa correspondente, sem declarar todas as entradas de salas já migradas.
+
+Publicação de salas e leitos: build `6fd6e46352a0011722c7f8da78afbe7a6735ca2f`, imagem `easypanel/elolab/app:deploy-20261029-6fd6e463`. Swarm concluído, versão pública e healthcheck conferidos. Formulário vazio efetivamente visualizado no app publicado, sem gravação. Rollback: imagem `deploy-20261029-8db5d6de` e fonte `code.before-20261029-6fd6e463`.
+
+## Tipos de consulta e preços por convênio — páginas próprias (29/10/2026)
+
+Diagnóstico: cadastro/edição e tabela de preços eram overlays. A saída podia descartar valores em edição; a entrada pelo Caixa perdia a aba ao navegar. As rotas de tarefas também expunham IDs sem destino válido nos breadcrumbs.
+
+Implementação: `/precos-servicos/tipos/novo`, `/precos-servicos/tipos/:consultationTypeId/editar` e `/precos-servicos/tipos/:consultationTypeId/precos`. Cadastro e edição consultam o registro da clínica diretamente; rascunhos e edições de valores são protegidos na saída. Preços continuam gravados por convênio, com validações, bloqueio de envio duplicado e recuperação de falha. Administrador mantém cadastro de tipos; Financeiro mantém alteração de preços. A volta preserva filtros e, na entrada pelo Caixa, a aba Tipos de Consulta. Paleta de novas escolhas alinhada ao EloLab, preservando a cor já cadastrada. Breadcrumbs omitem segmentos de registro sem página própria.
+
+Arquivos: `TiposConsulta.tsx`, ajuste pontual de retorno em `CaixaDiario.tsx`, rotas, rótulos, `Breadcrumbs.tsx` e testes. Não houve alteração em lançamentos, pagamentos, contratos de API ou políticas de acesso.
+
+Validação: sete cenários Playwright passaram, incluindo 1440/768/390 px, rascunhos de cadastro e preço, recuperação de falhas, edição com cor/preparo preservados, retorno ao Caixa, registro ausente e permissões. Doze testes unitários passaram em seis arquivos (abas, acesso, integridade de preços, breadcrumbs e anúncio de rota). TypeScript e build passaram; lint focal sem erros, com 32 avisos nos arquivos de tipos/Caixa. Capturas de cadastro, rodapé mobile e preços efetivamente visualizadas. O ID exposto no breadcrumb foi corrigido durante essa revisão. Evidências em `.qa-artifacts/tipos-20261029/`.
+
+Limites: escritas foram simuladas por interceptação, sem preços reais alterados. Não rehomologamos faturamento nem convênios externos. Os limites de consulta e as validações de duplicidade existentes permanecem.

@@ -3144,8 +3144,8 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         await expect(addType).toHaveCount(1);
         await expect(addType).toBeVisible();
         await addType.click();
-        await expect(page.getByRole('dialog').getByRole('heading', { name: 'Novo Tipo de Consulta' })).toBeVisible();
-        await page.keyboard.press('Escape');
+        await expect(page.getByRole('heading', { name: 'Novo Tipo de Consulta', exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Voltar aos tipos de consulta' }).click();
         await expect(page.getByRole('dialog')).not.toBeVisible();
       }
 

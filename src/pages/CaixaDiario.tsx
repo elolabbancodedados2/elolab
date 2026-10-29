@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -265,7 +266,8 @@ export default function CaixaDiario() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const [activeTab, setActiveTab] = useState('hoje');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.cashTab === 'tipos' ? 'tipos' : 'hoje');
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
   const [showAbertura, setShowAbertura] = useState(false);
