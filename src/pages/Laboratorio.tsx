@@ -150,7 +150,7 @@ export default function Laboratorio() {
   const [limparMotivo, setLimparMotivo] = useState('');
 
   const [showResultados, setShowResultados] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('worklist');
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('aba') === 'pedidos' ? 'pedidos' : 'worklist');
   const worklistTabRef = useRef<HTMLButtonElement>(null);
   const focusWorklistAfterFilter = useRef(false);
   const queryClient = useQueryClient();
@@ -821,7 +821,7 @@ export default function Laboratorio() {
       )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs activationMode="manual" value={activeTab} onValueChange={setActiveTab}>
         <div className="max-w-full">
           <TabsList aria-label="Seções do laboratório" className="h-auto w-full min-w-0 flex-wrap justify-start gap-1 overflow-visible">
             <TabsTrigger ref={worklistTabRef} value="worklist" className="gap-1"><ClipboardCheck className="h-3.5 w-3.5" />Worklist</TabsTrigger>

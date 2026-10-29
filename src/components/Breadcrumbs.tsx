@@ -20,6 +20,7 @@ export function Breadcrumbs() {
         const label = getRouteLabel(path);
         const emailModels = path === '/todos-templates' && location.pathname.startsWith('/todos-templates/email/');
         const isLast = index === segments.length - 1;
+        if (!isLast && /^\/laboratorio\/pedidos(?:\/[^/]+)?$/.test(path)) return null;
         if (!isLast && /^\/todos-templates\/(?:prescricoes|atestados|email)(?:\/[^/]+)?$/.test(path)) return null;
         // These record segments have edit/work pages, but no standalone detail route.
         if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|precos-servicos\/exames\/convenios|equipe\/funcionarios|usuarios|estoque|tarefas|retornos|convenios|convenios\/[^/]+\/exames)\/[^/]+$/.test(path)) return null;

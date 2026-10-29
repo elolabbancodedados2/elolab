@@ -60,6 +60,7 @@ const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const Planos = lazy(() => import("@/pages/Planos"));
 const PlanoCheckout = lazy(() => import("@/pages/PlanoCheckout"));
+const PedidosLaboratorioPage = lazy(() => import("@/pages/laboratorio/PedidosLaboratorioPanel"));
 const Laboratorio = lazy(() => import("@/pages/Laboratorio"));
 const PrecosExames = lazy(() => import("@/pages/PrecosExames"));
 const PrecosServicos = lazy(() => import("@/pages/PrecosServicos"));
@@ -275,6 +276,8 @@ function AppRoutes() {
                           <Route path="/encaminhamentos/:referralId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos /></SupabaseProtectedRoute>} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
                           <Route path="/retornos/:returnId/agendar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
+                          <Route path="/laboratorio/pedidos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><PedidosLaboratorioPage task="new" /></PlanFeatureGuard></SupabaseProtectedRoute>} />
+                          <Route path="/laboratorio/pedidos/:pedidoId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><PedidosLaboratorioPage task="history" /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/laboratorio" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Laboratorio /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/mapa-coleta" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><MapaColeta /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/guias-externas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><GuiasExternas /></PlanFeatureGuard></SupabaseProtectedRoute>} />

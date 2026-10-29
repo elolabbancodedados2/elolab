@@ -57,29 +57,31 @@ test('lab orders retain the form after a failed request and create a searchable 
   await page.screenshot({ path: testInfo.outputPath('lab-pedidos-vazio-1280.png'), animations: 'disabled' });
 
   await main.getByRole('button', { name: 'Registrar primeiro pedido' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Novo pedido laboratorial' })).toBeVisible();
-  const patientPicker = dialog.getByRole('combobox', { name: 'Paciente' });
+  const editor = page.locator('main');
+  await expect(page).toHaveURL('/laboratorio/pedidos/novo');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(editor.getByRole('heading', { name: 'Novo pedido laboratorial' })).toBeVisible();
+  const patientPicker = editor.getByRole('combobox', { name: 'Paciente' });
   await patientPicker.click();
   await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo QA');
   await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
-  const submit = dialog.getByRole('button', { name: 'Registrar pedido' });
+  const submit = editor.getByRole('button', { name: 'Registrar pedido' });
   await expect(submit).toBeDisabled();
 
-  await dialog.getByRole('combobox', { name: 'Prioridade' }).click();
+  await editor.getByRole('combobox', { name: 'Prioridade' }).click();
   await page.getByRole('option', { name: 'Urgente', exact: true }).click();
-  await dialog.getByLabel('Indicação clínica').fill('Acompanhamento de anemia sintomática.');
-  await dialog.getByRole('textbox', { name: 'Nome do exame 1' }).fill('Hemograma completo');
-  await dialog.getByRole('button', { name: 'Adicionar exame' }).click();
-  await dialog.getByRole('textbox', { name: 'Nome do exame 2' }).fill('Ferritina');
+  await editor.getByLabel('Indicação clínica').fill('Acompanhamento de anemia sintomática.');
+  await editor.getByRole('textbox', { name: 'Nome do exame 1' }).fill('Hemograma completo');
+  await editor.getByRole('button', { name: 'Adicionar exame' }).click();
+  await editor.getByRole('textbox', { name: 'Nome do exame 2' }).fill('Ferritina');
   await expect(submit).toBeEnabled();
   await submit.click();
   await expect(page.getByText('Falha sintética ao registrar pedido')).toBeVisible();
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Nome do exame 1' })).toHaveValue('Hemograma completo');
-  await expect(dialog.getByRole('textbox', { name: 'Nome do exame 2' })).toHaveValue('Ferritina');
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole('textbox', { name: 'Nome do exame 1' })).toHaveValue('Hemograma completo');
+  await expect(editor.getByRole('textbox', { name: 'Nome do exame 2' })).toHaveValue('Ferritina');
   await submit.click();
-  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL('/laboratorio?aba=pedidos');
 
   expect(rpcCalls).toHaveLength(2);
   expect(rpcCalls[1]).toMatchObject({
@@ -115,9 +117,9 @@ test('lab orders retain the form after a failed request and create a searchable 
   await orderSearch.fill('');
   await expect(mobileOrders.getByText('LAB-QA-001')).toBeVisible();
   await mobileHistory.click();
-  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Histórico do pedido' })).toBeVisible();
-  await expect(page.getByRole('dialog').getByText('Nenhum evento registrado.')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Histórico do pedido' })).toBeVisible();
+  await expect(page.getByText('Nenhum evento registrado.')).toBeVisible();
+  await page.getByRole('link', { name: 'Voltar aos pedidos' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 740 });
   await main.evaluate(element => { element.scrollTop = 0; });
