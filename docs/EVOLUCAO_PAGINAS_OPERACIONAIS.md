@@ -78,3 +78,35 @@ Rodada final do teste de dimensões passou, sem retries. Ocupação e botão de 
 Deploy concluído em 29/10/2026: `58148903cc349597a56a16f0c8a48a2b340819c8`, imagem `easypanel/elolab/app:deploy-20261029-5814890`. Versão pública e saúde conferidas; atualização Swarm concluída. Agenda visualizada em produção: ambos os cabeçalhos mediram 96 px, sem conteúdo ou botão excedendo a altura. Rollback preservado na imagem `deploy-20261029-25d0957` e fonte `code.before-20261029-5814890`. Sem alterações de dados ou migrations.
 
 A migração de prescrições foi apenas investigada (código e formulário vazio renderizado). A correção da agenda enviada pelo responsável teve prioridade; não há mudanças parciais de prescrições nesta entrega.
+
+## Prescrições — redação e conclusão em página própria
+
+### Diagnóstico
+
+O formulário de nova receita ocupava um modal estreito de aproximadamente 512 px. A inspeção em produção, sem preencher ou salvar, mostrou campos e ações cortados à direita. O resultado da emissão também abria um segundo modal. Não havia endereço próprio para redigir a receita nem proteção contra perder o texto ao sair.
+
+### Jornada e decisões
+
+Responsáveis: médico e administrador, conforme a autorização existente. A entrada continua em Documentos clínicos → Nova Prescrição e agora navega para `/documentos-clinicos/nova-prescricao`. Quando o histórico está filtrado por paciente, esse contexto preenche a identificação. No desktop, paciente/prescritor/data ficam ao lado da redação; telas menores usam leitura vertical e ações que quebram linha.
+
+Etapas preservadas: selecionar paciente e médico ativo → redigir ou aplicar modelo → consultar comorbidades e avaliar alertas → revisão explícita quando houver alerta → gerar e enviar PDF → gravar receita → apresentar download/assinatura/histórico. Alerta crítico não ignorável continua impedindo a emissão. O PDF só é disponibilizado após salvar, e o download exige confirmação do registro de auditoria. Falha mantém o texto e permite nova tentativa. A conclusão recebe foco de teclado.
+
+### Implementação
+
+- `src/pages/Prescricoes.tsx`: formulário e resultado deixam de usar Dialog; proteção de alterações via `UnsavedChangesGuard`; retorno preserva busca, período, origem e filtro de paciente.
+- `src/App.tsx` e `src/config/routeLabels.ts`: rota própria com os mesmos perfis `admin`/`medico`, título e breadcrumb.
+- Médico da sessão é inicializado depois da consulta do vínculo. Falha dessa consulta oferece recuperação; o prescritor não fica vazio e bloqueado após a nova tentativa.
+- Estado carregando/erro da configuração da clínica impede gerar PDF; restrição já aplicada pelo handler agora também é explícita na ação.
+- Contratos de dados, geração/envio de PDF, limpeza em falha, auditoria, leitura do histórico, anexo assinado, modelos, integração Memed e regras clínicas preservados.
+- Confirmação de alertas clínicos permanece contextual. Nenhuma alteração de API, permissão, migration ou dependência.
+
+### Validação
+
+- 8 cenários novos Playwright passaram: 1440/768/390 px, proteção de rascunho, falha e nova tentativa de upload, gravação única, PDF real com assinatura `%PDF-`, auditoria de download, alergia crítica, retorno com busca, acesso negado e recuperação do vínculo médico. As três larguras são cenários separados; alguns cenários validam mais de um comportamento.
+- Regressão existente de prescrições sem médico ativo passou. 52 testes unitários de alertas, justificativas, auditoria documental e acessibilidade de rota passaram.
+- TypeScript e build local passaram. ESLint focal sem erros; 27 avisos no arquivo existente (25 de `any`, 2 de dependências de hooks).
+- Capturas da página em desktop/tablet, das ações no celular e do resultado efetivamente visualizadas. Campos não ultrapassam a página; ações do celular acessíveis acima da navegação inferior.
+
+### Limites
+
+Gravações, uploads e auditoria dos testes foram interceptados com dados sintéticos; nenhuma receita real foi emitida. Memed e assinatura externa foram preservadas, mas não homologadas com serviços reais nesta entrega. Recarregar a tela de conclusão inicia uma nova redação; o documento já salvo continua acessível no histórico. Demais módulos seguem no plano incremental.

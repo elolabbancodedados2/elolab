@@ -1,6 +1,7 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { textoDoModelo } from '@/lib/templatesPrescricao';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
@@ -300,7 +301,9 @@ const diasDesde = (dataEmissao: string | null | undefined, hoje: string): number
 };
 
 /* ─── Component ─── */
-export default function Prescricoes() {
+export default function Prescricoes({ creationPage = false }: { creationPage?: boolean }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { profile } = useSupabaseAuth();
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
@@ -311,7 +314,7 @@ export default function Prescricoes() {
   const medicosQuery = useMedicos();
   const medicos = medicosQuery.data || [];
   const loadingMed = medicosQuery.isLoading;
-  const { currentMedico, medicoId, isMedicoOnly } = useCurrentMedico();
+  const { currentMedico, medicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
 
   const prescricoesQuery = useSupabaseQuery<Record<string, any>>('prescricoes', {
     select: '*, pacientes(nome,nome_social,cpf,telefone,email)',
@@ -420,11 +423,10 @@ export default function Prescricoes() {
   });
   const clinicConfig = clinicConfigQuery.data;
 
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [isResultOpen, setIsResultOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigem>('todos');
-  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('todos');
+  const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.prescriptionFilters?.search || '');
+  const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigem>(() => location.state?.prescriptionFilters?.origin || 'todos');
+  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>(() => location.state?.prescriptionFilters?.period || 'todos');
   // Deep-link: /documentos-clinicos?paciente=<id> abre o histórico já filtrado pelo paciente.
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
@@ -447,11 +449,30 @@ export default function Prescricoes() {
   const { dismissAlert } = useClinicalAlerts();
 
   const [form, setForm] = useState({
-    paciente_id: '',
+    paciente_id: creationPage ? pacienteFiltroId || '' : '',
     medico_id: medicoId || '',
     data_emissao: today,
     medicamentos_texto: '',
   });
+  const initialForm = useRef(form);
+  const initializedDoctor = useRef(false);
+  const completed = useRef(false);
+  const resultHeading = useRef<HTMLHeadingElement>(null);
+  const prescriptionFilters = { search: searchTerm, origin: filtroOrigem, period: filtroPeriodo };
+  const returnTo = /^\/documentos-clinicos(?:\?|$)/.test(location.state?.returnTo || '')
+    ? location.state.returnTo : `/documentos-clinicos${pacienteFiltroId ? `?paciente=${encodeURIComponent(pacienteFiltroId)}` : ''}`;
+  const leaveCreation = () => navigate(returnTo, { replace: true, state: { prescriptionFilters } });
+
+  useEffect(() => {
+    if (!creationPage || loadingCurrentMedico || currentMedicoError || initializedDoctor.current) return;
+    initializedDoctor.current = true;
+    initialForm.current = { ...initialForm.current, medico_id: medicoId || '' };
+    setForm(previous => ({ ...previous, medico_id: medicoId || '' }));
+  }, [creationPage, loadingCurrentMedico, currentMedicoError, medicoId]);
+
+  useEffect(() => {
+    if (isResultOpen) resultHeading.current?.focus();
+  }, [isResultOpen]);
 
   // Ficha completa do paciente escolhido (alergias, comorbidades, dados do PDF).
   const selectedPacienteQuery = useQuery({
@@ -518,10 +539,11 @@ export default function Prescricoes() {
   };
 
   const handleOpen = () => {
-    setForm({ paciente_id: '', medico_id: medicoId || '', data_emissao: today, medicamentos_texto: '' });
-    setClinicalAlerts([]);
-    setAllergyOverrideJustification('');
-    setIsFormOpen(true);
+    const source = `${location.pathname}${location.search}`;
+    navigate(source, { replace: true, state: { prescriptionFilters } });
+    navigate(`/documentos-clinicos/nova-prescricao${pacienteFiltroId ? `?paciente=${encodeURIComponent(pacienteFiltroId)}` : ''}`, {
+      state: { returnTo: source, prescriptionFilters },
+    });
   };
 
   const handleSaveAndGenerate = async () => {
@@ -726,7 +748,7 @@ export default function Prescricoes() {
       const safeName = paciente.nome.replace(/\s+/g, '_').slice(0, 25);
       setPdfBlob(blob);
       setPdfFileName(`receita_${safeName}_${form.data_emissao}.pdf`);
-      setIsFormOpen(false);
+      completed.current = true;
       setIsResultOpen(true);
       setShowAlertsDialog(false);
       setClinicalAlerts([]);
@@ -971,11 +993,15 @@ export default function Prescricoes() {
   };
   const getMedicoNome = (id: string) => { const m = medicos.find(x => x.id === id); return m ? `${nomeMedico(m.nome || m.crm)}` : '—'; };
 
-  if (loadingMed || loadingPresc) {
+  if (loadingMed || loadingCurrentMedico || (!creationPage && loadingPresc)) {
     return <div className="space-y-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
   }
 
-  if (medicosQuery.isError || prescricoesQuery.isError) {
+  if (currentMedicoError && isMedicoOnly) {
+    return <ErrorState title="Não foi possível confirmar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
+  }
+
+  if (medicosQuery.isError || (!creationPage && prescricoesQuery.isError)) {
     const failedQuery = medicosQuery.isError ? medicosQuery : prescricoesQuery;
     return <ErrorState title="Não foi possível carregar prescrições" error={failedQuery.error} onRetry={() => {
       void medicosQuery.refetch();
@@ -993,7 +1019,10 @@ export default function Prescricoes() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+    <motion.div initial={creationPage ? false : { opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+      {creationPage && <UnsavedChangesGuard dirty={JSON.stringify(form) !== JSON.stringify(initialForm.current) || !!allergyOverrideJustification}
+        busy={gerando || memedOpening} completed={completed} />}
+      {!creationPage &&
       <PageHeader
         title="Prescrições"
         description={stats.total > 0
@@ -1023,7 +1052,7 @@ export default function Prescricoes() {
             </Button>
           </>
         )}
-      />
+      />}
 
       {clinicConfigQuery.isLoading && (
         <p className="text-sm text-muted-foreground" role="status">Carregando os dados da clínica necessários para a receita…</p>
@@ -1053,6 +1082,7 @@ export default function Prescricoes() {
         </div>
       )}
 
+      {!creationPage && <>
       {prescricoes.length >= MAX_LINHAS_AUTO && (
         <div role="alert" className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1311,15 +1341,17 @@ export default function Prescricoes() {
         </CardContent>
       </Card>
 
-      {/* ── New Prescription Dialog ── */}
-      <Dialog open={isFormOpen} onOpenChange={(open) => { if (open || (!gerando && !memedOpening)) setIsFormOpen(open); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Pill className="h-5 w-5 text-primary" />Nova Prescrição</DialogTitle>
-            <DialogDescription>Preencha os dados da prescrição médica.</DialogDescription>
-          </DialogHeader>
+      </>}
 
-          <fieldset disabled={gerando || memedOpening} className="space-y-4 min-w-0">
+      {creationPage && !isResultOpen && <section className="mx-auto max-w-6xl space-y-6 pb-6" aria-busy={gerando || memedOpening}>
+          <header className="space-y-3 border-b border-border pb-5">
+            <Button variant="ghost" className="-ml-3" onClick={leaveCreation} disabled={gerando || memedOpening}>← Voltar às prescrições</Button>
+            <h1 className="text-2xl font-semibold tracking-tight">Nova Prescrição</h1>
+            <p className="text-sm text-muted-foreground">Confira o paciente e o prescritor, redija a receita e revise os alertas antes de emitir.</p>
+          </header>
+
+          <fieldset disabled={gerando || memedOpening} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+            <div className="min-w-0 space-y-5">
             <div className="space-y-2">
               <Label htmlFor="prescricao-paciente">Paciente *</Label>
               <PacienteCombobox id="prescricao-paciente" value={form.paciente_id} onChange={v => setForm(f => ({ ...f, paciente_id: v }))} />
@@ -1348,8 +1380,9 @@ export default function Prescricoes() {
               <Label htmlFor="prescricao-data">Data de Emissão</Label>
               <Input id="prescricao-data" type="date" max={today} required value={form.data_emissao} onChange={e => setForm(f => ({ ...f, data_emissao: e.target.value }))} />
             </div>
+            </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label htmlFor="prescricao-medicamentos">Medicamentos e Posologia *</Label>
                 {modelosQuery.isError ? (
@@ -1372,14 +1405,14 @@ export default function Prescricoes() {
                 placeholder={`1) Amoxicilina 500mg — Tomar 1 cápsula de 8/8h por 7 dias\n2) Ibuprofeno 400mg — Tomar 1 comprimido de 12/12h por 5 dias\n3) Omeprazol 20mg — Tomar 1 cápsula em jejum por 30 dias`}
                 value={form.medicamentos_texto}
                 onChange={e => setForm(f => ({ ...f, medicamentos_texto: e.target.value }))}
-                rows={8}
+                rows={12}
                 className="font-mono text-sm"
               />
             </div>
           </fieldset>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={gerando || memedOpening}>Cancelar</Button>
+          <footer className="flex flex-wrap justify-end gap-3 border-t border-border py-4">
+            <Button variant="outline" onClick={leaveCreation} disabled={gerando || memedOpening}>Voltar às prescrições</Button>
             <LoadingButton
               onClick={handleOpenMemed}
               isLoading={memedOpening}
@@ -1401,15 +1434,15 @@ export default function Prescricoes() {
               disabled={
                 !form.paciente_id || !form.medico_id || !form.medicamentos_texto.trim()
                 || !selectedPaciente || selectedPacienteQuery.isFetching || selectedPacienteQuery.isError
+                || clinicConfigQuery.isLoading || clinicConfigQuery.isError || !clinicConfig?.nome_fantasia?.trim()
                 || memedOpening || gerando
               }
               className="gap-2"
             >
               <FileDown className="h-4 w-4" />Gerar Receita PDF
             </LoadingButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+      </section>}
 
       {/* ── Clinical Alerts Dialog ── */}
       <Dialog open={showAlertsDialog} onOpenChange={(open) => { if (open || !gerando) setShowAlertsDialog(open); }}>
@@ -1461,16 +1494,14 @@ export default function Prescricoes() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Result Dialog (Download + Assinar) ── */}
-      <Dialog open={isResultOpen} onOpenChange={setIsResultOpen}>
-        <DialogContent className="max-w-md text-center">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-center gap-2 text-lg">
+      {creationPage && isResultOpen && <section className="mx-auto max-w-2xl space-y-5 py-6">
+          <header className="space-y-3 border-b border-border pb-5">
+            <h1 ref={resultHeading} tabIndex={-1} className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
               <Clipboard className="h-5 w-5 text-primary" />
               Receita Gerada!
-            </DialogTitle>
-            <DialogDescription>O EloLab guarda o PDF emitido sem assinatura. Depois de assiná-lo externamente, anexe a cópia assinada pelo histórico de receitas.</DialogDescription>
-          </DialogHeader>
+            </h1>
+            <p className="text-sm text-muted-foreground">Receita salva no histórico do paciente. Baixe o PDF e conclua a assinatura, quando necessária.</p>
+          </header>
 
           <p className="text-muted-foreground text-sm">
             O PDF gerado ainda não está assinado. Baixe o arquivo e, se necessário, assine pelo portal do ITI (Gov.br). Depois, use "Anexar assinada" no histórico: o original e a versão assinada ficam guardados lado a lado.
@@ -1489,8 +1520,8 @@ export default function Prescricoes() {
           <p className="text-xs text-muted-foreground mt-2">
             O assinador digital do ITI utiliza certificado ICP-Brasil via Gov.br, sem custo adicional.
           </p>
-        </DialogContent>
-      </Dialog>
+          <Button variant="outline" onClick={leaveCreation}>Voltar às prescrições</Button>
+      </section>}
     </motion.div>
   );
 }

@@ -255,6 +255,7 @@ function AppRoutes() {
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
+                          <Route path="/documentos-clinicos/nova-prescricao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prescricoes creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
                           <Route path="/atestados" element={<Navigate to="/documentos-clinicos?tab=atestados" replace />} />
                           <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames /></PlanFeatureGuard></SupabaseProtectedRoute>} />
