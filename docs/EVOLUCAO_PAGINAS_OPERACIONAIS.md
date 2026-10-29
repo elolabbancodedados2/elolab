@@ -510,4 +510,4 @@ Validação: 11 cenários Playwright passaram (10 fluxos já existentes e regres
 
 Limites: worklist continua limitada a 500 itens e histórico por consulta conserva o limite existente. RPCs e envio de notificação mantêm a semântica anterior; a interface não cria nova garantia de idempotência/entrega transacional. O processo conserva validação humana e confirmação de ciência clínica; testes sintéticos não constituem auditoria integral WCAG ou validação clínica.
 
-Publicação: pendente nesta revisão do registro.
+Publicação: build `ddc17f58416203c6b8ab80fdd029850ca7cb3978`, imagem `easypanel/elolab/app:deploy-20261029-ddc17f58`. Swarm concluído com a única réplica atualizada em `stop-first` porque a porta 8080 em modo host impede coexistência das réplicas no único nó. Healthcheck do container `healthy`, `/healthz` retornou `ok` e `/version.json` conferiu o build. Fonte ativa atualizada com `.env` copiado sem expor conteúdo; fonte anterior preservada em `code.before-20261029-ddc17f58`. Nenhuma migration ou gravação clínica real. Rollback: imagem `deploy-20261029-1c598d93` e fonte `code.before-20261029-ddc17f58`.
