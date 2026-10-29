@@ -310,6 +310,11 @@ function AppRoutes() {
                           <Route path="/gestao-fluxo/salas/:roomId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Salas /></SupabaseProtectedRoute>} />
                           <Route path="/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/gestao-fluxo/salas" element={<Navigate to="/gestao-fluxo" replace />} />
+                          <Route path="/estoque/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/estoque/:itemId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="edit" /></SupabaseProtectedRoute>} />
+                          <Route path="/estoque/:itemId/entrada" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="entry" /></SupabaseProtectedRoute>} />
+                          <Route path="/estoque/:itemId/saida" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="exit" /></SupabaseProtectedRoute>} />
+                          <Route path="/estoque/:itemId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="history" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque /></SupabaseProtectedRoute>} />
                           <Route path="/convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios /></SupabaseProtectedRoute>} />
                           <Route path="/convenios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios creationPage /></SupabaseProtectedRoute>} />

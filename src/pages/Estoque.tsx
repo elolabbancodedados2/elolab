@@ -1,6 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -13,14 +13,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { MAX_LINHAS_AUTO, useEstoque } from '@/hooks/useSupabaseData';
+import { MAX_LINHAS_AUTO, useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -105,25 +105,39 @@ const formatarDataMovimentacao = (valor: string | null | undefined) => {
       }).format(data);
 };
 
-export default function Estoque() {
+type StockTask = 'new' | 'edit' | 'entry' | 'exit' | 'history';
+export default function Estoque({ task }: { task?: StockTask }) {
+  const location = useLocation();
+  return <EstoqueWorkspace key={location.pathname} task={task} />;
+}
+function EstoqueWorkspace({ task }: { task?: StockTask }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { itemId } = useParams<{ itemId: string }>();
+  const formPage = task === 'new' || task === 'edit';
+  const movementPage = task === 'entry' || task === 'exit';
+  const historyPage = task === 'history';
+  const completed = useRef(false);
+  const initialized = useRef(false);
+  const baseline = useRef(JSON.stringify(initialForm));
+  const returnTo = typeof location.state?.stockReturn === 'string' && /^\/estoque(?:\?|$)/.test(location.state.stockReturn) ? location.state.stockReturn : '/estoque';
+  const leave = () => navigate(returnTo, { state: { stockFilters: location.state?.stockFilters } });
+  const finish = () => { completed.current = true; leave(); };
   const [searchParams] = useSearchParams();
   const requestedAlert = searchParams.get('alerta');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategoria, setFilterCategoria] = useState('todos');
+  const [searchTerm, setSearchTerm] = useState(location.state?.stockFilters?.search ?? '');
+  const [filterCategoria, setFilterCategoria] = useState(location.state?.stockFilters?.category ?? 'todos');
   const [filterAlerta, setFilterAlerta] = useState<'todos' | 'critico' | 'vencidos' | 'validade' | 'ponto_pedido'>(
-    requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos',
+    location.state?.stockFilters?.alert ?? (requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos'),
   );
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isMovimentacaoOpen, setIsMovimentacaoOpen] = useState(false);
-  const [isTimelineOpen, setIsTimelineOpen] = useState(false);
-  const [timelineItemId, setTimelineItemId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'produtos' | 'curva_abc'>('produtos');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const timelineItemId = historyPage ? itemId : null;
+  const [activeTab, setActiveTab] = useState<'produtos' | 'curva_abc'>(location.state?.stockFilters?.tab ?? 'produtos');
+  const selectedId = itemId ?? null;
   const [selectedUpdatedAt, setSelectedUpdatedAt] = useState<string | null>(null);
-  const [chaveCadastro, setChaveCadastro] = useState(() => crypto.randomUUID());
+  const [chaveCadastro] = useState(() => crypto.randomUUID());
   const [formData, setFormData] = useState<FormData>(initialForm);
   const [movimentacao, setMovimentacao] = useState<{ tipo: 'entrada' | 'saida'; quantidade: number; motivo: string; chaveIdempotencia: string }>({
-    tipo: 'entrada', quantidade: 0, motivo: '', chaveIdempotencia: crypto.randomUUID(),
+    tipo: task === 'exit' ? 'saida' : 'entrada', quantidade: 0, motivo: '', chaveIdempotencia: crypto.randomUUID(),
   });
   const [isSaving, setIsSaving] = useState(false);
   const saveLock = useRef(false);
@@ -132,13 +146,17 @@ export default function Estoque() {
 
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
-  const estoqueQuery = useEstoque();
+  const estoqueQuery = useSupabaseQuery<any>('estoque', {
+    orderBy: { column: 'nome', ascending: true },
+    filters: [{ column: 'clinica_id', operator: 'eq', value: profile?.clinica_id }, ...(itemId ? [{ column: 'id', operator: 'eq', value: itemId }] : [])],
+    enabled: !!profile?.clinica_id,
+  });
   const estoque = estoqueQuery.data ?? [];
   const { isLoading } = estoqueQuery;
 
   useEffect(() => {
-    setFilterAlerta(requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos');
-  }, [requestedAlert]);
+    if (!location.state?.stockFilters) setFilterAlerta(requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos');
+  }, [requestedAlert, location.state?.stockFilters]);
 
   // Movement timeline query
   const movimentacoesQuery = useQuery({
@@ -269,18 +287,16 @@ export default function Estoque() {
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const formatCategoria = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-  const handleNew = () => {
-    setSelectedId(null);
-    setSelectedUpdatedAt(null);
-    setFormData(initialForm);
-    setChaveCadastro(crypto.randomUUID());
-    setIsFormOpen(true);
-  };
-
-  const handleEdit = (p: any) => {
-    setSelectedId(p.id);
-    setSelectedUpdatedAt(p.updated_at ?? null);
-    setFormData({
+  const openTask = (path: string) => navigate(path, { state: { stockReturn: location.pathname + location.search, stockFilters: { search: searchTerm, category: filterCategoria, alert: filterAlerta, tab: activeTab } } });
+  const handleNew = () => openTask('/estoque/novo');
+  const handleEdit = (item: any) => openTask(`/estoque/${item.id}/editar`);
+  useEffect(() => {
+    if (!task || initialized.current || estoqueQuery.isLoading || estoqueQuery.isError) return;
+    if (task === 'new') { initialized.current = true; return; }
+    const p = estoque.find(item => item.id === itemId);
+    if (!p) return;
+    if (task !== 'edit') { initialized.current = true; return; }
+    const initial = {
       id: p.id, nome: p.nome, categoria: p.categoria, unidade: p.unidade || 'unidade',
       quantidade: p.quantidade, quantidade_minima: p.quantidade_minima ?? 10,
       quantidade_maxima: p.quantidade_maxima ?? undefined, ponto_pedido: p.ponto_pedido ?? undefined,
@@ -290,9 +306,12 @@ export default function Estoque() {
       fornecedor: p.fornecedor || undefined, descricao: p.descricao || undefined,
       codigo_ean: p.codigo_ean || undefined, fabricante: p.fabricante || undefined,
       principio_ativo: p.principio_ativo || undefined, dosagem: p.dosagem || undefined,
-    });
-    setIsFormOpen(true);
-  };
+    };
+    initialized.current = true;
+    baseline.current = JSON.stringify(initial);
+    setSelectedUpdatedAt(p.updated_at ?? null);
+    setFormData(initial);
+  }, [task, estoque, itemId, estoqueQuery.isLoading, estoqueQuery.isError]);
 
   const handleSave = async () => {
     if (saveLock.current) return;
@@ -368,7 +387,7 @@ export default function Estoque() {
         toast.success('Produto cadastrado!');
       }
       await queryClient.invalidateQueries({ queryKey: ['estoque'] });
-      setIsFormOpen(false);
+      finish();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar.');
     } finally {
@@ -377,14 +396,11 @@ export default function Estoque() {
     }
   };
 
-  const handleMovimentacao = (produto: any, tipo: 'entrada' | 'saida') => {
-    setSelectedId(produto.id);
-    setMovimentacao({ tipo, quantidade: 0, motivo: '', chaveIdempotencia: crypto.randomUUID() });
-    setIsMovimentacaoOpen(true);
-  };
+  const handleMovimentacao = (item: any, tipo: 'entrada' | 'saida') => openTask(`/estoque/${item.id}/${tipo}`);
 
   const handleSaveMovimentacao = async () => {
     if (saveLock.current) return;
+    if (estoqueQuery.isError || estoqueQuery.isLoading) { toast.error('Carregue o saldo atual antes de movimentar o estoque.'); return; }
     if (!movimentacao.quantidade || movimentacao.quantidade <= 0) { toast.error('Quantidade inválida.'); return; }
     if (!movimentacao.motivo.trim()) { toast.error('Informe o motivo da movimentação para manter o histórico do estoque completo.'); return; }
     const produto = (estoque as any[]).find(p => p.id === selectedId);
@@ -407,7 +423,7 @@ export default function Estoque() {
         queryClient.invalidateQueries({ queryKey: ['estoque'] }),
         queryClient.invalidateQueries({ queryKey: ['movimentacoes-timeline'] }),
       ]);
-      setIsMovimentacaoOpen(false);
+      finish();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao registrar.');
     } finally {
@@ -416,10 +432,7 @@ export default function Estoque() {
     }
   };
 
-  const handleOpenTimeline = (produto: any) => {
-    setTimelineItemId(produto.id);
-    setIsTimelineOpen(true);
-  };
+  const handleOpenTimeline = (item: any) => openTask(`/estoque/${item.id}/historico`);
 
   const handleDeleteProduto = async () => {
     if (!deleteId || saveLock.current) return;
@@ -511,7 +524,7 @@ export default function Estoque() {
     ].filter(Boolean).join(' · ')
     : 'Controle de materiais e medicamentos: saldo, validade e movimentações.';
 
-  if (isLoading) {
+  if (isLoading && !initialized.current) {
     return (
       <main className="space-y-6">
         <PageHeader title="Estoque" description="Controle de materiais e medicamentos" icon={<Package />} />
@@ -523,9 +536,11 @@ export default function Estoque() {
   if (!profile?.clinica_id) {
     return <ErrorState title="Clínica não identificada" description="O estoque não pode ser exibido ou alterado sem identificar a clínica atual." />;
   }
-  if (estoqueQuery.isError) {
+  if (estoqueQuery.isError && !initialized.current) {
     return <ErrorState title="Não foi possível carregar o estoque" error={estoqueQuery.error} onRetry={() => void estoqueQuery.refetch()} />;
   }
+
+  if (itemId && !isLoading && !estoque.some(item => item.id === itemId) && !initialized.current) return <div className="space-y-4"><Button variant="outline" onClick={leave}>Voltar ao estoque</Button><ErrorState title="Produto não encontrado" description="O item não está disponível nesta clínica. Volte à lista para conferir o cadastro." /></div>;
 
   const indicadores: { key: typeof filterAlerta; label: string; value: string; caption: string; color: string }[] = [
     { key: 'todos', label: 'Total de itens', value: String(stats.total), caption: 'cadastrados no estoque', color: 'text-foreground' },
@@ -536,7 +551,11 @@ export default function Estoque() {
   ];
 
   return (
-    <main className="space-y-6">
+    <main className="space-y-6 pb-24 lg:pb-8">
+      {(formPage || movementPage) && <UnsavedChangesGuard dirty={formPage ? JSON.stringify(formData) !== baseline.current : !!(movimentacao.quantidade || movimentacao.motivo)} busy={isSaving} completed={completed} />}
+      {task && <Button variant="outline" onClick={leave} disabled={isSaving}>Voltar ao estoque</Button>}
+      {task && estoqueQuery.isError && <ErrorState compact description="Não foi possível atualizar o estoque. Seu preenchimento foi preservado; tente carregar novamente antes de salvar." error={estoqueQuery.error} onRetry={() => void estoqueQuery.refetch()} />}
+      {!task && <>
       <PageHeader
         title="Estoque"
         description={descricao}
@@ -882,18 +901,13 @@ export default function Estoque() {
         </>
       )}
 
-      {/* ── Movement Timeline Dialog ── */}
-      <Dialog open={isTimelineOpen} onOpenChange={setIsTimelineOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <History className="h-5 w-5 text-primary" />
-              Histórico de Movimentações
-            </DialogTitle>
-            {timelineItem && (
-              <p className="text-sm text-muted-foreground">{timelineItem.nome}</p>
-            )}
-          </DialogHeader>
+      </>}
+      {historyPage && <section className="mx-auto max-w-4xl space-y-5">
+        <PageHeader title="Histórico de movimentações" description={timelineItem?.nome} icon={<History />} />
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => navigate(`/estoque/${itemId}/entrada`, { state: location.state })}>Registrar entrada</Button>
+          <Button variant="outline" onClick={() => navigate(`/estoque/${itemId}/saida`, { state: location.state })}>Registrar saída</Button>
+        </div>
           <div className="space-y-1">
             {movimentacoesQuery.isError ? (
               <ErrorState compact title="Não foi possível carregar o histórico" error={movimentacoesQuery.error} onRetry={() => void movimentacoesQuery.refetch()} />
@@ -938,51 +952,45 @@ export default function Estoque() {
               </div>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+      </section>}
 
-      {/* ── Form Dialog (Enhanced) ── */}
-      <Dialog open={isFormOpen} onOpenChange={open => {
-        if (open || !saveLock.current) setIsFormOpen(open);
-      }}>
-        <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{selectedId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto space-y-5 pr-2">
+      {formPage && <section className="mx-auto max-w-5xl space-y-5">
+        <PageHeader title={selectedId ? 'Editar produto' : 'Novo produto'} description={selectedId ? 'Atualize os dados do item. O saldo é alterado pelas operações de entrada e saída.' : 'Identifique o material, o lote e os parâmetros de reposição.'} icon={<Package />} />
+        <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="rounded-xl border bg-card p-5 sm:p-6">
+          <fieldset disabled={isSaving} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs">Nome *</Label>
-                <Input value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} />
+                <Label htmlFor="stock-field-0" className="text-xs">Nome *</Label>
+                <Input required id="stock-field-0" value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Código EAN / Barras</Label>
-                <Input value={formData.codigo_ean || ''} onChange={e => setFormData({ ...formData, codigo_ean: e.target.value })}
+                <Label htmlFor="stock-field-1" className="text-xs">Código EAN / Barras</Label>
+                <Input id="stock-field-1" value={formData.codigo_ean || ''} onChange={e => setFormData({ ...formData, codigo_ean: e.target.value })}
                   placeholder="7891234567890" className="font-mono" />
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs">Categoria</Label>
+                <Label htmlFor="stock-field-2" className="text-xs">Categoria</Label>
                 <Select value={formData.categoria} onValueChange={v => setFormData({ ...formData, categoria: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="stock-field-2"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{formatCategoria(c)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Unidade</Label>
+                <Label htmlFor="stock-field-3" className="text-xs">Unidade</Label>
                 <Select value={formData.unidade} onValueChange={v => setFormData({ ...formData, unidade: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="stock-field-3"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {UNIDADES.map(u => <SelectItem key={u} value={u}>{formatCategoria(u)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Fabricante / Marca</Label>
-                <Input value={formData.fabricante || ''} onChange={e => setFormData({ ...formData, fabricante: e.target.value })} placeholder="Ex: Medley, 3M..." />
+                <Label htmlFor="stock-field-4" className="text-xs">Fabricante / Marca</Label>
+                <Input id="stock-field-4" value={formData.fabricante || ''} onChange={e => setFormData({ ...formData, fabricante: e.target.value })} placeholder="Ex: Medley, 3M..." />
               </div>
             </div>
             {isMedicamento && (
@@ -990,11 +998,11 @@ export default function Estoque() {
                 <Separator />
                 <div>
                   <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Pill className="h-4 w-4" /> Dados do Medicamento</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5"><Label className="text-xs">Princípio Ativo</Label>
-                      <Input value={formData.principio_ativo || ''} onChange={e => setFormData({ ...formData, principio_ativo: e.target.value })} placeholder="Ex: Paracetamol" /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Dosagem / Concentração</Label>
-                      <Input value={formData.dosagem || ''} onChange={e => setFormData({ ...formData, dosagem: e.target.value })} placeholder="Ex: 500mg, 10mg/ml" /></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5"><Label htmlFor="stock-field-5" className="text-xs">Princípio Ativo</Label>
+                      <Input id="stock-field-5" value={formData.principio_ativo || ''} onChange={e => setFormData({ ...formData, principio_ativo: e.target.value })} placeholder="Ex: Paracetamol" /></div>
+                    <div className="space-y-1.5"><Label htmlFor="stock-field-6" className="text-xs">Dosagem / Concentração</Label>
+                      <Input id="stock-field-6" value={formData.dosagem || ''} onChange={e => setFormData({ ...formData, dosagem: e.target.value })} placeholder="Ex: 500mg, 10mg/ml" /></div>
                   </div>
                 </div>
               </>
@@ -1002,63 +1010,58 @@ export default function Estoque() {
             <Separator />
             <div>
               <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><ShieldAlert className="h-4 w-4" /> Controle de Estoque</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1.5"><Label className="text-xs">{selectedId ? 'Quantidade atual' : 'Saldo inicial'}</Label>
-                  <Input type="number" min="0" step="1" value={formData.quantidade} disabled={!!selectedId} onChange={e => setFormData({ ...formData, quantidade: e.target.value === '' ? 0 : Number(e.target.value) })} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1.5"><Label htmlFor="stock-field-7" className="text-xs">{selectedId ? 'Quantidade atual' : 'Saldo inicial'}</Label>
+                  <Input id="stock-field-7" type="number" min="0" step="1" value={formData.quantidade} disabled={!!selectedId} onChange={e => setFormData({ ...formData, quantidade: e.target.value === '' ? 0 : Number(e.target.value) })} />
                   {selectedId && <p className="text-[11px] text-muted-foreground">Use Entrada ou Saída para alterar o saldo e manter o histórico.</p>}
                   {!selectedId && <p className="text-[11px] text-muted-foreground">O saldo de abertura será registrado no histórico como entrada.</p>}
                 </div>
-                <div className="space-y-1.5"><Label className="text-xs">Mínimo</Label>
-                  <Input type="number" min="0" step="1" value={formData.quantidade_minima} onChange={e => setFormData({ ...formData, quantidade_minima: e.target.value === '' ? 0 : Number(e.target.value) })} /></div>
-                <div className="space-y-1.5"><Label className="text-xs">Ponto de Pedido</Label>
-                  <Input type="number" min="1" step="1" value={formData.ponto_pedido ?? ''} placeholder="Opcional" onChange={e => setFormData({ ...formData, ponto_pedido: e.target.value === '' ? undefined : Number(e.target.value) })} /></div>
-                <div className="space-y-1.5"><Label className="text-xs">Máximo</Label>
-                  <Input type="number" min="1" step="1" value={formData.quantidade_maxima ?? ''} placeholder="Opcional" onChange={e => setFormData({ ...formData, quantidade_maxima: e.target.value === '' ? undefined : Number(e.target.value) })} /></div>
+                <div className="space-y-1.5"><Label htmlFor="stock-field-8" className="text-xs">Mínimo</Label>
+                  <Input id="stock-field-8" type="number" min="0" step="1" value={formData.quantidade_minima} onChange={e => setFormData({ ...formData, quantidade_minima: e.target.value === '' ? 0 : Number(e.target.value) })} /></div>
+                <div className="space-y-1.5"><Label htmlFor="stock-field-9" className="text-xs">Ponto de Pedido</Label>
+                  <Input id="stock-field-9" type="number" min="1" step="1" value={formData.ponto_pedido ?? ''} placeholder="Opcional" onChange={e => setFormData({ ...formData, ponto_pedido: e.target.value === '' ? undefined : Number(e.target.value) })} /></div>
+                <div className="space-y-1.5"><Label htmlFor="stock-field-10" className="text-xs">Máximo</Label>
+                  <Input id="stock-field-10" type="number" min="1" step="1" value={formData.quantidade_maxima ?? ''} placeholder="Opcional" onChange={e => setFormData({ ...formData, quantidade_maxima: e.target.value === '' ? undefined : Number(e.target.value) })} /></div>
               </div>
             </div>
             <Separator />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-1.5"><Label className="text-xs">Valor Custo (R$)</Label>
-                <Input type="text" inputMode="decimal" placeholder="0,00" value={formData.valor_unitario} onChange={e => setFormData({ ...formData, valor_unitario: e.target.value })} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-1.5"><Label htmlFor="stock-field-11" className="text-xs">Valor Custo (R$)</Label>
+                <Input id="stock-field-11" type="text" inputMode="decimal" placeholder="0,00" value={formData.valor_unitario} onChange={e => setFormData({ ...formData, valor_unitario: e.target.value })} />
                 {custoInvalido && <p className="text-xs text-destructive" role="alert">Informe um custo entre R$ 0,00 e R$ 99.999.999,99, com até duas casas decimais.</p>}</div>
-              <div className="space-y-1.5"><Label className="text-xs">Valor Venda (R$)</Label>
-                <Input type="text" inputMode="decimal" value={formData.valor_venda || ''} placeholder="Opcional" onChange={e => setFormData({ ...formData, valor_venda: e.target.value })} />
+              <div className="space-y-1.5"><Label htmlFor="stock-field-12" className="text-xs">Valor Venda (R$)</Label>
+                <Input id="stock-field-12" type="text" inputMode="decimal" value={formData.valor_venda || ''} placeholder="Opcional" onChange={e => setFormData({ ...formData, valor_venda: e.target.value })} />
                 {vendaInvalida && <p className="text-xs text-destructive" role="alert">Informe um preço entre R$ 0,00 e R$ 99.999.999,99, com até duas casas decimais.</p>}</div>
-              <div className="space-y-1.5"><Label className="text-xs">Fornecedor</Label>
-                <Input value={formData.fornecedor || ''} onChange={e => setFormData({ ...formData, fornecedor: e.target.value })} /></div>
-              <div className="space-y-1.5"><Label className="text-xs">Localização</Label>
-                <Input value={formData.localizacao} onChange={e => setFormData({ ...formData, localizacao: e.target.value })} placeholder="Prateleira A1" /></div>
+              <div className="space-y-1.5"><Label htmlFor="stock-field-13" className="text-xs">Fornecedor</Label>
+                <Input id="stock-field-13" value={formData.fornecedor || ''} onChange={e => setFormData({ ...formData, fornecedor: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label htmlFor="stock-field-14" className="text-xs">Localização</Label>
+                <Input id="stock-field-14" value={formData.localizacao} onChange={e => setFormData({ ...formData, localizacao: e.target.value })} placeholder="Prateleira A1" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5"><Label className="text-xs">Lote</Label>
-                <Input value={formData.lote || ''} onChange={e => setFormData({ ...formData, lote: e.target.value })} /></div>
-              <div className="space-y-1.5"><Label className="text-xs">Validade</Label>
-                <Input type="date" value={formData.validade || ''} onChange={e => setFormData({ ...formData, validade: e.target.value })} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5"><Label htmlFor="stock-field-15" className="text-xs">Lote</Label>
+                <Input id="stock-field-15" value={formData.lote || ''} onChange={e => setFormData({ ...formData, lote: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label htmlFor="stock-field-16" className="text-xs">Validade</Label>
+                <Input id="stock-field-16" type="date" value={formData.validade || ''} onChange={e => setFormData({ ...formData, validade: e.target.value })} /></div>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">Descrição / Observações</Label>
-              <Textarea value={formData.descricao || ''} onChange={e => setFormData({ ...formData, descricao: e.target.value })} rows={2} placeholder="Informações adicionais..." /></div>
-          </div>
-          <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" className="rounded-full" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <div className="space-y-1.5"><Label htmlFor="stock-field-17" className="text-xs">Descrição / Observações</Label>
+              <Textarea id="stock-field-17" value={formData.descricao || ''} onChange={e => setFormData({ ...formData, descricao: e.target.value })} rows={2} placeholder="Informações adicionais..." /></div>
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-2 pt-5 mt-5 border-t scroll-mb-24">
+            <Button variant="outline" className="rounded-full" type="button" onClick={leave} disabled={isSaving}>Cancelar</Button>
+            <Button type="submit" disabled={isSaving || estoqueQuery.isError}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>
+      </section>}
 
-      {/* Movimentação Dialog */}
-      <Dialog open={isMovimentacaoOpen} onOpenChange={open => {
-        if (open || !saveLock.current) setIsMovimentacaoOpen(open);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{movimentacao.tipo === 'entrada' ? 'Entrada de Estoque' : 'Saída de Estoque'}</DialogTitle>
-            {produtoSelecionado && <p className="text-sm text-muted-foreground">{produtoSelecionado.nome}</p>}
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+      {movementPage && <section className="mx-auto max-w-3xl space-y-5">
+        <PageHeader title={movimentacao.tipo === 'entrada' ? 'Entrada de estoque' : 'Saída de estoque'} description={produtoSelecionado?.nome} icon={movimentacao.tipo === 'entrada' ? <ArrowDown /> : <ArrowUp />} />
+        <form onSubmit={event => { event.preventDefault(); void handleSaveMovimentacao(); }} className="rounded-xl border bg-card p-5 sm:p-6">
+          <fieldset disabled={isSaving} className="space-y-4 py-4">
+
             <div className="space-y-2"><Label htmlFor="estoque-movimentacao-quantidade">Quantidade * ({produtoSelecionado?.unidade || 'unidade'})</Label>
-              <Input id="estoque-movimentacao-quantidade" type="number" min="1" step="1" value={movimentacao.quantidade || ''} onChange={e => setMovimentacao({ ...movimentacao, quantidade: e.target.value === '' ? 0 : Number(e.target.value) })} />
+              <Input required id="estoque-movimentacao-quantidade" type="number" min="1" step="1" value={movimentacao.quantidade || ''} onChange={e => setMovimentacao({ ...movimentacao, quantidade: e.target.value === '' ? 0 : Number(e.target.value) })} />
               {produtoSelecionado && (
                 <p className="text-xs text-muted-foreground" role="status">
                   Saldo atual: {saldoAtualMovimentacao} {produtoSelecionado.unidade || 'unidade'}
@@ -1080,6 +1083,7 @@ export default function Estoque() {
               <Label htmlFor="estoque-movimentacao-motivo">Motivo *</Label>
               <Input
                 id="estoque-movimentacao-motivo"
+                required
                 value={movimentacao.motivo}
                 onChange={e => setMovimentacao({ ...movimentacao, motivo: e.target.value })}
                 placeholder={movimentacao.tipo === 'entrada' ? 'Ex.: compra, devolução ou nota fiscal' : 'Ex.: uso, perda ou ajuste'}
@@ -1087,15 +1091,15 @@ export default function Estoque() {
               />
               <p className="text-xs text-muted-foreground">O motivo ficará registrado no histórico deste produto.</p>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setIsMovimentacaoOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSaveMovimentacao} disabled={isSaving || !quantidadeMovimentacaoValida || saidaExcedeSaldo || entradaExcedeMaximo || !movimentacao.motivo.trim()}>
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-2 border-t pt-5 scroll-mb-24">
+            <Button variant="outline" className="rounded-full" type="button" onClick={leave} disabled={isSaving}>Cancelar</Button>
+            <Button type="submit" disabled={isSaving || estoqueQuery.isError || !quantidadeMovimentacaoValida || saidaExcedeSaldo || entradaExcedeMaximo || !movimentacao.motivo.trim()}>
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Confirmar'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>
+      </section>}
       {/* Delete Confirm */}
       <ConfirmDialog
         open={isDeleteOpen}

@@ -143,7 +143,10 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
 
   useEffect(() => {
     const activeGroup = filteredMenuGroups.find(group =>
-      group.items.some(item => item.href.split('?')[0] === location.pathname)
+      group.items.some(item => {
+        const path = item.href.split('?')[0];
+        return path === location.pathname || (!item.exact && location.pathname.startsWith(`${path}/`));
+      })
     );
     if (activeGroup) {
       setOpenGroups(prev =>

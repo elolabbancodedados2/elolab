@@ -25,6 +25,7 @@ for (const width of [1440, 390]) {
     await page.goto(`/usuarios/${id}/editar`);
     await expect(page.getByLabel('Nome Completo *')).toHaveValue(account.nome);
     await expect(page.getByRole('heading', { name: 'Editar usuário' })).toBeVisible();
+    if (width >= 1024) await expect(page.getByRole('link', { name: 'Contas e acessos', exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByLabel('Email', { exact: true })).toBeDisabled();
     await page.screenshot({ path: info.outputPath(`account-${width}.png`) });

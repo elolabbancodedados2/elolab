@@ -12,6 +12,7 @@ describe('Breadcrumbs', () => {
     '/convenios/record-qa/editar',
     '/equipe/funcionarios/record-qa/editar',
     '/usuarios/record-qa/editar',
+    '/estoque/record-qa/historico',
     '/precos-servicos/exames/convenios/record-qa/editar',
   ])('não cria links para segmentos de registro sem página em %s', path => {
     render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);

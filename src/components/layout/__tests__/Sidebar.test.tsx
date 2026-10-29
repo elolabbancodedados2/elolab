@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -55,6 +55,13 @@ function renderSidebar(path: string, platformAdmin: boolean, clinicaId: string |
 }
 
 describe('Sidebar alterna áreas para a dona da plataforma', () => {
+  it('mantém Clientes aberto na edição de conta mesmo com todos os grupos recolhidos', async () => {
+    localStorage.setItem('elolab_sidebar_groups_v3', '[]');
+    renderSidebar('/usuarios/conta/editar', true);
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Contas e acessos' })).toBeVisible());
+    expect(screen.getByRole('link', { name: 'Contas e acessos' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('button', { name: 'Pacientes' })).not.toBeInTheDocument();
+  });
   it('exibe somente os dois destinos no seletor da conta plataforma com clínica', () => {
     renderSidebar('/dashboard', true);
 

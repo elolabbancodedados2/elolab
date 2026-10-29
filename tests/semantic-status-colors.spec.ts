@@ -99,7 +99,7 @@ test('service price table marks margins from 50% as success', async ({ page }, t
 });
 
 test('stock timeline keeps ordinary movements out of the destructive palette', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false });
   const now = new Date().toISOString();
   await routeTable(page, 'estoque', () => [{
     id: ITEM_ID, clinica_id: CLINIC_ID, nome: 'Luva QA', descricao: null, categoria: 'material', quantidade: 40,
@@ -111,7 +111,7 @@ test('stock timeline keeps ordinary movements out of the destructive palette', a
     { id: '00000000-0000-4000-9000-000000000093', clinica_id: CLINIC_ID, item_id: ITEM_ID, tipo: 'entrada', quantidade: 20, motivo: 'Compra', created_at: now },
   ]);
 
-  for (const viewport of VIEWPORTS) {
+  for (const viewport of [...VIEWPORTS, { width: 390, height: 900 }]) {
     await page.setViewportSize(viewport);
     await page.goto('/estoque');
     const main = page.locator('#main-content');
@@ -119,16 +119,17 @@ test('stock timeline keeps ordinary movements out of the destructive palette', a
     await expect(main.getByRole('button', { name: 'Registrar saída de Luva QA' }).locator('svg')).toHaveClass(/text-muted-foreground/);
 
     await main.getByRole('button', { name: 'Ver histórico de Luva QA' }).click();
-    const dialog = page.getByRole('dialog');
-    const entrada = dialog.getByText('↓ Entrada', { exact: true });
-    const saida = dialog.getByText('↑ Saída', { exact: true });
+    await expect(page).toHaveURL(`/estoque/${ITEM_ID}/historico`);
+    const history = page.locator('#main-content');
+    const entrada = history.getByText('↓ Entrada', { exact: true });
+    const saida = history.getByText('↑ Saída', { exact: true });
     await expect(entrada).toHaveClass(/bg-success/);
     await expect(saida).toHaveClass(/bg-secondary/);
     await expect(saida).not.toHaveClass(/destructive/);
-    await expect(dialog.locator('.bg-destructive')).toHaveCount(0);
+    await expect(history.locator('.bg-destructive')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
     await page.screenshot({ path: testInfo.outputPath(`estoque-historico-${viewport.width}.png`), animations: 'disabled' });
-    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Voltar ao estoque' }).click();
   }
 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

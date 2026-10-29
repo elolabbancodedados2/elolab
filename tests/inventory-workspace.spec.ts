@@ -26,7 +26,7 @@ async function routeStock(page: Page, rows: unknown[]) {
 }
 
 test('inventory separates expired products from upcoming expiry and keeps dates visible on mobile', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'admin' });
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, role: 'admin' });
   await routeStock(page, [
     {
       id: '00000000-0000-4000-9000-000000000501', clinica_id: CLINIC_ID,
@@ -99,8 +99,8 @@ test('inventory separates expired products from upcoming expiry and keeps dates 
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
-test('inventory explains an empty stock and offers the existing add-item action', async ({ page }) => {
-  await installSyntheticClinic(page, { platformAdmin: false, role: 'admin' });
+test('inventory explains an empty stock and offers the existing add-item action', async ({ page }, testInfo) => {
+  await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, role: 'admin' });
   await routeStock(page, []);
   await page.goto('/estoque');
 

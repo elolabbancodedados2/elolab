@@ -73,6 +73,8 @@ describe('modos de navegação da plataforma', () => {
     ['/painel-admin', true, 'platform'],
     ['/admin/crm', true, 'platform'],
     ['/usuarios', true, 'platform'],
+    ['/usuarios/conta/editar', true, 'platform'],
+    ['/usuarios/conta/editar', false, 'app'],
     ['/documentacao', true, 'platform'],
     ['/feedback', true, 'platform'],
     ['/feedback', false, 'app'],

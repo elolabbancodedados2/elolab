@@ -75,7 +75,7 @@ export function getNavigationMode(pathname: string, isPlatformAdmin: boolean): N
   if (!isPlatformAdmin) return 'app';
 
   const platformPaths = ['/painel-admin', '/usuarios', '/documentacao', '/feedback'];
-  return platformPaths.includes(pathname) || pathname === '/admin' || pathname.startsWith('/admin/')
+  return platformPaths.includes(pathname) || pathname.startsWith('/usuarios/') || pathname === '/admin' || pathname.startsWith('/admin/')
     ? 'platform'
     : 'app';
 }
