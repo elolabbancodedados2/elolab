@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileText, Plus, Upload, Search, ExternalLink, Loader2, Trash2, Eye,
@@ -130,11 +130,13 @@ async function obterOuCriarPacienteDaGuia(guia: any, clinicaId: string | null | 
 }
 
 export default function GuiasExternas() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const openNew = () => navigate('/guias-externas/nova', { state: { guiaFilters: { search, filterStatus } } });
   const { profile, user } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<FiltroStatus>('todos');
-  const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState(location.state?.guiaFilters?.search ?? '');
+  const [filterStatus, setFilterStatus] = useState<FiltroStatus>(location.state?.guiaFilters?.filterStatus ?? 'todos');
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showTokens, setShowTokens] = useState(false);
 
@@ -244,7 +246,7 @@ export default function GuiasExternas() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
-              onClick={() => setShowForm(true)}
+              onClick={openNew}
               className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
             >
               <Plus className="h-4 w-4" /> Nova guia
@@ -469,7 +471,7 @@ export default function GuiasExternas() {
                 <Button
                   size="sm"
                   className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110"
-                  onClick={() => setShowForm(true)}
+                  onClick={openNew}
                 >
                   Nova guia
                 </Button>
@@ -581,19 +583,6 @@ export default function GuiasExternas() {
         </Button>
       </div>
 
-      {showForm && (
-        <GuiaFormDialog
-          open={showForm}
-          onClose={() => setShowForm(false)}
-          clinicaId={profile?.clinica_id}
-          userId={user?.id}
-          onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ['guias_externas'] });
-            setShowForm(false);
-          }}
-        />
-      )}
-
       {detail && (
         <DetalheGuiaDialog
           key={detail.id}
@@ -611,227 +600,6 @@ export default function GuiasExternas() {
   );
 }
 
-/* ─── Form de criação manual ─── */
-function GuiaFormDialog({ open, onClose, clinicaId, userId, onSaved }: any) {
-  const [saving, setSaving] = useState(false);
-  const saveLock = useRef(false);
-  const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState({
-    paciente_nome: '',
-    paciente_cpf: '',
-    paciente_nascimento: '',
-    paciente_telefone: '',
-    medico_externo_nome: '',
-    medico_externo_crm: '',
-    medico_externo_uf: '',
-    medico_externo_especialidade: '',
-    convenio_nome: '',
-    numero_autorizacao: '',
-    validade_autorizacao: '',
-    observacoes: '',
-    anexo_url: '',
-    anexo_nome: '',
-    exames_texto: '',
-  });
-
-  const handleUpload = async (file: File) => {
-    const tiposAceitos = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
-    if (!tiposAceitos.has(file.type)) {
-      toast.error('Use um arquivo PDF, JPG, PNG ou WebP.');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('O anexo deve ter no máximo 10 MB.');
-      return;
-    }
-    if (!clinicaId) {
-      toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
-      return;
-    }
-    setUploading(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const path = `${clinicaId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error } = await supabase.storage.from('guias-externas').upload(path, file);
-      if (error) throw error;
-      const anexoAnterior = form.anexo_url;
-      setForm((f) => ({ ...f, anexo_url: path, anexo_nome: file.name }));
-      toast.success('Anexo enviado');
-      if (anexoAnterior && anexoAnterior !== path) {
-        try {
-          const { error: erroRemocao } = await supabase.storage.from('guias-externas').remove([anexoAnterior]);
-          if (erroRemocao) throw erroRemocao;
-        } catch (erroRemocao) {
-          toast.warning('O novo anexo foi enviado, mas o arquivo anterior não pôde ser removido.', {
-            description: mensagemDeErro(erroRemocao),
-          });
-        }
-      }
-    } catch (e: any) {
-      toast.error(e.message || 'Erro no upload');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleClose = async () => {
-    if (saveLock.current || saving || uploading) return;
-    if (form.anexo_url) {
-      try {
-        const { error } = await supabase.storage.from('guias-externas').remove([form.anexo_url]);
-        if (error) toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: error.message });
-      } catch (error) {
-        toast.warning('O formulário foi fechado, mas não foi possível remover o anexo temporário.', { description: mensagemDeErro(error) });
-      }
-    }
-    onClose();
-  };
-
-  const handleSave = async () => {
-    if (uploading || saving) {
-      toast.info('Aguarde o envio do anexo terminar antes de registrar a guia.');
-      return;
-    }
-    if (saveLock.current) return;
-    if (!clinicaId) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
-    if (!form.paciente_nome.trim()) { toast.error('Nome do paciente é obrigatório'); return; }
-    const cpfDigitos = form.paciente_cpf.replace(/\D/g, '');
-    if (cpfDigitos && !validateCPF(cpfDigitos)) { toast.error('CPF inválido. Confira os números digitados.'); return; }
-    if (form.paciente_nascimento) {
-      const nascimento = /^\d{4}-\d{2}-\d{2}$/.test(form.paciente_nascimento)
-        ? new Date(`${form.paciente_nascimento}T12:00:00`)
-        : new Date(Number.NaN);
-      const nascimentoValido = /^\d{4}-\d{2}-\d{2}$/.test(form.paciente_nascimento)
-        && Number.isFinite(nascimento.getTime())
-        && format(nascimento, 'yyyy-MM-dd') === form.paciente_nascimento
-        && form.paciente_nascimento <= todaySaoPauloDateOnly();
-      if (!nascimentoValido) { toast.error('Informe uma data de nascimento válida, que não esteja no futuro.'); return; }
-    }
-    const exames = form.exames_texto
-      .split('\n').map((l) => l.trim()).filter(Boolean)
-      .map((nome) => ({ nome }));
-    if (exames.length === 0) { toast.error('Liste ao menos um exame'); return; }
-
-    saveLock.current = true;
-    setSaving(true);
-    try {
-      const { error } = await (supabase as any).from('guias_externas').insert({
-        clinica_id: clinicaId,
-        origem: 'manual',
-        status: 'recebida',
-        paciente_nome: form.paciente_nome.trim(),
-        paciente_cpf: cpfDigitos || null,
-        paciente_nascimento: form.paciente_nascimento || null,
-        paciente_telefone: form.paciente_telefone || null,
-        medico_externo_nome: form.medico_externo_nome || null,
-        medico_externo_crm: form.medico_externo_crm || null,
-        medico_externo_uf: form.medico_externo_uf || null,
-        medico_externo_especialidade: form.medico_externo_especialidade || null,
-        convenio_nome: form.convenio_nome || null,
-        numero_autorizacao: form.numero_autorizacao || null,
-        validade_autorizacao: form.validade_autorizacao || null,
-        observacoes: form.observacoes || null,
-        anexo_url: form.anexo_url || null,
-        anexo_nome: form.anexo_nome || null,
-        exames_solicitados: exames,
-        registrado_por: userId,
-      });
-      if (error) throw error;
-      toast.success('Guia externa registrada');
-      onSaved();
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar');
-    } finally {
-      saveLock.current = false;
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(value) => { if (!value) void handleClose(); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Nova guia externa</DialogTitle>
-          <DialogDescription>Registre um pedido de exames recebido de fora da clínica.</DialogDescription>
-        </DialogHeader>
-
-        <fieldset disabled={saving || uploading} className="contents">
-        <Tabs defaultValue="paciente" className="mt-2">
-          <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto">
-            <TabsTrigger value="paciente">Paciente</TabsTrigger>
-            <TabsTrigger value="medico">Médico</TabsTrigger>
-            <TabsTrigger value="convenio">Convênio</TabsTrigger>
-            <TabsTrigger value="exames">Exames</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="paciente" className="space-y-3 pt-3">
-            <div><Label htmlFor="guia-paciente-nome">Nome completo *</Label><Input id="guia-paciente-nome" value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label htmlFor="guia-paciente-cpf">CPF</Label><Input id="guia-paciente-cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
-              <div><Label htmlFor="guia-paciente-nascimento">Data nascimento</Label><Input id="guia-paciente-nascimento" type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
-            </div>
-            <div><Label htmlFor="guia-paciente-telefone">Telefone</Label><Input id="guia-paciente-telefone" value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
-          </TabsContent>
-
-          <TabsContent value="medico" className="space-y-3 pt-3">
-            <div><Label htmlFor="guia-medico-nome">Nome do médico solicitante</Label><Input id="guia-medico-nome" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="col-span-2"><Label htmlFor="guia-medico-crm">CRM</Label><Input id="guia-medico-crm" value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
-              <div><Label htmlFor="guia-medico-uf">UF</Label><Input id="guia-medico-uf" value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
-            </div>
-            <div><Label htmlFor="guia-medico-especialidade">Especialidade</Label><Input id="guia-medico-especialidade" value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
-          </TabsContent>
-
-          <TabsContent value="convenio" className="space-y-3 pt-3">
-            <div><Label htmlFor="guia-convenio">Convênio</Label><Input id="guia-convenio" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Ex.: Unimed, Bradesco..." /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label htmlFor="guia-autorizacao">Nº autorização</Label><Input id="guia-autorizacao" value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
-              <div><Label htmlFor="guia-validade">Validade</Label><Input id="guia-validade" type="date" value={form.validade_autorizacao} onChange={(e) => setForm({ ...form, validade_autorizacao: e.target.value })} /></div>
-            </div>
-
-            <div className="pt-2">
-              <Label htmlFor="guia-anexo">Anexo da guia (PDF/imagem)</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <Input id="guia-anexo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading || saving} />
-                {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-              </div>
-              {form.anexo_nome && (
-                <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3" /> {form.anexo_nome}
-                </p>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="exames" className="space-y-3 pt-3">
-            <div>
-              <Label htmlFor="guia-exames">Exames solicitados (um por linha) *</Label>
-              <Textarea id="guia-exames" rows={7} value={form.exames_texto}
-                onChange={(e) => setForm({ ...form, exames_texto: e.target.value })}
-                placeholder={'Hemograma completo\nGlicemia de jejum\nColesterol total e frações'}
-              />
-            </div>
-            <div>
-              <Label htmlFor="guia-observacoes">Observações</Label>
-              <Textarea id="guia-observacoes" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
-            </div>
-          </TabsContent>
-        </Tabs>
-        </fieldset>
-
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => void handleClose()} disabled={saving || uploading}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving || uploading}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-            Registrar guia
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ─── Detalhe + ações ─── */
 function DetalheGuiaDialog({ guia, open, onClose, onChanged }: any) {
   const { profile } = useSupabaseAuth();
   const [agendando, setAgendando] = useState(false);
