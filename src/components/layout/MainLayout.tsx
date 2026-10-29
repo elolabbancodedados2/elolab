@@ -35,7 +35,7 @@ export function MainLayout() {
       <Version20Announcement />
 
       {/* Desktop Sidebar */}
-      <nav className="hidden h-full shrink-0 bg-background p-3 lg:block" aria-label="Menu principal">
+      <nav className="hidden h-full shrink-0 border-r border-border bg-sidebar lg:block" aria-label="Menu principal">
         <Sidebar />
       </nav>
 
@@ -46,14 +46,14 @@ export function MainLayout() {
           <SheetDescription className="sr-only">
             Navegue entre os módulos da clínica.
           </SheetDescription>
-          <nav aria-label="Menu principal mobile">
+          <nav aria-label="Menu principal mobile" className="h-full">
             <Sidebar forceExpanded onNavigate={() => setMobileMenuOpen(false)} />
           </nav>
         </SheetContent>
       </Sheet>
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Navbar mobileMenuOpen={mobileMenuOpen} onMenuClick={() => setMobileMenuOpen(open => !open)} />
         <ImpersonationBanner />
         <main 

@@ -36,10 +36,10 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
       className={({ isActive }) => {
         const itemIsActive = isItemActive(isActive);
         return cn(
-          'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150',
-          'text-sidebar-foreground/75 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
+          'group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
+          'text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
           itemIsActive && !item.external && 'font-semibold',
-          itemIsActive && !item.external && 'bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary',
+          itemIsActive && !item.external && 'bg-card text-sidebar-accent-foreground shadow-xs ring-1 ring-sidebar-border',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         );
@@ -52,7 +52,7 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
           <div
             aria-hidden="true"
             tabIndex={-1}
-            className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150', isActive && !item.external && 'bg-sidebar-primary/15 text-sidebar-primary')}
+            className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150', isActive && !item.external && 'text-sidebar-primary')}
           >
             <Icon className="h-[17px] w-[17px] shrink-0 transition-colors duration-200" />
           </div>

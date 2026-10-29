@@ -62,7 +62,7 @@ function rotuloDia(data: string, hoje: string) {
 function Foto({ pessoa }: { pessoa?: Pessoa | null }) {
   const inicial = primeiroNome(pessoa?.nome).charAt(0).toUpperCase() || '·';
   return (
-    <Avatar className="h-6 w-6 ring-2 ring-brand-dark">
+    <Avatar className="h-6 w-6 ring-2 ring-card">
       {pessoa?.foto_url && <AvatarImage src={pessoa.foto_url} alt="" />}
       <AvatarFallback className="bg-secondary text-[9px] font-semibold text-foreground">{inicial}</AvatarFallback>
     </Avatar>
@@ -81,10 +81,10 @@ function Segmento({ consulta, hoje, atual, vazio, className }: {
     <Link
       to="/agenda"
       className={cn(
-        'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-2.5 transition-colors',
+        'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 transition-colors',
         atual
-          ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
-          : 'text-white/75 hover:bg-white/10',
+          ? 'bg-accent text-foreground hover:bg-secondary'
+          : 'text-muted-foreground hover:bg-secondary',
         className,
       )}
     >
@@ -96,14 +96,14 @@ function Segmento({ consulta, hoje, atual, vazio, className }: {
           </div>
           <div className="min-w-0 flex-1 leading-tight">
             <p className="truncate text-[12px] font-semibold">{primeiroNome(consulta.pacientes?.nome) || 'Paciente'}</p>
-            <p className={cn('truncate text-[10px] capitalize', atual ? 'text-white/85' : 'text-white/50')}>{detalhe}</p>
+            <p className={cn('truncate text-[10px] capitalize', atual ? 'text-foreground' : 'text-muted-foreground')}>{detalhe}</p>
           </div>
         </>
       ) : (
-        <p className={cn('truncate text-[11px]', atual ? 'font-semibold text-white' : 'text-white/40')}>{vazio}</p>
+        <p className={cn('truncate text-[11px]', atual ? 'font-medium text-foreground' : 'text-muted-foreground')}>{vazio}</p>
       )}
       {atual && (
-        <span className="ml-auto shrink-0 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">Agora</span>
+        <span className="ml-auto shrink-0 rounded bg-card px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">Agora</span>
       )}
     </Link>
   );
@@ -145,14 +145,14 @@ export function BarraHorario() {
     <section
       aria-label="Agenda de hoje"
       aria-busy={isLoading}
-      className="agenda-toolbar flex h-11 min-w-0 items-center gap-1 rounded-full bg-brand-dark p-1 pl-3 text-white shadow-sm"
+      className="agenda-toolbar flex h-11 min-w-0 items-center gap-1 rounded-lg border border-border bg-card p-1 pl-3 text-foreground"
     >
       <div className="agenda-toolbar-date shrink-0 pr-2 leading-tight">
         <p className="text-[12px] font-semibold">{isMedicoOnly ? 'Sua agenda' : 'Hoje'}</p>
-        <p className="text-[10px] capitalize text-white/50">{dataFormatada} · {totalHoje} consulta{totalHoje === 1 ? '' : 's'}</p>
+        <p className="text-[10px] capitalize text-muted-foreground">{dataFormatada} · {totalHoje} consulta{totalHoje === 1 ? '' : 's'}</p>
       </div>
       {isLoading && !data ? (
-        <div className="h-9 flex-1 animate-pulse rounded-full bg-white/10" />
+        <div className="h-9 flex-1 animate-pulse rounded-md bg-muted" />
       ) : (
         <>
           <Segmento consulta={atual} hoje={hoje} atual vazio={totalHoje ? 'Sem consulta' : 'Sem consultas'} />

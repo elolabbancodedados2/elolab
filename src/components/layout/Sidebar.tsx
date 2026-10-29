@@ -164,8 +164,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-200 ease-out',
-        isCollapsed ? 'w-[72px]' : 'w-[286px]'
+        'flex h-full min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out',
+        forceExpanded ? 'w-full' : isCollapsed ? 'w-[72px]' : 'w-[268px] max-w-full'
       )}
     >
       {/* ─── Header ─── */}
@@ -174,14 +174,14 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
         isCollapsed ? 'justify-center px-2 h-[76px]' : 'justify-between px-5 h-[76px]'
       )}>
         {!isCollapsed ? (
-          <img src={logoHorizontal} alt="EloLab" className="h-auto w-[168px] object-contain" />
+          <img src={logoHorizontal} alt="EloLab" className="h-auto w-[148px] object-contain" />
         ) : (
-          <div className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15">
+          <div className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-card">
             <img src={logoMark} alt="EloLab" className="h-9 w-9 object-contain" />
           </div>
         )}
 
-        {!isCollapsed && (
+        {!isCollapsed && !forceExpanded && (
           <Button
             variant="ghost"
             size="icon"
@@ -213,7 +213,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
               className={cn(
                 'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
                 navigationMode === 'app'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  ? 'border border-sidebar-border bg-card text-primary shadow-xs'
                   : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               )}
             >
@@ -242,7 +242,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             className={cn(
               'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
               navigationMode === 'platform'
-                ? 'bg-primary text-primary-foreground shadow-sm'
+                ? 'border border-sidebar-border bg-card text-primary shadow-xs'
                 : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             )}
           >
@@ -271,7 +271,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
                   setSearch('');
                 }
               }}
-              className="h-10 rounded-lg border-sidebar-border bg-white pl-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:bg-white focus-visible:ring-sidebar-ring"
+              className="h-10 rounded-lg border-sidebar-border bg-card pl-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:bg-white focus-visible:ring-sidebar-ring"
             />
           </div>
         </div>
@@ -325,7 +325,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
                 size="sm"
                 aria-label="Limpar busca do menu"
                 onClick={() => setSearch('')}
-                className="mt-2 h-8 rounded-lg px-3 text-xs text-sidebar-accent-foreground hover:bg-sidebar/70 hover:text-white"
+                className="mt-2 h-8 rounded-lg px-3 text-xs text-sidebar-accent-foreground hover:bg-card hover:text-foreground"
               >
                 Limpar busca
               </Button>
@@ -337,7 +337,7 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       {/* ─── Footer ─── */}
       {!isCollapsed && (
         <div className="shrink-0 px-3 pb-4 pt-2">
-          <div className="flex items-center justify-between rounded-lg bg-sidebar-accent px-4 py-2.5">
+          <div className="flex items-center justify-between border-t border-sidebar-border px-1 py-3">
             <p className="text-[12px] font-semibold text-sidebar-accent-foreground">EloLab</p>
             <p className="text-[11px] text-sidebar-foreground/70">v2.0</p>
           </div>
@@ -374,9 +374,9 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             aria-expanded={!collapsed && isOpen}
             aria-controls={!collapsed && isOpen ? groupPanelId : undefined}
             className={cn(
-              'w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
+              'w-full flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
               collapsed && 'justify-center',
-              hasActiveChild ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground',
+              hasActiveChild ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground',
             )}
           >
             {collapsed ? (
@@ -387,7 +387,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
               </div>
             ) : (
               <>
-                <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors', hasActiveChild ? 'bg-sidebar-primary/15 text-sidebar-primary' : 'bg-sidebar-accent text-sidebar-foreground')}>
+                <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors', hasActiveChild ? 'text-sidebar-primary' : 'text-muted-foreground')}>
                   <GroupIcon className="h-3.5 w-3.5" />
                 </div>
                 <span className="flex-1 text-left">{group.label}</span>
@@ -418,7 +418,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="ml-3 flex flex-col gap-0.5 border-l border-sidebar-border py-1 pl-3">
+            <div className="flex flex-col gap-0.5 pb-3 pt-1">
               {group.items.map((item, idx) => (
                 <motion.div
                   key={item.href}

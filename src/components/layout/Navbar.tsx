@@ -179,7 +179,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header className="sticky top-0 z-30 flex min-h-[64px] items-center gap-1 bg-background/90 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:min-h-[72px] sm:px-3 md:px-6 xl:px-8">
+    <header className="sticky top-0 z-30 flex min-h-[64px] items-center gap-1 border-b border-border bg-card px-2 pt-[env(safe-area-inset-top)] sm:min-h-[72px] sm:px-3 md:px-6 xl:px-8">
       {/* Left: Hamburger */}
       <Button
         variant="ghost"
@@ -269,7 +269,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-11 w-11 rounded-full border border-border/70 bg-card text-muted-foreground shadow-xs hover:text-foreground hover:bg-accent transition-all duration-200"
+                  className="relative h-11 w-11 rounded-full border border-border/70 bg-card text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
                   aria-label="Abrir notificações"
                 >
                   <Bell className="h-[17px] w-[17px]" />
@@ -399,7 +399,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex min-h-11 min-w-11 items-center justify-center gap-2.5 rounded-full px-1 py-1 outline-none transition-all hover:bg-card focus-visible:ring-2 focus-visible:ring-ring md:justify-start md:pr-3">
-              <Avatar className="h-10 w-10 ring-2 ring-card shadow-glow">
+              <Avatar className="h-10 w-10 ring-1 ring-border">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                   {profile?.nome ? getInitials(profile.nome) : 'U'}
                 </AvatarFallback>
@@ -407,7 +407,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
               <div className="hidden md:flex flex-col items-start">
                 <span className="text-[13px] font-semibold leading-tight">{primeiroNome(profile?.nome)}</span>
                 <span className="flex items-center gap-1 text-[10px] text-success font-semibold leading-tight">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
                   Online
                 </span>
               </div>

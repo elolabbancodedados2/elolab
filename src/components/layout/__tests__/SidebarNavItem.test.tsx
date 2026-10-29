@@ -56,6 +56,7 @@ describe('SidebarNavItem', () => {
 
     const link = screen.getByRole('link', { name: 'Overview' });
     expect(link).toHaveClass('font-semibold');
-    expect(link).toHaveClass('bg-sidebar-accent', 'text-sidebar-accent-foreground');
+    expect(link).toHaveAttribute('aria-current', 'page');
+    expect(link).toHaveClass('bg-card', 'text-sidebar-accent-foreground', 'ring-sidebar-border');
   });
 });

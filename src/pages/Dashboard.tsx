@@ -26,8 +26,6 @@ import {
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { Link, Navigate } from 'react-router-dom';
-import dashboardBanner from '@/assets/dashboard-banner-elolab.png';
-import logoHorizontal from '@/assets/elolab-logo-identidade.png';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { formatWithDatePreference } from '@/lib/datePreference';
@@ -243,20 +241,14 @@ const roleTips = {
   financeiro: ['Concilie os recebimentos do dia no caixa.', 'Veja contas que vencem esta semana.', 'Acompanhe inadimplentes e envie lembretes.'],
 } as const;
 
-const workspaceTones = [
-  'bg-primary text-primary-foreground shadow-glow',
-  'border border-border/60 bg-card text-foreground hover:bg-accent',
-  'border border-border/60 bg-accent/50 text-foreground hover:bg-accent',
-];
-
 function RoleWorkspace({ roles }: { roles: string[] }) {
   const role = dashboardRolePriority.find(item => roles.includes(item));
   if (!role) return null;
   const workspace = roleWorkspaces[role];
-  return <section aria-labelledby="role-workspace-title" className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs md:p-5">
+  return <section aria-labelledby="role-workspace-title" className="border-b border-border pb-5">
     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div><h2 id="role-workspace-title" className="text-base font-bold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:-translate-y-0.5 hover:brightness-105', workspaceTones[index % workspaceTones.length])}><Icon className="h-4 w-4" />{label}</Link>)}</div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }) => <Link key={href} to={href} className="flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"><Icon className="h-4 w-4 text-muted-foreground" />{label}</Link>)}</div>
     </div>
   </section>;
 }
@@ -864,26 +856,15 @@ function AdminDashboard() {
         {/* ─── Welcome Hero ─── */}
         {!hasData && (
         <motion.div variants={fadeUp}>
-          <section className="relative isolate min-h-[250px] overflow-hidden rounded-2xl border border-primary/10 bg-card text-card-foreground shadow-sm sm:min-h-[250px]">
-            <img
-              src={dashboardBanner}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 -z-10 h-full w-full object-cover object-[center_44%]"
-            />
-            <div className="absolute inset-y-0 left-0 w-[78%] bg-gradient-to-r from-white via-white/95 to-transparent" />
-            <img src={logoHorizontal} alt="EloLab" className="absolute right-5 top-5 z-10 hidden w-28 object-contain sm:block" />
-
-            <div className="relative flex min-h-[250px] items-center p-6 sm:p-8 lg:p-10">
+          <section className="border-b border-border pb-6 text-foreground">
+            <div className="flex items-center py-2">
               <div className="max-w-xl pb-1">
                 <p className="mb-2 text-xs font-semibold capitalize tracking-[0.08em] text-primary">{hojeFormatado}<span className="mx-2 text-card-foreground/35">·</span><LiveClock /></p>
-                <h1 className="text-2xl font-bold tracking-tight text-card-foreground sm:text-3xl lg:text-[34px]">
-                  {saudacao}, {firstName} <span aria-hidden="true">👋</span>
-                  <br />
-                  <span className="text-primary">Sua clínica, mais organizada.</span>
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                  {saudacao}, {firstName}
                 </h1>
                 <p className="mt-2 max-w-md text-sm leading-6 text-card-foreground/70">
-                  Agenda, equipe e informações importantes em um só lugar.
+                  Prepare a agenda, cadastre pacientes e acompanhe as pendências da clínica.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2.5">
                   <Button asChild className="h-10 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
@@ -900,7 +881,7 @@ function AdminDashboard() {
         )}
         {hasData && setupProgress < 100 && (
           <motion.div variants={fadeUp}>
-            <Card className="border-primary/20 bg-primary/[0.02]">
+            <Card className="border-border bg-card">
               <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex flex-wrap items-center gap-2">

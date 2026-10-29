@@ -102,55 +102,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* EloLab v3 — Crystalline Medical Design System */
+/* EloLab — superfícies claras, hierarquia editorial e cor funcional. */
 
 @layer base {
   :root {
     --button-ripple-color: rgba(17, 17, 17, 0.06);
 
     /* EloLab: azul clínico, navy estrutural e ciano funcional. */
-    --brand: 217 81% 41.6%;
+    --brand: 216.977 81.132% 41.569%;
     --brand-foreground: 0 0% 100%;
-    --brand-light: 217 100% 96%;
+    --brand-light: 217.143 100.000% 95.882%;
     --brand-hover: 217 81% 34%;
     --brand-glow: 217 81% 41.6%;
-    --brand-dark: 217 73% 16%;
+    --brand-dark: 215.593 72.840% 15.882%;
 
     /* Primary — ação primária no azul da marca (preto removido em 2026-10-18) */
-    --primary: 217 81% 41.6%;
+    --primary: 216.977 81.132% 41.569%;
     --primary-foreground: 0 0% 100%;
     --primary-glow: 217 81% 41.6%;
 
     /* Ciano é destaque funcional; texto escuro mantém contraste legível. */
-    --highlight: 188 95% 42%;
-    --highlight-foreground: 217 54% 20%;
+    --highlight: 188.738 94.495% 42.745%;
+    --highlight-foreground: 217.778 54.000% 19.608%;
 
     /* Success — mantém o significado semântico, não muda */
     --success: 152 69% 30%;
     --success-foreground: 0 0% 100%;
 
     /* Fundo claro e texto navy da identidade EloLab. */
-    --background: 216 55% 98%;
-    --foreground: 217 54% 20%;
+    --background: 214.286 53.846% 97.451%;
+    --foreground: 217.778 54.000% 19.608%;
 
     /* Cards — branco puro para contrastar com o fundo gelo */
     --card: 0 0% 100%;
-    --card-foreground: 217 54% 20%;
+    --card-foreground: 217.778 54.000% 19.608%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 217 54% 20%;
+    --popover-foreground: 217.778 54.000% 19.608%;
 
     /* Secondary */
     --secondary: 210 18% 96%;
-    --secondary-foreground: 217 54% 20%;
+    --secondary-foreground: 217.778 54.000% 19.608%;
 
     /* Muted */
     --muted: 216 55% 98%;
-    --muted-foreground: 213 17% 46%;
+    --muted-foreground: 212.857 17.797% 46.275%;
 
     /* Accent */
     --accent: 210 18% 96%;
-    --accent-foreground: 217 54% 20%;
+    --accent-foreground: 217.778 54.000% 19.608%;
 
     /* Destructive — mantém o significado semântico, não muda */
     --destructive: 0 72% 48%;
@@ -165,11 +165,11 @@
     --info-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 211 33% 90%;
+    --border: 211.765 36.170% 90.784%;
     --input: 211 33% 86%;
     --ring: 217 81% 41.6%;
 
-    --radius: 1rem;
+    --radius: 0.5rem;
 
     /* Shadows — sombra suave neutra, sem tingir de marca */
     --shadow-xs: 0 1px 2px 0 hsl(240 20% 10% / 0.04);
@@ -189,15 +189,15 @@
     --gradient-surface: hsl(var(--background));
 
     /* Rail de navegação — branco gelo */
-    --sidebar-background: 217 73% 16%;
-    --sidebar-foreground: 216 55% 98%;
-    --sidebar-primary: 188 95% 42%;
-    --sidebar-primary-foreground: 217 54% 20%;
-    --sidebar-accent: 217 60% 24%;
-    --sidebar-accent-foreground: 216 55% 98%;
-    --sidebar-border: 217 42% 28%;
-    --sidebar-ring: 188 95% 42%;
-    --sidebar-muted: 217 42% 28%;
+    --sidebar-background: 214.286 53.846% 97.451%;
+    --sidebar-foreground: 217.778 54.000% 19.608%;
+    --sidebar-primary: 216.977 81.132% 41.569%;
+    --sidebar-primary-foreground: 0.000 0.000% 100.000%;
+    --sidebar-accent: 217.143 100.000% 95.882%;
+    --sidebar-accent-foreground: 215.593 72.840% 15.882%;
+    --sidebar-border: 211.765 36.170% 90.784%;
+    --sidebar-ring: 216.977 81.132% 41.569%;
+    --sidebar-muted: 211.765 36.170% 90.784%;
 
     /* Charts */
     --chart-1: 217 81% 41.6%;
@@ -281,7 +281,7 @@ html[data-text-size='large'] {
   /* Título de saudação (ex.: "Bom dia, Dra. Marina!") — única concessão tipográfica
      mais lúdica; não usar em dado clínico, valor monetário ou tabela. */
   .font-greeting {
-    font-family: 'Baloo 2', 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
   }
 
   /* Custom scrollbar — ultra-thin */
@@ -724,7 +724,7 @@ html[data-text-size='large'] {
 
 /* ─── Títulos de página (redesign) ───
    Muitas telas montam o próprio <h1> com um ícone na frente. Esta regra deixa
-   o ícone igual ao do PageHeader: superfície violeta suave e cor primária. */
+   o ícone igual ao do PageHeader: superfície neutra e cor primária. */
 #main-content h1 {
   letter-spacing: -0.03em;
 }
