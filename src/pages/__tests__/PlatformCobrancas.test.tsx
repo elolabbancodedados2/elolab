@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PlatformCobrancas from '../PlatformCobrancas';
 
@@ -25,7 +25,13 @@ const attempts = [
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<MemoryRouter><QueryClientProvider client={client}><PlatformCobrancas /></QueryClientProvider></MemoryRouter>);
+  const router = createMemoryRouter([
+    { path: '/admin/cobrancas', element: <PlatformCobrancas /> },
+    { path: '/admin/cobrancas/reconciliar/:origem/:attemptId', element: <PlatformCobrancas /> },
+  ], { initialEntries: ['/admin/cobrancas'] });
+  return render(
+    <QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>,
+  );
 }
 
 describe('PlatformCobrancas — tentativas, webhooks e reconciliação', () => {
@@ -52,10 +58,11 @@ describe('PlatformCobrancas — tentativas, webhooks e reconciliação', () => {
   it('exige justificativa e registra a reconciliação pelo servidor', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /reconciliar/i }));
-    const dialog = within(screen.getByRole('dialog'));
-    const confirmar = dialog.getByRole('button', { name: /confirmar pagamento/i });
+    expect(await screen.findByRole('heading', { name: 'Reconciliar cobrança' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const confirmar = await screen.findByRole('button', { name: /confirmar pagamento/i });
     expect(confirmar).toBeDisabled();
-    fireEvent.change(dialog.getByLabelText(/justificativa/i), { target: { value: 'Comprovante conferido no banco' } });
+    fireEvent.change(screen.getByLabelText(/justificativa/i), { target: { value: 'Comprovante conferido no banco' } });
     fireEvent.click(confirmar);
     await waitFor(() => expect(rpc).toHaveBeenCalledWith('platform_reconciliar_cobranca', {
       p_origem: 'pix_periodo', p_id: 'pix-1', p_resolucao: 'confirmar_pagamento', p_justificativa: 'Comprovante conferido no banco',

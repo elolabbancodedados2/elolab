@@ -3,10 +3,10 @@ import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,18 +14,16 @@ import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn, Mail, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, Hourglass, Archive, CreditCard } from 'lucide-react';
+import { Building2, Search, Users, Stethoscope, CalendarRange, RefreshCw, Crown, LogIn, Mail, AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, Hourglass, Archive, CreditCard, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { AcoesDaClinica } from '@/components/plataforma/AcoesDaClinica';
 import { LogDeAcessos } from '@/components/plataforma/LogDeAcessos';
-import { useNavigate } from 'react-router-dom';
 import { usePlatformRealtime } from '@/hooks/usePlatformRealtime';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 interface ClinicaOverview {
   clinica_id: string;
@@ -62,6 +60,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 type FiltroStatus = 'todas' | 'ativas' | 'trial' | 'suspensas';
+type ClinicAccessRouteState = { clinicId?: string; search?: string; mostrarArquivadas?: boolean; filtroStatus?: FiltroStatus; paginaOrfaos?: number };
 
 function dentroDaValidade(clinica: ClinicaOverview, agora: number) {
   const fim = clinica.data_fim || clinica.trial_fim;
@@ -91,54 +90,23 @@ function dataHoraFormatada(value: string | null) {
 
 export default function PlatformClinicas() {
   const { isPlatformAdmin, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
-  const [search, setSearch] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeState = location.state as ClinicAccessRouteState | null;
+  const accessPage = location.pathname === '/admin/clinicas/acesso';
+  const [search, setSearch] = useState(routeState?.search ?? '');
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [reconciling, setReconciling] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [alvo, setAlvo] = useState<{ id: string; nome: string } | null>(null);
   const [motivo, setMotivo] = useState('');
-  const [mostrarArquivadas, setMostrarArquivadas] = useState(false);
-  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todas');
-  const [paginaOrfaos, setPaginaOrfaos] = useState(0);
+  const [mostrarArquivadas, setMostrarArquivadas] = useState(routeState?.mostrarArquivadas ?? false);
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>(routeState?.filtroStatus ?? 'todas');
+  const [paginaOrfaos, setPaginaOrfaos] = useState(routeState?.paginaOrfaos ?? 0);
   const impersonationLock = useRef(false);
   const reconcileLock = useRef(false);
   const resendLock = useRef(false);
-  const navigate = useNavigate();
+  const completed = useRef(false);
   usePlatformRealtime(isPlatformAdmin);
-
-  /**
-   * Entrar numa clínica é ver o prontuário de paciente de um cliente. O motivo
-   * é gravado em `platform_impersonation_log` e é o que transforma o registro
-   * em rastro de verdade — sem ele toda linha do log fica igual.
-   */
-  const handleImpersonate = async () => {
-    if (impersonationLock.current || !alvo) return;
-    if (motivo.trim().length < 5) {
-      toast.error('Descreva o motivo do acesso', {
-        description: 'Fica registrado no log de auditoria da plataforma.',
-      });
-      return;
-    }
-    impersonationLock.current = true;
-    setImpersonatingId(alvo.id);
-    try {
-      const { error } = await (supabase as any).rpc('platform_start_impersonation', {
-        _target_clinica_id: alvo.id,
-        _motivo: motivo.trim(),
-      });
-      if (error) throw error;
-      await refreshProfile();
-      setAlvo(null);
-      setMotivo('');
-      toast.success(`Entrando como ${alvo.nome}`);
-      navigate('/dashboard');
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao impersonar clínica');
-    } finally {
-      impersonationLock.current = false;
-      setImpersonatingId(null);
-    }
-  };
 
   const { data, isLoading, refetch, isFetching, error } = useQuery({
     queryKey: ['platform-clinicas-overview'],
@@ -150,6 +118,37 @@ export default function PlatformClinicas() {
     enabled: isPlatformAdmin,
     refetchInterval: 30_000,
   });
+  const alvo = data?.find(clinic => clinic.clinica_id === routeState?.clinicId) ?? null;
+  const listState = { search, mostrarArquivadas, filtroStatus, paginaOrfaos };
+  const returnToClinics = () => navigate('/admin/clinicas', { state: listState });
+
+  /** Entrar numa clínica permite visualizar prontuários e registra o motivo na auditoria da plataforma. */
+  const handleImpersonate = async () => {
+    if (impersonationLock.current || !alvo) return;
+    if (motivo.trim().length < 5 || motivo.trim().length > 500) {
+      toast.error('Descreva o motivo do acesso', { description: 'Use de 5 a 500 caracteres. O motivo fica no log de auditoria da plataforma.' });
+      return;
+    }
+    impersonationLock.current = true;
+    setImpersonatingId(alvo.clinica_id);
+    try {
+      const { error } = await (supabase as any).rpc('platform_start_impersonation', {
+        _target_clinica_id: alvo.clinica_id,
+        _motivo: motivo.trim(),
+      });
+      if (error) throw error;
+      await refreshProfile();
+      completed.current = true;
+      setMotivo('');
+      toast.success(`Entrando como ${alvo.clinica_nome}`);
+      navigate('/dashboard');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao iniciar o acesso assistido');
+    } finally {
+      impersonationLock.current = false;
+      setImpersonatingId(null);
+    }
+  };
 
   const { data: orfaosData, refetch: refetchOrfaos, isError: orfaosError } = useQuery({
     queryKey: ['platform-orfaos', paginaOrfaos],
@@ -166,15 +165,15 @@ export default function PlatformClinicas() {
       if (error) throw error;
       return { items: data ?? [], total: count ?? inicio + (data ?? []).length };
     },
-    enabled: isPlatformAdmin,
+    enabled: isPlatformAdmin && !accessPage,
     refetchInterval: 30_000,
   });
   const orfaos = orfaosData?.items ?? [];
   const totalOrfaos = orfaosData?.total ?? 0;
   const paginasOrfaos = Math.max(1, Math.ceil(totalOrfaos / 50));
   useEffect(() => {
-    if (paginaOrfaos >= paginasOrfaos) setPaginaOrfaos(Math.max(0, paginasOrfaos - 1));
-  }, [paginaOrfaos, paginasOrfaos]);
+    if (!accessPage && paginaOrfaos >= paginasOrfaos) setPaginaOrfaos(Math.max(0, paginasOrfaos - 1));
+  }, [accessPage, paginaOrfaos, paginasOrfaos]);
 
   const handleReconcile = async () => {
     if (reconcileLock.current) return;
@@ -256,6 +255,65 @@ export default function PlatformClinicas() {
 
   if (!isPlatformAdmin) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (accessPage && isLoading) {
+    return <main className="mx-auto w-full max-w-3xl space-y-5 pb-28"><PageHeader title="Acesso assistido" icon={<LogIn />} description="Validando a clínica selecionada…" /><Skeleton className="h-64 rounded-2xl" /></main>;
+  }
+
+  if (accessPage && error) {
+    return <main className="mx-auto w-full max-w-3xl space-y-5 pb-28"><PageHeader title="Acesso assistido" icon={<LogIn />} description="Não foi possível validar a clínica antes do acesso." /><ErrorState error={error} onRetry={() => void refetch()} /><Button variant="outline" className="min-h-11 rounded-full" onClick={returnToClinics}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às clínicas</Button></main>;
+  }
+
+  if (accessPage && !alvo) {
+    return <main className="mx-auto w-full max-w-3xl space-y-5 pb-28"><PageHeader title="Acesso assistido" icon={<LogIn />} description="Escolha uma clínica na lista para iniciar o acesso." /><Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>A clínica não está selecionada</AlertTitle><AlertDescription>O destino fica no estado desta navegação e é confirmado novamente com os dados atuais da plataforma.</AlertDescription></Alert><Button variant="outline" className="min-h-11 rounded-full" onClick={returnToClinics}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às clínicas</Button></main>;
+  }
+
+  if (accessPage && alvo) {
+    const status = alvo.arquivada ? 'Arquivada' : alvo.suspensa ? 'Acesso suspenso' : STATUS_LABELS[alvo.assinatura_status || ''] || alvo.assinatura_status || 'Sem assinatura';
+    return (
+      <main className="mx-auto w-full max-w-3xl space-y-5 pb-28">
+        <UnsavedChangesGuard dirty={motivo.trim().length > 0} busy={!!impersonatingId} completed={completed} onDiscard={() => setMotivo('')} />
+        <PageHeader
+          title="Acesso assistido"
+          icon={<LogIn />}
+          description="Registre o motivo antes de entrar. O acesso a dados da clínica fica associado ao seu usuário e é auditado."
+          actions={<Button variant="outline" className="min-h-11 rounded-full" onClick={returnToClinics} disabled={!!impersonatingId}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às clínicas</Button>}
+        />
+
+        <Alert variant="destructive">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertTitle>Você acessará dados reais da clínica</AlertTitle>
+          <AlertDescription>Isso inclui prontuários de pacientes. Informe um motivo verificável; a entrada e a saída serão registradas na auditoria da plataforma.</AlertDescription>
+        </Alert>
+
+        <Card className="rounded-2xl border-border/60 shadow-xs">
+          <CardHeader><CardTitle>Clínica selecionada</CardTitle><CardDescription>Confirme o destino antes de iniciar o acesso.</CardDescription></CardHeader>
+          <CardContent className="space-y-5">
+            <dl className="grid gap-4 rounded-xl border border-border bg-muted/30 p-4 sm:grid-cols-2">
+              <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-muted-foreground">Clínica</dt><dd className="mt-1 break-words text-base font-semibold">{alvo.clinica_nome}</dd></div>
+              <div className="min-w-0"><dt className="text-xs text-muted-foreground">Responsável</dt><dd className="mt-1 break-words text-sm">{alvo.owner_nome || 'Não informado'}{alvo.owner_email ? ` · ${alvo.owner_email}` : ''}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Situação</dt><dd className="mt-1 text-sm">{status}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Plano</dt><dd className="mt-1 text-sm">{alvo.plano_nome || 'Sem plano'}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Pacientes cadastrados</dt><dd className="mt-1 text-sm tabular-nums">{Number(alvo.total_pacientes || 0).toLocaleString('pt-BR')}</dd></div>
+            </dl>
+
+            <div className="space-y-2">
+              <Label htmlFor="motivo-impersonacao">Motivo do acesso (5 a 500 caracteres)</Label>
+              <Textarea id="motivo-impersonacao" value={motivo} maxLength={500} onChange={event => setMotivo(event.target.value)} placeholder="Ex.: chamado #142 — agenda não abre para a recepção" rows={5} disabled={!!impersonatingId} aria-describedby="motivo-impersonacao-count" />
+              <p id="motivo-impersonacao-count" className="text-xs text-muted-foreground">{motivo.trim().length}/500 caracteres · mínimo de 5</p>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
+              <Button variant="outline" className="min-h-11 rounded-full" onClick={returnToClinics} disabled={!!impersonatingId}>Cancelar</Button>
+              <Button onClick={() => void handleImpersonate()} disabled={!!impersonatingId || motivo.trim().length < 5 || motivo.trim().length > 500} className="min-h-11 rounded-full">
+                {impersonatingId ? 'Iniciando acesso…' : 'Entrar na clínica'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
@@ -521,7 +579,7 @@ export default function PlatformClinicas() {
                           variant="outline"
                           className="h-9 rounded-full text-xs"
                           disabled={impersonatingId === c.clinica_id}
-                          onClick={() => { setAlvo({ id: c.clinica_id, nome: c.clinica_nome }); setMotivo(''); }}
+                          onClick={() => { completed.current = false; setMotivo(''); navigate('/admin/clinicas/acesso', { state: { ...listState, clinicId: c.clinica_id } }); }}
                         >
                           <LogIn className="h-3.5 w-3.5 mr-1" />
                           {impersonatingId === c.clinica_id ? 'Entrando...' : 'Entrar'}
@@ -543,36 +601,6 @@ export default function PlatformClinicas() {
 
       <LogDeAcessos />
 
-      <Dialog open={!!alvo} onOpenChange={aberto => { if (!aberto && !impersonationLock.current) { setAlvo(null); setMotivo(''); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Entrar em {alvo?.nome}</DialogTitle>
-            <DialogDescription>
-              Você vai acessar os dados dessa clínica, inclusive prontuários de
-              pacientes. O motivo fica registrado no log da plataforma, com data
-              e hora de entrada e de saída.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="motivo-impersonacao">Motivo do acesso</Label>
-            <Textarea
-              id="motivo-impersonacao"
-              value={motivo}
-              maxLength={500}
-              onChange={e => setMotivo(e.target.value)}
-              placeholder="Ex.: chamado #142 — agenda não abre para a recepção"
-              rows={3}
-              disabled={!!impersonatingId}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setAlvo(null)} disabled={!!impersonatingId}>Cancelar</Button>
-            <Button onClick={handleImpersonate} disabled={!!impersonatingId} className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
-              {impersonatingId ? 'Entrando...' : 'Entrar na clínica'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

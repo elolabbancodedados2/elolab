@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, CircleSlash, CreditCard, History, Hourglass, RefreshCw, Search, Wallet, Webhook } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleSlash, CreditCard, History, Hourglass, RefreshCw, Search, ShieldAlert, Wallet, Webhook } from 'lucide-react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { descreverEventoCobranca, type EventoCobrancaAssinatura } from '@/lib/subscriptionBillingHistory';
@@ -20,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { usePlatformRealtime } from '@/hooks/usePlatformRealtime';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 type Subscription = {
   clinica_id: string;
@@ -80,8 +81,16 @@ const dataHora = (value: string) => {
 
 export default function PlatformCobrancas() {
   usePlatformRealtime();
-  const [busca, setBusca] = useState('');
-  const [status, setStatus] = useState('all');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { origem: origemParam, attemptId } = useParams();
+  const routeState = location.state as { busca?: string; status?: string } | null;
+  const reconcilePage = Boolean(origemParam && attemptId);
+  const [busca, setBusca] = useState(routeState?.busca ?? '');
+  const [status, setStatus] = useState(routeState?.status ?? 'all');
+  const [justificativa, setJustificativa] = useState('');
+  const completed = useRef(false);
+  const reconcileLock = useRef(false);
   const overview = useQuery({
     queryKey: ['platform-billing-overview'],
     queryFn: async () => {
@@ -90,6 +99,7 @@ export default function PlatformCobrancas() {
       return data as Overview;
     },
     refetchInterval: 30_000,
+    enabled: !reconcilePage,
   });
   const invoices = useQuery({
     queryKey: ['platform-subscription-invoices'],
@@ -99,6 +109,7 @@ export default function PlatformCobrancas() {
       return (data || []) as PlatformInvoice[];
     },
     refetchInterval: 30_000,
+    enabled: !reconcilePage,
   });
   const attempts = useQuery({
     queryKey: ['platform-checkout-attempts'],
@@ -108,6 +119,7 @@ export default function PlatformCobrancas() {
       return (data || []) as CheckoutAttempt[];
     },
     refetchInterval: 30_000,
+    refetchOnMount: 'always',
   });
   const reconciliacoes = useQuery({
     queryKey: ['platform-billing-reconciliations'],
@@ -116,29 +128,38 @@ export default function PlatformCobrancas() {
       if (error) throw error;
       return (data || []) as Reconciliacao[];
     },
+    enabled: !reconcilePage,
   });
   const queryClient = useQueryClient();
-  const [reconciliando, setReconciliando] = useState<CheckoutAttempt | null>(null);
-  const [justificativa, setJustificativa] = useState('');
+  const reconciliando = attempts.data?.find((item) => item.id === attemptId && item.origem === origemParam) ?? null;
+  const returnToList = () => navigate('/admin/cobrancas', { state: { busca, status } });
   const reconciliar = useMutation({
     mutationFn: async (resolucao: string) => {
+      if (!reconciliando || !reconciliando.divergente) throw new Error('A tentativa não está mais marcada como divergente. Atualize a lista antes de tentar novamente.');
+      if (justificativa.trim().length < 10 || justificativa.trim().length > 500) throw new Error('A justificativa deve ter de 10 a 500 caracteres.');
       const { data, error } = await (supabase as any).rpc('platform_reconciliar_cobranca', {
-        p_origem: reconciliando!.origem, p_id: reconciliando!.id, p_resolucao: resolucao, p_justificativa: justificativa.trim(),
+        p_origem: reconciliando.origem, p_id: reconciliando.id, p_resolucao: resolucao, p_justificativa: justificativa.trim(),
       });
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
       toast.success('Reconciliação registrada na trilha de auditoria.');
-      setReconciliando(null);
       setJustificativa('');
       void queryClient.invalidateQueries({ queryKey: ['platform-checkout-attempts'] });
       void queryClient.invalidateQueries({ queryKey: ['platform-billing-reconciliations'] });
       void queryClient.invalidateQueries({ queryKey: ['platform-billing-overview'] });
+      completed.current = true;
+      returnToList();
     },
     onError: (error: Error) => toast.error(error.message || 'Não foi possível reconciliar a cobrança.'),
   });
   const justificativaValida = justificativa.trim().length >= 10 && justificativa.trim().length <= 500;
+  const enviarReconciliacao = (resolucao: string) => {
+    if (reconcileLock.current || !reconciliando?.divergente || !justificativaValida) return;
+    reconcileLock.current = true;
+    reconciliar.mutate(resolucao, { onSettled: () => { reconcileLock.current = false; } });
+  };
 
   const lista = useMemo(() => {
     const term = busca.trim().toLocaleLowerCase('pt-BR');
@@ -156,6 +177,74 @@ export default function PlatformCobrancas() {
 
   const metrics = overview.data?.metrics;
   const updating = overview.isFetching;
+
+  if (reconcilePage) {
+    const backButton = <Button variant="outline" className="min-h-11 rounded-full" onClick={returnToList} disabled={reconciliar.isPending}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às cobranças</Button>;
+    if (attempts.isLoading) {
+      return <main className="mx-auto w-full max-w-3xl space-y-5 pb-28"><PageHeader title="Reconciliar cobrança" icon={<CreditCard />} description="Conferindo o estado atual da tentativa…" actions={backButton} /><Skeleton className="h-72 rounded-2xl" /></main>;
+    }
+    if (attempts.isError) {
+      return <main className="mx-auto w-full max-w-3xl space-y-5 pb-28"><PageHeader title="Reconciliar cobrança" icon={<CreditCard />} description="Não foi possível confirmar a divergência atual." actions={backButton} /><ErrorState error={attempts.error} onRetry={() => void attempts.refetch()} /></main>;
+    }
+    if (!reconciliando) {
+      return <main className="mx-auto w-full max-w-3xl space-y-5 pb-28"><PageHeader title="Reconciliar cobrança" icon={<CreditCard />} description="A tentativa não aparece entre as 50 mais recentes consultadas pela plataforma." actions={backButton} /><Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>Tentativa indisponível</AlertTitle><AlertDescription>Volte à lista e atualize os dados antes de iniciar uma reconciliação.</AlertDescription></Alert><Button variant="outline" className="min-h-11 rounded-full" onClick={() => void attempts.refetch()}>Atualizar tentativas</Button></main>;
+    }
+
+    const evento = descreverEventoCobranca(reconciliando);
+    const resolucoes = RESOLUCOES[reconciliando.origem] || [];
+    return (
+      <main className="mx-auto w-full max-w-3xl space-y-5 pb-28">
+        <UnsavedChangesGuard dirty={justificativa.trim().length > 0} busy={reconciliar.isPending} completed={completed} onDiscard={() => setJustificativa('')} />
+        <PageHeader title="Reconciliar cobrança" icon={<CreditCard />} description="Revise o registro e a evidência antes de corrigir o estado local." actions={backButton} />
+
+        {reconciliando.divergente ? (
+          <Alert variant="destructive">
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>Correção financeira auditável</AlertTitle>
+            <AlertDescription>A ação altera apenas o registro da EloLab e não chama o Mercado Pago. A decisão, justificativa e estado anterior ficam na trilha de auditoria.</AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>A divergência já foi resolvida</AlertTitle>
+            <AlertDescription>Atualize a lista antes de iniciar outra ação. Nenhuma reconciliação será enviada a partir deste estado.</AlertDescription>
+          </Alert>
+        )}
+
+        <Card className="rounded-2xl border-border/60 shadow-xs">
+          <CardHeader><CardTitle>Registro selecionado</CardTitle><CardDescription>Dados da tentativa retornados pela consulta atual da plataforma.</CardDescription></CardHeader>
+          <CardContent className="space-y-5">
+            <dl className="grid gap-3 rounded-xl border border-border bg-muted/30 p-4 sm:grid-cols-2">
+              <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-muted-foreground">Clínica ou responsável</dt><dd className="mt-1 break-words text-sm font-semibold">{reconciliando.clinica_nome || reconciliando.dono_email || 'Conta sem clínica'}</dd></div>
+              {reconciliando.clinica_nome && reconciliando.dono_email && <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-muted-foreground">E-mail do responsável</dt><dd className="mt-1 break-all text-sm">{reconciliando.dono_email}</dd></div>}
+              <div><dt className="text-xs text-muted-foreground">Tipo</dt><dd className="mt-1 text-sm">{evento.tipo}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Estado atual</dt><dd className="mt-1 text-sm">{evento.estado}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Valor</dt><dd className="mt-1 text-sm tabular-nums">{reconciliando.valor === null ? '—' : moeda(Number(reconciliando.valor))}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Criada em</dt><dd className="mt-1 text-sm">{reconciliando.criado_em ? dataHora(reconciliando.criado_em) : 'Data indisponível'}</dd></div>
+              {evento.detalhe && <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Detalhe reportado</dt><dd className="mt-1 text-sm">{evento.detalhe}</dd></div>}
+            </dl>
+
+            <div className="space-y-2">
+              <Label htmlFor="justificativa-reconciliacao">Justificativa (10 a 500 caracteres)</Label>
+              <Textarea id="justificativa-reconciliacao" value={justificativa} maxLength={500} rows={5} disabled={!reconciliando.divergente || reconciliar.isPending} onChange={(event) => setJustificativa(event.target.value)} placeholder="Ex.: comprovante conferido no extrato do Mercado Pago" aria-describedby="reconciliacao-count" />
+              <p id="reconciliacao-count" className="text-xs text-muted-foreground">{justificativa.trim().length}/500 caracteres · mínimo de 10</p>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Button variant="outline" className="min-h-11 rounded-full" onClick={returnToList} disabled={reconciliar.isPending}>Cancelar</Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {resolucoes.map((resolucao) => (
+                  <Button key={resolucao.valor} className="min-h-11 rounded-full" variant={resolucao.valor === 'confirmar_pagamento' ? 'default' : 'outline'} disabled={!justificativaValida || !reconciliando.divergente || reconciliar.isPending} onClick={() => enviarReconciliacao(resolucao.valor)}>
+                    {reconciliar.isPending ? 'Registrando…' : resolucao.rotulo}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
@@ -298,7 +387,7 @@ export default function PlatformCobrancas() {
                 <div className="flex items-center gap-2 sm:justify-end">
                   <span className="text-sm font-semibold">{attempt.valor === null ? '—' : moeda(Number(attempt.valor))}</span>
                   {attempt.divergente && (
-                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setReconciliando(attempt); setJustificativa(''); }}>Reconciliar</Button>
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => { completed.current = false; setJustificativa(''); navigate(`/admin/cobrancas/reconciliar/${encodeURIComponent(attempt.origem)}/${encodeURIComponent(attempt.id)}`, { state: { busca, status } }); }}>Reconciliar</Button>
                   )}
                 </div>
               </div>
@@ -317,28 +406,6 @@ export default function PlatformCobrancas() {
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={!!reconciliando} onOpenChange={(open) => { if (!open && !reconciliar.isPending) setReconciliando(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reconciliar cobrança divergente</DialogTitle>
-            <DialogDescription>
-              Ajusta somente o registro da EloLab, sem chamar o Mercado Pago. A decisão, a justificativa e o estado anterior ficam na trilha de auditoria.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="justificativa-reconciliacao">Justificativa (mínimo de 10 caracteres)</Label>
-            <Textarea id="justificativa-reconciliacao" value={justificativa} maxLength={500} rows={3} onChange={(event) => setJustificativa(event.target.value)} placeholder="Ex.: comprovante conferido no extrato do Mercado Pago" />
-          </div>
-          <DialogFooter className="gap-2">
-            {(RESOLUCOES[reconciliando?.origem ?? ''] || []).map((resolucao) => (
-              <Button key={resolucao.valor} variant={resolucao.valor === 'confirmar_pagamento' ? 'default' : 'outline'} disabled={!justificativaValida || reconciliar.isPending} onClick={() => reconciliar.mutate(resolucao.valor)}>
-                {resolucao.rotulo}
-              </Button>
-            ))}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader><CardTitle className="flex items-center gap-2"><Webhook className="h-5 w-5 text-[#1080CA]" /> Webhooks recentes</CardTitle><CardDescription>Metadados operacionais; os payloads financeiros não são expostos. A lista mostra até 30 dos 100 eventos carregados.</CardDescription></CardHeader>

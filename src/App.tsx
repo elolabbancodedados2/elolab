@@ -490,6 +490,7 @@ function AppRoutes() {
                           <Route path="/documentacao" element={<SupabaseProtectedRoute somentePlataforma><Documentacao /></SupabaseProtectedRoute>} />
                           <Route path="/painel-admin" element={<SupabaseProtectedRoute somentePlataforma><PainelAdmin /></SupabaseProtectedRoute>} />
                           <Route path="/admin/clinicas" element={<SupabaseProtectedRoute somentePlataforma><PlatformClinicas /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/clinicas/acesso" element={<SupabaseProtectedRoute somentePlataforma><PlatformClinicas /></SupabaseProtectedRoute>} />
                           <Route path="/admin/crm" element={<SupabaseProtectedRoute somentePlataforma><PlatformCRM /></SupabaseProtectedRoute>} />
                           <Route path="/admin/saude" element={<SupabaseProtectedRoute somentePlataforma><PlatformSaude /></SupabaseProtectedRoute>} />
                           <Route path="/suporte" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro']}><CentralSuporte /></SupabaseProtectedRoute>} />
@@ -505,6 +506,7 @@ function AppRoutes() {
                           <Route path="/admin/backups/restaurar" element={<SupabaseProtectedRoute somentePlataforma><PlatformBackupRestoreRequest /></SupabaseProtectedRoute>} />
                           <Route path="/admin/relatorio-executivo" element={<SupabaseProtectedRoute somentePlataforma><PlatformRelatorioExecutivo /></SupabaseProtectedRoute>} />
                           <Route path="/admin/cobrancas" element={<SupabaseProtectedRoute somentePlataforma><PlatformCobrancas /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/cobrancas/reconciliar/:origem/:attemptId" element={<SupabaseProtectedRoute somentePlataforma><PlatformCobrancas /></SupabaseProtectedRoute>} />
                           <Route path="/admin/historico-financeiro" element={<SupabaseProtectedRoute somentePlataforma><PlatformHistoricoFinanceiro /></SupabaseProtectedRoute>} />
                           <Route path="/admin/acesso-assistido" element={<SupabaseProtectedRoute somentePlataforma><AcessoAssistido /></SupabaseProtectedRoute>} />
                           <Route path="/admin/integracoes" element={<SupabaseProtectedRoute somentePlataforma><PlatformIntegracoes /></SupabaseProtectedRoute>} />

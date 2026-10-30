@@ -123,6 +123,7 @@ const labelsByPath: Record<string, string> = {
   '/patrimonio-equipamentos': 'Patrimônio e manutenção',
   '/analise-preditiva': 'Risco de faltas',
   '/admin/clinicas': 'Clínicas',
+  '/admin/clinicas/acesso': 'Acesso assistido',
   '/admin/crm': 'Carteira de clientes',
   '/admin/saude': 'Saúde do serviço',
   '/admin/suporte': 'Suporte da plataforma',
@@ -151,6 +152,8 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (pathname === '/admin/cobrancas/reconciliar') return 'Cobrança divergente';
+  if (/^\/admin\/cobrancas\/reconciliar\/[^/]+\/[^/]+$/.test(pathname)) return 'Reconciliar cobrança';
   if (/^\/treinamento\/[^/]+$/.test(pathname)) return 'Etapa do treinamento';
   if (/^\/admin\/onboarding\/[^/]+$/.test(pathname)) return 'Plano de ativação';
   if (/^\/admin\/consumo\/[^/]+\/limites$/.test(pathname)) return 'Editar limites da clínica';

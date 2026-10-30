@@ -20,6 +20,8 @@ export function Breadcrumbs() {
         const label = getRouteLabel(path);
         const emailModels = path === '/todos-templates' && location.pathname.startsWith('/todos-templates/email/');
         const isLast = index === segments.length - 1;
+        if (!isLast && path === '/admin/cobrancas/reconciliar') return null;
+        if (!isLast && /^\/admin\/cobrancas\/reconciliar\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/admin\/consumo\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/admin\/incidentes\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/admin\/lgpd\/[^/]+$/.test(path)) return null;
