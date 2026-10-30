@@ -49,4 +49,4 @@ Atualizacao de 30/10/2026: pagamento de repasse agora ocorre em pagina propria (
 
 Atualização de 30/10/2026: importação do extrato OFX tem página própria (1ac12fc), preserva a competência do Fluxo de Caixa e não cria lançamentos automaticamente. Na etapa 11, criação de lote TISS agora também tem página própria (68782fe); retorno do lote, registro de glosa, preparação de recurso e decisão da operadora seguem em modais. As etapas 9, 10 e 12 ainda exigem auditoria operacional; a sequência integral continua em andamento.
 
-Atualização de 30/10/2026: criação de lote TISS agora tem página própria (68782fe). Permanecem em modais o retorno do lote, o registro de glosa, a preparação do recurso e a decisão da operadora. A migração financeira e a auditoria das etapas 9, 10 e 12 continuam em andamento.
+Atualização de 30/10/2026: criação de lote TISS (68782fe) e registro do retorno/conciliação (9f3c57f) estão em páginas próprias. Registro de glosa, preparação de recurso e decisão da operadora continuam em modais. A auditoria das etapas 9, 10 e 12 também segue em andamento; a sequência integral não está concluída.
