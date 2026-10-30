@@ -37,6 +37,9 @@ import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, toDateOnly, to
 import { valorRealizado } from '@/lib/lancamentos';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { linkWhatsApp } from '@/lib/whatsapp';
+import { formatarEspera, minutosDeEspera } from '@/lib/filaEspera';
+import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
+import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -239,18 +242,6 @@ const roleTips = {
   enfermagem: ['Priorize a triagem de quem chegou primeiro.', 'Confira coletas pendentes no mapa de coleta.', 'Registre sinais vitais antes da consulta.'],
   financeiro: ['Concilie os recebimentos do dia no caixa.', 'Veja contas que vencem esta semana.', 'Acompanhe inadimplentes e envie lembretes.'],
 } as const;
-
-function RoleWorkspace({ roles }: { roles: string[] }) {
-  const role = dashboardRolePriority.find(item => roles.includes(item));
-  if (!role) return null;
-  const workspace = roleWorkspaces[role];
-  return <section aria-labelledby="role-workspace-title" className="border-b border-border pb-5">
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div><h2 id="role-workspace-title" className="text-base font-bold">{workspace.title}</h2><p className="text-sm text-muted-foreground">{workspace.description}</p></div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{workspace.actions.map(({ label, href, icon: Icon }) => <Link key={href} to={href} className="flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"><Icon className="h-4 w-4 text-muted-foreground" />{label}</Link>)}</div>
-    </div>
-  </section>;
-}
 
 function minutosDesde(valor?: string | null, agora = new Date()) {
   if (!valor) return null;
@@ -533,6 +524,18 @@ function AdminDashboard() {
   const { data: estoque = [], isLoading: loadingEstoque } = estoqueQuery;
   const filaQuery = useFilaAtendimento({ suppressGlobalErrorToast: true });
   const { data: fila = [], isLoading: loadingFila } = filaQuery;
+  const filaHoje = useMemo(() => ordenarFilaPorPrioridade(
+    separarFilaAtivaPorData(fila, hoje, new Map<string, string>()).hoje
+      .filter(item => podeIniciarAgendamento(item.agendamentos?.status)),
+  ), [fila, hoje]);
+  const filaAgoraResumo = useMemo(() => filaHoje.map(item => ({
+    id: item.id,
+    paciente: item.agendamentos?.pacientes?.nome || 'Paciente',
+    medico: item.agendamentos?.medicos?.nome,
+    prioridade: item.prioridade || 'normal',
+    status: item.status,
+    espera: formatarEspera(minutosDeEspera(item.horario_chegada, agora.getTime())),
+  })), [filaHoje, agora]);
   const tarefasQuery = useMinhasTarefasPendentes({ suppressGlobalErrorToast: true });
   const { data: minhasTarefas = [] } = tarefasQuery;
   const tarefasAtrasadas = useMemo(() => minhasTarefas.filter(t => t.data_vencimento && t.data_vencimento < hoje).length, [minhasTarefas, hoje]);
@@ -733,7 +736,7 @@ function AdminDashboard() {
   // Operacional e sparklines
   const operacionalStats = useMemo(() => {
     const estoqueBaixo = estoque.filter(e => e.quantidade <= (e.quantidade_minima || 0)).length;
-    const filaAguardando = fila.filter(f => f.status === 'aguardando').length;
+    const filaAguardando = filaHoje.filter(f => f.status === 'aguardando').length;
     const pacientesPorMes = resumo?.pacientesPorMes ?? [];
     const novosPacientesMes = pacientesPorMes[pacientesPorMes.length - 1]?.total ?? 0;
     const sparkPacientes = pacientesPorMes.map((item: { mes: string; total: number }) => item.total);
@@ -754,7 +757,7 @@ function AdminDashboard() {
       .slice(0, 6);
 
     return { estoqueBaixo, filaAguardando, novosPacientesMes, sparkPacientes, sparkConsultas, medicosAtivos, proximosAgendamentos };
-  }, [resumo, agendamentos, baseAgendamentos, estoque, fila, medicos, hoje, anoAtual, mesAtual]);
+  }, [resumo, agendamentos, baseAgendamentos, estoque, filaHoje, medicos, hoje, anoAtual, mesAtual]);
 
   // Combine all stats into single object for backward compatibility
   const stats = useMemo(() => ({
@@ -841,7 +844,6 @@ function AdminDashboard() {
 
   return (
     <div className="space-y-6 pb-10">
-      <RoleWorkspace roles={user?.roles || []} />
       {fontesNoLimite.length > 0 && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
@@ -987,9 +989,12 @@ function AdminDashboard() {
             dataLabel={hojeFormatado}
             horarioLabel={new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(agora)}
             metricas={{ consultas: stats.totalHoje, fila: stats.filaAguardando, finalizadas: stats.consultasFinalizadas, receita: formatCurrency(stats.receitaDia) }}
+            atalhosAdmin={roleWorkspaces.admin.actions}
+            filaAgora={filaAgoraResumo}
+            filaAtualizando={filaQuery.isFetching}
+            onAtualizarFila={() => filaQuery.refetch()}
             agenda={baseAgendamentos.filter((ag) => ag.data === hoje && ag.status !== 'cancelado').sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || '')).map((ag) => ({ id: ag.id, horario: ag.hora_inicio?.slice(0, 5) || '-', paciente: ag.pacientes?.nome || ag.observacoes || ag.tipo || 'Paciente', tipo: ag.tipo || 'Consulta', status: formatAppointmentStatus(ag.status) }))}
             alertas={[
-              ...(stats.filaAguardando > 0 ? [{ id: 'fila', titulo: 'Pacientes na fila', detalhe: `${stats.filaAguardando} aguardando atendimento`, href: '/fila', tom: 'attention' as const }] : []),
               ...(stats.inadimplente > 0 ? [{ id: 'financeiro', titulo: 'Valores em atraso', detalhe: `${formatCurrency(stats.inadimplente)} em aberto`, href: '/cobranca-inadimplentes', tom: 'attention' as const }] : []),
               ...(stats.estoqueBaixo > 0 ? [{ id: 'estoque', titulo: 'Estoque baixo', detalhe: `${stats.estoqueBaixo} item(ns) precisam de reposição`, href: '/estoque', tom: 'info' as const }] : []),
               ...(tarefasAtrasadas > 0 ? [{ id: 'tarefas', titulo: 'Tarefas atrasadas', detalhe: `${tarefasAtrasadas} tarefa(s) sua(s) venceram`, href: '/tarefas', tom: 'attention' as const }]

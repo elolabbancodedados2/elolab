@@ -1,6 +1,6 @@
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Cake, Check, CheckCircle2, ClipboardList,
-  FileText, FlaskConical, ListChecks, MessageCircle, Plus, UserRoundPlus, Users,
+  FileText, FlaskConical, ListChecks, MessageCircle, Plus, RefreshCw, Timer, UserRoundPlus, Users,
 } from '@/components/icons/elolabIcons';
 import { Link } from 'react-router-dom';
 import {
@@ -14,6 +14,15 @@ export interface AdminDashboardAppointment {
   paciente: string;
   tipo: string;
   status: string;
+}
+
+export interface AdminDashboardFilaItem {
+  id: string;
+  paciente: string;
+  medico?: string | null;
+  prioridade: string;
+  status: string;
+  espera: string;
 }
 
 export interface AdminDashboardAlert {
@@ -50,6 +59,10 @@ export interface AdminDashboardOverviewProps {
     receita: string;
   };
   agenda: AdminDashboardAppointment[];
+  filaAgora?: AdminDashboardFilaItem[];
+  filaAtualizando?: boolean;
+  onAtualizarFila?: () => void | Promise<unknown>;
+  atalhosAdmin?: Array<{ label: string; href: string }>;
   alertas: AdminDashboardAlert[];
   desempenho: { percentual: number; descricao: string };
   fluxoFinanceiro: Array<{ name: string; receitas: number; despesas: number }>;
@@ -79,6 +92,10 @@ export function AdminDashboardOverview({
   horarioLabel,
   metricas,
   agenda,
+  filaAgora = [],
+  filaAtualizando = false,
+  onAtualizarFila,
+  atalhosAdmin = [],
   alertas,
   desempenho,
   fluxoFinanceiro,
@@ -98,14 +115,25 @@ export function AdminDashboardOverview({
       <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold capitalize text-muted-foreground">
-            {dataLabel} <span className="mx-1 text-border">·</span> Atualizado às {horarioLabel}
+            {dataLabel} <span className="mx-1 text-border">·</span> Hora local {horarioLabel}
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Visão da clínica</h1>
           <p className="mt-1 text-sm text-muted-foreground">{saudacao}, {nome}. Prioridades e agenda de hoje.</p>
         </div>
-        <Link to="/agenda" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-          <Plus className="h-4 w-4" /> Novo atendimento
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {atalhosAdmin.length > 0 && (
+            <nav aria-label="Atalhos da administração" className="flex flex-wrap items-center gap-2">
+              {atalhosAdmin.map((atalho) => (
+                <Link key={atalho.href} to={atalho.href} className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                  {atalho.label}
+                </Link>
+              ))}
+            </nav>
+          )}
+          <Link to="/agenda" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+            <Plus className="h-4 w-4" /> Novo atendimento
+          </Link>
+        </div>
       </header>
 
       <section aria-labelledby="dashboard-summary-title" className="border-b border-border pb-4">
@@ -227,7 +255,60 @@ export function AdminDashboardOverview({
         </section>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-4">
+        <section aria-labelledby="dashboard-fila-title" className={`${cardBase} min-w-0 p-5`}>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 id="dashboard-fila-title" className={sectionTitle}>Fila agora</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">Atendimentos ativos de hoje</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-extrabold tabular-nums text-primary">{filaAgora.length}</span>
+              {onAtualizarFila && (
+                <button type="button" onClick={() => { void onAtualizarFila(); }} disabled={filaAtualizando} aria-label="Atualizar fila" title="Atualizar fila" className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground transition hover:bg-muted disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <RefreshCw aria-hidden="true" className={cn('h-4 w-4 motion-reduce:animate-none', filaAtualizando && 'animate-spin')} />
+                </button>
+              )}
+            </div>
+          </div>
+          {filaAgora.length > 0 ? (
+            <ul className="space-y-2">
+              {filaAgora.slice(0, 3).map((item) => {
+                const prioridade = item.prioridade === 'urgente' ? 'Urgente' : item.prioridade === 'preferencial' ? 'Preferencial' : 'Normal';
+                const prioridadeTom = item.prioridade === 'urgente' ? 'text-destructive' : item.prioridade === 'preferencial' ? 'text-warning-foreground' : 'text-muted-foreground';
+                const status = item.status === 'em_atendimento' ? 'Em atendimento' : item.status === 'chamado' ? 'Chamado' : 'Aguardando';
+                return (
+                  <li key={item.id}>
+                    <Link to="/fila" className="block rounded-xl border border-border/70 px-3 py-2.5 transition hover:border-primary/35 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-foreground">{item.paciente}</p>
+                          {item.medico && <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.medico}</p>}
+                        </div>
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{status}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                        <span className={cn('font-semibold', prioridadeTom)}>{prioridade}</span>
+                        <span className="inline-flex items-center gap-1 text-muted-foreground"><Timer aria-hidden="true" className="h-3.5 w-3.5" />{item.status === 'aguardando' ? 'Aguardando há' : 'Chegou há'} {item.espera}</span>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="flex min-h-32 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 px-3 text-center">
+              <CheckCircle2 aria-hidden="true" className="mb-2 h-5 w-5 text-success" />
+              <p className="text-sm font-semibold text-foreground">Fila vazia por enquanto</p>
+              <p className="mt-1 text-xs text-muted-foreground">Nenhum paciente aguardando hoje.</p>
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            {filaAgora.length > 3 && <span className="text-xs text-muted-foreground">+{filaAgora.length - 3} pacientes</span>}
+            <Link to="/fila" className={cn(linkAzul, 'ml-auto')}>Abrir fila <ArrowRight className="h-3.5 w-3.5" /></Link>
+          </div>
+        </section>
+
         <section aria-labelledby="dashboard-confirmacoes-title" className={`${cardBase} p-5`}>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -326,19 +407,26 @@ export function AdminDashboardOverview({
       <div className="grid gap-4 xl:grid-cols-[minmax(240px,0.9fr)_minmax(320px,1.4fr)_minmax(250px,0.9fr)]">
         <section aria-labelledby="dashboard-progress-title" className={`${cardBase} p-5`}>
           <h2 id="dashboard-progress-title" className={sectionTitle}>Atendimentos do dia</h2>
-          <div className="mt-3 flex items-center gap-4">
-            <div className="relative h-28 w-28 shrink-0" role="progressbar" aria-label="Atendimentos concluídos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={desempenhoSeguro}>
-              <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
-                <circle cx="50" cy="50" r="40" fill="none" className="stroke-muted" strokeWidth="11" />
-                <circle cx="50" cy="50" r="40" fill="none" stroke="hsl(var(--primary))" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 40}`} strokeDashoffset={`${2 * Math.PI * 40 * (1 - desempenhoSeguro / 100)}`} />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-foreground">
-                <span className="text-2xl font-extrabold tabular-nums">{desempenhoSeguro}%</span>
-                <span className="text-[10px] text-muted-foreground">concluídos</span>
+          {metricas.consultas > 0 ? (
+            <div className="mt-3 flex items-center gap-4">
+              <div className="relative h-28 w-28 shrink-0" role="progressbar" aria-label="Atendimentos concluídos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={desempenhoSeguro}>
+                <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
+                  <circle cx="50" cy="50" r="40" fill="none" className="stroke-muted" strokeWidth="11" />
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="hsl(var(--primary))" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 40}`} strokeDashoffset={`${2 * Math.PI * 40 * (1 - desempenhoSeguro / 100)}`} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-foreground">
+                  <span className="text-2xl font-extrabold tabular-nums">{desempenhoSeguro}%</span>
+                  <span className="text-[10px] text-muted-foreground">concluídos</span>
+                </div>
               </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{desempenho.descricao}</p>
             </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">{desempenho.descricao}</p>
-          </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-dashed border-border bg-muted/30 p-4">
+              <p className="text-sm font-semibold text-foreground">Nenhum atendimento programado para hoje.</p>
+              <Link to="/agenda" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">Agendar consulta <ArrowRight className="h-3.5 w-3.5" /></Link>
+            </div>
+          )}
           {aniversariantes.length > 0 && (
             <div className="mt-4 rounded-2xl border border-border bg-muted/30 p-3">
               <p className="flex items-center gap-1.5 text-xs font-bold text-foreground"><Cake className="h-3.5 w-3.5 text-primary" /> Aniversariantes de hoje</p>
