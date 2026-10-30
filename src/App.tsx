@@ -147,6 +147,7 @@ const AnalisePreditiva = lazy(() => import("@/pages/AnalisePreditiva"));
 const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
+const RepassePagamentoPage = lazy(() => import("@/pages/RepassePagamentoPage"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
 const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
@@ -361,6 +362,7 @@ function AppRoutes() {
                           <Route path="/convenios/:agreementId/exames/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios examTablePage examCreationPage /></SupabaseProtectedRoute>} />
                           <Route path="/convenios/:agreementId/exames/:agreementExamId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios examTablePage /></SupabaseProtectedRoute>} />
                           <Route path="/faturamento-convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FaturamentoConvenios /></SupabaseProtectedRoute>} />
+                          <Route path="/repasses-medicos/:repasseId/pagamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassePagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/repasses-medicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassesMedicos /></SupabaseProtectedRoute>} />
                           <Route path="/interoperabilidade" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Interoperabilidade /></SupabaseProtectedRoute>} />
                           <Route path="/todos-templates/prescricoes/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><ClinicalTemplateEditor kind="prescription" /></SupabaseProtectedRoute>} />

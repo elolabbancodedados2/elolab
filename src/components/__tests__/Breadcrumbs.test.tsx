@@ -41,6 +41,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(cashId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(cashId))).toBe(false);
   });
+  it('omite o identificador do repasse no registro de pagamento', () => {
+    const repasseId = '00000000-0000-4000-9000-000000000091';
+    render(<MemoryRouter initialEntries={[`/repasses-medicos/${repasseId}/pagamento`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Registrar pagamento de repasse')).toBeInTheDocument();
+    expect(screen.queryByText(repasseId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(repasseId))).toBe(false);
+  });
   it('omite o identificador do prontuário no breadcrumb do novo adendo', () => {
     const recordId = '00000000-0000-4000-9000-000000000013';
     render(<MemoryRouter initialEntries={[`/prontuarios/${recordId}/adendos/novo`]}><Breadcrumbs /></MemoryRouter>);

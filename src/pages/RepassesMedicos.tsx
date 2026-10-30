@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, BadgeCheck, CheckCircle2, Clock3, HandCoins, Play, RefreshCw, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,10 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { isValidDateOnly, todaySaoPauloDateOnly, toDateOnly } from '@/lib/dateOnly';
+import { todaySaoPauloDateOnly, toDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
@@ -114,17 +113,18 @@ export function ConfiguracaoMedico({ medico, ultimaAlteracao, onSaved }: { medic
 }
 
 export default function RepassesMedicos() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
-  const [competencia, setCompetencia] = useState(() => todaySaoPauloDateOnly().slice(0, 7));
+  const routeState = location.state as { competencia?: unknown } | null;
+  const [competencia, setCompetencia] = useState(() => typeof routeState?.competencia === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(routeState.competencia)
+    ? routeState.competencia
+    : todaySaoPauloDateOnly().slice(0, 7));
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatusRepasse>('todos');
   const competenciaValida = /^\d{4}-(0[1-9]|1[0-2])$/.test(competencia);
   const [processing, setProcessing] = useState(false);
   const [statusProcessingId, setStatusProcessingId] = useState<string | null>(null);
-  const [repassePagamentoConfirmar, setRepassePagamentoConfirmar] = useState<Repasse | null>(null);
-  const [formaPagamentoRepasse, setFormaPagamentoRepasse] = useState('transferencia');
-  const [dataPagamentoRepasse, setDataPagamentoRepasse] = useState(() => todaySaoPauloDateOnly());
-  const [observacoesPagamentoRepasse, setObservacoesPagamentoRepasse] = useState('');
   const medicosQuery = useQuery({ queryKey: ['medicos-repasse', profile?.clinica_id ?? null], enabled: !!user && !!profile?.clinica_id, queryFn: async () => {
     const { data, error } = await (supabase as any).rpc('listar_medicos_repasse_equipe');
     if (error) throw error; return (data ?? []) as MedicoRepasse[];
@@ -177,14 +177,10 @@ export default function RepassesMedicos() {
       setProcessing(false);
     }
   };
-  const mudarStatus = async (id: string, status: string) => {
+  const mudarStatus = async (id: string) => {
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
     const repasseAtual = repasses.find(repasse => repasse.id === id);
     if (!repasseAtual) { toast.error('Repasse não encontrado na lista atualizada. Recarregue e tente novamente.'); return; }
-    if (status === 'pago' && (!isValidDateOnly(dataPagamentoRepasse) || dataPagamentoRepasse > todaySaoPauloDateOnly())) {
-      toast.error('Informe uma data de pagamento válida, igual ou anterior a hoje.');
-      return;
-    }
     setStatusProcessingId(id);
     try {
       const { data: origemAtual, error: origemError } = await (supabase as any).from('lancamentos')
@@ -194,38 +190,11 @@ export default function RepassesMedicos() {
         await queryClient.invalidateQueries({ queryKey: ['repasses-medicos'] });
         throw new Error('A receita de origem foi estornada ou deixou de estar quitada. O repasse não pode avançar.');
       }
-      let jaRegistrado = false;
-      if (status === 'pago') {
-        const { data, error } = await (supabase as any).rpc('registrar_pagamento_repasse_medico', {
-          p_repasse_id: id,
-          p_forma_pagamento: formaPagamentoRepasse,
-          p_data_pagamento: dataPagamentoRepasse,
-          p_observacoes: observacoesPagamentoRepasse.trim() || null,
-        });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'O pagamento não foi registrado.');
-        jaRegistrado = Boolean(data.ja_registrado);
-      } else {
-        const { data, error } = await (supabase as any).rpc('aprovar_repasse_medico', {
-          p_repasse_id: id,
-        });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Este repasse mudou de status. Atualize a lista antes de continuar.');
-      }
+      const { data, error } = await (supabase as any).rpc('aprovar_repasse_medico', { p_repasse_id: id });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Este repasse mudou de status. Atualize a lista antes de continuar.');
       await queryClient.invalidateQueries({ queryKey: ['repasses-medicos'] });
-      if (status === 'pago') {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-          queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
-          queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
-        ]);
-        setRepassePagamentoConfirmar(null);
-        setDataPagamentoRepasse(todaySaoPauloDateOnly());
-        setObservacoesPagamentoRepasse('');
-        toast.success(jaRegistrado ? 'O pagamento deste repasse já estava registrado.' : 'Pagamento registrado como despesa no fluxo financeiro.');
-      } else {
-        toast.success('Repasse aprovado.');
-      }
+      toast.success('Repasse aprovado.');
     } catch (error: any) {
       toast.error('Não foi possível atualizar o repasse.', { description: error?.message });
     } finally {
@@ -353,8 +322,8 @@ export default function RepassesMedicos() {
                 <TableCell className="text-right font-medium">{moeda(r.valor_repasse)}</TableCell>
                 <TableCell><Badge variant="outline" className={cn('rounded-full', r.status === 'pago' ? 'border-success/40 bg-success/10 text-success-foreground' : r.status === 'aprovado' ? 'border-[#BFD8EE] bg-[#1080CA]/10 text-[#1080CA]' : 'border-warning/40 bg-warning/10 text-warning-foreground')}>{r.status === 'pago' ? 'Pago' : r.status === 'aprovado' ? 'Aprovado' : 'Pendente'}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
                 <TableCell>
-                  {podeAprovarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id, 'aprovado')} className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">Aprovar</Button>}
-                  {podePagarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => { setFormaPagamentoRepasse('transferencia'); setDataPagamentoRepasse(todaySaoPauloDateOnly()); setObservacoesPagamentoRepasse(''); setRepassePagamentoConfirmar(r); }} className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"><CheckCircle2 className="h-3.5 w-3.5" />Registrar pagamento</Button>}
+                  {podeAprovarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id)} className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">Aprovar</Button>}
+                  {podePagarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => navigate(`/repasses-medicos/${r.id}/pagamento`, { state: { competencia } })} className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"><CheckCircle2 className="h-3.5 w-3.5" />Registrar pagamento</Button>}
                   {r.status !== 'pago' && r.status !== 'cancelado' && !receitaOrigemQuitada(r.lancamentos?.status) && <span className="text-xs text-destructive">Receita estornada</span>}
                 </TableCell>
               </TableRow>)}</TableBody>
@@ -363,49 +332,6 @@ export default function RepassesMedicos() {
         )}
       </CardContent>
     </Card>
-    <Dialog open={!!repassePagamentoConfirmar} onOpenChange={open => { if (!open && statusProcessingId === null) setRepassePagamentoConfirmar(null); }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Registrar pagamento do repasse</DialogTitle>
-          <DialogDescription>
-            Confirme que o pagamento de {moeda(Number(repassePagamentoConfirmar?.valor_repasse || 0))} para {repassePagamentoConfirmar?.medicos?.nome || repassePagamentoConfirmar?.medicos?.crm || 'o médico'} já foi realizado. O EloLab registrará a saída no Fluxo de Caixa; nenhuma transferência será iniciada pelo sistema.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="forma-pagamento-repasse">Forma de pagamento</Label>
-          <Select value={formaPagamentoRepasse} onValueChange={setFormaPagamentoRepasse} disabled={statusProcessingId !== null}>
-            <SelectTrigger id="forma-pagamento-repasse"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="transferencia">Transferência</SelectItem>
-              <SelectItem value="pix">PIX</SelectItem>
-              <SelectItem value="dinheiro">Dinheiro</SelectItem>
-              <SelectItem value="credito">Cartão de crédito</SelectItem>
-              <SelectItem value="debito">Cartão de débito</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="data-pagamento-repasse">Data em que foi pago</Label>
-          <Input id="data-pagamento-repasse" type="date" required max={todaySaoPauloDateOnly()}
-            value={dataPagamentoRepasse} onChange={event => setDataPagamentoRepasse(event.target.value)}
-            disabled={statusProcessingId !== null} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="observacoes-pagamento-repasse">Referência ou observação (opcional)</Label>
-          <Textarea id="observacoes-pagamento-repasse" value={observacoesPagamentoRepasse}
-            onChange={event => setObservacoesPagamentoRepasse(event.target.value)}
-            placeholder="Ex.: transferência realizada em 06/10, comprovante 12345"
-            rows={2} disabled={statusProcessingId !== null} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" className="rounded-full" onClick={() => setRepassePagamentoConfirmar(null)} disabled={statusProcessingId !== null}>Cancelar</Button>
-          <Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => { if (repassePagamentoConfirmar) void mudarStatus(repassePagamentoConfirmar.id, 'pago'); }} disabled={!repassePagamentoConfirmar || !dataPagamentoRepasse || dataPagamentoRepasse > todaySaoPauloDateOnly() || statusProcessingId !== null}>
-            {statusProcessingId === repassePagamentoConfirmar?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-            Confirmar pagamento realizado
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
   </div>;
 }
