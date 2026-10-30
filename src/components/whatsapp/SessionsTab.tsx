@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Plus, RefreshCw, Trash2, QrCode, Smartphone, Wifi, WifiOff } from 'lucide-react';
 import { WhatsAppSession, WhatsAppAgent } from './types';
 
@@ -15,12 +12,11 @@ interface SessionsTabProps {
   sessions: WhatsAppSession[];
   agents: WhatsAppAgent[];
   isLoading: boolean;
-  onCreateSession: (instanceName: string) => Promise<unknown>;
+  onCreateSessionPage: (returnFocusId: string) => void;
   onRefreshQR: (sessionId: string, instanceName: string) => void;
   onCheckStatus: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onLinkAgent: (sessionId: string, agentId: string | null) => void;
-  isCreating: boolean;
   isRefreshing: boolean;
   isChecking: boolean;
 }
@@ -29,17 +25,14 @@ export function SessionsTab({
   sessions,
   agents,
   isLoading,
-  onCreateSession,
+  onCreateSessionPage,
   onRefreshQR,
   onCheckStatus,
   onDeleteSession,
   onLinkAgent,
-  isCreating,
   isRefreshing,
   isChecking,
 }: SessionsTabProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [newInstanceName, setNewInstanceName] = useState('');
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
 
   // A Evolution API can return either an image/base64 or the raw QR payload
@@ -76,16 +69,6 @@ export function SessionsTab({
     return () => { active = false; };
   }, [sessions]);
 
-  const handleCreate = async () => {
-    try {
-      await onCreateSession(newInstanceName);
-      setNewInstanceName('');
-      setIsOpen(false);
-    } catch {
-      // Mantém o nome digitado para permitir nova tentativa.
-    }
-  };
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'connected':
@@ -102,45 +85,11 @@ export function SessionsTab({
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Sessões de WhatsApp</h2>
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Nova Sessão
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Criar Nova Sessão</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <Label>Nome da Instância</Label>
-                <Input
-                  placeholder="Ex: clinica-principal"
-                  value={newInstanceName}
-                  onChange={(e) => setNewInstanceName(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Use apenas letras, números e hífens
-                </p>
-              </div>
-              <Button
-                className="w-full"
-                onClick={handleCreate}
-                disabled={!newInstanceName || isCreating}
-              >
-                {isCreating ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <QrCode className="h-4 w-4 mr-2" />
-                )}
-                Gerar QR Code
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <h2 id="whatsapp-sessions-heading" tabIndex={-1} className="text-xl font-semibold">Sessões de WhatsApp</h2>
+        <Button id="whatsapp-new-session-button" onClick={() => onCreateSessionPage('whatsapp-new-session-button')}>
+          <Plus className="h-4 w-4 mr-2" />
+          Nova Sessão
+        </Button>
       </div>
 
       {isLoading ? (
@@ -153,7 +102,7 @@ export function SessionsTab({
             <p className="text-muted-foreground mb-4">
               Crie uma sessão para conectar o WhatsApp
             </p>
-            <Button onClick={() => setIsOpen(true)}>
+            <Button id="whatsapp-create-first-session-button" onClick={() => onCreateSessionPage('whatsapp-create-first-session-button')}>
               <Plus className="h-4 w-4 mr-2" />
               Criar Primeira Sessão
             </Button>

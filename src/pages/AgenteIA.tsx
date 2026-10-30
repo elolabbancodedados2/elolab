@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot, Smartphone, MessageSquare, RefreshCw, Users, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,6 +14,7 @@ import { StatsCards } from '@/components/whatsapp/StatsCards';
 import { SessionsTab } from '@/components/whatsapp/SessionsTab';
 import { AgentsTab } from '@/components/whatsapp/AgentsTab';
 import { ConversationsTab } from '@/components/whatsapp/ConversationsTab';
+import { NewWhatsAppSessionPage } from '@/components/whatsapp/NewWhatsAppSessionPage';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 import { ErrorState } from '@/components/ErrorState';
@@ -23,6 +25,10 @@ import { cn } from '@/lib/utils';
 
 export default function AgenteIA() {
   const [activeTab, setActiveTab] = useState('sessions');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isSessionCreatePage = location.pathname === '/agente-ia/sessoes/nova';
+  const focusId = (location.state as { focusId?: unknown } | null)?.focusId;
   const { profile } = useSupabaseAuth();
   const { hasFeature, isLoading: planLoading, isError: planError, error: planQueryError, refetch: refetchPlan } = useUserPlan();
   const acessoLiberado = !planLoading && hasFeature('agente_ia');
@@ -54,6 +60,15 @@ export default function AgenteIA() {
     sendHumanMedia,
     requestSatisfaction,
   } = useWhatsAppMutations();
+
+  useEffect(() => {
+    if (typeof focusId !== 'string') return;
+    const timeout = window.setTimeout(() => {
+      document.getElementById(focusId)?.focus();
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [focusId, location.pathname, location.search, navigate]);
 
   if (planLoading) {
     return <PageSkeleton />;
@@ -90,7 +105,15 @@ export default function AgenteIA() {
 
   return (
     <FeatureGate feature="agente_ia" hasAccess={hasFeature('agente_ia')} requiredPlan="EloLab Ultra">
-    <div className="space-y-6">
+    {isSessionCreatePage ? (
+      <NewWhatsAppSessionPage
+        isCreating={createSession.isPending}
+        onCreate={async (instanceName) => {
+          await createSession.mutateAsync(instanceName);
+          await sessionsQuery.refetch();
+        }}
+      />
+    ) : <div className="space-y-6">
       <PageHeader
         title="Agente de IA - WhatsApp"
         description={`${sessoesConectadas} sessão(ões) conectada(s) · ${aguardandoHumano} conversa(s) aguardando atendimento humano`}
@@ -175,12 +198,11 @@ export default function AgenteIA() {
             sessions={sessions}
             agents={agents}
             isLoading={sessionsQuery.isLoading}
-            onCreateSession={(name) => createSession.mutateAsync(name)}
+            onCreateSessionPage={(returnFocusId) => navigate('/agente-ia/sessoes/nova', { state: { returnFocusId } })}
             onRefreshQR={(id, name) => refreshQR.mutate({ sessionId: id, instanceName: name })}
             onCheckStatus={(id) => checkStatus.mutate(id)}
             onDeleteSession={(id) => deleteSession.mutate(id)}
             onLinkAgent={(sessionId, agentId) => linkAgentToSession.mutate({ sessionId, agentId })}
-            isCreating={createSession.isPending}
             isRefreshing={refreshQR.isPending}
             isChecking={checkStatus.isPending}
           />
@@ -225,7 +247,7 @@ export default function AgenteIA() {
           />
         </TabsContent>
       </Tabs>
-    </div>
+    </div>}
     </FeatureGate>
   );
 }

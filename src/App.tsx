@@ -485,6 +485,7 @@ function AppRoutes() {
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanFeatureGuard feature="automacoes" requiredPlan="EloLab Pro"><Automacoes /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/templates-email" element={<Navigate to="/todos-templates?tab=email" replace />} />
+                          <Route path="/agente-ia/sessoes/nova" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/agente-ia" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
                           <Route path="/analytics" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Analytics /></SupabaseProtectedRoute>} />
                           <Route path="/planos" element={<SupabaseProtectedRoute allowedRoles={['admin']} permitirCompradorPendente><Planos /></SupabaseProtectedRoute>} />

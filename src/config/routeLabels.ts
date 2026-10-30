@@ -110,6 +110,7 @@ const labelsByPath: Record<string, string> = {
   '/configuracoes-avancadas': 'Configurações avançadas',
   '/automacoes': 'Automações',
   '/agente-ia': 'Atendente de IA',
+  '/agente-ia/sessoes/nova': 'Nova sessão de WhatsApp',
   '/analytics': 'Indicadores da clínica',
   '/planos': 'Planos e assinatura',
   '/documentacao': 'Documentação',
