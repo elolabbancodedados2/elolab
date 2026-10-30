@@ -153,6 +153,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/prontuarios\/(?:[^/]+\/)?retornos\/novo$/.test(pathname)) return 'Agendar retorno clínico';
   if (/^\/atendimentos\/[^/]+\/finalizar$/.test(pathname)) return 'Finalizar atendimento';
   if (/^\/recepcao\/pagamentos\/[^/]+$/.test(pathname)) return 'Receber pagamento';
+  if (/^\/fila\/[^/]+\/liberacao\/(pagamento|triagem)$/.test(pathname)) return 'Liberar atendimento';
   if (/^\/recepcao\/caixa\/[^/]+\/fechar$/.test(pathname)) return 'Fechar caixa';
   if (pathname === '/recepcao/caixa/reabrir') return 'Reabrir caixa';
   if (/^\/recepcao\/caixa\/historico\/[^/]+$/.test(pathname)) return 'Detalhes do caixa';

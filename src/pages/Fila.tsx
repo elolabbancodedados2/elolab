@@ -244,18 +244,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const [isHandoffOpen, setIsHandoffOpen] = useState(false);
   const [motivoSaida, setMotivoSaida] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
-  /**
-   * Liberação excepcional da trava de pagamento/triagem.
-   *
-   * O banco aceita `liberado_sem_pagamento`/`liberado_sem_triagem` com
-   * justificativa obrigatória desde a migration 20260814210000 — a escapatória
-   * para emergência, idoso sem cartão, paciente antigo sem a carteira — mas
-   * NENHUMA tela gravava esses campos. Com a trava ligada, a única saída era
-   * desligar a trava da clínica inteira. Este dialog é o botão que faltava.
-   */
-  const [liberando, setLiberando] = useState<{ tipo: 'pagamento' | 'triagem'; agendamentoId: string; nome: string } | null>(null);
-  const [motivoLiberacao, setMotivoLiberacao] = useState('');
-  const [salvandoLiberacao, setSalvandoLiberacao] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING');
   const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
@@ -803,65 +791,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     }
   };
 
-  /**
-   * Grava a liberação excepcional da trava (pagamento ou triagem) com
-   * justificativa — espelhando as colunas e a constraint do banco
-   * (migration 20260814210000 / 20260814250000).
-   */
-  const handleLiberar = async () => {
-    if (!liberando) return;
-    if (!profile?.id || !profile?.clinica_id) {
-      toast.error('Não foi possível identificar seu usuário e clínica. Atualize a sessão antes de liberar este atendimento.');
-      return;
-    }
-    const motivo = motivoLiberacao.trim();
-    if (motivo.length < 5) {
-      toast.error('Descreva o motivo da liberação (mínimo 5 caracteres).');
-      return;
-    }
-    setSalvandoLiberacao(true);
-    try {
-      const { data, error } = liberando.tipo === 'pagamento'
-        ? await supabase
-            .from('agendamentos')
-            .update({
-              liberado_sem_pagamento: true,
-              liberado_sem_pagamento_por: profile.id,
-              liberado_sem_pagamento_em: new Date().toISOString(),
-              motivo_liberacao: motivo,
-            })
-            .eq('id', liberando.agendamentoId)
-            .eq('clinica_id', profile.clinica_id)
-            .select('id')
-            .maybeSingle()
-        : await supabase
-            .from('agendamentos')
-            .update({
-              liberado_sem_triagem: true,
-              liberado_sem_triagem_por: profile.id,
-              liberado_sem_triagem_em: new Date().toISOString(),
-              liberado_sem_triagem_motivo: motivo,
-            })
-            .eq('id', liberando.agendamentoId)
-            .eq('clinica_id', profile.clinica_id)
-            .select('id')
-            .maybeSingle();
-      if (error) throw error;
-      if (!data) throw new Error('A consulta não foi atualizada. Ela pode ter saído da fila ou estar em outra clínica; atualize os dados e tente novamente.');
-      toast.success(`${liberando.nome} liberado${liberando.tipo === 'pagamento' ? ' do pagamento' : ' da triagem'}.`, {
-        description: 'A liberação fica registrada com autor, data e justificativa.',
-      });
-      setLiberando(null);
-      setMotivoLiberacao('');
-      refresh();
-      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-    } catch (e: any) {
-      toast.error('Não foi possível liberar.', { description: mensagemDeErro(e) });
-    } finally {
-      setSalvandoLiberacao(false);
-    }
-  };
-
   // Stats
   const stats = {
     finalizadosHoje: filaFinalizadaHoje.length,
@@ -1381,11 +1310,8 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                   {item.cobranca_estado !== 'pendente' && hasAnyRole([...PERFIS_LIBERACAO_EXCEPCIONAL]) && (
                     <Button
                       size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
-                      disabled={salvandoLiberacao}
-                      onClick={() => setLiberando({
-                        tipo: 'pagamento',
-                        agendamentoId: item.agendamento_id,
-                        nome: getPacienteNome(item.agendamento_id),
+                      onClick={() => navigate(`/fila/${encodeURIComponent(item.agendamento_id)}/liberacao/pagamento`, {
+                        state: { returnTo: `${location.pathname}${location.search}`, patientName: getPacienteNome(item.agendamento_id) },
                       })}
                     >
                       <LockOpen className="h-3 w-3" /> Liberar
@@ -1424,11 +1350,8 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                   {hasAnyRole([...PERFIS_LIBERACAO_EXCEPCIONAL]) && (
                     <Button
                       size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
-                      disabled={salvandoLiberacao}
-                      onClick={() => setLiberando({
-                        tipo: 'triagem',
-                        agendamentoId: item.agendamento_id,
-                        nome: getPacienteNome(item.agendamento_id),
+                      onClick={() => navigate(`/fila/${encodeURIComponent(item.agendamento_id)}/liberacao/triagem`, {
+                        state: { returnTo: `${location.pathname}${location.search}`, patientName: getPacienteNome(item.agendamento_id) },
                       })}
                     >
                       <LockOpen className="h-3 w-3" /> Liberar
@@ -1538,51 +1461,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* ─── Liberação excepcional ───
-          Emergência, idoso sem cartão, paciente antigo: com a trava ligada,
-          não havia saída sem desligar a trava da clínica inteira. O banco
-          já aceitava a liberação com justificativa — faltava o botão. */}
-      <Dialog open={!!liberando} onOpenChange={a => { if (!a && !salvandoLiberacao) { setLiberando(null); setMotivoLiberacao(''); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Liberar {liberando?.tipo === 'pagamento' ? 'do pagamento' : 'da triagem'} — {liberando?.nome}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              O paciente poderá ser chamado mesmo {liberando?.tipo === 'pagamento' ? 'com saldo em aberto' : 'sem passar pela enfermagem'}.
-              A justificativa fica registrada com autor e horário — é o que impede a liberação de virar rotina.
-            </p>
-            <div className="space-y-1">
-              <Label htmlFor="motivo-liberacao">Justificativa (obrigatória)</Label>
-              <Textarea
-                id="motivo-liberacao"
-                placeholder="Ex.: paciente idoso sem cartão na emergência"
-                value={motivoLiberacao}
-                onChange={e => setMotivoLiberacao(e.target.value)}
-                rows={3}
-              />
-              {motivoLiberacao.trim().length > 0 && motivoLiberacao.trim().length < 5 && (
-                <p className="text-xs text-destructive">Mínimo de 5 caracteres.</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={salvandoLiberacao} onClick={() => { setLiberando(null); setMotivoLiberacao(''); }}>
-              Cancelar
-            </Button>
-            <Button
-              disabled={salvandoLiberacao || motivoLiberacao.trim().length < 5}
-              onClick={handleLiberar}
-              className="gap-1.5"
-            >
-              {salvandoLiberacao && <Loader2 className="h-4 w-4 animate-spin" />}
-              Liberar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

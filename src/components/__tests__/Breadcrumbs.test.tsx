@@ -75,6 +75,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(appointmentId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(appointmentId))).toBe(false);
   });
+  it.each(['pagamento', 'triagem'])('omite o identificador do atendimento na liberação de %s', tipo => {
+    const appointmentId = '00000000-0000-4000-9000-000000000071';
+    render(<MemoryRouter initialEntries={[`/fila/${appointmentId}/liberacao/${tipo}`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Liberar atendimento')).toBeInTheDocument();
+    expect(screen.queryByText(appointmentId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(appointmentId))).toBe(false);
+  });
   it('omite o identificador do caixa no breadcrumb de fechamento', () => {
     const cashId = '00000000-0000-4000-9000-000000000015';
     render(<MemoryRouter initialEntries={[`/recepcao/caixa/${cashId}/fechar`]}><Breadcrumbs /></MemoryRouter>);

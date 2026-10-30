@@ -30,6 +30,7 @@ const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const ConsentimentoLGPDTaskPage = lazy(() => import("@/pages/ConsentimentoLGPDTaskPage"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
 const FilaOperacional = lazy(() => import("@/pages/Fila"));
+const LiberarAtendimentoPage = lazy(() => import("@/pages/LiberarAtendimentoPage"));
 const RecepcaoOperacional = lazy(() => import("@/pages/Recepcao"));
 const FinalizarAtendimento = lazy(() => import("@/pages/FinalizarAtendimento"));
 const Prontuarios = lazy(() => import("@/pages/Prontuarios"));
@@ -308,6 +309,7 @@ function AppRoutes() {
                           <Route path="/exames/:examId/resultado" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames resultPage /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/triagem/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><Triagem creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/fila/adicionar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><FilaOperacional creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/fila/:agendamentoId/liberacao/:tipo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><LiberarAtendimentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/atendimentos/:agendamentoId/finalizar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><FinalizarAtendimento /></SupabaseProtectedRoute>} />
                           <Route path="/triagem" element={<RedirecionarTriagem />} />
                           <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos?tab=encaminhamentos" replace />} />

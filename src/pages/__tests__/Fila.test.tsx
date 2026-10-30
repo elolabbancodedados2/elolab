@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface AppointmentFixture {
@@ -82,6 +82,11 @@ vi.mock('framer-motion', () => ({
 
 import Fila from '@/pages/Fila';
 
+function LocationOutput() {
+  const location = useLocation();
+  return <output data-testid="fila-current-location">{location.pathname}{location.search} {JSON.stringify(location.state)}</output>;
+}
+
 const hoje = todaySaoPauloDateOnly();
 const ontemDate = new Date(`${hoje}T00:00:00Z`);
 ontemDate.setUTCDate(ontemDate.getUTCDate() - 1);
@@ -120,10 +125,21 @@ function item(id: string, appointment: AppointmentFixture, status = 'aguardando'
 }
 
 function setup() {
-  return render(<MemoryRouter><Fila /></MemoryRouter>);
+  return render(<MemoryRouter initialEntries={['/fila?tab=fila']}><LocationOutput /><Fila /></MemoryRouter>);
 }
 
 describe('Fila de atendimento', () => {
+  it('abre a liberação excepcional em página própria e preserva o retorno à fila', () => {
+    mocks.role = 'admin';
+    setup();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Liberar' }));
+
+    expect(screen.getByTestId('fila-current-location')).toHaveTextContent('/fila/blocked/liberacao/pagamento');
+    expect(screen.getByTestId('fila-current-location')).toHaveTextContent('"returnTo":"/fila?tab=fila"');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('uses a high-contrast foreground for the waiting status', () => {
     setup();
 
