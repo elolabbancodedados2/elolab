@@ -973,4 +973,4 @@ Publicado no commit `3158637e5c22f6b46e1c88c81d2529b72fd4279c`, imagem `easypane
 
 O histórico de alterações saiu do diálogo da lista e passou a `/contas/pagar/:lancamentoId/historico`, com resumo do registro, tabela de auditoria e estados de carregamento, erro com nova tentativa e ausência de alterações. A página só chama a RPC existente após confirmar que a conta é uma despesa da clínica ativa. Perfis autorizados, escopo financeiro e dados não foram alterados. O retorno preserva a URL, busca e filtros. Playwright sintético 3/3, Vitest relacionado 38/38, TypeScript, acessibilidade, permissões, falhas silenciosas, colunas e build passaram; capturas desktop/mobile foram inspecionadas. Nenhuma gravação real foi feita. Detalhes: [histórico de contas a pagar](EVOLUCAO_HISTORICO_LANCAMENTO_PAGINA.md).
 
-Publicação pendente de smoke, verificação dos dois domínios, SHA, Swarm e hash do `.env`.
+Publicado no commit `a74e6d00da6c445e7eed9cdd740c0d764144396a`, imagem `easypanel/elolab/app:deploy-20261030-a74e6d0`; rollback `deploy-20261030-b70884`. Smoke isolado, `/healthz`, SHA nos dois domínios, Swarm 1/1 e hash do `.env` confirmados.

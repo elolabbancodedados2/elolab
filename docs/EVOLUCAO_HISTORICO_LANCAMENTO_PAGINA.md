@@ -27,4 +27,10 @@ Esta entrega cobre o histórico de alterações de contas a pagar. A auditoria d
 
 ## Publicação
 
-Registro do deploy será preenchido após a conferência do smoke, dos dois domínios e do estado do serviço.
+- Commit publicado: `a74e6d00da6c445e7eed9cdd740c0d764144396a` (`deploy-20261030-a74e6d0`).
+- Smoke isolado: `healthz=ok`; `version.json` retornou o SHA completo esperado.
+- `https://app.elolab.com.br` e `https://elolab.com.br`: `healthz=ok`; ambos retornaram o SHA esperado.
+- Swarm: `elolab_app` está `1/1`, com atualização `completed`.
+- O hash do `.env` permaneceu `f2bcf73f6d860dec143ae363f755d3d18e41dc2f3ea3919944af62899c2f3b65`.
+- Backup da versão anterior: `code.before-20261030-a74e6d0`.
+- Rollback disponível: imagem `easypanel/elolab/app:deploy-20261030-b70884`.
