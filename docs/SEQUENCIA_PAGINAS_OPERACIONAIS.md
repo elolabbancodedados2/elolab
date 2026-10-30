@@ -22,7 +22,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 7. Estoque, tarefas e modelos de documentos/comunicação.
 8. Laboratório: pedidos, coleta, guias externas e laudos.
 9. Recepção, fila e triagem: triagem, inclusão na fila, encaixe, pagamento e finalização em página própria publicados; outras tarefas da recepção ainda pendentes.
-10. Prontuário e componentes clínicos: páginas próprias de adendos (`4ec83bd`), anexos (`5aae8cbc`), consentimentos (`a2c1eb0`) e agendamento de retornos a partir da evolução (`ec901d7a`) publicados; criação de documentos/evoluções continua pendente.
+10. Prontuário e componentes clínicos: páginas próprias de adendos (`4ec83bd`), anexos (`5aae8cbc`), consentimentos (`a2c1eb0`), retornos (`ec901d7a`) e criação de evoluções (`2208fb50`) publicadas; outras tarefas documentais permanecem conforme o inventário.
 11. Financeiro: contas, caixa, conciliação, repasses, faturamento e glosas.
 12. Configurações, suporte, LGPD, treinamento e operações de plataforma.
 
@@ -32,6 +32,6 @@ Cada item exige investigar os pontos de entrada e as permissões antes de editar
 
 O diagnóstico, os arquivos alterados, os testes executados, as capturas efetivamente inspecionadas, as limitações e o identificador publicado ficam em `EVOLUCAO_PAGINAS_OPERACIONAIS.md`. A existência de uma rota, compilação bem-sucedida ou botão que abre uma tela não constitui aceite completo.
 
-Estado atualizado em 30/10/2026: itens 1 a 8 publicados e validados, incluindo laudos (`ddc17f58`). Na etapa 9, triagem (`93e867b9`), check-in (`3b67483d`), encaixe (`1e43732c`), pagamento (`af68e69f`) e finalização do atendimento pelas quatro origens (`49e5056f`) estão publicados; outras tarefas da recepção continuam pendentes. Na etapa 10, adendos, anexos, consentimentos e agendamento de retorno (`ec901d7a`) têm páginas próprias; criação de documentos/evoluções segue pendente. Itens 11 e 12 também seguem pendentes. Não há declaração de migração integral do aplicativo.
+Estado atualizado em 30/10/2026: itens 1 a 8 publicados e validados, incluindo laudos (`ddc17f58`). Na etapa 9, triagem (`93e867b9`), check-in (`3b67483d`), encaixe (`1e43732c`), pagamento (`af68e69f`) e finalização do atendimento pelas quatro origens (`49e5056f`) estão publicados; outras tarefas da recepção continuam pendentes. Na etapa 10, adendos, anexos, consentimentos, agendamento de retorno (`ec901d7a`) e criação/edição de evoluções (`2208fb50`) têm páginas próprias; demais documentos clínicos permanecem em auditoria. Itens 11 e 12 também seguem pendentes. Não há declaração de migração integral do aplicativo.
 
 Orientação adicional do responsável: aplicar a referência Taskify ao visual geral do EloLab. Depois dos modelos clínicos, ajustar a estrutura compartilhada com validação de telas de domínios diferentes, mantendo marca, paleta e funcionalidades. A sequência operacional acima continua registrada e não está concluída.
