@@ -26,4 +26,4 @@ O tour deixou de aparecer automaticamente. Quem quiser conhecê-lo inicia pelo d
 
 ## Publicação
 
-Registro de deploy será acrescentado após a publicação e a conferência da versão servida.
+Publicado em 30/10/2026 no commit `1069909705f274e9eafa1617665da29191634698`, imagem `easypanel/elolab/app:deploy-20261030-10699097`. Rollback: `deploy-20261030-3158637`. O smoke isolado e os domínios `app.elolab.com.br` e `elolab.com.br` responderam `healthz=ok` e `/version.json` confirmou o SHA completo. Swarm concluiu a atualização com 1/1 réplica. O hash do `.env` permaneceu igual; fonte anterior preservada em `code.before-20261030-10699097`. Nenhuma migration ou escrita em dados reais.
