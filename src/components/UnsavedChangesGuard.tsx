@@ -1,16 +1,19 @@
 import { type RefObject, useCallback, useRef } from 'react';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import { type Location, useBeforeUnload, useBlocker } from 'react-router-dom';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 /** Keeps sensitive drafts in memory and protects both app navigation and reload. */
-export function UnsavedChangesGuard({ dirty, busy = false, completed }: {
+export function UnsavedChangesGuard({ dirty, busy = false, completed, allowNavigation }: {
   dirty: boolean;
   busy?: boolean;
   completed: RefObject<boolean>;
+  allowNavigation?: (current: Pick<Location, 'pathname' | 'search'>, next: Pick<Location, 'pathname' | 'search'>) => boolean;
 }) {
   const discarding = useRef(false);
   const shouldBlock = useCallback(() => (dirty || busy) && !completed.current && !discarding.current, [dirty, busy, completed]);
-  const blocker = useBlocker(shouldBlock);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    !allowNavigation?.(currentLocation, nextLocation) && shouldBlock()
+  );
   useBeforeUnload(useCallback((event: BeforeUnloadEvent) => {
     if (!shouldBlock()) return;
     event.preventDefault();

@@ -23,7 +23,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -42,6 +41,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
+import { isPrescriptionSafetyReviewNavigation } from '@/lib/prescriptionSafetyReviewNavigation';
 
 type MemedPayload = Record<string, any>;
 
@@ -430,6 +430,13 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
   // Deep-link: /documentos-clinicos?paciente=<id> abre o histórico já filtrado pelo paciente.
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
+  const isSafetyReview = creationPage && searchParams.get('tela') === 'alertas-seguranca';
+  const setSafetyReview = (open: boolean) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (open) next.set('tela', 'alertas-seguranca');
+    else next.delete('tela');
+    return next;
+  }, { replace: true });
   const limparPacienteFiltro = () => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
     next.delete('paciente');
@@ -445,7 +452,6 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
   const [memedOpening, setMemedOpening] = useState(false);
   const [clinicalAlerts, setClinicalAlerts] = useState<ClinicalAlert[]>([]);
   const [allergyOverrideJustification, setAllergyOverrideJustification] = useState('');
-  const [showAlertsDialog, setShowAlertsDialog] = useState(false);
   const { dismissAlert } = useClinicalAlerts();
 
   const [form, setForm] = useState({
@@ -458,6 +464,7 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
   const initializedDoctor = useRef(false);
   const completed = useRef(false);
   const resultHeading = useRef<HTMLHeadingElement>(null);
+  const safetyReviewHeading = useRef<HTMLHeadingElement>(null);
   const prescriptionFilters = { search: searchTerm, origin: filtroOrigem, period: filtroPeriodo };
   const returnTo = /^\/documentos-clinicos(?:\?|$)/.test(location.state?.returnTo || '')
     ? location.state.returnTo : `/documentos-clinicos${pacienteFiltroId ? `?paciente=${encodeURIComponent(pacienteFiltroId)}` : ''}`;
@@ -473,6 +480,10 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
   useEffect(() => {
     if (isResultOpen) resultHeading.current?.focus();
   }, [isResultOpen]);
+
+  useEffect(() => {
+    if (isSafetyReview) safetyReviewHeading.current?.focus();
+  }, [isSafetyReview]);
 
   // Ficha completa do paciente escolhido (alergias, comorbidades, dados do PDF).
   const selectedPacienteQuery = useQuery({
@@ -637,13 +648,9 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
     // Se há QUALQUER alerta, abrir dialog e aguardar confirmação explícita do médico.
     // A prescrição só é salva no botão "Confirmar e Gerar Receita" do dialog (ou aqui sem alertas).
     if (alerts.length > 0) {
-      const hasCriticalAlerts = alerts.some(a => a.severity === 'critical' && !a.canIgnore);
       setClinicalAlerts(alerts);
       setAllergyOverrideJustification('');
-      setShowAlertsDialog(true);
-      if (hasCriticalAlerts) {
-        toast.error('⚠️ Alertas de segurança críticos! Resolva antes de prescrever.');
-      }
+      setSafetyReview(true);
       setGerando(false);
       return;
     }
@@ -750,7 +757,7 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
       setPdfFileName(`receita_${safeName}_${form.data_emissao}.pdf`);
       completed.current = true;
       setIsResultOpen(true);
-      setShowAlertsDialog(false);
+      setSafetyReview(false);
       setClinicalAlerts([]);
       toast.success('Receita gerada e salva no prontuário.', { description: 'O PDF também ficará disponível para baixar no histórico de prescrições.' });
     } catch (error) {
@@ -1021,7 +1028,73 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
   return (
     <motion.div initial={creationPage ? false : { opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {creationPage && <UnsavedChangesGuard dirty={JSON.stringify(form) !== JSON.stringify(initialForm.current) || !!allergyOverrideJustification}
-        busy={gerando || memedOpening} completed={completed} />}
+        busy={gerando || memedOpening} completed={completed} allowNavigation={isPrescriptionSafetyReviewNavigation} />}
+      {creationPage && isSafetyReview ? (
+        <section className="mx-auto max-w-5xl space-y-6 pb-10">
+          <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span aria-hidden="true" className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"><AlertTriangle className="h-[18px] w-[18px]" /></span>
+              <div className="min-w-0">
+                <h1 ref={safetyReviewHeading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">Revisão de segurança clínica</h1>
+                <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">Revise os alertas associados à prescrição antes de emitir a receita.</p>
+              </div>
+            </div>
+            <Button type="button" variant="outline" onClick={() => setSafetyReview(false)} disabled={gerando}>Voltar à prescrição</Button>
+          </header>
+
+          {clinicalAlerts.length === 0 ? (
+            <div role="alert" className="space-y-3 rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-warning-foreground">
+              <p>Esta revisão não está carregada nesta sessão. Volte ao formulário e execute a conferência novamente; nenhum documento foi emitido.</p>
+              <Button type="button" variant="outline" onClick={() => setSafetyReview(false)}>Retornar ao formulário</Button>
+            </div>
+          ) : (
+            <>
+              <dl className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
+                <div><dt className="text-xs text-muted-foreground">Paciente</dt><dd className="font-medium">{selectedPaciente?.nome_social || selectedPaciente?.nome || 'Paciente selecionado'}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Prescritor</dt><dd className="font-medium">{medicos.find(m => m.id === form.medico_id)?.nome || 'Profissional selecionado'}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Data de emissão</dt><dd className="font-medium">{form.data_emissao}</dd></div>
+              </dl>
+
+              <ClinicalAlertsDisplay alerts={clinicalAlerts} onDismiss={dismissAlert} />
+
+              {requiresAllergyOverrideJustification(clinicalAlerts) && (
+                <div className="max-w-3xl space-y-2 rounded-xl border border-warning/40 bg-warning/5 p-4">
+                  <Label htmlFor="prescricao-justificativa-alergia">Justificativa clínica para prosseguir *</Label>
+                  <Textarea
+                    id="prescricao-justificativa-alergia"
+                    aria-describedby="prescricao-justificativa-alergia-ajuda"
+                    value={allergyOverrideJustification}
+                    onChange={event => setAllergyOverrideJustification(event.target.value)}
+                    placeholder="Registre a avaliação clínica e o motivo para prosseguir apesar do risco de reação cruzada."
+                    maxLength={1000}
+                    rows={4}
+                  />
+                  <p id="prescricao-justificativa-alergia-ajuda" className="text-xs text-muted-foreground">
+                    Mínimo de 20 caracteres. A justificativa ficará registrada junto à prescrição.
+                  </p>
+                </div>
+              )}
+
+              {clinicalAlerts.some(alert => alert.severity === 'critical' && !alert.canIgnore) && (
+                <p role="alert" className="text-sm font-medium text-destructive">A emissão está bloqueada até que o risco crítico seja resolvido.</p>
+              )}
+
+              <footer className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setSafetyReview(false)} disabled={gerando}>Voltar à prescrição</Button>
+                {!clinicalAlerts.some(alert => alert.severity === 'critical' && !alert.canIgnore) && (
+                  <Button
+                    type="button"
+                    onClick={handleConfirmDespiteAlerts}
+                    disabled={gerando || !!allergyOverrideJustificationError(clinicalAlerts, allergyOverrideJustification)}
+                  >
+                    {gerando ? 'Gerando receita...' : 'Confirmar e gerar receita'}
+                  </Button>
+                )}
+              </footer>
+            </>
+          )}
+        </section>
+      ) : <>
       {!creationPage &&
       <PageHeader
         title="Prescrições"
@@ -1444,56 +1517,6 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
           </footer>
       </section>}
 
-      {/* ── Clinical Alerts Dialog ── */}
-      <Dialog open={showAlertsDialog} onOpenChange={(open) => { if (open || !gerando) setShowAlertsDialog(open); }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              ⚠️ Alertas de Segurança Clínica
-            </DialogTitle>
-            <DialogDescription>
-              Revisão antes de prescrever. Alertas com tag "Não ignorável" devem ser resolvidos
-              antes de prosseguir.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <ClinicalAlertsDisplay alerts={clinicalAlerts} onDismiss={dismissAlert} />
-            {requiresAllergyOverrideJustification(clinicalAlerts) && (
-              <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
-                <Label htmlFor="prescricao-justificativa-alergia">Justificativa clínica para prosseguir *</Label>
-                <Textarea
-                  id="prescricao-justificativa-alergia"
-                  aria-describedby="prescricao-justificativa-alergia-ajuda"
-                  value={allergyOverrideJustification}
-                  onChange={event => setAllergyOverrideJustification(event.target.value)}
-                  placeholder="Registre a avaliação clínica e o motivo para prosseguir apesar do risco de reação cruzada."
-                  maxLength={1000}
-                  rows={3}
-                />
-                <p id="prescricao-justificativa-alergia-ajuda" className="text-xs text-muted-foreground">
-                  Mínimo de 20 caracteres. A justificativa ficará registrada junto à prescrição.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowAlertsDialog(false)} disabled={gerando}>
-              Voltar à Prescrição
-            </Button>
-            {!clinicalAlerts.some(a => a.severity === 'critical' && !a.canIgnore) && (
-              <Button
-                onClick={handleConfirmDespiteAlerts}
-                disabled={gerando || !!allergyOverrideJustificationError(clinicalAlerts, allergyOverrideJustification)}
-              >
-                {gerando ? 'Gerando receita...' : 'Confirmar e Gerar Receita'}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {creationPage && isResultOpen && <section className="mx-auto max-w-2xl space-y-5 py-6">
           <header className="space-y-3 border-b border-border pb-5">
             <h1 ref={resultHeading} tabIndex={-1} className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
@@ -1522,6 +1545,7 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
           </p>
           <Button variant="outline" onClick={leaveCreation}>Voltar às prescrições</Button>
       </section>}
+      </>}
     </motion.div>
   );
 }

@@ -84,18 +84,37 @@ test('prescription keeps a failed draft, saves once on retry and delivers an aud
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('critical allergy still blocks issuing and lets the doctor return to the draft', async ({ page }, info) => {
+test('critical allergy review uses its own page, blocks issuing and returns to the unchanged draft', async ({ page }, info) => {
   const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), role: 'medico', platformAdmin: false, prontuarioPopulated: true });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(createUrl);
   await page.getByLabel('Medicamentos e Posologia').fill('Dipirona 500 mg — teste sintético');
   await page.getByRole('button', { name: 'Gerar Receita PDF', exact: true }).click();
-  const alerts = page.getByRole('dialog', { name: /Alertas de Segurança Clínica/ });
-  await expect(alerts).toBeVisible();
-  await expect(alerts.getByRole('button', { name: 'Confirmar e Gerar Receita' })).toHaveCount(0);
-  await alerts.getByRole('button', { name: 'Voltar à Prescrição' }).click();
+  await expect(page).toHaveURL(`${createUrl}&tela=alertas-seguranca`);
+  await expect(page.getByRole('heading', { name: 'Revisão de segurança clínica' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText(/NÃO prescrever/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirmar e gerar receita' })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Revisão de segurança clínica' })).toBeFocused();
+  await page.screenshot({ path: info.outputPath('prescription-safety-review-mobile.png') });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('prescription-safety-review-desktop.png') });
+  await page.getByRole('button', { name: 'Voltar à prescrição' }).first().click();
   await expect(page.getByLabel('Medicamentos e Posologia')).toHaveValue('Dipirona 500 mg — teste sintético');
   expect(synthetic.writes.some(write => /POST.*(?:prescricoes|storage\/v1)/.test(write))).toBe(false);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('direct safety-review link recovers safely when no in-memory review exists', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), role: 'medico', platformAdmin: false, prontuarioPopulated: true });
+  await page.goto(`${createUrl}&tela=alertas-seguranca`);
+  await expect(page.getByRole('alert').filter({ hasText: 'Esta revisão não está carregada nesta sessão' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Retornar ao formulário' }).click();
+  await expect(page).toHaveURL(createUrl);
+  await expect(page.getByRole('heading', { name: 'Nova Prescrição' })).toBeVisible();
 });
 
 test('opening a new prescription returns to the same history search', async ({ page }, info) => {
