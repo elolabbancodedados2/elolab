@@ -1550,6 +1550,43 @@ export default function Prontuarios() {
   const [salvandoProntuario, setSalvandoProntuario] = useState(false);
   /** Confirmação antes de descartar a evolução não salva. */
   const [perguntandoDescartar, setPerguntandoDescartar] = useState(false);
+  const handleScheduleReturn = async () => {
+    if (!selectedPaciente?.id || salvandoProntuario) return;
+
+    let savedProntuarioId = currentProntuario.id || null;
+    if (hasUnsavedChanges) {
+      const versionBeforeSave = changeVersionRef.current;
+      setSalvandoProntuario(true);
+      try {
+        savedProntuarioId = await performSave(true);
+        if (!savedProntuarioId || changeVersionRef.current !== versionBeforeSave) {
+          toast.error('Não foi possível sair do prontuário com segurança', {
+            description: 'Revise a queixa principal e o médico responsável. O atendimento continua aberto; nenhuma alteração foi descartada.',
+          });
+          return;
+        }
+      } finally {
+        setSalvandoProntuario(false);
+      }
+    }
+
+    const responsibleDoctorId = currentProntuario.medico_id || medicoId || user?.id;
+    if (!responsibleDoctorId) {
+      toast.error('Profissional responsável não identificado', {
+        description: 'Selecione o médico responsável antes de agendar o retorno.',
+      });
+      return;
+    }
+
+    const params = new URLSearchParams({ medico: responsibleDoctorId });
+    if (savedProntuarioId) {
+      navigate(`/prontuarios/${encodeURIComponent(savedProntuarioId)}/retornos/novo?${params.toString()}`);
+      return;
+    }
+
+    params.set('paciente', selectedPaciente.id);
+    navigate(`/prontuarios/retornos/novo?${params.toString()}`);
+  };
   const handleSave = async () => {
     if (salvandoProntuario) return;
     const versaoAntesDeSalvar = changeVersionRef.current;
@@ -2246,7 +2283,12 @@ export default function Prontuarios() {
               </span>
               <div className="flex gap-1.5 flex-wrap">
                 {selectedPaciente && (medicoId || user?.id) && (
-                  <ReturnScheduler pacienteId={selectedPaciente.id} prontuarioId={currentProntuario.id} medicoId={medicoId || user?.id || ''} compact />
+                  <ReturnScheduler
+                    pacienteId={selectedPaciente.id}
+                    onSchedule={() => { void handleScheduleReturn(); }}
+                    scheduleDisabled={salvandoProntuario}
+                    compact
+                  />
                 )}
                 {currentProntuario.id && (() => {
                   const buildPDF = () => {

@@ -1,48 +1,18 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { useState } from 'react';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { addDays, addWeeks, addMonths, parseISO } from 'date-fns';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseDateOnly } from '@/lib/dateOnly';
 import { ptBR } from 'date-fns/locale';
-import { 
-  CalendarCheck, 
-  Plus, 
-  Clock, 
-  Calendar,
-  Check,
-  X,
-  AlertCircle
-} from 'lucide-react';
+import { Calendar, CalendarCheck, Check, AlertCircle, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
-import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 
 interface Return {
   id: string;
@@ -63,20 +33,11 @@ interface Return {
 
 interface ReturnSchedulerProps {
   pacienteId: string;
-  prontuarioId?: string;
-  medicoId: string;
   className?: string;
   compact?: boolean;
+  onSchedule: () => void;
+  scheduleDisabled?: boolean;
 }
-
-const RETURN_PRESETS = [
-  { label: '7 dias', value: '7d', calc: () => addDays(parseDateOnly(todaySaoPauloDateOnly())!, 7) },
-  { label: '15 dias', value: '15d', calc: () => addDays(parseDateOnly(todaySaoPauloDateOnly())!, 15) },
-  { label: '30 dias', value: '30d', calc: () => addDays(parseDateOnly(todaySaoPauloDateOnly())!, 30) },
-  { label: '2 meses', value: '2m', calc: () => addMonths(parseDateOnly(todaySaoPauloDateOnly())!, 2) },
-  { label: '3 meses', value: '3m', calc: () => addMonths(parseDateOnly(todaySaoPauloDateOnly())!, 3) },
-  { label: '6 meses', value: '6m', calc: () => addMonths(parseDateOnly(todaySaoPauloDateOnly())!, 6) },
-];
 
 const RETURN_TYPES = [
   { value: 'acompanhamento', label: 'Acompanhamento' },
@@ -86,21 +47,8 @@ const RETURN_TYPES = [
   { value: 'outro', label: 'Outro' },
 ];
 
-export function ReturnScheduler({
-  pacienteId,
-  prontuarioId,
-  medicoId,
-  className,
-  compact = false,
-}: ReturnSchedulerProps) {
+export function ReturnScheduler({ pacienteId, className, compact = false, onSchedule, scheduleDisabled = false }: ReturnSchedulerProps) {
   const { profile } = useSupabaseAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<string>('');
-  const [customDate, setCustomDate] = useState('');
-  const [tipoRetorno, setTipoRetorno] = useState('acompanhamento');
-  const [motivo, setMotivo] = useState('');
-  const [observacoes, setObservacoes] = useState('');
-
   const queryClient = useQueryClient();
 
   const { data: returns, isLoading, isError: returnsError, error: returnsLoadError, refetch: refetchReturns } = useQuery({
@@ -117,50 +65,6 @@ export function ReturnScheduler({
       return data as Return[];
     },
     enabled: !!pacienteId && !!profile?.clinica_id,
-  });
-
-  const createReturn = useMutation({
-    mutationFn: async () => {
-      let dataRetorno: Date;
-
-      if (!profile?.clinica_id) {
-        throw new Error('Clínica ativa não encontrada');
-      }
-      
-      if (selectedPreset) {
-        const preset = RETURN_PRESETS.find(p => p.value === selectedPreset);
-        dataRetorno = preset?.calc() || parseDateOnly(todaySaoPauloDateOnly())!;
-      } else if (customDate) {
-        // `new Date('YYYY-MM-DD')` interpreta a data em UTC e, no Brasil,
-        // pode salvar o dia anterior. Datas de calendário devem ser locais.
-        dataRetorno = parseISO(customDate);
-      } else {
-        throw new Error('Selecione uma data de retorno');
-      }
-
-      const { error } = await supabase.from('retornos').insert({
-        paciente_id: pacienteId,
-        prontuario_id: prontuarioId || null,
-        medico_id: medicoId,
-        data_retorno_prevista: format(dataRetorno, 'yyyy-MM-dd'),
-        tipo_retorno: tipoRetorno,
-        motivo: motivo || null,
-        observacoes: observacoes || null,
-        clinica_id: profile?.clinica_id || null,
-      });
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
-      toast.success('Retorno agendado com sucesso!');
-      resetForm();
-      setIsOpen(false);
-    },
-    onError: (error) => {
-      console.error('Erro ao agendar retorno:', error);
-      toast.error('Erro ao agendar retorno', { description: mensagemDeErro(error) });
-    },
   });
 
   const updateReturnStatus = useMutation({
@@ -182,403 +86,130 @@ export function ReturnScheduler({
       queryClient.invalidateQueries({ queryKey: ['patient-returns', profile?.clinica_id, pacienteId] });
       toast.success('Status atualizado!');
     },
-    onError: (e) => {
-      toast.error('Erro ao atualizar status', { description: mensagemDeErro(e) });
+    onError: (error) => {
+      toast.error('Erro ao atualizar status', { description: mensagemDeErro(error) });
     },
   });
 
-  const resetForm = () => {
-    setSelectedPreset('');
-    setCustomDate('');
-    setTipoRetorno('acompanhamento');
-    setMotivo('');
-    setObservacoes('');
-  };
+  const pendingReturns = returns?.filter(item => item.status === 'pendente') || [];
+  const completedReturns = returns?.filter(item => item.status !== 'pendente') || [];
 
-  const pendingReturns = returns?.filter(r => r.status === 'pendente') || [];
-  const completedReturns = returns?.filter(r => r.status !== 'pendente') || [];
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pendente':
-        return <Badge variant="outline" className="text-amber-600 border-amber-300">Pendente</Badge>;
-      case 'agendado':
-        return <Badge variant="outline" className="text-blue-600 border-blue-300">Agendado</Badge>;
-      case 'concluido':
-        return <Badge variant="outline" className="text-green-600 border-green-300">Concluído</Badge>;
-      case 'cancelado':
-        return <Badge variant="outline" className="text-red-600 border-red-300">Cancelado</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
+  const scheduleButton = (
+    <Button type="button" variant={compact ? 'outline' : 'default'} size="sm" onClick={onSchedule} disabled={scheduleDisabled}>
+      <CalendarCheck className="mr-2 h-4 w-4" />
+      Agendar Retorno
+      {pendingReturns.length > 0 && <Badge variant="secondary" className="ml-2">{pendingReturns.length}</Badge>}
+    </Button>
+  );
 
   if (compact) {
     return (
-      <div className={cn("flex items-center gap-2", className)}>
+      <div className={cn('flex items-center gap-2', className)}>
         {returnsError && (
           <div role="alert" className="text-xs text-destructive">
             Não foi possível carregar os retornos.{' '}
-            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => void refetchReturns()}>Tentar novamente</Button>
+            <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => void refetchReturns()}>Tentar novamente</Button>
           </div>
         )}
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm">
-              <CalendarCheck className="h-4 w-4 mr-2" />
-              Agendar Retorno
-              {pendingReturns.length > 0 && (
-                <Badge variant="secondary" className="ml-2">
-                  {pendingReturns.length}
-                </Badge>
-              )}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Agendar Retorno</DialogTitle>
-              <DialogDescription>
-                Agende um retorno para acompanhamento do paciente.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-4">
-              {/* Quick presets */}
-              <div>
-                <Label>Retorno em:</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {RETURN_PRESETS.map((preset) => (
-                    <Button
-                      key={preset.value}
-                      type="button"
-                      variant={selectedPreset === preset.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        setSelectedPreset(preset.value);
-                        setCustomDate('');
-                      }}
-                    >
-                      {preset.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-muted-foreground">ou</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-
-              <div>
-                <Label htmlFor="custom-date">Data específica</Label>
-                <Input
-                  id="custom-date"
-                  type="date"
-                  value={customDate}
-                  onChange={(e) => {
-                    setCustomDate(e.target.value);
-                    setSelectedPreset('');
-                  }}
-                  min={todaySaoPauloDateOnly()}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="tipo-retorno">Tipo de Retorno</Label>
-                <Select value={tipoRetorno} onValueChange={setTipoRetorno}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RETURN_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="motivo">Motivo (opcional)</Label>
-                <Input
-                  id="motivo"
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  placeholder="Ex: Avaliar resposta ao tratamento"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="observacoes">Observações (opcional)</Label>
-                <Textarea
-                  id="observacoes"
-                  value={observacoes}
-                  onChange={(e) => setObservacoes(e.target.value)}
-                  placeholder="Observações adicionais..."
-                  rows={2}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsOpen(false)}>
-                Cancelar
-              </Button>
-              <Button 
-                onClick={() => createReturn.mutate()}
-                disabled={(!selectedPreset && !customDate) || createReturn.isPending}
-              >
-                {createReturn.isPending ? 'Agendando...' : 'Agendar Retorno'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {scheduleButton}
       </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <Card className={className}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarCheck className="h-5 w-5" />
-            Retornos Agendados
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[1, 2].map(i => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     );
   }
 
   return (
     <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="flex items-center gap-2">
           <CalendarCheck className="h-5 w-5" />
           Retornos Agendados
         </CardTitle>
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Retorno
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            {/* Same dialog content as compact version */}
-            <DialogHeader>
-              <DialogTitle>Agendar Retorno</DialogTitle>
-              <DialogDescription>
-                Agende um retorno para acompanhamento do paciente.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-4">
-              <div>
-                <Label>Retorno em:</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {RETURN_PRESETS.map((preset) => (
-                    <Button
-                      key={preset.value}
-                      type="button"
-                      variant={selectedPreset === preset.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        setSelectedPreset(preset.value);
-                        setCustomDate('');
-                      }}
-                    >
-                      {preset.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-muted-foreground">ou</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-
-              <div>
-                <Label htmlFor="custom-date-full">Data específica</Label>
-                <Input
-                  id="custom-date-full"
-                  type="date"
-                  value={customDate}
-                  onChange={(e) => {
-                    setCustomDate(e.target.value);
-                    setSelectedPreset('');
-                  }}
-                  min={todaySaoPauloDateOnly()}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="tipo-retorno-full">Tipo de Retorno</Label>
-                <Select value={tipoRetorno} onValueChange={setTipoRetorno}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RETURN_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="motivo-full">Motivo (opcional)</Label>
-                <Input
-                  id="motivo-full"
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  placeholder="Ex: Avaliar resposta ao tratamento"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="observacoes-full">Observações (opcional)</Label>
-                <Textarea
-                  id="observacoes-full"
-                  value={observacoes}
-                  onChange={(e) => setObservacoes(e.target.value)}
-                  placeholder="Observações adicionais..."
-                  rows={2}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsOpen(false)}>
-                Cancelar
-              </Button>
-              <Button 
-                onClick={() => createReturn.mutate()}
-                disabled={(!selectedPreset && !customDate) || createReturn.isPending}
-              >
-                {createReturn.isPending ? 'Agendando...' : 'Agendar Retorno'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {scheduleButton}
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[300px]">
-          {returnsError ? (
-            <div role="alert" className="flex flex-col items-center gap-2 py-8 text-center">
-              <p className="text-sm text-destructive">Não foi possível carregar os retornos.</p>
-              <p className="text-xs text-muted-foreground">{mensagemDeErro(returnsLoadError)}</p>
-              <Button variant="outline" size="sm" onClick={() => void refetchReturns()}>Tentar novamente</Button>
-            </div>
-          ) : pendingReturns.length === 0 && completedReturns.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              Nenhum retorno agendado.
-            </p>
-          ) : (
-            <div className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-3">{[1, 2].map(index => <Skeleton key={index} className="h-16 w-full" />)}</div>
+        ) : returnsError ? (
+          <div role="alert" className="flex flex-col items-center gap-2 py-8 text-center">
+            <p className="text-sm text-destructive">Não foi possível carregar os retornos.</p>
+            <p className="text-xs text-muted-foreground">{mensagemDeErro(returnsLoadError)}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void refetchReturns()}>Tentar novamente</Button>
+          </div>
+        ) : pendingReturns.length === 0 && completedReturns.length === 0 ? (
+          <p className="py-8 text-center text-muted-foreground">Nenhum retorno agendado.</p>
+        ) : (
+          <ScrollArea className="h-[300px]">
+            <div className="space-y-5">
               {pendingReturns.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-500" />
-                    Pendentes ({pendingReturns.length})
-                  </h4>
+                <section aria-labelledby="patient-returns-pending">
+                  <h3 id="patient-returns-pending" className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                    <AlertCircle className="h-4 w-4 text-warning" />Pendentes ({pendingReturns.length})
+                  </h3>
                   <div className="space-y-2">
-                    {pendingReturns.map((ret) => (
-                      <div
-                        key={ret.id}
-                        className="flex items-center justify-between p-3 border rounded-lg"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
+                    {pendingReturns.map(item => (
+                      <div key={item.id} className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {format(parseDateOnly(ret.data_retorno_prevista)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                            </span>
-                            {getStatusBadge(ret.status)}
+                            <span className="font-medium">{format(parseDateOnly(item.data_retorno_prevista)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</span>
+                            <Badge variant="outline" className="border-warning/40 text-warning-foreground">Pendente</Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {RETURN_TYPES.find(t => t.value === ret.tipo_retorno)?.label || ret.tipo_retorno}
-                            {ret.motivo && ` - ${ret.motivo}`}
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {RETURN_TYPES.find(type => type.value === item.tipo_retorno)?.label || item.tipo_retorno}
+                            {item.motivo && ` · ${item.motivo}`}
                           </p>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex shrink-0 flex-wrap gap-2">
                           <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="min-h-10 text-success hover:bg-success/5"
                             aria-label="Marcar retorno como concluído"
                             disabled={updateReturnStatus.isPending}
-                            onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'concluido', expectedStatus: ret.status })}
+                            onClick={() => updateReturnStatus.mutate({ id: item.id, status: 'concluido', expectedStatus: item.status })}
                           >
-                            <Check className="h-4 w-4" />
+                            <Check className="mr-2 h-4 w-4" />Concluir
                           </Button>
                           <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="min-h-10 text-destructive hover:bg-destructive/5"
                             aria-label="Cancelar retorno"
                             disabled={updateReturnStatus.isPending}
-                            onClick={() => updateReturnStatus.mutate({ id: ret.id, status: 'cancelado', expectedStatus: ret.status })}
+                            onClick={() => updateReturnStatus.mutate({ id: item.id, status: 'cancelado', expectedStatus: item.status })}
                           >
-                            <X className="h-4 w-4" />
+                            <X className="mr-2 h-4 w-4" />Cancelar
                           </Button>
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
               )}
-
               {completedReturns.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">
-                    Histórico ({completedReturns.length})
-                  </h4>
+                <section aria-labelledby="patient-returns-history">
+                  <h3 id="patient-returns-history" className="mb-2 text-sm font-semibold">Histórico ({completedReturns.length})</h3>
                   <div className="space-y-2">
-                    {completedReturns.slice(0, 5).map((ret) => (
-                      <div
-                        key={ret.id}
-                        className="flex items-center justify-between p-3 border rounded-lg opacity-60"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span>
-                              {format(parseDateOnly(ret.data_retorno_prevista)!, "dd/MM/yyyy", { locale: ptBR })}
-                            </span>
-                            {getStatusBadge(ret.status)}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {RETURN_TYPES.find(t => t.value === ret.tipo_retorno)?.label || ret.tipo_retorno}
-                          </p>
+                    {completedReturns.map(item => (
+                      <div key={item.id} className="rounded-lg border border-border/70 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{format(parseDateOnly(item.data_retorno_prevista)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</span>
+                          <Badge variant="outline">{item.status === 'concluido' ? 'Concluído' : item.status === 'cancelado' ? 'Cancelado' : item.status}</Badge>
                         </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {RETURN_TYPES.find(type => type.value === item.tipo_retorno)?.label || item.tipo_retorno}
+                          {item.motivo && ` · ${item.motivo}`}
+                        </p>
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
               )}
             </div>
-          )}
-        </ScrollArea>
+          </ScrollArea>
+        )}
       </CardContent>
     </Card>
   );

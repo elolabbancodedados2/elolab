@@ -35,6 +35,7 @@ const FinalizarAtendimento = lazy(() => import("@/pages/FinalizarAtendimento"));
 const Prontuarios = lazy(() => import("@/pages/Prontuarios"));
 const NovoAdendoProntuarioPage = lazy(() => import("@/pages/NovoAdendoProntuarioPage"));
 const NovoAnexoProntuarioPage = lazy(() => import("@/pages/NovoAnexoProntuarioPage"));
+const NovoRetornoProntuarioPage = lazy(() => import("@/pages/NovoRetornoProntuarioPage"));
 const Financeiro = lazy(() => import("@/pages/Financeiro"));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
@@ -271,6 +272,8 @@ function AppRoutes() {
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/:prontuarioId/adendos/novo" element={<SupabaseProtectedRoute allowedRoles={['medico']}><NovoAdendoProntuarioPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/:prontuarioId/anexos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoAnexoProntuarioPage /></SupabaseProtectedRoute>} />
+                          <Route path="/prontuarios/retornos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoRetornoProntuarioPage /></SupabaseProtectedRoute>} />
+                          <Route path="/prontuarios/:prontuarioId/retornos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoRetornoProntuarioPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos/nova-prescricao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prescricoes creationPage /></SupabaseProtectedRoute>} />
