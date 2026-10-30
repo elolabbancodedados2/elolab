@@ -26,4 +26,10 @@ Esta mudança melhora a consulta do histórico; não altera o ciclo de configura
 
 ## Publicação
 
-Registro de deploy será acrescentado após a publicação e a conferência dos dois domínios.
+- Commit publicado: `b70884eb44f7a900bade386e30654f9215d077fa` (`deploy-20261030-b70884`).
+- Smoke isolado: `healthz=ok`; `version.json` retornou o SHA completo esperado.
+- `https://app.elolab.com.br` e `https://elolab.com.br`: `healthz=ok`; ambos retornaram o SHA esperado.
+- Swarm: `elolab_app` está `1/1`, com atualização `completed`.
+- Hash do `.env` permaneceu `f2bcf73f6d860dec143ae363f755d3d18e41dc2f3ea3919944af62899c2f3b65`.
+- Backup da versão anterior: `code.before-20261030-b70884`.
+- Rollback disponível: imagem `easypanel/elolab/app:deploy-20261030-e9392a56`.
