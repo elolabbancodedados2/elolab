@@ -55,6 +55,7 @@ import {
 } from '@/components/ui/select';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
+import { getReceptionReturnPath } from '@/lib/receptionReturnPath';
 
 // ─── Constants ──────────────────────────────────────────
 const FORMAS_PAGAMENTO = [
@@ -208,7 +209,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    const encaixeSubmitLock = useRef(false);
 
   const location = useLocation();
-  const abrirEncaixe = () => navigate('/recepcao/encaixe');
+  const returnTo = getReceptionReturnPath(`${location.pathname}${location.search}`, location.state);
+  const abrirEncaixe = () => navigate('/recepcao/encaixe', { state: { returnTo: `${location.pathname}${location.search}` } });
   const abrirFinalizacao = (
     agendamentoId: string,
     origem: 'recepcao' | 'atendimentos-abertos',
@@ -726,7 +728,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         return;
       }
 
-      navigate(`/recepcao/pagamentos/${encodeURIComponent(lancamentoSelecionado.id)}`);
+      navigate(`/recepcao/pagamentos/${encodeURIComponent(lancamentoSelecionado.id)}`, {
+        state: { returnTo: `${location.pathname}${location.search}` },
+      });
    }
 
     async function handleChamarBalcao(lanc: any, pac: any) {
@@ -962,7 +966,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         const rotulos = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma.value, forma.label]));
         gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
       }
-      navigate('/recepcao', { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err: any) {
       toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
     }
@@ -1153,7 +1157,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       // O check-in (fila + cobrança) segue o mesmo caminho do agendado, com o
       // item passado na mão porque a lista ainda não tem o agendamento novo.
       await handleCheckin(novo.id, { ag: novo, pac, med: null });
-      navigate('/recepcao', { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (e) {
       const mensagem = mensagemDeErro(e);
       toast.error('Não foi possível criar o encaixe', {
@@ -1176,7 +1180,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           title="Encaixe sem agendamento"
           description={`Atendimento presencial para hoje, com início previsto às ${horaDaClinica(new Date(now))}.`}
           icon={<UserPlus />}
-          actions={<Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/recepcao')}>Voltar para a recepção</Button>}
+          actions={<Button type="button" variant="outline" className="rounded-full" onClick={() => navigate(returnTo)}>Voltar para a recepção</Button>}
         />
 
         {medicosQuery.isError && <ErrorState compact title="Não foi possível carregar os médicos" description="A criação fica bloqueada até confirmar um profissional ativo." error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}
@@ -1229,7 +1233,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           </section>
 
           <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" className="rounded-full" disabled={salvandoEncaixe || isProcessing} onClick={() => navigate('/recepcao')}>Cancelar</Button>
+            <Button type="button" variant="outline" className="rounded-full" disabled={salvandoEncaixe || isProcessing} onClick={() => navigate(returnTo)}>Cancelar</Button>
             <Button type="submit" disabled={salvandoEncaixe || isProcessing || carregandoPacienteEncaixe || erroPacienteEncaixe || !pacienteEncaixe || medicosQuery.isLoading || tiposConsultaQuery.isLoading || medicosQuery.isError || tiposConsultaQuery.isError || !(medicos as any[]).some(m => m.id === encaixeMedicoId && m.ativo !== false) || !(tiposConsulta as any[]).some(tipo => tipo.nome === encaixeTipo)} className="gap-2 rounded-full">
               {salvandoEncaixe || isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <UserCheck aria-hidden="true" className="h-4 w-4" />}
               Criar e fazer check-in
@@ -1252,7 +1256,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     return (
       <div className="mx-auto max-w-6xl space-y-6 pb-10">
         <UnsavedChangesGuard dirty={paymentDirty} busy={isProcessing} completed={paymentCompleted} />
-        <PageHeader title="Receber pagamento" description={paciente?.nome ? `Cobrança de ${paciente.nome}` : 'Registre o recebimento da cobrança selecionada.'} icon={<Receipt />} actions={<Button type="button" variant="outline" onClick={() => navigate('/recepcao')}>Voltar para a recepção</Button>} />
+        <PageHeader title="Receber pagamento" description={paciente?.nome ? `Cobrança de ${paciente.nome}` : 'Registre o recebimento da cobrança selecionada.'} icon={<Receipt />} actions={<Button type="button" variant="outline" onClick={() => navigate(returnTo)}>Voltar para a recepção</Button>} />
         {pagamentoLancamentoQuery.isError && <ErrorState compact title="Não foi possível carregar esta cobrança" error={pagamentoLancamentoQuery.error} onRetry={() => void pagamentoLancamentoQuery.refetch()} />}
         {pacientePagamentoQuery.isError && pagamentoLancamentoQuery.data?.paciente_id && <ErrorState compact title="Não foi possível confirmar o paciente desta cobrança" error={pacientePagamentoQuery.error} onRetry={() => void pacientePagamentoQuery.refetch()} />}
         {pacienteNaoLocalizado && <ErrorState compact title="Paciente não encontrado" description="A cobrança está vinculada a um cadastro que não está dispon?vel nesta clínica. Confirme o vínculo antes de receber." />}
@@ -1295,7 +1299,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                 {formaPagamento && <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={() => { setPaymentDirty(true); setFormasExtras(items => [...items, { forma: '', valor: 0 }]); }}><DollarSign className="h-4 w-4" />Dividir com outra forma de pagamento</Button>}
                 <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="recepcao-desconto">Desconto (R$)</Label><Input id="recepcao-desconto" type="number" min={0} step="0.01" value={desconto || ''} onChange={event => { setPaymentDirty(true); setDesconto(Number(event.target.value) || 0); }} /></div><div className="space-y-2"><Label htmlFor="recepcao-acrescimo">Acréscimo (R$)</Label><Input id="recepcao-acrescimo" type="number" min={0} step="0.01" value={acrescimo || ''} onChange={event => { setPaymentDirty(true); setAcrescimo(Number(event.target.value) || 0); }} /></div></div>
                 <div className="space-y-2"><Label htmlFor="recepcao-observacoes-pagamento">Observações <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea id="recepcao-observacoes-pagamento" placeholder="Informação complementar sobre o recebimento" value={obsPagamento} onChange={event => { setPaymentDirty(true); setObsPagamento(event.target.value); }} rows={3} /></div>
-                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={isProcessing} onClick={() => navigate('/recepcao')}>Cancelar</Button><Button type="button" className="gap-2" disabled={!formaPagamento || isProcessing || !lancamento || valorValido === null || (Boolean(lancamento.paciente_id) && !paciente)} onClick={() => void handleConfirmarPagamento()}>{isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-4 w-4" />}Confirmar pagamento</Button></div>
+                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={isProcessing} onClick={() => navigate(returnTo)}>Cancelar</Button><Button type="button" className="gap-2" disabled={!formaPagamento || isProcessing || !lancamento || valorValido === null || (Boolean(lancamento.paciente_id) && !paciente)} onClick={() => void handleConfirmarPagamento()}>{isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-4 w-4" />}Confirmar pagamento</Button></div>
                 {!formaPagamento && <p role="status" className="text-right text-xs text-muted-foreground">Escolha a forma de pagamento para confirmar.</p>}
               </CardContent>
             </Card>
