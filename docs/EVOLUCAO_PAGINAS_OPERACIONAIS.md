@@ -537,3 +537,15 @@ Integração preservada: check-in atômico por `realizar_checkin`, cobrança aut
 Validação: dois cenários Playwright passaram em 1280 e 390 px, incluindo validação do check-in, proteção contra perda, retorno e gravação sintética com prioridade urgente. Vinte e dois testes unitários de fila/check-in passaram; TypeScript e build passaram. Lint focal sem erros, 28 avisos legados de `any` e dependências. Capturas desktop e mobile foram visualizadas em `test-results/ux-visual-synthetic-queue--fcf32-check-in-validation-visible-chromium/` e `test-results/ux-visual-synthetic-doctor-20cb1-om-the-dedicated-queue-page-chromium/`. Todas as gravações foram interceptadas; nenhum dado real foi alterado.
 
 Publicação: build `3b67483dc0fe33f0a60c8c8f1b9e277a59f20600`, imagem `easypanel/elolab/app:deploy-20261029-3b67483d`. Swarm atualizado em `stop-first`; `/healthz` respondeu `ok` e `/version.json` confirmou o build. Fonte anterior em `code.before-20261029-3b67483d`; rollback da imagem `deploy-20261029-93e867b9`.
+
+## Recepção — encaixe sem agendamento
+
+Diagnóstico: encaixe de paciente presencial dependia de um modal. O fluxo cria um agendamento para hoje e precisa confirmar paciente ativo, profissional, tipo, duração, conflitos e bloqueios de agenda antes de executar o check-in e a cobrança existente.
+
+Implementação: `/recepcao/encaixe`, aberto pelo atalho da recepção. A página organiza pessoa, médico e tipo, informa o horário atual, protege o rascunho e bloqueia envio simultâneo. Depois de criar o agendamento, segue o check-in já existente e volta à recepção; uma falha no check-in deixa o agendamento visível na lista para retomada.
+
+Integração e autorização preservadas: somente admin/recepção acessam este fluxo, os mesmos perfis do atalho. Mantidos consulta de profissionais/tipos, verificação de conflitos e bloqueios, INSERT em `agendamentos`, RPC de check-in, cobrança automática e invalidações. Sem contrato, permissão, estado, banco ou migration novos.
+
+Validação: dois cenários Playwright passaram cobrindo larguras 390/1280 px, permissão de saída protegida e fluxo sintético completo de agendamento/check-in/cobrança. Quatorze testes unitários de recepção e check-in passaram; TypeScript e build passaram. Lint focal sem erros, 59 avisos existentes de `any`. Capturas mobile e desktop prontas para envio foram visualizadas em `test-results/ux-visual-synthetic-recept-b8549--a-dedicated-protected-form-chromium/` e `test-results/ux-visual-synthetic-recept-6c3c9-nd-check-in-without-a-modal-chromium/`. Testes interceptaram gravações; nenhum paciente real foi alterado.
+
+Publicação: build `1e43732c02f325a5f8f24b0179334fcd96aee2c6`, imagem `easypanel/elolab/app:deploy-20261029-1e43732c`. Swarm atualizado em `stop-first`; `/healthz` respondeu `ok` e `/version.json` confirmou o build. Fonte anterior em `code.before-20261029-1e43732c`; rollback da imagem `deploy-20261029-3b67483d`.
