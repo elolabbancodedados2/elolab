@@ -168,6 +168,100 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
 });
 
+test('signed-record addenda use a dedicated page and return to the same patient section', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { role: 'medico', platformAdmin: false, prontuarioPopulated: true });
+  const patientId = '00000000-0000-4000-8000-000000000004';
+  const recordId = '00000000-0000-4000-9000-000000000101';
+  const saveAttempts: Record<string, unknown>[] = [];
+  let failFirstSave = true;
+  await page.route('**/rest/v1/rpc/registrar_prontuario_adendo**', async route => {
+    saveAttempts.push(route.request().postDataJSON());
+    if (failFirstSave) {
+      failFirstSave = false;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'P0001', message: 'Falha sintética de gravação. Tente novamente.' }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ id: '00000000-0000-4000-9000-000000000151', hash: 'synthetic-hash', created_at: new Date().toISOString() }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/prontuarios?paciente=${patientId}&prontuario=${recordId}&secao=adendos`);
+  const addendumButton = page.getByRole('button', { name: 'Novo adendo' });
+  await expect(addendumButton).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Adendos' })).toHaveAttribute('aria-selected', 'true');
+  await addendumButton.click();
+  await expect(page).toHaveURL(new RegExp(`/prontuarios/${recordId}/adendos/novo$`));
+  await expect(page.getByRole('heading', { name: 'Novo adendo ao prontuário' })).toBeVisible();
+  await expect(page.getByText('Pessoa Exemplo QA', { exact: true })).toBeVisible();
+  await expect(page.getByText('Evolução assinada', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Motivo' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('prontuario-addendum-desktop.png'), animations: 'disabled' });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('textbox', { name: 'Motivo' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('prontuario-addendum-mobile-form.png'), animations: 'disabled' });
+  const fieldsClearOfStickyActions = await page.evaluate(() => {
+    const footer = document.querySelector('[data-testid="adendo-mobile-actions"]')?.getBoundingClientRect();
+    const fields = ['adendo-tipo', 'adendo-motivo', 'adendo-conteudo']
+      .map(id => document.getElementById(id)?.getBoundingClientRect())
+      .filter((rect): rect is DOMRect => Boolean(rect));
+    return Boolean(footer) && fields.every(field => field.bottom <= footer!.top || field.top >= footer!.bottom);
+  });
+  expect(fieldsClearOfStickyActions, 'a barra fixa de ações não pode cobrir campos do adendo').toBe(true);
+  const submit = page.getByRole('button', { name: 'Registrar adendo imutável' });
+  await submit.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'auto' }));
+  const submitBounds = await submit.boundingBox();
+  const cancelBounds = await page.getByRole('button', { name: 'Cancelar' }).boundingBox();
+  const navigationBounds = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  const mainBounds = await page.locator('#main-content').boundingBox();
+  await page.screenshot({ path: testInfo.outputPath('prontuario-addendum-mobile-actions.png'), animations: 'disabled' });
+  const actionsReachableAboveNavigation = !!submitBounds && !!cancelBounds && !!navigationBounds && !!mainBounds
+    && submitBounds.y >= mainBounds.y && submitBounds.y + submitBounds.height <= navigationBounds.y
+    && cancelBounds.y >= mainBounds.y && cancelBounds.y + cancelBounds.height <= navigationBounds.y;
+  expect(actionsReachableAboveNavigation, 'as duas ações precisam ficar visíveis entre o cabeçalho e a navegação fixa').toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('prontuario-addendum-mobile.png'), animations: 'disabled', fullPage: true });
+
+  await submit.click();
+  await expect(page.getByText('Informe o motivo do adendo.')).toBeVisible();
+  await expect(page.getByText('Informe o conteúdo do adendo.')).toBeVisible();
+  expect(saveAttempts).toHaveLength(0);
+  await page.getByRole('combobox', { name: 'Tipo de registro' }).click();
+  await page.getByRole('option', { name: 'Retificação' }).click();
+  await page.getByRole('textbox', { name: 'Motivo' }).fill('Correção de dado clínico no cenário sintético.');
+  await page.getByRole('textbox', { name: 'Conteúdo do adendo' }).fill('O registro original permanece intacto; esta nota documenta a correção.');
+  await submit.click();
+  await expect(page.getByRole('alert')).toContainText('Falha sintética de gravação');
+  await expect(page.getByRole('textbox', { name: 'Motivo' })).toHaveValue('Correção de dado clínico no cenário sintético.');
+  await expect(page.getByRole('textbox', { name: 'Conteúdo do adendo' })).toHaveValue('O registro original permanece intacto; esta nota documenta a correção.');
+  await submit.click();
+
+  await expect(page).toHaveURL(new RegExp(`/prontuarios\\?paciente=${patientId}.*secao=adendos`));
+  await expect(page.getByRole('tab', { name: 'Adendos' })).toHaveAttribute('aria-selected', 'true');
+  expect(saveAttempts).toHaveLength(2);
+  expect(saveAttempts[1]).toMatchObject({
+    p_prontuario_id: recordId,
+    p_tipo: 'retificacao',
+    p_motivo: 'Correção de dado clínico no cenário sintético.',
+    p_texto: 'O registro original permanece intacto; esta nota documenta a correção.',
+  });
+  const scopedRecordRead = synthetic.requests.find(request => request.includes(`/rest/v1/prontuarios?`) && request.includes(`id=eq.${recordId}`));
+  expect(scopedRecordRead).toContain(`clinica_id=eq.${synthetic.clinicId}`);
+  expect(scopedRecordRead).toContain('assinado=eq.true');
+  expect(scopedRecordRead).toContain('medico_id=eq.00000000-0000-4000-8000-000000000003');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+  expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);
+});
+
 test('Auth desktop preserves readable login and signup states without horizontal overflow', async ({ page }, testInfo) => {
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, authenticated: false });

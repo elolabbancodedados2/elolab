@@ -1471,7 +1471,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                       : () => setActiveTab('todos')}
                   actionIcon={search.trim() ? XCircle : activeTab === 'todos' ? UserPlus : Users}
                   secondaryLabel={!search.trim() && activeTab !== 'todos' ? 'Criar encaixe' : undefined}
-                  onSecondaryAction={(event) => abrirEncaixe(event.currentTarget)}
+                  onSecondaryAction={() => abrirEncaixe()}
                   className="py-12"
                 />
               </CardContent>

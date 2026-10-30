@@ -33,6 +33,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(appointmentId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(appointmentId))).toBe(false);
   });
+  it('omite o identificador do prontuário no breadcrumb do novo adendo', () => {
+    const recordId = '00000000-0000-4000-9000-000000000013';
+    render(<MemoryRouter initialEntries={[`/prontuarios/${recordId}/adendos/novo`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Novo adendo ao prontuário')).toBeInTheDocument();
+    expect(screen.queryByText(recordId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(recordId))).toBe(false);
+  });
   it('exibe o nome correto da Central de Notificações', () => {
     render(
       <MemoryRouter initialEntries={['/notificacoes']}>

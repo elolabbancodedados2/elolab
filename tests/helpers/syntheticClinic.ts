@@ -131,6 +131,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     {
       id: '00000000-0000-4000-9000-000000000101', clinica_id: TEST_CLINIC_ID,
       paciente_id: TEST_PATIENT_ID, medico_id: '00000000-0000-4000-8000-000000000003',
+      pacientes: { nome: 'Pessoa Exemplo QA', nome_social: null },
       agendamento_id: null, data: todaySaoPaulo, queixa_principal: 'Cefaleia recorrente há três dias',
       historia_doenca_atual: 'Dor latejante, sem sinais neurológicos focais. Dados exclusivamente sintéticos.',
       historia_patologica_pregressa: 'Sem condições relevantes informadas.', historia_familiar: 'Sem histórico familiar relevante.',
@@ -146,6 +147,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     {
       id: '00000000-0000-4000-9000-000000000102', clinica_id: TEST_CLINIC_ID,
       paciente_id: TEST_PATIENT_ID, medico_id: '00000000-0000-4000-8000-000000000003',
+      pacientes: { nome: 'Pessoa Exemplo QA', nome_social: null },
       agendamento_id: null, data: new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10), queixa_principal: 'Consulta de acompanhamento',
       historia_doenca_atual: 'Evolução estável no cenário sintético.', exames_fisicos: 'Sem alterações relevantes.',
       conduta: 'Manter acompanhamento.', medicamentos_em_uso: null, sinais_vitais: {},
@@ -552,10 +554,13 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
 
     if (method === 'GET' && pathname === '/rest/v1/prontuarios' && options.prontuarioPopulated) {
       const select = requestUrl.searchParams.get('select') || '*';
+      const idFilter = requestUrl.searchParams.get('id')?.replace(/^eq\./, '');
       if (select === 'medicamentos_em_uso,sinais_vitais,data') {
         await json(route, syntheticProntuarios[0]);
       } else if (requestUrl.searchParams.get('assinado') === 'eq.false') {
         await json(route, []);
+      } else if (idFilter) {
+        await json(route, syntheticProntuarios.find(item => item.id === idFilter) ?? null);
       } else {
         await json(route, syntheticProntuarios);
       }

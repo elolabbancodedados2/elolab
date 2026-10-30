@@ -32,6 +32,7 @@ const FilaOperacional = lazy(() => import("@/pages/Fila"));
 const RecepcaoOperacional = lazy(() => import("@/pages/Recepcao"));
 const FinalizarAtendimento = lazy(() => import("@/pages/FinalizarAtendimento"));
 const Prontuarios = lazy(() => import("@/pages/Prontuarios"));
+const NovoAdendoProntuarioPage = lazy(() => import("@/pages/NovoAdendoProntuarioPage"));
 const Financeiro = lazy(() => import("@/pages/Financeiro"));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
@@ -266,6 +267,7 @@ function AppRoutes() {
                           <Route path="/agenda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Agenda /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
+                          <Route path="/prontuarios/:prontuarioId/adendos/novo" element={<SupabaseProtectedRoute allowedRoles={['medico']}><NovoAdendoProntuarioPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos/nova-prescricao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prescricoes creationPage /></SupabaseProtectedRoute>} />

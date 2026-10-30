@@ -829,6 +829,17 @@ export default function Prontuarios() {
   const [searchParams, setSearchParams] = useSearchParams();
   const routePacienteId = searchParams.get('paciente');
   const routeAgendamentoId = searchParams.get('agendamento');
+  const routeProntuarioId = searchParams.get('prontuario');
+  const secaoProntuarioParam = searchParams.get('secao');
+  const secaoProntuario = ['anamnese', 'exame', 'diagnostico', 'conduta', 'prescricao', 'anexos', 'historico', 'adendos', 'auditoria'].includes(secaoProntuarioParam || '')
+    ? secaoProntuarioParam!
+    : 'anamnese';
+  const changeProntuarioSection = (section: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (section === 'anamnese') params.delete('secao');
+    else params.set('secao', section);
+    setSearchParams(params, { replace: true });
+  };
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
   const [contextoAgendamento, setContextoAgendamento] = useState<ContextoAgendamentoProntuario | null>(null);
@@ -1138,13 +1149,54 @@ export default function Prontuarios() {
   };
 
   useEffect(() => {
-    const routeKey = `${routePacienteId || ''}:${routeAgendamentoId || ''}`;
+    const routeKey = `${routePacienteId || ''}:${routeAgendamentoId || ''}:${routeProntuarioId || ''}`;
     if (routeKeyRef.current !== routeKey) {
       routeKeyRef.current = routeKey;
       routeOpenedRef.current = false;
       if (routeAgendamentoId) setContextoAgendamento(null);
     }
-  }, [routePacienteId, routeAgendamentoId]);
+  }, [routePacienteId, routeAgendamentoId, routeProntuarioId]);
+
+  useEffect(() => {
+    if (routeOpenedRef.current || !routeProntuarioId || !routePacienteId
+      || selectedPacienteId !== routePacienteId || !selectedPaciente
+      || pacienteSelecionadoQuery.isLoading || pacienteSelecionadoQuery.isError
+      || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos
+      || (historicoAuditadoPacienteId !== routePacienteId && !erroHistorico)) return;
+    if (!user?.clinica_id) return;
+
+    const record = pacienteProntuarios.find((item: any) => item.id === routeProntuarioId);
+    routeOpenedRef.current = true;
+    const limparAtalho = () => {
+      const params = new URLSearchParams(searchParams);
+      params.delete('prontuario');
+      setSearchParams(params, { replace: true });
+    };
+
+    if (erroHistorico) {
+      toast.error('Não foi possível confirmar a autorização de leitura', {
+        description: 'O prontuário permaneceu fechado. Tente novamente antes de abrir o adendo.',
+      });
+      limparAtalho();
+      return;
+    }
+
+    if (!record || record.paciente_id !== routePacienteId || !record.assinado) {
+      toast.error('Não foi possível reabrir esta evolução', {
+        description: 'O prontuário pode ter mudado ou não estar disponível para este paciente e clínica.',
+      });
+      limparAtalho();
+      return;
+    }
+    void handleViewProntuarioRef.current(record);
+    limparAtalho();
+  }, [
+    routeProntuarioId, routePacienteId, selectedPacienteId, selectedPaciente,
+    pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError,
+    loadingProntuarios, loadingMedicos, erroProntuarios, erroMedicos,
+    historicoAuditadoPacienteId, erroHistorico, user?.clinica_id,
+    pacienteProntuarios, searchParams, setSearchParams,
+  ]);
 
   useEffect(() => {
     if (routeOpenedRef.current || !routeAgendamentoId || selectedPacienteId !== routePacienteId
@@ -2350,7 +2402,7 @@ export default function Prontuarios() {
 
           {/* Scrollable content */}
           <ScrollArea className="flex-1 pr-4">
-            <Tabs defaultValue="anamnese" className="w-full">
+            <Tabs value={secaoProntuario} onValueChange={changeProntuarioSection} className="w-full">
                 <TabsList
                   aria-label="Seções do prontuário"
                   className="mb-3 grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 sm:flex sm:flex-wrap sm:justify-start sm:gap-0.5"
@@ -2716,9 +2768,10 @@ export default function Prontuarios() {
                   {currentProntuario.id ? (
                     <ProntuarioAdendos
                       prontuarioId={currentProntuario.id}
-                      medicoNome={medicoDoProntuario?.nome}
-                      crm={medicoDoProntuario?.crm}
                       disabled={!podeAdendar}
+                      onNovoAdendo={() => {
+                        navigate(`/prontuarios/${currentProntuario.id}/adendos/novo`);
+                      }}
                     />
                   ) : (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">

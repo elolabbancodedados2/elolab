@@ -19,22 +19,21 @@ describe('adendos de prontuario', () => {
   it('reports load errors and allows retry', async () => {
     selectResult.mockResolvedValueOnce({ data: null, error: new Error('Network failure') })
       .mockResolvedValueOnce({ data: [], error: null });
-    render(<ProntuarioAdendos prontuarioId="prontuario-1" medicoNome="Dra. Ana" crm="CRM 123" />);
+    render(<ProntuarioAdendos prontuarioId="prontuario-1" />);
 
     expect(await screen.findByText(/Não foi possível carregar/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Tentar novamente/i }));
     expect(await screen.findByText(/Nenhum adendo registrado/i)).toBeInTheDocument();
   });
 
-  it('opens the form and shows the doctor identity', async () => {
+  it('navigates to the dedicated page to create an immutable addendum', async () => {
     selectResult.mockResolvedValue({ data: [], error: null });
-    render(<ProntuarioAdendos prontuarioId="prontuario-1" medicoNome="Dra. Ana Costa" crm="CRM-SP 12345" />);
+    const onNovoAdendo = vi.fn();
+    render(<ProntuarioAdendos prontuarioId="prontuario-1" onNovoAdendo={onNovoAdendo} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Novo Adendo/i }));
 
-    expect(await screen.findByText('Dra. Ana Costa')).toBeInTheDocument();
-    expect(screen.getByText(/CRM-SP 12345/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Motivo *')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Conteúdo do Adendo/)).toBeInTheDocument();
+    expect(onNovoAdendo).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
