@@ -89,3 +89,98 @@ test('payables keep a loading state visible until the accounts arrive', async ({
   await expect(main.getByText('Nenhuma conta cadastrada', { exact: true })).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('new payable opens as a page, survives reload, and returns to the filtered list', async ({ page }, info) => {
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
+  const search = page.getByPlaceholder('Descrição, fornecedor, NF...');
+  await search.fill('Fornecedor QA');
+  await page.getByRole('button', { name: 'Nova Conta', exact: true }).first().click();
+
+  await expect(page).toHaveURL('/contas/pagar/nova');
+  await expect(page.getByRole('heading', { name: 'Nova Conta a Pagar', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('new-payable-mobile.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Salvar conta', exact: true }).scrollIntoViewIfNeeded();
+  const mobileSaveBox = await page.getByRole('button', { name: 'Salvar conta', exact: true }).boundingBox();
+  const mobileNavigationBox = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(mobileSaveBox).not.toBeNull();
+  expect(mobileNavigationBox).not.toBeNull();
+  expect(mobileSaveBox!.y + mobileSaveBox!.height).toBeLessThan(mobileNavigationBox!.y);
+  await page.screenshot({ path: info.outputPath('new-payable-mobile-actions.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('new-payable-tablet.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: info.outputPath('new-payable-desktop.png'), fullPage: true });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Nova Conta a Pagar', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Voltar às contas a pagar' }).click();
+
+  await expect(page).toHaveURL('/contas?tab=pagar&status=aberto&mes=2026-10');
+  await expect(page.getByPlaceholder('Descrição, fornecedor, NF...')).toHaveValue('Fornecedor QA');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('payable creation keeps its draft after an error and submits the existing financial contract', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  const payloads: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/lancamentos*', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    payloads.push(route.request().postDataJSON());
+    if (payloads.length === 1) return route.fulfill({ status: 400, json: { message: 'Falha sintética ao cadastrar' } });
+    return route.fulfill({ status: 201, json: [] });
+  });
+  await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
+  await page.getByRole('button', { name: 'Nova Conta', exact: true }).first().click();
+  await page.getByLabel('Descrição *').fill('Licença de software da clínica');
+  await page.getByLabel('Fornecedor / Favorecido').fill('Fornecedor QA');
+  await page.getByLabel('Valor (R$) *').fill('184.75');
+  await page.getByLabel('Vencimento *').fill('2026-11-20');
+  await page.getByRole('switch', { name: 'Marcar como despesa recorrente' }).click();
+  await page.getByLabel('Frequência').click();
+  await page.getByRole('option', { name: 'Trimestral', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Salvar conta', exact: true }).click();
+  await expect(page.getByText('Falha sintética ao cadastrar', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Descrição *')).toHaveValue('Licença de software da clínica');
+  await expect(page).toHaveURL('/contas/pagar/nova');
+
+  await page.getByRole('button', { name: 'Salvar conta', exact: true }).click();
+  await expect(page).toHaveURL('/contas?tab=pagar&status=aberto&mes=2026-10');
+  expect(payloads).toHaveLength(2);
+  expect(payloads[1]).toMatchObject({
+    tipo: 'despesa',
+    clinica_id: '00000000-0000-4000-8000-000000000002',
+    descricao: 'Licença de software da clínica',
+    fornecedor: 'Fornecedor QA',
+    valor: 184.75,
+    data_vencimento: '2026-11-20',
+    recorrente: true,
+    frequencia_recorrencia: 'trimestral',
+    status: 'pendente',
+  });
+});
+
+test('payable page confirms discard on navigation and keeps the draft when canceled', async ({ page }) => {
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
+  await page.goto('/contas/pagar/nova');
+  await page.getByLabel('Descrição *').fill('Rascunho de despesa QA');
+
+  await page.getByRole('button', { name: 'Voltar às contas a pagar' }).click();
+  const discard = page.getByRole('alertdialog');
+  await expect(discard).toContainText('Alterações não salvas');
+  await discard.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(page).toHaveURL('/contas/pagar/nova');
+  await expect(page.getByLabel('Descrição *')).toHaveValue('Rascunho de despesa QA');
+
+  await page.getByRole('button', { name: 'Voltar às contas a pagar' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();
+  await expect(page).toHaveURL('/contas?tab=pagar');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+  expect(synthetic.writes.filter(write => !write.includes('/rpc/') && !write.includes('/functions/v1/mercadopago-point'))).toEqual([]);
+});

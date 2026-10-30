@@ -1,9 +1,9 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { useState, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
+  ArrowLeft, Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
   Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown,
 } from 'lucide-react';
 
@@ -29,6 +29,7 @@ import { Database } from '@/integrations/supabase/types';
 import { differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
+import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
@@ -115,24 +116,51 @@ const PILL_ATIVA_P = 'border-primary bg-primary text-primary-foreground';
 const PILL_INATIVA_P = 'border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground';
 
 export default function ContasPagar() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const location = useLocation();
+  const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown } | null;
+  const isCreationPage = location.pathname === '/contas/pagar/nova';
+  const returnToListPath = typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo)
+    ? routeState.returnTo
+    : '/contas?tab=pagar';
+  const restoreSearchTerm = typeof routeState?.restoreSearchTerm === 'string' ? routeState.restoreSearchTerm : '';
+  const [searchTerm, setSearchTerm] = useState(restoreSearchTerm);
   const [searchParams, setSearchParams] = useSearchParams();
   const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
   const selectedMonthParam = searchParams.get('mes');
   const selectedMonth = parseFinanceMonth(selectedMonthParam);
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>(novoFormDataDespesa);
+  const [formDirty, setFormDirty] = useState(false);
   const [pagamentoData, setPagamentoData] = useState({ forma_pagamento: 'pix', observacoes: '', valor: '' });
   const [chavesPagamento, setChavesPagamento] = useState<Record<string, string>>({});
   const [pagamentoIncerto, setPagamentoIncerto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLock = useRef(false);
+  const navigationAllowedRef = useRef(false);
 
   const navigate = useNavigate();
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    !navigationAllowedRef.current && isCreationPage && formDirty && !isSubmitting
+      && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
+  useEffect(() => { navigationAllowedRef.current = false; }, [location.pathname, location.search]);
+  useEffect(() => {
+    if (!isCreationPage || !formDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [formDirty, isCreationPage]);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
+
+  const returnToList = () => navigate(returnToListPath, { state: { restoreSearchTerm: searchTerm } });
+  const updateFormData = (patch: Partial<FormData>) => {
+    setFormData(current => ({ ...current, ...patch }));
+    setFormDirty(true);
+  };
 
   const setFilterStatus = (status: string) => setSearchParams(current => {
     const next = new URLSearchParams(current);
@@ -164,7 +192,7 @@ export default function ContasPagar() {
         return { ...conta, vencida, statusOriginal: conta.status, status: vencida ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
-    enabled: !!user && !!profile?.clinica_id,
+    enabled: !isCreationPage && !!user && !!profile?.clinica_id,
   });
   const contas = contasQuery.data ?? [];
   const contasAtingiramLimite = contas.length >= LIMITE_BUSCA_EM_BLOCOS;
@@ -214,7 +242,10 @@ export default function ContasPagar() {
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-  const handleNew = () => { setSelectedId(null); setFormData(novoFormDataDespesa()); setIsFormOpen(true); };
+  const handleNew = () => {
+    setSelectedId(null);
+    navigate('/contas/pagar/nova', { state: { returnTo: `${location.pathname}${location.search}`, restoreSearchTerm: searchTerm } });
+  };
 
   const handleSave = async () => {
     if (submissionLock.current) return;
@@ -259,7 +290,9 @@ export default function ContasPagar() {
       if (error) throw error;
       toast.success('Conta cadastrada!');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      setIsFormOpen(false);
+      setFormDirty(false);
+      navigationAllowedRef.current = true;
+      returnToList();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar');
     } finally {
@@ -376,11 +409,12 @@ export default function ContasPagar() {
     }
   };
 
-  if (contasQuery.isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
-  if (contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
+  if (!isCreationPage && contasQuery.isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  if (!isCreationPage && contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
 
   return (
     <div className="space-y-6 pb-8">
+      {!isCreationPage && <>
       <PageHeader
         title="Contas a Pagar"
         description={stats.total === 0
@@ -659,57 +693,62 @@ export default function ContasPagar() {
           </div>
         </CardContent>
       </Card>
+      </>}
 
-      {/* ── Enhanced Form Dialog ── */}
-      <Dialog open={isFormOpen} onOpenChange={open => { if (!isSubmitting) setIsFormOpen(open); }}>
-        <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-primary" />
-              Nova Conta a Pagar
-            </DialogTitle>
-            <DialogDescription>Cadastre uma nova despesa ou conta a pagar.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto space-y-5 pr-2">
+      {isCreationPage && (
+        <main data-testid="payable-create-page" className="space-y-5">
+          <PageHeader
+            title="Nova Conta a Pagar"
+            description="Cadastre uma despesa e acompanhe o vencimento na lista de contas."
+            icon={<DollarSign />}
+            actions={(
+              <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting}>
+                <ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />Voltar às contas a pagar
+              </Button>
+            )}
+          />
+          <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-4">
+            <section className="overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="space-y-5 p-4 sm:p-6">
             {/* Dados principais */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-xs">Categoria *</Label>
-                <Select value={formData.categoria} onValueChange={v => setFormData({ ...formData, categoria: v })} disabled={isSubmitting}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label htmlFor="payable-category" className="text-xs">Categoria *</Label>
+                <Select value={formData.categoria} onValueChange={v => updateFormData({ categoria: v })} disabled={isSubmitting}>
+                  <SelectTrigger id="payable-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{CATEGORIAS_LABELS[c]}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Fornecedor / Favorecido</Label>
-                <Input value={formData.fornecedor} onChange={e => setFormData({ ...formData, fornecedor: e.target.value })}
+                <Label htmlFor="payable-supplier" className="text-xs">Fornecedor / Favorecido</Label>
+                <Input id="payable-supplier" value={formData.fornecedor} onChange={e => updateFormData({ fornecedor: e.target.value })}
                   placeholder="Ex: Laboratório X" disabled={isSubmitting} />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Descrição *</Label>
-              <Textarea value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })}
+              <Label htmlFor="payable-description" className="text-xs">Descrição *</Label>
+              <Textarea id="payable-description" required value={formData.descricao} onChange={e => updateFormData({ descricao: e.target.value })}
                 placeholder="Descrição da despesa..." rows={2} disabled={isSubmitting} />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Valor (R$) *</Label>
-                <Input type="number" step="0.01" min="0.01" required value={formData.valor}
-                  onChange={e => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })} disabled={isSubmitting} />
+                <Label htmlFor="payable-value" className="text-xs">Valor (R$) *</Label>
+                <Input id="payable-value" type="number" step="0.01" min="0.01" required value={formData.valor}
+                  onChange={e => updateFormData({ valor: parseFloat(e.target.value) || 0 })} disabled={isSubmitting} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Nº Documento / NF</Label>
-                <Input value={formData.numero_documento} onChange={e => setFormData({ ...formData, numero_documento: e.target.value })}
+                <Label htmlFor="payable-document" className="text-xs">Nº Documento / NF</Label>
+                <Input id="payable-document" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })}
                   placeholder="Ex: NF-001234" className="font-mono" disabled={isSubmitting} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Forma de Pagamento</Label>
-                <Select value={formData.forma_pagamento} onValueChange={v => setFormData({ ...formData, forma_pagamento: v })} disabled={isSubmitting}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label htmlFor="payable-method" className="text-xs">Forma de Pagamento</Label>
+                <Select value={formData.forma_pagamento} onValueChange={v => updateFormData({ forma_pagamento: v })} disabled={isSubmitting}>
+                  <SelectTrigger id="payable-method"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
                   </SelectContent>
@@ -725,19 +764,19 @@ export default function ContasPagar() {
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Data de Emissão</Label>
+                <Label htmlFor="payable-issued" className="text-xs">Data de Emissão</Label>
                   <Input type="date" value={formData.data_emissao}
-                    onChange={e => setFormData({ ...formData, data_emissao: e.target.value })} disabled={isSubmitting} />
+                  id="payable-issued" onChange={e => updateFormData({ data_emissao: e.target.value })} disabled={isSubmitting} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Vencimento *</Label>
-                  <Input type="date" required value={formData.data_vencimento}
-                    onChange={e => setFormData({ ...formData, data_vencimento: e.target.value })} disabled={isSubmitting} />
+                <Label htmlFor="payable-due" className="text-xs">Vencimento *</Label>
+                <Input id="payable-due" type="date" required value={formData.data_vencimento}
+                  onChange={e => updateFormData({ data_vencimento: e.target.value })} disabled={isSubmitting} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Competência (Mês/Ano)</Label>
-                  <Input type="month" value={formData.competencia}
-                    onChange={e => setFormData({ ...formData, competencia: e.target.value })} disabled={isSubmitting} />
+                <Label htmlFor="payable-competence" className="text-xs">Competência (Mês/Ano)</Label>
+                <Input id="payable-competence" type="month" value={formData.competencia}
+                  onChange={e => updateFormData({ competencia: e.target.value })} disabled={isSubmitting} />
                 </div>
               </div>
             </div>
@@ -749,9 +788,9 @@ export default function ContasPagar() {
                 <Repeat className="h-4 w-4" /> Recorrência
               </h4>
               <div className="flex items-center gap-3 mb-3">
-                <Switch checked={formData.recorrente}
-                  onCheckedChange={checked => setFormData({ ...formData, recorrente: checked })} disabled={isSubmitting} />
-                <Label className="text-sm">Marcar como despesa recorrente</Label>
+                <Switch id="payable-recurring" checked={formData.recorrente}
+                  onCheckedChange={checked => updateFormData({ recorrente: checked })} disabled={isSubmitting} />
+                <Label htmlFor="payable-recurring" className="text-sm">Marcar como despesa recorrente</Label>
               </div>
               {formData.recorrente && (
                 <div className="space-y-2">
@@ -759,10 +798,10 @@ export default function ContasPagar() {
                     Ao quitar esta conta, a próxima despesa será criada automaticamente com o vencimento na frequência escolhida.
                   </p>
                   <div className="w-48">
-                    <Label className="text-xs">Frequência</Label>
+                    <Label htmlFor="payable-frequency" className="text-xs">Frequência</Label>
                     <Select value={formData.frequencia_recorrencia}
-                      onValueChange={v => setFormData({ ...formData, frequencia_recorrencia: v })} disabled={isSubmitting}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      onValueChange={v => updateFormData({ frequencia_recorrencia: v })} disabled={isSubmitting}>
+                      <SelectTrigger id="payable-frequency"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="semanal">Semanal</SelectItem>
                         <SelectItem value="quinzenal">Quinzenal</SelectItem>
@@ -783,11 +822,11 @@ export default function ContasPagar() {
               <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                 <Building2 className="h-4 w-4" /> Organização
               </h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Centro de Custo</Label>
-                  <Select value={formData.centro_custo} onValueChange={v => setFormData({ ...formData, centro_custo: v })} disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label htmlFor="payable-cost-center" className="text-xs">Centro de Custo</Label>
+                  <Select value={formData.centro_custo} onValueChange={v => updateFormData({ centro_custo: v })} disabled={isSubmitting}>
+                    <SelectTrigger id="payable-cost-center"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {CENTROS_CUSTO.map(c => <SelectItem key={c} value={c}>{CENTROS_CUSTO_LABELS[c]}</SelectItem>)}
                     </SelectContent>
@@ -799,8 +838,8 @@ export default function ContasPagar() {
             {/* Observações */}
             <Separator />
             <div className="space-y-1.5">
-              <Label className="text-xs">Observações</Label>
-              <Textarea value={formData.observacoes} onChange={e => setFormData({ ...formData, observacoes: e.target.value })}
+              <Label htmlFor="payable-notes" className="text-xs">Observações</Label>
+              <Textarea id="payable-notes" value={formData.observacoes} onChange={e => updateFormData({ observacoes: e.target.value })}
                 placeholder="Anotações internas..." rows={2} disabled={isSubmitting} />
             </div>
 
@@ -808,16 +847,28 @@ export default function ContasPagar() {
             <p className="text-xs text-muted-foreground">
               A conta será cadastrada como pendente. Depois, use <strong>Pagar</strong> para registrar o movimento no caixa aberto do dia.
             </p>
-          </div>
-
-          <DialogFooter className="flex-shrink-0 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSubmitting}>
-              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
+              </div>
+            </section>
+            <footer className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting}>Cancelar</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar conta'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </footer>
+          </form>
+          <UnsavedChangesDialog
+            open={blocker.state === 'blocked'}
+            onOpenChange={open => { if (!open && blocker.state === 'blocked') blocker.reset(); }}
+            onConfirm={() => {
+              if (blocker.state === 'blocked') {
+                navigationAllowedRef.current = true;
+                setFormDirty(false);
+                blocker.proceed();
+              }
+            }}
+          />
+        </main>
+      )}
 
       {/* Payment Dialog */}
       <Dialog open={isPagamentoOpen} onOpenChange={open => { if (open || (!isSubmitting && !pagamentoIncerto)) setIsPagamentoOpen(open); }}>

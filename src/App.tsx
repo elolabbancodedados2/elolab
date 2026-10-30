@@ -379,6 +379,7 @@ function AppRoutes() {
                           <Route path="/caixa" element={<Navigate to="/recepcao?tab=caixa" replace />} />
                           <Route path="/caixa-diario" element={<Navigate to="/recepcao?tab=caixa" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/pagar/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas-receber" element={<Navigate to="/contas?tab=receber" replace />} />
                           <Route path="/contas-pagar" element={<Navigate to="/contas?tab=pagar" replace />} />
