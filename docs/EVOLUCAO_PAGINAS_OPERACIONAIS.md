@@ -901,3 +901,11 @@ A edição de assentos, tokens de IA e notificações agora usa `/admin/consumo/
 ## Plataforma — atualização de incidentes em página própria
 
 A mudança de status e a justificativa de incidente agora usam `/admin/incidentes/:incidentId/atualizar`, com estado atual, impacto e linha do tempo visíveis. A RPC `platform_update_incident` e a proteção de acesso da plataforma foram preservadas. Playwright 1/1, TypeScript, build e verificações de acessibilidade, permissões, falhas e colunas passaram; captura mobile inspecionada. Publicado no commit `76c94c9`, imagem `deploy-20261030-76c94c9`; health, SHA público e Swarm 1/1 confirmados; rollback `deploy-20261030-f81a78c`. Detalhes: [atualização de incidentes em página própria](EVOLUCAO_INCIDENTES_ATUALIZACAO_PAGINA.md).
+
+## Plataforma — decisão LGPD em página própria
+
+A decisão de pedidos de titulares agora usa `/admin/lgpd/:requestId/decisao`; contexto, prazo, escopo de plataforma e RPC foram preservados. Evidência fica em memória e a lista recupera busca/filtro ao voltar. Playwright sintético 1/1, TypeScript, build, acessibilidade e verificações estáticas passaram; a interface mobile foi inspecionada. Publicado no commit `9cf95b8`, imagem `deploy-20261030-9cf95b8`, rollback `deploy-20261030-76c94c9`; health, SHA, Swarm 1/1 e hash do ambiente conferidos. Detalhes: [decisão LGPD em página própria](EVOLUCAO_LGPD_DECISAO_PAGINA.md).
+
+## Plataforma — solicitação de restauração em página própria
+
+O pedido de restauração agora usa `/admin/backups/restaurar`; arquivo e justificativa são apresentados em contexto próprio. O segundo administrador ainda aprova separadamente e a solicitação não inicia restauração. Playwright sintético 1/1, teste de componente 2/2, TypeScript, build, acessibilidade e verificações estáticas passaram; a interface mobile foi inspecionada. Publicado no commit `a96ed3f`, imagem `deploy-20261030-a96ed3f`, rollback `deploy-20261030-9cf95b8`; health, SHA, Swarm 1/1 e hash do ambiente conferidos. O ensaio de recuperação completa permanece pendente. Detalhes: [solicitação de restauração em página própria](EVOLUCAO_BACKUP_RESTORE_REQUEST_PAGE.md).
