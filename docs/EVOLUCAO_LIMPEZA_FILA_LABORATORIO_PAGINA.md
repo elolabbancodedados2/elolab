@@ -35,4 +35,13 @@ O laboratório ainda oferecia em um diálogo a exclusão em lote de coletas pend
 
 ## Limites e publicação
 
-Não houve alteração de contrato, migration ou escrita em dados de produção durante a implementação. A prévia é informativa; a RPC do servidor decide quais registros ainda atendem aos critérios no momento do processamento. Identificador da imagem, smoke test, rollback e confirmação pública serão registrados após a publicação.
+Não houve alteração de contrato, migration ou escrita em dados de produção. A prévia é informativa; a RPC do servidor decide quais registros ainda atendem aos critérios no momento do processamento.
+
+## Publicação
+
+- Commit: `66e9522d97d8fbbdc569a3b0426605eeeb1d5f5b`.
+- Imagem ativa: `easypanel/elolab/app:deploy-20261030-66e9522`.
+- Rollback: imagem `easypanel/elolab/app:deploy-20261030-e98e83e`; código anterior preservado em `/etc/easypanel/projects/elolab/app/code.before-20261030-66e9522`.
+- Smoke local: `/healthz` respondeu `ok` e `/version.json` confirmou o SHA publicado.
+- Produção: `/healthz` respondeu `ok`; `/version.json` confirmou o SHA; Swarm concluiu a atualização com 1/1 réplica.
+- O `.env` foi copiado e conferido por hash, sem ler ou registrar valores. Nenhuma migration ou escrita em dados de produção foi executada.
