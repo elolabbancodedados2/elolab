@@ -936,4 +936,4 @@ Inativação e reativação passaram do diálogo para `/pacientes/:patientId/sta
 
 Playwright 3/3, Vitest relacionado 10/10, TypeScript, build, acessibilidade, permissões, falhas silenciosas e colunas passaram. As telas renderizadas em mobile (390 px) e desktop (1440 px) foram inspecionadas; o botão principal fica acima da navegação inferior. As gravações E2E foram interceptadas; nenhum paciente real foi alterado. ESLint focal teve zero erros e 54 avisos preexistentes de `any` em `Pacientes.tsx`. Detalhes: [alteração de status do paciente](EVOLUCAO_STATUS_PACIENTE_PAGINA.md).
 
-Publicação: pendente.
+Publicação: commit 7205376b0434f8ba833551804cc889fd4011c9ed, imagem easypanel/elolab/app:deploy-20261030-7205376, rollback deploy-20261030-ea619d0. O smoke isolado, os dois domínios, SHA em /version.json e Swarm 1/1 foram confirmados; a fonte anterior está em code.before-20261030-7205376. Hash do .env permaneceu igual.
