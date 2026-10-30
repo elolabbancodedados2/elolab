@@ -412,7 +412,6 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     if (authenticated) localStorage.setItem(authKey, JSON.stringify(session));
     else localStorage.removeItem(authKey);
     localStorage.setItem('onboarding_done_00000000-0000-4000-8000-000000000001', 'true');
-    localStorage.setItem('elolab-announcement-seen:2.0:00000000-0000-4000-8000-000000000001', 'true');
     localStorage.setItem('elolab_cookie_consent', JSON.stringify({
       necessary: true,
       analytics: false,

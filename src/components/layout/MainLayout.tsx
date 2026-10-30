@@ -16,7 +16,6 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
-import { Version20Announcement } from '@/components/Version20Announcement';
 import { MobileTabBar } from './MobileTabBar';
 import { UpgradeNotice } from './UpgradeNotice';
 
@@ -33,8 +32,6 @@ export function MainLayout() {
     <div className="flex h-[100dvh] min-h-[100svh] overflow-hidden bg-background">
       <SkipLink targetId="main-content" />
       <RouteAccessibility />
-      <Version20Announcement />
-
       {/* Desktop Sidebar */}
       <nav className="hidden h-full shrink-0 border-r border-border bg-sidebar lg:block" aria-label="Menu principal">
         <Sidebar />
