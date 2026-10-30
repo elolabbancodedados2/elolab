@@ -36,4 +36,4 @@ Playwright 4/4 e Vitest 3/3 passaram; build, acessibilidade, permissões, falhas
 
 ## Publicação
 
-Preencher após o rollout e a confirmação pública da versão.
+Commit `d99ee0ef9586ce71ebe3de428d7bb27c40708a50`; imagem ativa `easypanel/elolab/app:deploy-20261030-d99ee0ef`; rollback `deploy-20261030-57a7425`. O smoke isolado e o domínio público responderam `/healthz=ok`; `/version.json` confirmou o SHA integral e o Swarm ficou em 1/1. A primeira imagem do rollout tinha um build ID divergente e foi substituída antes de promover a fonte; a imagem final publica o SHA exato do commit. A fonte anterior foi preservada em `code.before-20261030-d99ee0ef`. O hash do `.env` permaneceu `f2bcf73f6d860dec143ae363f755d3d18e41dc2f3ea3919944af62899c2f3b65`, sem leitura ou exposição do conteúdo. Nenhuma migration ou escrita de dados foi realizada. A disputa transitória da porta host-mode se resolveu antes da confirmação final.
