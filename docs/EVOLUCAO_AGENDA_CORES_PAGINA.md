@@ -29,4 +29,4 @@ A paleta e o formato dos dados existentes foram preservados. Esta entrega remove
 
 ## Publicação
 
-Registro de deploy será acrescentado após a publicação e a conferência dos dois domínios.
+Publicado no commit `e9392a560d966a53062415a62a5d9cc3ad4fa64a`, imagem `easypanel/elolab/app:deploy-20261030-e9392a56`; rollback `deploy-20261030-10699097`. O smoke isolado e os domínios `app.elolab.com.br` e `elolab.com.br` responderam `healthz=ok` e `/version.json` confirmou o SHA completo. Swarm concluiu com 1/1 réplica. O hash do `.env` permaneceu igual; fonte anterior preservada em `code.before-20261030-e9392a56`. Nenhuma migration ou escrita em dados reais.
