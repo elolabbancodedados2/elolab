@@ -146,6 +146,7 @@ const VitaisGraficos = lazy(() => import("@/pages/VitaisGraficos"));
 const AnalisePreditiva = lazy(() => import("@/pages/AnalisePreditiva"));
 const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
+const NovoLoteTissPage = lazy(() => import("@/pages/NovoLoteTissPage"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const RepassePagamentoPage = lazy(() => import("@/pages/RepassePagamentoPage"));
 const BankStatementImportPage = lazy(() => import("@/pages/BankStatementImportPage"));
@@ -363,6 +364,7 @@ function AppRoutes() {
                           <Route path="/convenios/:agreementId/exames/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios examTablePage examCreationPage /></SupabaseProtectedRoute>} />
                           <Route path="/convenios/:agreementId/exames/:agreementExamId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios examTablePage /></SupabaseProtectedRoute>} />
                           <Route path="/faturamento-convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FaturamentoConvenios /></SupabaseProtectedRoute>} />
+                          <Route path="/faturamento-convenios/lotes/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><NovoLoteTissPage /></SupabaseProtectedRoute>} />
                           <Route path="/repasses-medicos/:repasseId/pagamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassePagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/repasses-medicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassesMedicos /></SupabaseProtectedRoute>} />
                           <Route path="/interoperabilidade" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Interoperabilidade /></SupabaseProtectedRoute>} />

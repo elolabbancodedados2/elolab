@@ -21,7 +21,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { FieldHelp } from '@/components/ContextualHelp';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
 import { ConciliacaoConvenioPorLote } from '@/components/financeiro/ConciliacaoConvenioPorLote';
@@ -64,12 +64,13 @@ const pilulaClasse = (ativo: boolean) => cn(
 );
 
 const escapeXml = (v: unknown) => String(v ?? '').replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]!));
-const novoLoteForm = () => ({ convenio_id: '', competencia: todaySaoPauloDateOnly().slice(0, 7) + '-01', numero_lote: '', quantidade_guias: 0, valor_apresentado: 0 });
+interface FiltrosFaturamento { tab?: string; buscaLote?: string; statusLote?: string; buscaGlosa?: string; statusGlosa?: string }
+interface EstadoFaturamento { restaurarFiltros?: FiltrosFaturamento }
 
 export default function FaturamentoConvenios() {
   const { profile } = useSupabaseAuth();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const [lotOpen, setLotOpen] = useState(false);
   const [glosaOpen, setGlosaOpen] = useState(false);
   const [glosaParaRecurso, setGlosaParaRecurso] = useState<any | null>(null);
   const [glosaParaRetorno, setGlosaParaRetorno] = useState<any | null>(null);
@@ -86,11 +87,12 @@ export default function FaturamentoConvenios() {
   const [loteEnviandoId, setLoteEnviandoId] = useState<string | null>(null);
   const [glosaAtualizandoId, setGlosaAtualizandoId] = useState<string | null>(null);
   const glosaAtualizacaoLock = useRef(false);
-  const [lotForm, setLotForm] = useState(novoLoteForm);
-  const [buscaLote, setBuscaLote] = useState('');
-  const [statusLote, setStatusLote] = useState('todos');
-  const [buscaGlosa, setBuscaGlosa] = useState('');
-  const [statusGlosa, setStatusGlosa] = useState('todos');
+  const filtrosRestaurados = (location.state as EstadoFaturamento | null)?.restaurarFiltros;
+  const [activeTab, setActiveTab] = useState(filtrosRestaurados?.tab ?? 'lotes');
+  const [buscaLote, setBuscaLote] = useState(filtrosRestaurados?.buscaLote ?? '');
+  const [statusLote, setStatusLote] = useState(filtrosRestaurados?.statusLote ?? 'todos');
+  const [buscaGlosa, setBuscaGlosa] = useState(filtrosRestaurados?.buscaGlosa ?? '');
+  const [statusGlosa, setStatusGlosa] = useState(filtrosRestaurados?.statusGlosa ?? 'todos');
   const [glosaForm, setGlosaForm] = useState({ lote_id: '', codigo_glosa: '', motivo: '', guia_referencia: '', valor_glosado: 0 });
   const [chaveGlosa, setChaveGlosa] = useState<string | null>(null);
 
@@ -198,36 +200,6 @@ export default function FaturamentoConvenios() {
   const filtroGlosaAtivo = !!buscaGlosa.trim() || statusGlosa !== 'todos';
   const atualizando = conveniosQuery.isFetching || lotesQuery.isFetching || glosasQuery.isFetching;
   const atualizarTudo = () => { void conveniosQuery.refetch(); void lotesQuery.refetch(); void glosasQuery.refetch(); };
-
-  async function saveLot() {
-    if (!profile?.clinica_id) return toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
-    if (!lotForm.convenio_id || !lotForm.numero_lote.trim()) return toast.error('Convênio e número do lote são obrigatórios.');
-    if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])-01$/.test(lotForm.competencia)) return toast.error('Selecione uma competência válida.');
-    if (!Number.isInteger(lotForm.quantidade_guias) || lotForm.quantidade_guias < 1 || !Number.isFinite(lotForm.valor_apresentado) || lotForm.valor_apresentado <= 0) return toast.error('Informe ao menos uma guia e um valor apresentado maior que zero.');
-    if (!temNoMaximoDuasCasas(lotForm.valor_apresentado)) return toast.error('O valor apresentado deve ter no máximo duas casas decimais.');
-    const convenio: any = convenios.find((c: any) => c.id === lotForm.convenio_id);
-    if (!convenio) return toast.error('O convênio selecionado não está disponível. Atualize a tela e tente novamente.');
-    setSaving(true);
-    try {
-      const { data, error } = await (supabase as any).rpc('criar_lote_tiss', {
-        p_convenio_id: lotForm.convenio_id,
-        p_competencia: lotForm.competencia,
-        p_numero_lote: lotForm.numero_lote.trim(),
-        p_quantidade_guias: lotForm.quantidade_guias,
-        p_valor_apresentado: lotForm.valor_apresentado,
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error('O banco não confirmou a criação do lote.');
-      setLotOpen(false); setLotForm(novoLoteForm());
-      await queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }); toast.success('Lote criado.');
-    } catch (error: any) {
-      toast.error('Não foi possível criar o lote.', {
-        description: error?.code === '23505'
-          ? 'Este número de lote já está cadastrado para o convênio selecionado.'
-          : error?.message || 'Verifique os dados e tente novamente.',
-      });
-    } finally { setSaving(false); }
-  }
 
   async function saveGlosa() {
     if (!profile?.clinica_id) return toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
@@ -425,11 +397,6 @@ export default function FaturamentoConvenios() {
     const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' })); const a = document.createElement('a'); a.href = url; a.download = `resumo-operacional-lote-${lote.numero_lote}.xml`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function abrirNovoLote() {
-    setLotForm(novoLoteForm());
-    setLotOpen(true);
-  }
-
   function abrirRegistroGlosa() {
     setGlosaForm({ lote_id: '', codigo_glosa: '', motivo: '', guia_referencia: '', valor_glosado: 0 });
     setChaveGlosa(crypto.randomUUID());
@@ -456,7 +423,9 @@ export default function FaturamentoConvenios() {
             <RefreshCw className={cn('h-4 w-4', atualizando && 'animate-spin')} />
           </Button>
           <Button variant="outline" onClick={abrirRegistroGlosa} disabled={lotesParaRegistrarGlosa.length === 0} className="gap-2 rounded-full disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" title={lotesParaRegistrarGlosa.length === 0 ? 'Envie um lote antes de registrar uma glosa' : undefined}><AlertTriangle className="h-4 w-4" />Registrar glosa</Button>
-          <Button onClick={abrirNovoLote} disabled={convenios.length === 0} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"><Plus className="h-4 w-4" />Novo lote</Button>
+          {convenios.length > 0
+            ? <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Link to="/faturamento-convenios/lotes/novo" state={{ filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } }}><Plus className="h-4 w-4" />Novo lote</Link></Button>
+            : <Button disabled className="gap-2 rounded-full bg-gradient-primary text-white shadow-md disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"><Plus className="h-4 w-4" />Novo lote</Button>}
         </>
       )}
     />
@@ -472,7 +441,7 @@ export default function FaturamentoConvenios() {
       const destaque = label === 'Apresentado';
       return <Card key={label} className={cn('h-full rounded-2xl shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card')}><CardContent className="flex items-center gap-3 p-4"><span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}><Icon className="h-5 w-5" /></span><div className="min-w-0"><p className="truncate text-lg font-bold tabular-nums sm:text-2xl">{brl(value)}</p><p className={cn('text-[11px]', destaque ? 'text-white/80' : 'text-muted-foreground')}>{label} · {legenda}</p></div></CardContent></Card>;
     })}</div>
-    <Tabs defaultValue="lotes"><TabsList className="h-auto flex-wrap rounded-full border border-[#DCE6F2] bg-[#EEF4FA] p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
+    <Tabs value={activeTab} onValueChange={setActiveTab}><TabsList className="h-auto flex-wrap rounded-full border border-[#DCE6F2] bg-[#EEF4FA] p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileStack className="h-4 w-4" /></span>Lotes registrados<FieldHelp term="lote_tiss" /></CardTitle></CardHeader>
@@ -563,7 +532,6 @@ export default function FaturamentoConvenios() {
       </AlertDialogContent>
     </AlertDialog>
 
-    <Dialog open={lotOpen} onOpenChange={open => { if (!saving) setLotOpen(open); }}><DialogContent><DialogHeader><DialogTitle>Novo lote TISS</DialogTitle></DialogHeader><fieldset disabled={saving} className="contents"><div className="space-y-3"><Field label="Convênio"><Select value={lotForm.convenio_id} onValueChange={v => setLotForm(f => ({...f,convenio_id:v}))}><SelectTrigger aria-label="Convênio"><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{convenios.map((c:any)=><SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent></Select></Field><div className="grid grid-cols-2 gap-3"><Field label="Número do lote"><Input value={lotForm.numero_lote} onChange={e=>setLotForm(f=>({...f,numero_lote:e.target.value}))}/></Field><Field label="Competência"><Input type="month" value={lotForm.competencia.slice(0, 7)} onChange={e=>setLotForm(f=>({...f,competencia:e.target.value ? `${e.target.value}-01` : ''}))}/></Field><Field label="Quantidade de guias"><Input type="number" min="1" value={lotForm.quantidade_guias} onChange={e=>setLotForm(f=>({...f,quantidade_guias:Number(e.target.value)}))}/></Field><Field label="Valor apresentado"><Input type="number" min="0.01" step="0.01" value={lotForm.valor_apresentado} onChange={e=>setLotForm(f=>({...f,valor_apresentado:Number(e.target.value)}))}/></Field></div></div></fieldset><DialogFooter><Button variant="outline" onClick={() => setLotOpen(false)} disabled={saving}>Cancelar</Button><Button onClick={saveLot} disabled={saving}>{saving && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Salvar</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={!!loteParaRetorno} onOpenChange={open => { if (!open && !savingRetornoLote) setLoteParaRetorno(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader>

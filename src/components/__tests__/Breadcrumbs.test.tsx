@@ -9,6 +9,11 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Importar extrato bancário')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Fluxo de caixa' })).toHaveAttribute('href', '/fluxo-caixa');
   });
+  it('labels the dedicated TISS lot creation page', () => {
+    render(<MemoryRouter initialEntries={['/faturamento-convenios/lotes/novo']}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Novo lote TISS')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Faturamento de convênios' })).toHaveAttribute('href', '/faturamento-convenios');
+  });
   it.each([
     '/exames/laboratorios/record-qa/editar',
     '/gestao-fluxo/salas/record-qa/editar',
