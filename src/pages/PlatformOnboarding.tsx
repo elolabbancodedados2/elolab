@@ -1,15 +1,15 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatDateInTimeZone } from '@/lib/datePreference';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Ban, Building2, CheckCircle2, RefreshCw, Search } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, Ban, Building2, CheckCircle2, RefreshCw, Search } from 'lucide-react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -19,6 +19,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { dateOnlyInTimeZone, isValidDateOnly } from '@/lib/dateOnly';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
+
+type OnboardingListState = { search?: string; stageFilter?: string; onlyOverdue?: boolean };
 
 type Stage = 'created' | 'configuration' | 'team' | 'operational' | 'completed' | 'blocked';
 type ClinicOnboarding = {
@@ -76,16 +79,23 @@ function dueTimestamp(value?: string | null) {
 
 export default function PlatformOnboarding() {
   const queryClient = useQueryClient();
-  const [clinic, setClinic] = useState<ClinicOnboarding | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { clinicId } = useParams();
+  const listState = location.state as OnboardingListState | null;
+  const [formClinicId, setFormClinicId] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>('created');
   const [nextAction, setNextAction] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [ownerId, setOwnerId] = useState('unassigned');
-  const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState('all');
-  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const [search, setSearch] = useState(listState?.search ?? '');
+  const [stageFilter, setStageFilter] = useState(listState?.stageFilter ?? 'all');
+  const [onlyOverdue, setOnlyOverdue] = useState(listState?.onlyOverdue ?? false);
   const [saving, setSaving] = useState(false);
+  const completed = useRef(false);
   const saveLock = useRef(false);
+  const initializedClinic = useRef<string | null>(null);
+  const baseline = useRef('');
   const query = useQuery({
     queryKey: ['platform-onboarding'],
     queryFn: async () => {
@@ -116,16 +126,50 @@ export default function PlatformOnboarding() {
     },
   });
 
+  const onboardingClinics = query.data || [];
+  const selectedClinic = clinicId ? onboardingClinics.find(item => item.clinica_id === clinicId) ?? null : null;
+
+  useEffect(() => {
+    if (!clinicId) {
+      initializedClinic.current = null;
+      baseline.current = '';
+      completed.current = false;
+      setFormClinicId(null);
+      return;
+    }
+    if (!query.data || initializedClinic.current === clinicId) return;
+    const item = query.data.find(candidate => candidate.clinica_id === clinicId);
+    initializedClinic.current = clinicId;
+    if (!item) {
+      setFormClinicId(null);
+      return;
+    }
+    const initialForm = {
+      stage: item.stage,
+      nextAction: item.next_action || '',
+      dueAt: dateInputValue(item.due_at),
+      ownerId: item.owner_id || 'unassigned',
+    };
+    baseline.current = JSON.stringify(initialForm);
+    completed.current = false;
+    setStage(initialForm.stage);
+    setNextAction(initialForm.nextAction);
+    setDueAt(initialForm.dueAt);
+    setOwnerId(initialForm.ownerId);
+    setFormClinicId(clinicId);
+  }, [clinicId, query.data]);
+
+  const currentForm = JSON.stringify({ stage, nextAction, dueAt, ownerId });
+  const dirty = Boolean(clinicId && formClinicId === clinicId && baseline.current !== currentForm);
+  const currentListState = () => ({ search, stageFilter, onlyOverdue });
+  const returnToList = () => navigate('/admin/onboarding', { state: currentListState() });
+
   const openEditor = (item: ClinicOnboarding) => {
-    setClinic(item);
-    setStage(item.stage);
-    setNextAction(item.next_action || '');
-    setDueAt(dateInputValue(item.due_at));
-    setOwnerId(item.owner_id || 'unassigned');
+    navigate(`/admin/onboarding/${encodeURIComponent(item.clinica_id)}`, { state: currentListState() });
   };
 
   const save = async () => {
-    if (saveLock.current || !clinic) return;
+    if (saveLock.current || !selectedClinic) return;
     if (stage !== 'completed' && nextAction.trim().length < 3) {
       toast.error(stage === 'blocked' ? 'Descreva o bloqueio ou o próximo passo necessário.' : 'Informe a próxima ação para manter o onboarding acionável.');
       return;
@@ -140,7 +184,7 @@ export default function PlatformOnboarding() {
     setSaving(true);
     try {
       const { error } = await (supabase as any).rpc('platform_update_onboarding', {
-        p_clinica_id: clinic.clinica_id,
+        p_clinica_id: selectedClinic.clinica_id,
         p_stage: stage,
         p_next_action: stage === 'completed' ? null : nextAction.trim() || null,
         p_due_at: prazoIso,
@@ -148,8 +192,9 @@ export default function PlatformOnboarding() {
       });
       if (error) throw error;
       toast.success('Onboarding atualizado.');
-      setClinic(null);
+      completed.current = true;
       await queryClient.invalidateQueries({ queryKey: ['platform-onboarding'] });
+      returnToList();
     } catch (error) {
       toast.error('Não foi possível atualizar o onboarding.', { description: mensagemDeErro(error) });
     } finally {
@@ -185,6 +230,91 @@ export default function PlatformOnboarding() {
     const owner = owners.data?.find(candidate => candidate.user_id === item.owner_id);
     return `${item.clinica_nome} ${item.next_action || ''} ${owner?.nome || ''} ${owner?.email || ''}`.toLocaleLowerCase('pt-BR').includes(term);
   });
+
+  if (clinicId) {
+    if (query.isLoading || (selectedClinic && formClinicId !== clinicId)) {
+      return <main className="mx-auto w-full max-w-4xl space-y-5 pb-36"><PageHeader title="Plano de ativação" description="Carregando o contexto da clínica." icon={<Building2 />} /><Skeleton className="h-72 w-full rounded-xl" /></main>;
+    }
+    if (query.isError) {
+      return (
+        <main className="mx-auto w-full max-w-4xl space-y-5 pb-24">
+          <PageHeader title="Plano de ativação indisponível" description="Não foi possível carregar o onboarding desta clínica." icon={<Building2 />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} />
+          <Alert variant="destructive"><AlertTitle>Dados indisponíveis</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{mensagemDeErro(query.error)}</span><Button variant="outline" size="sm" onClick={() => void query.refetch()} disabled={query.isFetching}>Tentar novamente</Button></AlertDescription></Alert>
+        </main>
+      );
+    }
+    if (!selectedClinic) {
+      return <main className="mx-auto w-full max-w-4xl space-y-5 pb-24"><PageHeader title="Clínica não encontrada" description="Esta clínica não está disponível no acompanhamento de onboarding." icon={<Building2 />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} /></main>;
+    }
+
+    return (
+      <main className="mx-auto w-full max-w-4xl space-y-6 pb-36 sm:pb-10">
+        <UnsavedChangesGuard dirty={dirty} busy={saving} completed={completed} />
+        <PageHeader
+          title="Plano de ativação"
+          description={`${selectedClinic.clinica_nome} · Registre a etapa atual, a próxima ação concreta e a data de acompanhamento.`}
+          icon={<Building2 />}
+          actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>}
+        />
+
+        <section aria-label="Situação atual do onboarding" className="grid gap-4 rounded-xl border border-border bg-card p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground">Prontidão automática</p>
+            <div className="mt-2 flex items-center gap-3"><Progress value={Math.max(0, Math.min(100, selectedClinic.readiness))} aria-label={`Prontidão de ${selectedClinic.clinica_nome}`} /><span className="w-10 text-right text-sm font-semibold tabular-nums">{selectedClinic.readiness}%</span></div>
+            <p className="mt-2 text-xs text-muted-foreground">Configuração, serviços, equipe e primeiro agendamento.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="outline">{selectedClinic.team_size} na equipe</Badge>
+            {isOverdue(selectedClinic) && <Badge variant="destructive">Acompanhamento atrasado</Badge>}
+          </div>
+        </section>
+
+        <section aria-label="Atualizar acompanhamento" className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="onboarding-stage">Etapa</Label>
+              <Select value={stage} onValueChange={value => setStage(value as Stage)} disabled={saving}>
+                <SelectTrigger id="onboarding-stage"><SelectValue /></SelectTrigger>
+                <SelectContent>{stages.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="onboarding-owner">Responsável da plataforma</Label>
+              <Select value={ownerId} onValueChange={setOwnerId} disabled={saving || owners.isLoading || owners.isError}>
+                <SelectTrigger id="onboarding-owner"><SelectValue placeholder="Selecione um responsável" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Sem responsável</SelectItem>
+                  {(owners.data || []).map(owner => <SelectItem key={owner.user_id} value={owner.user_id}>{owner.nome}{owner.email ? ` · ${owner.email}` : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {owners.isError && <p role="alert" className="text-xs text-destructive">Não foi possível carregar responsáveis. Tente novamente antes de atribuir.</p>}
+              {owners.isError && <Button type="button" size="sm" variant="outline" onClick={() => void owners.refetch()} disabled={owners.isFetching}>Tentar carregar responsáveis</Button>}
+              {!owners.isLoading && !owners.isError && ownerId !== 'unassigned' && !owners.data?.some(owner => owner.user_id === ownerId) && <p role="status" className="text-xs text-warning">O responsável salvo não está ativo. Atribua outro responsável ou selecione “Sem responsável”.</p>}
+              {!owners.isLoading && !owners.isError && !owners.data?.length && <p className="text-xs text-muted-foreground">Nenhum administrador ativo disponível.</p>}
+            </div>
+            {stage === 'completed' ? (
+              <p className="md:col-span-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">Ao concluir, a próxima ação e o prazo serão limpos do acompanhamento.</p>
+            ) : (
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="onboarding-next-action">{stage === 'blocked' ? 'Bloqueio ou próximo passo necessário' : 'Próxima ação'}</Label>
+                <Textarea id="onboarding-next-action" value={nextAction} onChange={event => setNextAction(event.target.value)} maxLength={500} placeholder={stage === 'blocked' ? 'Ex.: aguardar envio dos dados pelo responsável da clínica' : 'Ex.: concluir cadastro de serviços com a clínica'} rows={4} disabled={saving} />
+                <p className="text-xs text-muted-foreground">{nextAction.length}/500 caracteres · obrigatório, mínimo de 3.</p>
+              </div>
+            )}
+            {stage !== 'completed' && <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="onboarding-due-date">Prazo para acompanhamento</Label>
+              <Input id="onboarding-due-date" type="date" value={dueAt} onChange={event => setDueAt(event.target.value)} disabled={saving} />
+              <p className="text-xs text-muted-foreground">O prazo vale até 23:59, horário de São Paulo.</p>
+            </div>}
+          </div>
+          <footer className="mt-6 flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={returnToList} disabled={saving}>Cancelar</Button>
+            <Button onClick={() => void save()} disabled={saving || formClinicId !== clinicId}>{saving ? 'Salvando…' : 'Salvar acompanhamento'}</Button>
+          </footer>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
@@ -326,55 +456,6 @@ export default function PlatformOnboarding() {
         )}
       </div>
 
-      <Dialog open={!!clinic} onOpenChange={open => { if (!open && !saving) setClinic(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Plano de ativação</DialogTitle>
-            <DialogDescription>{clinic?.clinica_nome}. Registre uma etapa, ação concreta e prazo para o próximo acompanhamento.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="onboarding-stage">Etapa</Label>
-              <Select value={stage} onValueChange={value => setStage(value as Stage)} disabled={saving}>
-                <SelectTrigger id="onboarding-stage"><SelectValue /></SelectTrigger>
-                <SelectContent>{stages.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              {stage === 'completed' ? (
-                <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">Ao concluir, a próxima ação e o prazo serão limpos do acompanhamento.</p>
-              ) : <>
-                <Label htmlFor="onboarding-next-action">{stage === 'blocked' ? 'Bloqueio ou próximo passo necessário' : 'Próxima ação'}</Label>
-                <Textarea id="onboarding-next-action" value={nextAction} onChange={event => setNextAction(event.target.value)} maxLength={500} placeholder={stage === 'blocked' ? 'Ex.: aguardar envio dos dados pelo responsável da clínica' : 'Ex.: concluir cadastro de serviços com a clínica'} rows={3} disabled={saving} />
-                <p className="text-xs text-muted-foreground">{nextAction.length}/500 caracteres · obrigatório, mínimo de 3.</p>
-              </>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="onboarding-owner">Responsável da plataforma</Label>
-              <Select value={ownerId} onValueChange={setOwnerId} disabled={saving || owners.isLoading || owners.isError}>
-                <SelectTrigger id="onboarding-owner"><SelectValue placeholder="Selecione um responsável" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Sem responsável</SelectItem>
-                  {(owners.data || []).map(owner => <SelectItem key={owner.user_id} value={owner.user_id}>{owner.nome}{owner.email ? ` · ${owner.email}` : ''}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {owners.isError && <p role="alert" className="text-xs text-destructive">Não foi possível carregar responsáveis. Tente novamente antes de atribuir.</p>}
-              {owners.isError && <Button type="button" size="sm" variant="outline" onClick={() => void owners.refetch()} disabled={owners.isFetching}>Tentar carregar responsáveis</Button>}
-              {!owners.isLoading && !owners.isError && ownerId !== 'unassigned' && !owners.data?.some(owner => owner.user_id === ownerId) && <p role="status" className="text-xs text-warning">O responsável salvo não está ativo. Atribua outro responsável ou selecione “Sem responsável”.</p>}
-              {!owners.isLoading && !owners.isError && !owners.data?.length && <p className="text-xs text-muted-foreground">Nenhum administrador ativo disponível.</p>}
-            </div>
-            {stage !== 'completed' && <div className="space-y-2">
-              <Label htmlFor="onboarding-due-date">Prazo para acompanhamento</Label>
-              <Input id="onboarding-due-date" type="date" value={dueAt} onChange={event => setDueAt(event.target.value)} disabled={saving} />
-              <p className="text-xs text-muted-foreground">O prazo vale até 23:59, horário de São Paulo.</p>
-            </div>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setClinic(null)} disabled={saving}>Cancelar</Button>
-            <Button className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => void save()} disabled={saving}>{saving ? 'Salvando…' : 'Salvar acompanhamento'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

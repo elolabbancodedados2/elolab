@@ -510,6 +510,7 @@ function AppRoutes() {
                           <Route path="/admin/seguranca" element={<SupabaseProtectedRoute somentePlataforma><PlatformSeguranca /></SupabaseProtectedRoute>} />
                           <Route path="/admin/consumo" element={<SupabaseProtectedRoute somentePlataforma><PlatformConsumo /></SupabaseProtectedRoute>} />
                           <Route path="/admin/onboarding" element={<SupabaseProtectedRoute somentePlataforma><PlatformOnboarding /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/onboarding/:clinicId" element={<SupabaseProtectedRoute somentePlataforma><PlatformOnboarding /></SupabaseProtectedRoute>} />
                           <Route path="/admin/dominios" element={<SupabaseProtectedRoute somentePlataforma><PlatformDominios /></SupabaseProtectedRoute>} />
                           <Route path="/admin/relatorios-agendados" element={<SupabaseProtectedRoute somentePlataforma><PlatformRelatoriosAgendados /></SupabaseProtectedRoute>} />
                           <Route path="/acesso-assistido" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AcessoAssistido /></SupabaseProtectedRoute>} />
