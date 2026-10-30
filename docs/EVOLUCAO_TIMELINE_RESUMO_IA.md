@@ -45,4 +45,4 @@ O resumo inteligente era aberto em um diálogo rolável que cobria a linha do te
 
 ## Publicação
 
-Pendente neste registro até concluir o deploy manual autorizado e verificar o SHA servido, a saúde pública e o estado do Swarm. Nenhuma migration ou escrita de dados de produção faz parte desta entrega.
+Commit `db8b582e3304a47bc68b574e9af5a4bc012bedf8`; imagem `easypanel/elolab/app:deploy-20261030-db8b582`. O smoke isolado respondeu `ok` e `/version.json` confirmou o SHA integral. O Swarm concluiu com 1/1 réplica; `/healthz` público respondeu `ok` e a versão pública confirmou o mesmo `build_id`. A porta host apresentou contenção transitória durante o rollout e o serviço convergiu sem rollback. Rollback preservado: `deploy-20261030-df8c0c1`; fonte anterior em `code.before-20261030-db8b582`. Nenhuma migration ou escrita de dados de produção.
