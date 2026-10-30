@@ -74,7 +74,7 @@ describe('RevisaoDuplicidadesPacientesPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Revisar' }));
     const reason = await screen.findByLabelText('Motivo da mesclagem');
     fireEvent.change(reason, { target: { value: 'Mesmo cadastro confirmado pela recepção.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Voltar$/ }));
 
     expect(await screen.findByRole('heading', { name: 'Descartar esta revisão?' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Continuar preenchendo' }));

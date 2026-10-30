@@ -4,7 +4,7 @@ import {
   Shield,
   Key, RefreshCw, CloudOff, Cloud,
   DollarSign, Printer, MapPin, Users,
-  CreditCard, Receipt, Loader2, Hash, Image, Workflow,
+  CreditCard, Receipt, Loader2, Hash, Image, Workflow, FileSpreadsheet,
   PlugZap, Settings2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
@@ -29,8 +29,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { BackupRestore } from '@/components/BackupRestore';
-import { ImportadorDePlanilha } from '@/components/importacao/ImportadorDePlanilha';
 import { AuditLog } from '@/components/AuditLog';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -974,12 +972,27 @@ export default function Configuracoes() {
 
         {/* ─── Backup ─── */}
         <TabsContent value="backup">
-          <div className="space-y-6">
-            <BackupRestore />
-            {/* Fica junto do backup porque é a mesma pergunta do usuário —
-                "como tiro e como ponho dados aqui" — e é onde ele procura no
-                dia em que troca de sistema. */}
-            <ImportadorDePlanilha />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-primary" />Backup e recuperação</CardTitle>
+                <CardDescription>Exporte os dados da clínica ou confira um arquivo antes de restaurar.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="max-w-xl text-sm text-muted-foreground">A prévia mostra a origem, a integridade e o que será criado ou atualizado.</p>
+                <Button asChild className="shrink-0"><Link to="/configuracoes/backup">Abrir backup</Link></Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5 text-primary" />Importar dados</CardTitle>
+                <CardDescription>Traga pacientes ou agenda de outro sistema e revise as linhas antes de importar.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="max-w-xl text-sm text-muted-foreground">Planilhas .csv, .xlsx e .xls com mapeamento e prévia de duplicidades.</p>
+                <Button asChild className="shrink-0"><Link to="/configuracoes/importar-dados">Abrir importação</Link></Button>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 

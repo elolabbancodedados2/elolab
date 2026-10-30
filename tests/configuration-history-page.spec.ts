@@ -123,3 +123,71 @@ test('histórico de faturas explica a falha e permite tentar novamente', async (
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('configurações encaminha backup e importação para páginas próprias', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/configuracoes?tab=backup');
+
+  await page.getByRole('link', { name: 'Abrir backup' }).click();
+  await expect(page).toHaveURL('/configuracoes/backup');
+  await expect(page.getByRole('heading', { name: 'Backup e recuperação' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.getByRole('link', { name: 'Voltar às configurações' }).click();
+  await expect(page).toHaveURL('/configuracoes?tab=backup');
+  await page.getByRole('link', { name: 'Abrir importação' }).click();
+  await expect(page).toHaveURL('/configuracoes/importar-dados');
+  await expect(page.getByRole('heading', { name: 'Importar dados' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('prévia de restauração é uma tela completa sem modal e mantém o arquivo em memória', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });
+  await page.route('http://127.0.0.1:54321/rest/v1/rpc/tabelas_para_backup', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(['pacientes']) });
+  });
+  await page.route('http://127.0.0.1:54321/rest/v1/pacientes**', async route => {
+    if (route.request().method() === 'HEAD') {
+      await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/configuracoes/backup');
+  const backup = {
+    version: '3.0', createdAt: '2026-10-30T12:00:00.000Z', type: 'manual', completo: true,
+    collections: { pacientes: [{ id: 'paciente-sintetico', clinica_id: 'clinica-sintetica' }] },
+    metadata: { totalRecords: 1, tablesCount: 1, tabelasComFalha: [], tabelasTruncadas: [], collectionCounts: { pacientes: 1 } },
+  };
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'backup-sintetico.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)),
+  });
+
+  await expect(page.getByRole('heading', { name: 'Conferir restauração' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Impacto previsto' })).toBeVisible();
+  await expect(page.getByText('1 registro', { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Restaurar Backup' })).toBeEnabled();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('backup-restore-preview-desktop.png'), fullPage: true, animations: 'disabled' });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('backup-restore-preview-mobile.png'), fullPage: true, animations: 'disabled' });
+  const restore = page.getByRole('button', { name: 'Restaurar Backup' });
+  await restore.scrollIntoViewIfNeeded();
+  const navigation = page.getByRole('navigation', { name: 'Navegação principal' });
+  const [restoreBox, navBox] = await Promise.all([restore.boundingBox(), navigation.boundingBox()]);
+  expect(restoreBox && navBox && restoreBox.y + restoreBox.height <= navBox.y, JSON.stringify({ restoreBox, navBox })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('backup-restore-preview-mobile-actions.png'), animations: 'disabled' });
+  await page.getByRole('button', { name: 'Escolher outro arquivo' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Backup e recuperação' })).toBeVisible();
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});

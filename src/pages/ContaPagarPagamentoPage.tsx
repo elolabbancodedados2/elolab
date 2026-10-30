@@ -225,7 +225,7 @@ export default function ContaPagarPagamentoPage() {
   if (error) return <div className="mx-auto w-full max-w-3xl px-4 py-6"><ErrorState title="Não foi possível carregar a conta" error={error} onRetry={() => void accountQuery.refetch()} /></div>;
   if (!account || !canPay || !draft) return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6"><PageHeader title="Conta sem saldo pendente" description="Esta conta não está disponível para um novo pagamento." icon={<CircleAlert />} actions={returnAction} /><Card role="status"><CardContent className="pt-6 text-sm text-muted-foreground">Ela pode pertencer a outra clínica, já estar quitada ou cancelada, ou ter sido atualizada por outra pessoa.</CardContent></Card></div>;
 
-  const categoryLabel = account.categoria?.replaceAll('_', ' ') || 'Não informada';
+  const categoryLabel = account.categoria?.replace(/_/g, ' ') || 'Não informada';
   const dueDate = account.data_vencimento ? parseDateOnly(account.data_vencimento) : null;
 
   return <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">

@@ -99,6 +99,8 @@ const labelsByPath: Record<string, string> = {
   '/configuracoes': 'Configurações',
   '/configuracoes/historico-versoes': 'Histórico de versões',
   '/configuracoes/plano/faturas': 'Histórico de faturas',
+  '/configuracoes/backup': 'Backup e recuperação',
+  '/configuracoes/importar-dados': 'Importar dados',
   '/onboarding': 'Configuração inicial',
   '/configuracoes-avancadas': 'Configurações avançadas',
   '/automacoes': 'Automações',

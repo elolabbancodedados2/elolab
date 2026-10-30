@@ -36,6 +36,20 @@ interface ResultadoRetorno { success: boolean; repetido?: boolean; status?: stri
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 const STATUS_RETORNO = new Set(['enviado', 'processando', 'pago_parcial', 'pago']);
 
+function lerResultadoRetorno(value: unknown): ResultadoRetorno | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const result = value as Record<string, unknown>;
+  if (result.success !== true) return null;
+  return {
+    success: true,
+    repetido: result.repetido === true,
+    status: typeof result.status === 'string' ? result.status : undefined,
+    variacao_financeira: typeof result.variacao_financeira === 'number' ? result.variacao_financeira : undefined,
+    valor_pago: typeof result.valor_pago === 'number' ? result.valor_pago : undefined,
+    valor_conciliado_financeiro: typeof result.valor_conciliado_financeiro === 'number' ? result.valor_conciliado_financeiro : undefined,
+  };
+}
+
 export default function RetornoLoteTissPage() {
   const { loteId = '' } = useParams();
   const location = useLocation();
@@ -99,8 +113,8 @@ export default function RetornoLoteTissPage() {
       tentativaPendente.current = payload;
       const { data, error } = await supabase.rpc('registrar_retorno_lote_tiss', payload);
       if (error) throw error;
-      const resultado = data as ResultadoRetorno;
-      if (!resultado?.success) throw new Error('O retorno não foi confirmado pelo banco. Verifique o lote antes de repetir.');
+      const resultado = lerResultadoRetorno(data);
+      if (!resultado) throw new Error('O retorno não foi confirmado pelo banco. Verifique o lote antes de repetir.');
       return resultado;
     },
     onSuccess: async resultado => {
@@ -131,12 +145,12 @@ export default function RetornoLoteTissPage() {
   if (loteQuery.isLoading) return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6" aria-busy="true"><div className="h-9 w-64 animate-pulse rounded bg-muted" /><div className="h-56 animate-pulse rounded-xl bg-muted" /></div>;
   if (loteQuery.isError) return <div className="mx-auto w-full max-w-3xl px-4 py-6"><ErrorState title="Não foi possível carregar o lote" error={loteQuery.error} onRetry={() => void loteQuery.refetch()} /></div>;
   if (!lote) return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6"><PageHeader title="Lote não encontrado" icon={<CircleAlert />} actions={<Button variant="outline" onClick={voltar}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} /><p className="text-sm text-muted-foreground">Este registro não existe ou não está disponível para sua clínica.</p></div>;
-  if (!STATUS_RETORNO.has(lote.status)) return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6"><PageHeader title="Retorno indisponível" description="Somente lotes enviados, em processamento ou pagos permitem registrar um retorno." icon={<CircleAlert />} actions={<Button variant="outline" onClick={voltar}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} /><Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">O status atual deste lote é <strong>{lote.status.replaceAll('_', ' ')}</strong>. Atualize a listagem após rever o envio ou o cancelamento.</p></CardContent></Card></div>;
+  if (!STATUS_RETORNO.has(lote.status)) return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6"><PageHeader title="Retorno indisponível" description="Somente lotes enviados, em processamento ou pagos permitem registrar um retorno." icon={<CircleAlert />} actions={<Button variant="outline" onClick={voltar}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} /><Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">O status atual deste lote é <strong>{lote.status.replace(/_/g, ' ')}</strong>. Atualize a listagem após rever o envio ou o cancelamento.</p></CardContent></Card></div>;
 
   return <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
     <PageHeader title={lote.retorno_em ? 'Atualizar retorno do lote' : 'Registrar retorno da operadora'} description="Registre o total acumulado confirmado pela operadora e decida se ele também será conciliado no fluxo financeiro." icon={<Banknote />} actions={<Button variant="outline" onClick={voltar} disabled={salvar.isPending}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} />
     <Card>
-      <CardHeader className="border-b border-border/70"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">Resumo do lote</CardTitle><p className="mt-1 text-sm text-muted-foreground">{lote.convenios?.nome || 'Convênio'} · competência {lote.competencia.slice(0, 7)}</p></div><Badge variant="outline" className="capitalize">{lote.status.replaceAll('_', ' ')}</Badge></div></CardHeader>
+      <CardHeader className="border-b border-border/70"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">Resumo do lote</CardTitle><p className="mt-1 text-sm text-muted-foreground">{lote.convenios?.nome || 'Convênio'} · competência {lote.competencia.slice(0, 7)}</p></div><Badge variant="outline" className="capitalize">{lote.status.replace(/_/g, ' ')}</Badge></div></CardHeader>
       <CardContent className="grid gap-4 pt-5 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Lote</p><p className="mt-1 font-medium">{lote.numero_lote}</p></div><div><p className="text-xs text-muted-foreground">Valor apresentado</p><p className="mt-1 font-medium tabular-nums">{moeda(Number(lote.valor_apresentado))}</p></div><div><p className="text-xs text-muted-foreground">Total recebido registrado</p><p className="mt-1 font-medium tabular-nums">{moeda(totalAtual)}</p></div></CardContent>
     </Card>
 

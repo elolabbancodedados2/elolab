@@ -27,6 +27,19 @@ interface ResultadoGlosa { success: boolean; repetido?: boolean; id?: string; to
 
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
+function lerResultadoGlosa(value: unknown): ResultadoGlosa | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const result = value as Record<string, unknown>;
+  if (result.success !== true) return null;
+  return {
+    success: true,
+    repetido: result.repetido === true,
+    id: typeof result.id === 'string' ? result.id : undefined,
+    total_glosado: typeof result.total_glosado === 'number' ? result.total_glosado : undefined,
+    saldo_apresentado: typeof result.saldo_apresentado === 'number' ? result.saldo_apresentado : undefined,
+  };
+}
+
 export default function NovaGlosaTissPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -73,8 +86,8 @@ export default function NovaGlosaTissPage() {
       if (!profile?.clinica_id || !lote || !tentativaPendente.current) throw new Error('Confira o lote e os campos antes de registrar a glosa.');
       const { data, error } = await supabase.rpc('registrar_glosa_convenio', tentativaPendente.current);
       if (error) throw error;
-      const resultado = data as ResultadoGlosa;
-      if (!resultado?.success) throw new Error('O banco não confirmou o registro da glosa. Confira a lista antes de tentar novamente.');
+      const resultado = lerResultadoGlosa(data);
+      if (!resultado) throw new Error('O banco não confirmou o registro da glosa. Confira a lista antes de tentar novamente.');
       return resultado;
     },
     onSuccess: async resultado => {

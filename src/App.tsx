@@ -60,6 +60,8 @@ const Usuarios = lazy(() => import("@/pages/Usuarios"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
 const ConfiguracaoHistoricoPage = lazy(() => import("@/pages/ConfiguracaoHistoricoPage"));
 const ConfiguracaoFaturasPage = lazy(() => import("@/pages/ConfiguracaoFaturasPage"));
+const ConfiguracaoBackupPage = lazy(() => import("@/pages/ConfiguracaoBackupPage"));
+const ImportarDadosClinicaPage = lazy(() => import("@/pages/ImportarDadosClinicaPage"));
 const ConfiguracoesAvancadas = lazy(() => import("@/pages/ConfiguracoesAvancadas"));
 const Prescricoes = lazy(() => import("@/pages/Prescricoes"));
 const Atestados = lazy(() => import("@/pages/Atestados"));
@@ -471,6 +473,8 @@ function AppRoutes() {
                           <Route path="/configuracoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Configuracoes /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes/historico-versoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoHistoricoPage /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes/plano/faturas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoFaturasPage /></SupabaseProtectedRoute>} />
+                          <Route path="/configuracoes/backup" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoBackupPage /></SupabaseProtectedRoute>} />
+                          <Route path="/configuracoes/importar-dados" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ImportarDadosClinicaPage /></SupabaseProtectedRoute>} />
                           <Route path="/onboarding" element={<SupabaseProtectedRoute allowedRoles={['admin']}><OnboardingClinica /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanFeatureGuard feature="automacoes" requiredPlan="EloLab Pro"><Automacoes /></PlanFeatureGuard></SupabaseProtectedRoute>} />
