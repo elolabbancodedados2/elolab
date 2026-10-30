@@ -36,4 +36,4 @@ Uma URL direta para a passagem de turno sem o snapshot de navegação apresenta 
 
 ## Publicação
 
-Dados da imagem, revisão implantada, verificação de saúde e rollback serão registrados após a atualização de produção.
+Commit `53dc69426f9e09d6e87676a2129add68fd4b7bd8`; imagem `easypanel/elolab/app:deploy-20261030-53dc694`. A imagem foi construída do arquivo versionado com o SHA integral, verificada em container isolado (`/healthz=ok`) e ativada com `stop-first`, rollback automático e período de observação. O Swarm convergiu para 1/1 réplica; o endpoint público confirmou `healthz=ok` e o mesmo SHA em `/version.json`. Houve contenção transitória da porta host-mode durante a troca, resolvida sem rollback. Imagem de rollback preservada: `easypanel/elolab/app:deploy-20261030-6fa4c9f`. Nenhuma migration ou alteração de dados de produção.
