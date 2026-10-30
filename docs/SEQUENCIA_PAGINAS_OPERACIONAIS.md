@@ -21,7 +21,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 6. Equipe: médicos, funcionários, usuários e convites.
 7. Estoque, tarefas e modelos de documentos/comunicação.
 8. Laboratório: pedidos, coleta, guias externas e laudos.
-9. Recepção, fila e triagem: página de triagem publicada; revisar em sequência inclusão/edição na fila, encaminhamento e demais formulários ainda sobrepostos.
+9. Recepção, fila e triagem: triagem e inclusão na fila publicadas; concluir encaixe, pagamento e demais formulários operacionais da recepção.
 10. Prontuário e componentes clínicos: anexos, consentimentos, adendos, documentos e retornos.
 11. Financeiro: contas, caixa, conciliação, repasses, faturamento e glosas.
 12. Configurações, suporte, LGPD, treinamento e operações de plataforma.
@@ -32,6 +32,6 @@ Cada item exige investigar os pontos de entrada e as permissões antes de editar
 
 O diagnóstico, os arquivos alterados, os testes executados, as capturas efetivamente inspecionadas, as limitações e o identificador publicado ficam em `EVOLUCAO_PAGINAS_OPERACIONAIS.md`. A existência de uma rota, compilação bem-sucedida ou botão que abre uma tela não constitui aceite completo.
 
-Estado em 29/10/2026: itens 1 a 8 publicados e validados, incluindo laudos (`ddc17f58`). A página de triagem foi publicada em `93e867b9`; a etapa 9 continua em andamento para fila e recepção. Componentes incorporados em outros módulos (salas nas configurações e retorno no prontuário, por exemplo) continuam previstos na etapa correspondente. Itens 10 a 12 seguem pendentes. Não há declaração de migração integral do aplicativo.
+Estado em 29/10/2026: itens 1 a 8 publicados e validados, incluindo laudos (`ddc17f58`). Na etapa 9, triagem (`93e867b9`) e check-in na fila (`3b67483d`) foram publicados; recepção continua em andamento. Componentes incorporados em outros módulos (salas nas configurações e retorno no prontuário, por exemplo) continuam previstos na etapa correspondente. Itens 10 a 12 seguem pendentes. Não há declaração de migração integral do aplicativo.
 
 Orientação adicional do responsável: aplicar a referência Taskify ao visual geral do EloLab. Depois dos modelos clínicos, ajustar a estrutura compartilhada com validação de telas de domínios diferentes, mantendo marca, paleta e funcionalidades. A sequência operacional acima continua registrada e não está concluída.

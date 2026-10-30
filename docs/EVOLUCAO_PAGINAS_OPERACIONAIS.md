@@ -525,3 +525,15 @@ Validação: 11 cenários Playwright passaram cobrindo rota nova e legado, atalh
 Limite desta entrega: a triagem pode ser acessada e concluída sem agendamento, conforme o fluxo avulso já existente. A decisão clínica permanece com profissional autorizado; os testes sintéticos não constituem auditoria clínica nem declaração completa de WCAG.
 
 Publicação: build `93e867b95e1b0a16c81ec7c64684d7cc0f5156f5`, imagem `easypanel/elolab/app:deploy-20261029-93e867b9`. Swarm concluído em `stop-first`; `/healthz` respondeu `ok` e `/version.json` confirmou o build. Fonte ativa atualizada preservando `.env` sem exibir conteúdo; fonte anterior preservada em `code.before-20261029-93e867b9`. Rollback: imagem `deploy-20261029-ddc17f58`.
+
+## Fila — registro de chegada e check-in
+
+Diagnóstico: o check-in manual era um formulário dentro de modal na worklist. Ele exige selecionar atendimento, conferir elegibilidade de paciente, data e unidade e, conforme o perfil, observar a regra de cobrança vigente.
+
+Implementação: `/fila/adicionar`, acessada pelo cabeçalho e pelo estado vazio da fila. A tela apresenta os agendamentos elegíveis do dia, mostra as três validações antes do envio e permite atribuir prioridade. Saída com alterações não salvas fica protegida; após sucesso, retorna para `/fila`.
+
+Integração preservada: check-in atômico por `realizar_checkin`, cobrança automática existente e deferimento para o perfil médico continuam iguais. Perfis, permissões, estados, RPC, contratos e banco não foram alterados. Erros de leitura pausam o envio e permitem tentar novamente.
+
+Validação: dois cenários Playwright passaram em 1280 e 390 px, incluindo validação do check-in, proteção contra perda, retorno e gravação sintética com prioridade urgente. Vinte e dois testes unitários de fila/check-in passaram; TypeScript e build passaram. Lint focal sem erros, 28 avisos legados de `any` e dependências. Capturas desktop e mobile foram visualizadas em `test-results/ux-visual-synthetic-queue--fcf32-check-in-validation-visible-chromium/` e `test-results/ux-visual-synthetic-doctor-20cb1-om-the-dedicated-queue-page-chromium/`. Todas as gravações foram interceptadas; nenhum dado real foi alterado.
+
+Publicação: build `3b67483dc0fe33f0a60c8c8f1b9e277a59f20600`, imagem `easypanel/elolab/app:deploy-20261029-3b67483d`. Swarm atualizado em `stop-first`; `/healthz` respondeu `ok` e `/version.json` confirmou o build. Fonte anterior em `code.before-20261029-3b67483d`; rollback da imagem `deploy-20261029-93e867b9`.
