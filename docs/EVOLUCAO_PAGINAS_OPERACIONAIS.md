@@ -574,4 +574,17 @@ Validação: Vitest 25/25 em três arquivos, cobrindo fila, atendimentos antigos
 
 Limites: os cenários usam dados e respostas sintéticas, sem gravação real ou validação de RLS. Revisão manual com leitor de tela e concorrência contra a RPC em ambiente isolado permanecem pendentes.
 
+
 Publicação: commit `49e5056f1c9b3e963c1310fbf5822adf359e6db1`, imagem `easypanel/elolab/app:deploy-20261029-49e5056f`. Swarm confirmou 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o build completo. Fonte anterior preservada em `code.before-20261029-49e5056f`; `.env` comparado sem leitura ou exposição. Rollback da imagem: `deploy-20261029-af68e69`. Nenhum dado de produção ou migration foi alterado.
+
+## Prontuário — criação de adendos em página própria (29/10/2026)
+
+Diagnóstico: o médico responsável retificava ou complementava uma evolução assinada em um modal dentro da ficha. Isso comprimia uma ação clínica imutável e o formulário não tinha uma rota própria para recuperação, histórico do navegador ou retorno confiável à evolução.
+
+Implementação: a rota `/prontuarios/:prontuarioId/adendos/novo` apresenta paciente, data da evolução e profissional responsável, formulário de tipo/motivo/conteúdo, aviso de imutabilidade e histórico anterior. A navegação de retorno restaura paciente, evolução selecionada e aba Adendos; a página de prontuário só reabre a evolução após a autorização auditável de leitura do paciente. O acesso à página é restrito ao perfil médico, e a leitura também exige clínica ativa, médico responsável e evolução assinada. A gravação continua na RPC atômica `registrar_prontuario_adendo`; falhas mantêm o texto preenchido e permitem nova tentativa. O modal foi removido do componente de histórico. Nenhuma regra de autorização do servidor, contrato, dado, migration ou integração clínica foi alterada.
+
+Validação: 16 testes Vitest passaram em histórico e breadcrumbs. Playwright passou (1/1) no fluxo da ficha à página e de volta, incluindo validação de campos, falha de gravação com retenção do rascunho, segunda tentativa, escopo da consulta por clínica/médico/evolução assinada e navegação à mesma aba. Inspecionei as capturas renderizadas desktop (1280 px) e mobile (390 px); no celular, os campos não se sobrepõem aos botões e as duas ações ficam acessíveis acima da navegação fixa. TypeScript, `npm run check:a11y`, build, lint focal sem avisos e `git diff --check` passaram.
+
+Limites: registro, autorização e resposta da RPC no navegador foram sintéticos; não houve escrita clínica, validação de RLS real ou leitor de tela manual. A elegibilidade para adendo continua sendo confirmada pelo servidor ao gravar. Uma correção independente no encaminhamento de ação secundária da Recepção removeu um argumento não aceito para que a verificação TypeScript global voltasse a passar.
+
+Publicação: commit `4ec83bd1c549eb6fc1ee8e746cc58425089473d`, imagem `easypanel/elolab/app:deploy-20261029-4ec83bd-v2` (digest `sha256:2ba86dc4c673e6f2b8e3a5014423bc2e867083b830b0d8b59bddb98f10940def`). Swarm concluiu a atualização com 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o hash integral. `.env` foi comparado e preservado sem leitura/exposição; fonte anterior em `code.before-20261029-4ec83bd`. Rollback imediato da imagem: `deploy-20261029-4ec83bd`. Nenhum dado de produção ou migration foi alterado.
