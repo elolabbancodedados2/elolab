@@ -32,4 +32,4 @@ Antes de emitir uma receita, alertas clínicos e a justificativa para riscos de 
 
 ## Publicação
 
-Preencher após confirmar commit, imagem, smoke isolado, estado do Swarm e versão pública.
+Commit `df8c0c186866a03957e20e138693e2f55722899d`; imagem `easypanel/elolab/app:deploy-20261030-df8c0c1`. O smoke isolado passou, o Swarm concluiu com 1/1 réplica e `/healthz` público respondeu `ok`; `/version.json` confirmou o SHA integral. O rollout apresentou contenção transitória da porta em modo host e convergiu sem rollback. Imagem de rollback preservada: `deploy-20261030-94315b9`; fonte anterior preservada em `code.before-20261030-df8c0c1`. Nenhuma migration ou gravação em dados de produção.
