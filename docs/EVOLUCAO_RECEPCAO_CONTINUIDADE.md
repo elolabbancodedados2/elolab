@@ -19,4 +19,4 @@ Encaixe e recebimento já aconteciam em páginas próprias, mas seus botões de 
 
 ## Publicação
 
-Preencher após confirmar o commit, a imagem, o health check e a versão servida.
+Commit `94315b9431166c41877c4b90d476c7a8cd917d5a`; imagem `easypanel/elolab/app:deploy-20261030-94315b9`. O smoke isolado passou; a única réplica do Swarm convergiu e a versão publicada respondeu `healthz=ok` com o SHA integral confirmado. Houve contenção transitória da porta em modo host durante o rollout, resolvida sem rollback. Rollback preservado: `deploy-20261030-8245ac7`; código anterior preservado em `code.before-20261030-94315b9`. Nenhuma migration ou gravação em dados de produção.
