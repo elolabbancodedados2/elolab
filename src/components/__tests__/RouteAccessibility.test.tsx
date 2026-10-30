@@ -1,15 +1,18 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { RouteAccessibility } from '@/components/RouteAccessibility';
 import { getRouteAnnouncement } from '@/config/routeLabels';
 
 function NavigationHarness() {
   const navigate = useNavigate();
+  const location = useLocation();
   return (
     <>
       <button onClick={() => navigate('/agenda')}>Abrir agenda</button>
-      <main id="main-content" tabIndex={-1} />
+      <main id="main-content" tabIndex={-1}>
+        {location.pathname === '/agenda' && <button>Ação da agenda</button>}
+      </main>
       <RouteAccessibility />
     </>
   );
@@ -39,6 +42,26 @@ describe('RouteAccessibility', () => {
     await act(async () => vi.runAllTimers());
 
     expect(document.activeElement).toBe(screen.getByRole('main'));
+    expect(screen.getByTestId('route-announcer')).toHaveTextContent('Agenda carregado');
+    vi.useRealTimers();
+  });
+
+  it('preserva o foco de uma ação que a página de destino já selecionou', async () => {
+    vi.useFakeTimers();
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route path="*" element={<NavigationHarness />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Abrir agenda' })));
+    const destinationAction = screen.getByRole('button', { name: 'Ação da agenda' });
+    destinationAction.focus();
+    await act(async () => vi.runAllTimers());
+
+    expect(document.activeElement).toBe(destinationAction);
     expect(screen.getByTestId('route-announcer')).toHaveTextContent('Agenda carregado');
     vi.useRealTimers();
   });

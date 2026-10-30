@@ -39,6 +39,7 @@ const labelsByPath: Record<string, string> = {
   '/exames/laboratorios/novo': 'Novo laboratório',
   '/retornos': 'Retornos',
   '/laboratorio': 'Laboratório',
+  '/laboratorio/coletas/limpar': 'Cancelar coletas antigas',
   '/mapa-coleta': 'Mapa de coleta',
   '/guias-externas': 'Guias externas',
   '/guias-externas/portal': 'Portal externo de guias',

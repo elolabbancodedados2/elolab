@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -86,16 +85,9 @@ export default function Laboratorio() {
   const setDateFilter = (periodo: string) => atualizarFiltros({ periodo });
 
 
-  // Limpeza de fila em lote: a INOVALAB acumulou 253 coletas em `pendente`
-  // vindas de exames que nunca tinham passado pelo laboratório. Sem uma
-  // saída em bloco, o técnico teria que cancelar uma a uma.
-  const [showLimparFila, setShowLimparFila] = useState(false);
-  const [limparDias, setLimparDias] = useState('30');
-  const [limparMotivo, setLimparMotivo] = useState('');
-
-
   const [activeTab, setActiveTab] = useState(() => searchParams.get('aba') === 'pedidos' ? 'pedidos' : 'worklist');
   const worklistTabRef = useRef<HTMLButtonElement>(null);
+  const limparFilaTriggerRef = useRef<HTMLAnchorElement>(null);
   const focusWorklistAfterFilter = useRef(false);
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
@@ -111,45 +103,6 @@ export default function Laboratorio() {
     focusWorklistAfterFilter.current = false;
     worklistTabRef.current?.focus();
   }, [activeTab]);
-
-  const previewLimpar = useQuery({
-    queryKey: ['preview-limpar-fila-lab', profile?.clinica_id, limparDias],
-    enabled: !!profile?.clinica_id && showLimparFila && Number(limparDias) >= 1,
-    queryFn: async () => {
-      const dias = Number(limparDias);
-      const corte = new Date(Date.now() - dias * 86400_000).toISOString();
-      const { count, error } = await supabase
-        .from('coletas_laboratorio')
-        .select('id', { count: 'exact', head: true })
-        .eq('clinica_id', profile!.clinica_id!)
-        .eq('status', 'pendente')
-        .lt('created_at', corte);
-      if (error) throw error;
-      return count ?? 0;
-    },
-  });
-
-  const limparFila = useMutation({
-    mutationFn: async () => {
-      if (!podeGerenciarLaboratorio) throw new Error('Seu perfil não pode limpar a fila do laboratório.');
-      const dias = Number(limparDias);
-      if (!Number.isFinite(dias) || dias < 1) throw new Error('Informe dias >= 1');
-      if (!limparMotivo || limparMotivo.trim().length < 5) throw new Error('Motivo mínimo 5 caracteres');
-      const { data, error } = await supabase
-        .rpc('cancelar_coletas_pendentes_antigas', { p_dias: dias, p_motivo: limparMotivo.trim() });
-      if (error) throw error;
-      return Number(data ?? 0);
-    },
-    onSuccess: (n) => {
-      queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
-      queryClient.invalidateQueries({ queryKey: ['preview-limpar-fila-lab'] });
-      setShowLimparFila(false);
-      setLimparMotivo('');
-      toast.success(n === 0 ? 'Nada a cancelar' : `${n} coleta(s) cancelada(s)`);
-    },
-    onError: (e) => toast.error('Não foi possível cancelar em lote', { description: mensagemDeErro(e) }),
-  });
-
 
   const setoresQuery = useQuery({
     queryKey: ['lab-setores-worklist', profile?.clinica_id],
@@ -195,6 +148,12 @@ export default function Laboratorio() {
   });
   const coletas = coletasQuery.data?.pages.flatMap(pagina => pagina.items);
   const isLoading = coletasQuery.isLoading;
+
+  useEffect(() => {
+    const state = location.state as { focusLimparFila?: unknown } | null;
+    if (state?.focusLimparFila !== true || isLoading) return;
+    window.requestAnimationFrame(() => limparFilaTriggerRef.current?.focus());
+  }, [location.state, isLoading]);
 
   // Mesmo prefixo da worklist: as invalidações após cada ação também recontam as pendências.
   const pendenciasSetorQuery = useQuery({
@@ -363,8 +322,14 @@ export default function Laboratorio() {
         actions={
           <>
             {podeGerenciarLaboratorio && (
-              <Button variant="outline" className="rounded-full gap-2" onClick={() => setShowLimparFila(true)}>
-                Limpar fila antiga
+              <Button asChild variant="outline" className="rounded-full gap-2">
+                <Link
+                  ref={limparFilaTriggerRef}
+                  to="/laboratorio/coletas/limpar"
+                  state={{ laboratorioSearch: location.search, buscaPaciente: search }}
+                >
+                  Limpar fila antiga
+                </Link>
               </Button>
             )}
             <Button
@@ -499,41 +464,6 @@ export default function Laboratorio() {
           <Link to="/guias-externas"><Download className="h-3.5 w-3.5" /> Guias Externas</Link>
         </Button>
       </div>
-
-      <Dialog open={showLimparFila && podeGerenciarLaboratorio} onOpenChange={(o) => { setShowLimparFila(o); if (!o) setLimparMotivo(''); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancelar coletas pendentes antigas</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="limpar-dias">A partir de quantos dias em "pendente"?</Label>
-              <Input id="limpar-dias" type="number" min={1} value={limparDias}
-                onChange={(e) => setLimparDias(e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">
-                {previewLimpar.isError ? <ErrorState compact title="Não foi possível calcular o impacto" error={previewLimpar.error} onRetry={() => void previewLimpar.refetch()} /> : `${previewLimpar.data ?? '…'} coleta(s) da sua clínica seriam canceladas.`}
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="limpar-motivo">Motivo (obrigatório, aparece na auditoria)</Label>
-              <Textarea id="limpar-motivo" value={limparMotivo}
-                onChange={(e) => setLimparMotivo(e.target.value)}
-                placeholder="Ex.: Limpeza de fila — material nunca coletado, dados migrados de sistema anterior." />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Só coletas em <strong>pendente</strong> serão afetadas. Coletado, em análise, validado
-              e liberado ficam intactos — eles significam que material físico existe.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLimparFila(false)}>Cancelar</Button>
-            <Button variant="destructive" onClick={() => limparFila.mutate()}
-              disabled={limparFila.isPending || !previewLimpar.data || limparMotivo.trim().length < 5}>
-              {limparFila.isPending ? 'Cancelando…' : `Cancelar ${previewLimpar.data ?? 0} coleta(s)`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* SLA Breach Alert */}
       {slaBreaches.length > 0 && (

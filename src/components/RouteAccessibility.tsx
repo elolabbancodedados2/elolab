@@ -20,7 +20,9 @@ export function RouteAccessibility({ mainId = 'main-content' }: { mainId?: strin
 
     const timer = window.setTimeout(() => {
       const main = document.getElementById(mainId);
-      main?.focus({ preventScroll: true });
+      const activeElement = document.activeElement;
+      const destinationHasFocus = main?.contains(activeElement) && activeElement !== main;
+      if (!destinationHasFocus) main?.focus({ preventScroll: true });
       if (main && 'scrollTo' in main) main.scrollTo({ top: 0, behavior: 'auto' });
       setAnnouncement(getRouteAnnouncement(pathname));
     }, 0);
