@@ -30,4 +30,4 @@ O construtor colocava salvamento e agendamento em um diálogo de até 85vh. A ta
 
 ## Publicação
 
-Preencher após o rollout e a confirmação de `/healthz`, `/version.json` e do serviço.
+Publicado em 30/10/2026 no commit `7cdbf758c8e7ee03c7cc039b1d32b23a986f3790`, imagem `easypanel/elolab/app:deploy-20261030-7cdbf758`. O smoke isolado e o domínio público responderam `/healthz=ok`; `/version.json` confirmou o SHA integral e o serviço Swarm permaneceu em 1/1. Rollback: `deploy-20261030-39660dbc`; fonte anterior: `code.before-20261030-7cdbf758`. O hash do `.env` permaneceu igual, sem revelar valores. Nenhuma migration ou alteração de dados de produção.
