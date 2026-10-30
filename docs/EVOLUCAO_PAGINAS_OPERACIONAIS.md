@@ -928,3 +928,12 @@ Playwright 3/3; Vitest do Portal/contrato 32/32; TypeScript, build, acessibilida
 ## Agente IA — criação de sessão WhatsApp em página própria (30/10/2026)
 
 A criação saiu do diálogo e passou a `/agente-ia/sessoes/nova`; as permissões, o acesso por plano, a Edge Function `whatsapp-evolution` e o fluxo do QR nos cartões existentes foram preservados. A validação agora aceita sublinhado e replica o limite/padrão do servidor. Falha mantém o nome e orienta a conferir a lista; saída com rascunho pede confirmação. Playwright sintético 2/2, Vitest WhatsApp 9/9, TypeScript, ESLint focal, build, acessibilidade, permissões, falhas, colunas e inspeção renderizada mobile/desktop passaram. Nenhuma instância real foi criada. Publicado no commit `ea619d0bb926ca2fe3c1b99bcfe545e31fee77fe`, imagem `deploy-20261030-ea619d0`, rollback `deploy-20261030-4f716d3`; os dois domínios, `/healthz`, SHA público, Swarm 1/1 e hash do `.env` foram conferidos. Detalhes: [criação de sessão WhatsApp](EVOLUCAO_SESSAO_WHATSAPP_PAGINA.md). A auditoria global e os demais fluxos do EloLab seguem abertos.
+
+
+## Pacientes — alteração de status em página própria
+
+Inativação e reativação passaram do diálogo para `/pacientes/:patientId/status`. A tela explica as consequências, exige motivo administrativo e orienta como resolver compromissos atuais/futuros ou presença na fila. A RPC transacional, o escopo da clínica, as permissões `admin`/`recepcao` e o registro do motivo foram mantidos. O retorno preserva busca, filtros e foco da lista.
+
+Playwright 3/3, Vitest relacionado 10/10, TypeScript, build, acessibilidade, permissões, falhas silenciosas e colunas passaram. As telas renderizadas em mobile (390 px) e desktop (1440 px) foram inspecionadas; o botão principal fica acima da navegação inferior. As gravações E2E foram interceptadas; nenhum paciente real foi alterado. ESLint focal teve zero erros e 54 avisos preexistentes de `any` em `Pacientes.tsx`. Detalhes: [alteração de status do paciente](EVOLUCAO_STATUS_PACIENTE_PAGINA.md).
+
+Publicação: pendente.
