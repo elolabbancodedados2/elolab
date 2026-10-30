@@ -1,9 +1,9 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { useState, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
+  ArrowLeft, Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
   TrendingUp, User, Loader2, Eye, FileText, Printer, MoreHorizontal, Filter,
   ArrowUpRight, Banknote, CreditCard, QrCode, Landmark, Building2, Stethoscope,
   FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain, X, RefreshCw,
@@ -44,6 +44,7 @@ import { mensagemDeErro } from '@/lib/erros';
 import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { parseAccountFilterStatus, parseFinanceMonth } from '@/lib/financeRouteState';
+import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -170,13 +171,20 @@ const PIE_COLORS = [
 ];
 
 export default function ContasReceber() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategoria, setFilterCategoria] = useState('todas');
+  const location = useLocation();
+  const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown; restoreFilterCategoria?: unknown } | null;
+  const isCreationPage = location.pathname === '/contas/receber/nova';
+  const returnToListPath = typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo)
+    ? routeState.returnTo
+    : '/contas?tab=receber';
+  const restoreSearchTerm = typeof routeState?.restoreSearchTerm === 'string' ? routeState.restoreSearchTerm : '';
+  const restoreFilterCategoria = typeof routeState?.restoreFilterCategoria === 'string' ? routeState.restoreFilterCategoria : 'todas';
+  const [searchTerm, setSearchTerm] = useState(restoreSearchTerm);
+  const [filterCategoria, setFilterCategoria] = useState(restoreFilterCategoria);
   const [searchParams, setSearchParams] = useSearchParams();
   const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
   const selectedMonth = parseFinanceMonth(searchParams.get('mes'));
   const filterPeriodo = selectedMonth ? 'mes_selecionado' : searchParams.get('periodo') || 'mes_atual';
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEstornoOpen, setIsEstornoOpen] = useState(false);
@@ -190,6 +198,7 @@ export default function ContasReceber() {
   const [isCancelandoConta, setIsCancelandoConta] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
   const [formData, setFormData] = useState<FormData>(novoFormDataReceita);
+  const [formDirty, setFormDirty] = useState(false);
   const valorReceitaDigitado = parseMoneyInput(formData.valor);
   const valorReceitaInvalido = valorReceitaDigitado === null || valorReceitaDigitado <= 0;
   const [baixaData, setBaixaData] = useState<BaixaData>({
@@ -203,10 +212,32 @@ export default function ContasReceber() {
   const estornoSubmissionLock = useRef(false);
   const cancelamentoSubmissionLock = useRef(false);
   const [chavesBaixa, setChavesBaixa] = useState<Record<string, string>>({});
+  const navigationAllowedRef = useRef(false);
 
   const navigate = useNavigate();
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    !navigationAllowedRef.current && isCreationPage && formDirty && !isSubmitting
+      && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
+  useEffect(() => { navigationAllowedRef.current = false; }, [location.pathname, location.search]);
+  useEffect(() => {
+    if (!isCreationPage || !formDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [formDirty, isCreationPage]);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
+
+  const returnToList = () => navigate(returnToListPath, {
+    state: { restoreSearchTerm: searchTerm, restoreFilterCategoria: filterCategoria },
+  });
+  const updateFormData = (patch: Partial<FormData>) => {
+    setFormData(current => ({ ...current, ...patch }));
+    setFormDirty(true);
+  };
 
   const contasQuery = useQuery({
     queryKey: ['lancamentos', 'receita', user?.id ?? null, profile?.clinica_id ?? null],
@@ -226,7 +257,7 @@ export default function ContasReceber() {
         return { ...conta, pacientes: pacientesPorId.get(conta.paciente_id) ?? null, vencido, status: vencido && conta.status === 'pendente' ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
-    enabled: !!user && !!profile?.clinica_id,
+    enabled: !isCreationPage && !!user && !!profile?.clinica_id,
   });
   const contas = contasQuery.data ?? [];
   const contasAtingiramLimite = contas.length >= LIMITE_BUSCA_EM_BLOCOS;
@@ -239,7 +270,7 @@ export default function ContasReceber() {
         .eq('clinica_id', profile!.clinica_id!)
         .order('id', { ascending: true })
     ),
-    enabled: !!profile?.clinica_id,
+    enabled: !isCreationPage && !!profile?.clinica_id,
   });
   const pagamentos = pagamentosQuery.data ?? [];
   const pagamentosAtingiramLimite = pagamentos.length >= LIMITE_BUSCA_EM_BLOCOS;
@@ -414,8 +445,13 @@ export default function ContasReceber() {
   const getPacienteNome = (conta: any) => conta.pacientes?.nome_social || conta.pacientes?.nome || 'Particular';
 
   const handleNew = () => {
-    setFormData(novoFormDataReceita());
-    setIsFormOpen(true);
+    navigate('/contas/receber/nova', {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+        restoreSearchTerm: searchTerm,
+        restoreFilterCategoria: filterCategoria,
+      },
+    });
   };
 
   const handleSave = async () => {
@@ -459,7 +495,9 @@ export default function ContasReceber() {
       if (error) throw error;
       toast.success('Receita cadastrada com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      setIsFormOpen(false);
+      setFormDirty(false);
+      navigationAllowedRef.current = true;
+      returnToList();
     } catch (e: any) {
       toast.error(e.message || 'Erro ao salvar');
     } finally {
@@ -743,18 +781,19 @@ export default function ContasReceber() {
     toast.success('Exportado com sucesso!');
   };
 
-  if (isLoading) return (
+  if (!isCreationPage && isLoading) return (
     <div className="space-y-6">
       <Skeleton className="h-10 w-64" />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
       <Skeleton className="h-96 rounded-xl" />
     </div>
   );
-  if (contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a receber" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
-  if (pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
+  if (!isCreationPage && contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a receber" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
+  if (!isCreationPage && pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
 
   return (
     <div className="flex flex-col gap-6 pb-8">
+      {!isCreationPage && <>
       <PageHeader
         title="Contas a Receber"
         description={stats.countTotal === 0
@@ -1157,19 +1196,23 @@ export default function ContasReceber() {
           )}
         </CardContent>
       </Card>
+      </>}
 
-      {/* Nova Receita Dialog */}
-      <Dialog open={isFormOpen} onOpenChange={open => {
-        if (open || !isSubmitting) setIsFormOpen(open);
-      }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto" aria-busy={isSubmitting}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary" /> Nova Receita
-            </DialogTitle>
-            <DialogDescription>Cadastre uma nova receita com todos os detalhes.</DialogDescription>
-          </DialogHeader>
-          <fieldset disabled={isSubmitting} className="space-y-4 border-0 p-0">
+      {isCreationPage && (
+        <main data-testid="receivable-create-page" className="space-y-5">
+          <PageHeader
+            title="Nova receita"
+            description="Registre uma receita, vincule o paciente se necessário e acompanhe o vencimento."
+            icon={<Plus />}
+            actions={(
+              <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting}>
+                <ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />Voltar às contas a receber
+              </Button>
+            )}
+          />
+          <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-4">
+          <section className="overflow-hidden rounded-2xl border border-border bg-card p-4 sm:p-6">
+          <fieldset disabled={isSubmitting} className="space-y-5 border-0 p-0" aria-busy={isSubmitting}>
             {/* Categoria visual selector */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider">Tipo de Receita *</Label>
@@ -1179,7 +1222,8 @@ export default function ContasReceber() {
                   const isSelected = formData.categoria === cat.value;
                   return (
                     <button key={cat.value} type="button"
-                      onClick={() => setFormData({ ...formData, categoria: cat.value })}
+                      aria-pressed={isSelected}
+                      onClick={() => updateFormData({ categoria: cat.value })}
                       className={cn(
                         'flex flex-col items-center gap-1 p-2.5 rounded-xl border text-xs transition-all',
                         isSelected ? 'border-primary bg-primary/10 text-primary font-bold shadow-sm' : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
@@ -1190,7 +1234,7 @@ export default function ContasReceber() {
                   );
                 })}
               </div>
-              <Select value={formData.categoria} onValueChange={v => setFormData({ ...formData, categoria: v })}>
+              <Select value={formData.categoria} onValueChange={v => updateFormData({ categoria: v })}>
                 <SelectTrigger id="receita-categoria" aria-label="Tipo de receita" className="h-8 text-xs mt-1">
                   <SelectValue placeholder="Ou selecione outra categoria..." />
                 </SelectTrigger>
@@ -1205,22 +1249,23 @@ export default function ContasReceber() {
             {/* Paciente */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs">Paciente (opcional)</Label>
+                <Label htmlFor="receita-paciente" className="text-xs">Paciente (opcional)</Label>
                 {formData.paciente_id && (
                   <Button
                     type="button"
                     variant="link"
                     size="sm"
                     className="h-auto p-0 text-xs"
-                    onClick={() => setFormData(current => ({ ...current, paciente_id: '' }))}
+                    onClick={() => updateFormData({ paciente_id: '' })}
                   >
                     Remover vínculo
                   </Button>
                 )}
               </div>
               <PacienteCombobox
+                id="receita-paciente"
                 value={formData.paciente_id}
-                onChange={id => setFormData(current => ({ ...current, paciente_id: id }))}
+                onChange={id => updateFormData({ paciente_id: id })}
                 placeholder="Buscar por nome, CPF ou telefone..."
               />
             </div>
@@ -1228,19 +1273,19 @@ export default function ContasReceber() {
             {/* Descrição */}
             <div className="space-y-1.5">
               <Label className="text-xs">Descrição *</Label>
-              <Textarea aria-label="Descricao da receita" value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
+              <Textarea aria-label="Descricao da receita" required value={formData.descricao} onChange={e => updateFormData({ descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
             </div>
 
             {/* Valor + Vencimento */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Valor (R$) *</Label>
-                <Input aria-label="Valor da receita em reais" type="text" inputMode="decimal" placeholder="0,00" value={formData.valor} onChange={e => setFormData({ ...formData, valor: e.target.value })} />
+                <Input aria-label="Valor da receita em reais" type="text" inputMode="decimal" placeholder="0,00" value={formData.valor} onChange={e => updateFormData({ valor: e.target.value })} />
                 {formData.valor.trim() && valorReceitaInvalido && <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Vencimento</Label>
-                <Input aria-label="Vencimento da receita" type="date" value={formData.data_vencimento} onChange={e => setFormData({ ...formData, data_vencimento: e.target.value })} />
+                <Input aria-label="Vencimento da receita" type="date" value={formData.data_vencimento} onChange={e => updateFormData({ data_vencimento: e.target.value })} />
               </div>
             </div>
 
@@ -1248,14 +1293,14 @@ export default function ContasReceber() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Forma de Pagamento</Label>
-                <Select value={formData.forma_pagamento} onValueChange={v => setFormData({ ...formData, forma_pagamento: v })}>
+                <Select value={formData.forma_pagamento} onValueChange={v => updateFormData({ forma_pagamento: v })}>
                   <SelectTrigger aria-label="Forma de pagamento ou centro de custo"><SelectValue /></SelectTrigger>
                   <SelectContent>{FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Centro de Custo</Label>
-                <Select value={formData.centro_custo} onValueChange={v => setFormData({ ...formData, centro_custo: v })}>
+                <Select value={formData.centro_custo} onValueChange={v => updateFormData({ centro_custo: v })}>
                   <SelectTrigger aria-label="Centro de custo"><SelectValue /></SelectTrigger>
                   <SelectContent>{CENTROS_CUSTO_RECEITA.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
@@ -1266,28 +1311,41 @@ export default function ContasReceber() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Competência</Label>
-                <Input aria-label="Competencia da receita" type="month" value={formData.competencia} onChange={e => setFormData({ ...formData, competencia: e.target.value })} />
+                <Input aria-label="Competencia da receita" type="month" value={formData.competencia} onChange={e => updateFormData({ competencia: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Nº Documento / NF</Label>
-                <Input aria-label="Numero do documento da receita" value={formData.numero_documento} onChange={e => setFormData({ ...formData, numero_documento: e.target.value })} placeholder="Opcional" />
+                <Input aria-label="Numero do documento da receita" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })} placeholder="Opcional" />
               </div>
             </div>
 
             {/* Observações */}
             <div className="space-y-1.5">
               <Label className="text-xs">Observações</Label>
-              <Textarea aria-label="Observacoes da receita" value={formData.observacoes} onChange={e => setFormData({ ...formData, observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
+              <Textarea aria-label="Observacoes da receita" value={formData.observacoes} onChange={e => updateFormData({ observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
             </div>
           </fieldset>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSubmitting || valorReceitaInvalido} className="gap-2">
-              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />} Salvar Receita
+          </section>
+          <footer className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting}>Cancelar</Button>
+            <Button type="submit" disabled={isSubmitting || valorReceitaInvalido} className="gap-2">
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />} Salvar receita
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+          </form>
+          <UnsavedChangesDialog
+            open={blocker.state === 'blocked'}
+            onOpenChange={open => { if (!open && blocker.state === 'blocked') blocker.reset(); }}
+            onConfirm={() => {
+              if (blocker.state === 'blocked') {
+                navigationAllowedRef.current = true;
+                setFormDirty(false);
+                blocker.proceed();
+              }
+            }}
+          />
+        </main>
+      )}
 
       {/* Dar Baixa Dialog */}
       <Dialog open={isPagamentoOpen} onOpenChange={open => {

@@ -67,6 +67,7 @@ const labelsByPath: Record<string, string> = {
   '/recepcao/encaixe': 'Encaixe sem agendamento',
   '/financeiro': 'Financeiro',
   '/contas': 'Contas a receber e a pagar',
+  '/contas/receber/nova': 'Nova receita',
   '/contas/pagar/nova': 'Nova conta a pagar',
   '/fluxo-caixa': 'Fluxo de caixa',
   '/precos-servicos': 'Preços e serviços',

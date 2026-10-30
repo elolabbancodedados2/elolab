@@ -115,3 +115,101 @@ test('receivables explain a read error and recover on retry', async ({ page }, t
   expect(leituras).toBeGreaterThan(1);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('new receivable opens as a page, survives reload, and restores list context', async ({ page }, info) => {
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/contas?tab=receber&status=aberto&mes=2026-10');
+  const search = page.getByRole('textbox', { name: 'Buscar contas a receber' });
+  await search.fill('Procedimento ambulatorial');
+  await page.getByRole('combobox', { name: 'Filtrar por categoria' }).click();
+  await page.getByRole('option', { name: 'Procedimento', exact: true }).click();
+  await page.getByRole('button', { name: 'Nova Receita', exact: true }).click();
+
+  await expect(page).toHaveURL('/contas/receber/nova');
+  await expect(page.getByRole('heading', { name: 'Nova receita', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('new-receivable-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Salvar receita', exact: true }).scrollIntoViewIfNeeded();
+  const mobileSaveBox = await page.getByRole('button', { name: 'Salvar receita', exact: true }).boundingBox();
+  const mobileNavigationBox = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(mobileSaveBox).not.toBeNull();
+  expect(mobileNavigationBox).not.toBeNull();
+  expect(mobileSaveBox!.y + mobileSaveBox!.height).toBeLessThan(mobileNavigationBox!.y);
+  await page.screenshot({ path: info.outputPath('new-receivable-mobile-actions.png'), fullPage: true });
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.locator('#main-content').evaluate(element => element.scrollTo(0, 0));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('new-receivable-tablet.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('#main-content').evaluate(element => element.scrollTo(0, 0));
+  await page.screenshot({ path: info.outputPath('new-receivable-desktop.png'), fullPage: true });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Nova receita', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+
+  await expect(page).toHaveURL('/contas?tab=receber&status=aberto&mes=2026-10');
+  await expect(page.getByRole('textbox', { name: 'Buscar contas a receber' })).toHaveValue('Procedimento ambulatorial');
+  await expect(page.getByRole('combobox', { name: 'Filtrar por categoria' })).toContainText('Procedimento');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('receivable creation keeps the selected patient and draft after an error', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  const payloads: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/lancamentos*', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    payloads.push(route.request().postDataJSON());
+    if (payloads.length === 1) return route.fulfill({ status: 400, json: { message: 'Falha sintética ao cadastrar receita' } });
+    return route.fulfill({ status: 201, json: [] });
+  });
+  await page.goto('/contas?tab=receber&status=aberto&mes=2026-10');
+  await page.getByRole('button', { name: 'Nova Receita', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Paciente (opcional)' }).click();
+  await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo QA');
+  await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
+  await page.getByLabel('Descricao da receita').fill('Consulta de avaliação sintética');
+  await page.getByLabel('Valor da receita em reais').fill('184,75');
+  await page.getByLabel('Vencimento da receita').fill('2026-11-20');
+
+  await page.getByRole('button', { name: 'Salvar receita', exact: true }).click();
+  await expect(page.getByText('Falha sintética ao cadastrar receita', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Descricao da receita')).toHaveValue('Consulta de avaliação sintética');
+  await expect(page.getByRole('combobox', { name: 'Paciente (opcional)' })).toContainText('Pessoa Exemplo QA');
+  await expect(page).toHaveURL('/contas/receber/nova');
+
+  await page.getByRole('button', { name: 'Salvar receita', exact: true }).click();
+  await expect(page).toHaveURL('/contas?tab=receber&status=aberto&mes=2026-10');
+  expect(payloads).toHaveLength(2);
+  expect(payloads[1]).toMatchObject({
+    tipo: 'receita',
+    clinica_id: '00000000-0000-4000-8000-000000000002',
+    paciente_id: '00000000-0000-4000-8000-000000000004',
+    categoria: 'consulta',
+    descricao: 'Consulta de avaliação sintética',
+    valor: 184.75,
+    data_vencimento: '2026-11-20',
+    status: 'pendente',
+  });
+});
+
+test('receivable page protects and discards unsaved form without writing', async ({ page }) => {
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
+  await page.goto('/contas/receber/nova');
+  await page.getByLabel('Descricao da receita').fill('Rascunho de receita QA');
+
+  await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+  const discard = page.getByRole('alertdialog');
+  await expect(discard).toContainText('Alterações não salvas');
+  await discard.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(page).toHaveURL('/contas/receber/nova');
+  await expect(page.getByLabel('Descricao da receita')).toHaveValue('Rascunho de receita QA');
+
+  await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();
+  await expect(page).toHaveURL('/contas?tab=receber');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+  expect(synthetic.writes.filter(write => !write.includes('/rpc/') && !write.includes('/functions/v1/mercadopago-point'))).toEqual([]);
+});
