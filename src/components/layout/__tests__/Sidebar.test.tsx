@@ -56,7 +56,7 @@ function renderSidebar(path: string, platformAdmin: boolean, clinicaId: string |
 
 describe('Sidebar alterna áreas para a dona da plataforma', () => {
   it('mantém Clientes aberto na edição de conta mesmo com todos os grupos recolhidos', async () => {
-    localStorage.setItem('elolab_sidebar_groups_v3', '[]');
+    localStorage.setItem('elolab_sidebar_groups_v4', '[]');
     renderSidebar('/usuarios/conta/editar', true);
     await waitFor(() => expect(screen.getByRole('link', { name: 'Contas e acessos' })).toBeVisible());
     expect(screen.getByRole('link', { name: 'Contas e acessos' })).toHaveAttribute('aria-current', 'page');

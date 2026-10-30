@@ -54,6 +54,44 @@ describe('menu do administrador de clínica', () => {
     const todos = adminClinica().flatMap((g) => g.items.map((i) => i.href));
     expect(todos).toContain('/planos');
   });
+
+  it('organiza os módulos por finalidade e evita atalhos duplicados', () => {
+    const grupos = adminClinica();
+    expect(nomes(grupos)).toEqual([
+      'Início',
+      'Atendimento',
+      'Pacientes',
+      'Clínica',
+      'Laboratório',
+      'Financeiro',
+      'Gestão da clínica',
+      'Comunicação e automação',
+      'Relatórios e indicadores',
+      'Configurações',
+      'Ajuda',
+    ]);
+    expect(itens(grupos, 'Gestão da clínica')).toEqual(expect.arrayContaining([
+      '/equipe', '/higiene-salas', '/patrimonio-equipamentos', '/estoque',
+    ]));
+    expect(itens(grupos, 'Comunicação e automação')).toEqual(expect.arrayContaining([
+      '/chat', '/automacoes?tab=fila', '/automacoes', '/agente-ia',
+    ]));
+    expect(itens(grupos, 'Relatórios e indicadores')).toContain('/analise-preditiva');
+
+    const todos = grupos.flatMap((grupo) => grupo.items.map((item) => item.href));
+    expect(todos.filter((href) => href === '/precos-servicos')).toHaveLength(1);
+    expect(new Set(todos).size).toBe(todos.length);
+  });
+
+  it('reorganiza os grupos sem ampliar as telas de cada perfil', () => {
+    const recepcao = getFilteredMenuGroups(['recepcao'], false, false, true);
+    expect(nomes(recepcao)).toContain('Gestão da clínica');
+    expect(itens(recepcao, 'Gestão da clínica')).toContain('/higiene-salas');
+    expect(itens(recepcao, 'Gestão da clínica')).not.toContain('/equipe');
+    expect(nomes(recepcao)).toContain('Comunicação e automação');
+    expect(itens(recepcao, 'Comunicação e automação')).toContain('/chat');
+    expect(itens(recepcao, 'Comunicação e automação')).not.toContain('/automacoes');
+  });
 });
 
 describe('modos de navegação da plataforma', () => {

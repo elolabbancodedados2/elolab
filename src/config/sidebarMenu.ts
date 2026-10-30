@@ -100,9 +100,6 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Fila e triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Salas e lista de espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
       { label: 'Retornos', icon: CalendarCheck, href: '/retornos', roles: ['admin', 'medico', 'recepcao'] },
-      { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
-      { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
-      { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
     ],
   },
   {
@@ -156,6 +153,28 @@ export const menuGroups: MenuGroup[] = [
     ],
   },
   {
+    label: 'Gestão da clínica',
+    icon: Building2,
+    items: [
+      { label: 'Médicos e funcionários', icon: UsersRound, href: '/equipe', roles: ['admin'], exact: true },
+      { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
+      { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
+      { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
+      { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
+      { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
+    ],
+  },
+  {
+    label: 'Comunicação e automação',
+    icon: MessageCircle,
+    items: [
+      { label: 'Chat interno', icon: MessageCircle, href: '/chat' },
+      { label: 'Mensagens e lembretes a pacientes', icon: Bell, href: '/automacoes?tab=fila', roles: ['admin'], planFeature: 'automacoes' },
+      { label: 'Automações da clínica', icon: Sparkles, href: '/automacoes', roles: ['admin'], exact: true, planFeature: 'automacoes' },
+      { label: 'Atendente de IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'], planFeature: 'agente_ia' },
+    ],
+  },
+  {
     label: 'Relatórios e indicadores',
     icon: FileBarChart,
     roles: ['admin', 'financeiro', 'recepcao', 'enfermagem', 'medico'],
@@ -164,42 +183,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
       { label: 'Indicadores da clínica', icon: ActivitySquare, href: '/analytics', roles: ['admin'] },
       { label: 'Relatórios salvos', icon: FileBarChart, href: '/relatorios/salvos', roles: ['admin', 'financeiro'] },
-    ],
-  },
-  {
-    label: 'Equipe',
-    icon: UsersRound,
-    roles: ['admin'],
-    items: [
-      { label: 'Médicos e funcionários', icon: UsersRound, href: '/equipe', roles: ['admin'], exact: true },
-      { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
-    ],
-  },
-  {
-    label: 'Estoque e suprimentos',
-    icon: PackageSearch,
-    roles: ['admin', 'enfermagem'],
-    items: [
-      { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
-      { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
-    ],
-  },
-  {
-    label: 'Comunicação',
-    icon: MessageCircle,
-    items: [
-      { label: 'Chat interno', icon: MessageCircle, href: '/chat' },
-      { label: 'Mensagens e lembretes a pacientes', icon: Bell, href: '/automacoes?tab=fila', roles: ['admin'], planFeature: 'automacoes' },
-    ],
-  },
-  {
-    label: 'Automação e IA',
-    icon: Sparkles,
-    roles: ['admin'],
-    planFeature: 'automacoes',
-    items: [
-      { label: 'Automações da clínica', icon: Sparkles, href: '/automacoes', roles: ['admin'], exact: true },
-      { label: 'Atendente de IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'], planFeature: 'agente_ia' },
+      { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
     ],
   },
   {
@@ -209,7 +193,6 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dados da clínica', icon: Building2, href: '/configuracoes', roles: ['admin'], exact: true },
       { label: 'Horários e agenda online', icon: CalendarRange, href: '/configuracoes?tab=horarios', roles: ['admin'] },
-      { label: 'Serviços e preços', icon: CircleDollarSign, href: '/precos-servicos', roles: ['admin'] },
       { label: 'Notificações', icon: Bell, href: '/configuracoes?tab=notificacoes', roles: ['admin'] },
       { label: 'Integrações disponíveis', icon: Settings2, href: '/configuracoes?tab=integracoes', roles: ['admin'] },
       { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },

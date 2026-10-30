@@ -20,7 +20,7 @@ import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 import { normalizarTexto } from '@/lib/buscaPaciente';
 
 const STORAGE_KEY = 'elolab_sidebar_collapsed';
-const GROUPS_KEY = 'elolab_sidebar_groups_v3';
+const GROUPS_KEY = 'elolab_sidebar_groups_v4';
 const DEFAULT_OPEN_GROUPS = ['Início', 'Atendimento', 'Pacientes', 'Painel da plataforma', 'Clientes', 'Receita'];
 
 function readSidebarPreference(key: string): string | null {

@@ -420,7 +420,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       version: '1.0.0',
     }));
     localStorage.setItem('elolab_sidebar_collapsed', 'false');
-    localStorage.setItem('elolab_sidebar_groups_v3', JSON.stringify(['Início', 'Atendimento', 'Pacientes', 'Clínica', 'Laboratório', 'Financeiro']));
+    localStorage.setItem('elolab_sidebar_groups_v4', JSON.stringify(['Início', 'Atendimento', 'Pacientes', 'Clínica', 'Laboratório', 'Financeiro', 'Gestão da clínica', 'Comunicação e automação', 'Relatórios e indicadores']));
   }, {
     authKey: 'sb-127-auth-token',
     session: syntheticSession(options),
