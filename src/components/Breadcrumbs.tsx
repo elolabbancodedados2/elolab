@@ -21,6 +21,7 @@ export function Breadcrumbs() {
         const emailModels = path === '/todos-templates' && location.pathname.startsWith('/todos-templates/email/');
         const isLast = index === segments.length - 1;
         if (!isLast && path === '/configuracoes/integracoes/conectar') return null;
+        if (!isLast && /^\/pacientes\/[^/]+\/portal(?:\/link)?$/.test(path) && location.pathname.endsWith('/portal/link')) return null;
         if (!isLast && /^\/pacientes\/[^/]+\/contatos(?:\/[^/]+)?$/.test(path) && location.pathname.includes('/contatos/')) return null;
         if (!isLast && /^\/pacientes\/[^/]+\/cobrancas(?:\/[^/]+)?$/.test(path) && location.pathname.includes('/cobrancas/')) return null;
         if (!isLast && path === '/admin/cobrancas/reconciliar') return null;

@@ -1,4 +1,4 @@
-import { type FormEvent, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BadgeCheck, Loader2, Mail, Phone } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -90,6 +90,10 @@ export default function PatientContactVerificationPage() {
   const [saveError, setSaveError] = useState('');
   const submissionLock = useRef(false);
   const completed = useRef(false);
+
+  useEffect(() => {
+    document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [location.pathname]);
 
   const patientQuery = useQuery({
     queryKey: ['patient-contact-verification', profile?.clinica_id ?? null, patientId],

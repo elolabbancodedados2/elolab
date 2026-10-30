@@ -220,6 +220,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/pacientes\/[^/]+\/autorizacoes$/.test(path)) return 'Autorizações do convênio';
   if (/^\/pacientes\/[^/]+\/status$/.test(path)) return 'Alterar status do paciente';
   if (/^\/pacientes\/[^/]+\/contatos\/(?:telefone|email)\/confirmar$/.test(path)) return 'Confirmar contato';
+  if (/^\/pacientes\/[^/]+\/portal\/link$/.test(path)) return 'Gerar link do Portal';
   if (/^\/pacientes\/[^/]+\/cobrancas\/[^/]+\/estorno$/.test(path)) return 'Estornar pagamento';
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
   if (/^\/atestados\/[^/]+$/.test(path)) return 'Detalhes do atestado';

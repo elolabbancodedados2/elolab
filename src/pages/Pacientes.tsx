@@ -20,7 +20,6 @@ import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -225,7 +224,6 @@ export default function Pacientes() {
   // contexto do card) e de outros lugares que queiram apontar direto.
   const [searchParams] = useSearchParams();
 
-  const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
   const [portalRevokeTarget, setPortalRevokeTarget] = useState<{ id: string; nome: string } | null>(null);
   const [isRevokingPortal, setIsRevokingPortal] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
@@ -1212,25 +1210,30 @@ export default function Pacientes() {
     }
   };
 
-  const handleGeneratePortalLink = async (pacienteId: string, pacienteNome: string) => {
-    try {
-      const { data, error } = await supabase.rpc('link_portal_paciente', {
-        p_paciente_id: pacienteId,
-      });
-      if (error) throw error;
-      if (!data) throw new Error('Paciente não encontrado');
-      const url = String(data);
-      try {
-        if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
-        await navigator.clipboard.writeText(url);
-        toast.success('Link copiado!', { description: `Link do portal de ${pacienteNome} copiado.` });
-      } catch {
-        setLinkPortalGerado({ nome: pacienteNome, url });
-        toast.info('O link foi gerado', { description: 'A cópia automática não funcionou. Copie o link na janela aberta.' });
-      }
-    } catch (e) {
-      toast.error('Erro ao gerar link do portal', { description: mensagemDeErro(e) });
-    }
+  const handleGeneratePortalLink = (pacienteId: string) => {
+    const isProfileContext = location.pathname === `/pacientes/${pacienteId}`
+      || (location.pathname === '/pacientes' && searchParams.get('paciente') === pacienteId);
+    const params = new URLSearchParams(location.search);
+    params.set('tab', 'dados');
+    if (location.pathname === '/pacientes') params.set('paciente', pacienteId);
+    const returnTo = isProfileContext
+      ? `${location.pathname}?${params.toString()}`
+      : patientReturnTo;
+    const returnState = isProfileContext
+      ? location.state
+      : {
+          ...((location.state && typeof location.state === 'object') ? location.state as Record<string, unknown> : {}),
+          patientFilters,
+          focusId: 'patient-list-region',
+        };
+    navigate(`/pacientes/${encodeURIComponent(pacienteId)}/portal/link`, {
+      state: {
+        patientId: pacienteId,
+        returnTo,
+        returnState,
+        returnScrollTop: document.getElementById('main-content')?.scrollTop ?? 0,
+      },
+    });
   };
 
   const handleRevokePortalLinks = async () => {
@@ -1246,20 +1249,6 @@ export default function Pacientes() {
       toast.error('Não foi possível revogar os links do portal.', { description: mensagemDeErro(error) });
     } finally {
       setIsRevokingPortal(false);
-    }
-  };
-
-  const copiarLinkPortalExibido = async () => {
-    if (!linkPortalGerado) return;
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('Cópia indisponível neste navegador.');
-      await navigator.clipboard.writeText(linkPortalGerado.url);
-      toast.success('Link copiado!');
-    } catch {
-      const campo = document.getElementById('link-portal-paciente') as HTMLInputElement | null;
-      campo?.focus();
-      campo?.select();
-      toast.info('Link selecionado', { description: 'Pressione Ctrl+C (ou ⌘C no Mac) para copiar.' });
     }
   };
 
@@ -2834,28 +2823,6 @@ export default function Pacientes() {
 
       {/* Etiquetas */}
       <EtiquetaPaciente pacientes={pacientesForEtiqueta} open={isEtiquetaOpen} onOpenChange={setIsEtiquetaOpen} />
-      <Dialog open={!!linkPortalGerado} onOpenChange={(open) => { if (!open) setLinkPortalGerado(null); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Link do Portal do Paciente</DialogTitle>
-            <DialogDescription>
-              Link gerado para {linkPortalGerado?.nome}. Compartilhe diretamente com o paciente.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            id="link-portal-paciente"
-            value={linkPortalGerado?.url || ''}
-            readOnly
-            onFocus={(event) => event.currentTarget.select()}
-            aria-label="Link de acesso ao portal do paciente"
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkPortalGerado(null)}>Fechar</Button>
-            <Button onClick={() => void copiarLinkPortalExibido()}>Copiar link</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <AlertDialog open={!!portalRevokeTarget} onOpenChange={(open) => {
         if (!open && !isRevokingPortal) setPortalRevokeTarget(null);
       }}>
