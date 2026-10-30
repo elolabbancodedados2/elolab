@@ -326,3 +326,52 @@ test('protege a evolução não salva ao voltar e preserva o texto ao cancelar o
   await expect(page).toHaveURL(`/prontuarios?paciente=${patient}`);
   expect(creates).toHaveLength(0);
 });
+
+
+test('alertas de medicamentos abrem em tela propria e retornam a prescricao', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  await installPageMocks(page);
+  await page.route('**/rest/v1/prescricoes*', route => route.request().method() === 'GET'
+    ? route.fulfill({ json: [
+      { id: 'prescricao-1', prontuario_id: recordId, medicamento: 'varfarina', dosagem: 'QA', posologia: 'QA', duracao: '', quantidade: '', observacoes: '' },
+      { id: 'prescricao-2', prontuario_id: recordId, medicamento: 'aas', dosagem: 'QA', posologia: 'QA', duracao: '', quantidade: '', observacoes: '' },
+    ] })
+    : route.fallback());
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/prontuarios?paciente=${patient}&prontuario=${recordId}&secao=prescricao`);
+  await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
+  await expect(page.getByLabel('Medicamento 1: nome')).toHaveValue('varfarina');
+  const reviewTrigger = page.getByRole('button', { name: 'Ver todos os 1 alertas de medicamentos' });
+  await expect(reviewTrigger).toBeVisible();
+  await reviewTrigger.click();
+
+  await expect(page).toHaveURL(/\/prontuarios\/atendimento\?.*tela=alertas-medicamentos/);
+  await expect(page.getByTestId('drug-interaction-review-page')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Alertas de medicamentos', exact: true })).toBeVisible();
+  await expect(page.getByRole('note')).toContainText('confirma');
+  await expect(page.getByText('Risco aumentado de sangramento')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('drug-interaction-review-mobile-top.png'), fullPage: true, animations: 'disabled' });
+  const resultRow = page.getByRole('listitem').filter({ hasText: 'Risco aumentado de sangramento' });
+  await resultRow.scrollIntoViewIfNeeded();
+  await page.locator('main#main-content').evaluate(element => element.scrollTo(0, element.scrollHeight));
+  const resultBox = await resultRow.boundingBox();
+  const bottomNavigation = await page.getByRole('navigation', { name: /Navega/ }).last().boundingBox();
+  expect(resultBox).not.toBeNull();
+  expect(bottomNavigation).not.toBeNull();
+  expect(resultBox!.y + resultBox!.height).toBeLessThanOrEqual(bottomNavigation!.y);
+  await page.screenshot({ path: info.outputPath('drug-interaction-review-mobile.png'), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.reload();
+  await expect(page.getByTestId('drug-interaction-review-page')).toBeVisible();
+  await expect(page.getByText('Risco aumentado de sangramento')).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: info.outputPath('drug-interaction-review-desktop.png'), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.getByRole('button', { name: /Voltar/ }).click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=prescricao`);
+  await expect(page.getByRole('button', { name: 'Ver todos os 1 alertas de medicamentos' })).toBeFocused();
+});

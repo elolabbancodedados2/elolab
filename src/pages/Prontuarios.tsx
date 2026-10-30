@@ -848,16 +848,33 @@ export default function Prontuarios() {
     else params.set('secao', section);
     setSearchParams(params, { replace: true });
   };
-  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta') => {
+  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta' | 'alertas-medicamentos') => {
     const params = new URLSearchParams(searchParams);
     params.set('tela', tool);
+    if (tool === 'alertas-medicamentos') params.set('secao', 'prescricao');
     setSearchParams(params);
   };
+  const focusMedicationReviewAfterCloseRef = useRef(false);
   const closeProntuarioTool = () => {
     const params = new URLSearchParams(searchParams);
     params.delete('tela');
     setSearchParams(params, { replace: true });
   };
+  const closeMedicationReview = () => {
+    focusMedicationReviewAfterCloseRef.current = true;
+    closeProntuarioTool();
+  };
+  useEffect(() => {
+    if (telaProntuario === 'alertas-medicamentos' || !focusMedicationReviewAfterCloseRef.current) return;
+    focusMedicationReviewAfterCloseRef.current = false;
+    window.requestAnimationFrame(() => {
+      const trigger = document.getElementById('drug-interaction-review-trigger');
+      if (trigger instanceof HTMLElement) {
+        trigger.focus();
+        trigger.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }, [telaProntuario]);
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
   const [contextoAgendamento, setContextoAgendamento] = useState<ContextoAgendamentoProntuario | null>(null);
@@ -904,7 +921,7 @@ export default function Prontuarios() {
   const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string) => {
     const secaoAtual = searchParams.get('secao');
     if (secaoAtual && !params.has('secao')) params.set('secao', secaoAtual);
-    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta') {
+    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos') {
       params.set('tela', telaProntuario);
     }
     const routeState = location.state as { returnTo?: unknown } | null;
@@ -1027,6 +1044,19 @@ export default function Prontuarios() {
     ],
   });
   const selectedPaciente = pacienteSelecionadoQuery.data?.[0] ?? null;
+  const medicamentosParaChecagem = useMemo(
+    () => prescricoes.map(p => p.medicamento.trim()).filter(Boolean),
+    [prescricoes],
+  );
+  const alergiasParaChecagem = useMemo(() => [
+    ...(selectedPaciente?.alergias || []),
+    ...(currentProntuario.alergias_relatadas
+      ? String(currentProntuario.alergias_relatadas).split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean)
+      : []),
+  ].filter((value, index, list) => list.indexOf(value) === index), [
+    currentProntuario.alergias_relatadas,
+    selectedPaciente?.alergias,
+  ]);
   const routePacienteNaoEncontrado = Boolean(
     routePacienteId && routePacienteId === selectedPacienteId && !pacienteSelecionadoQuery.isLoading
     && !pacienteSelecionadoQuery.isError && !selectedPaciente,
@@ -1863,7 +1893,7 @@ export default function Prontuarios() {
     </div>
   );
 
-  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta') {
+  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos') {
     if (pacienteSelecionadoQuery.isLoading || (routePacienteId && !isProntuarioOpen)) {
       return (
         <section role="status" className="mx-auto flex min-h-48 max-w-5xl items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -1884,6 +1914,20 @@ export default function Prontuarios() {
 
     if (telaProntuario === 'relatorio-alta') {
       return <DischargeReport onClose={closeProntuarioTool} hasUnsavedChanges={hasUnsavedChanges} data={getDischargeReportData()} />;
+    }
+
+    if (telaProntuario === 'alertas-medicamentos') {
+      return (
+        <DrugInteractionChecker
+          fullPage
+          patientName={selectedPaciente.nome_social || selectedPaciente.nome}
+          medicamentos={medicamentosParaChecagem}
+          alergias={alergiasParaChecagem}
+          loadError={erroPrescricoes}
+          onRetry={() => { if (currentProntuario.id) void carregarPrescricoes(currentProntuario.id); }}
+          onCloseReview={closeMedicationReview}
+        />
+      );
     }
 
     return (
@@ -2809,19 +2853,6 @@ export default function Prontuarios() {
                     Prescrição sai sem assinatura digital — imprima e assine, ou assine o PDF no gov.br
                   </p>
 
-                  {/* Drug Interaction Checker — combina alergias do cadastro e da consulta (Item 02 / 16) */}
-                  {prescricoes.filter(p => p.medicamento.trim()).length > 0 && (
-                    <DrugInteractionChecker
-                      medicamentos={prescricoes.filter(p => p.medicamento.trim()).map(p => p.medicamento.trim())}
-                      alergias={[
-                        ...(selectedPaciente?.alergias || []),
-                        ...(currentProntuario.alergias_relatadas
-                          ? String(currentProntuario.alergias_relatadas).split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean)
-                          : []),
-                      ].filter((v, i, a) => a.indexOf(v) === i)}
-                    />
-                  )}
-
                   {prescricoes.length === 0 ? (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">
                       <Pill className="h-8 w-8 opacity-20 mb-2" />
@@ -2867,7 +2898,15 @@ export default function Prontuarios() {
                     </div>
                   )}
 
-                  </fieldset></TabsContent>
+                  </fieldset>
+                  {medicamentosParaChecagem.length > 0 && (
+                    <DrugInteractionChecker
+                      medicamentos={medicamentosParaChecagem}
+                      alergias={alergiasParaChecagem}
+                      onOpenReview={() => openProntuarioTool('alertas-medicamentos')}
+                    />
+                  )}
+                </TabsContent>
 
                 {/* ─── Anexos ─── */}
                 <TabsContent value="anexos" className="pt-1">
