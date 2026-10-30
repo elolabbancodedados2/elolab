@@ -21,6 +21,7 @@ export function Breadcrumbs() {
         const emailModels = path === '/todos-templates' && location.pathname.startsWith('/todos-templates/email/');
         const isLast = index === segments.length - 1;
         if (!isLast && /^\/admin\/consumo\/[^/]+$/.test(path)) return null;
+        if (!isLast && /^\/admin\/incidentes\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/seguranca-assistencial\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/laboratorio\/(?:pedidos|coletas)(?:\/[^/]+)?$/.test(path)) return null;
         if (!isLast && /^\/todos-templates\/(?:prescricoes|atestados|email)(?:\/[^/]+)?$/.test(path)) return null;
