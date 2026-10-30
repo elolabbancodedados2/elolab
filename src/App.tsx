@@ -280,6 +280,7 @@ function AppRoutes() {
                         <Route path="/verificar-assinatura/:codigo" element={<VerificarAssinatura />} />
                         <Route path="/planos/checkout/:slug" element={<SupabaseProtectedRoute allowedRoles={['admin']} permitirCompradorPendente><PlanoCheckout /></SupabaseProtectedRoute>} />
                         <Route path="/painel-tv" element={<SupabaseProtectedRoute><PainelTV /></SupabaseProtectedRoute>} />
+                        <Route path="/painel-tv/midias" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PainelTV /></SupabaseProtectedRoute>} />
 
                         <Route
                           element={

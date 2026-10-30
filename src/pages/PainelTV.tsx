@@ -1,5 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -13,15 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { PageHeader } from '@/components/PageHeader';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
+  ArrowLeft,
   Settings,
   Upload,
   Trash2,
@@ -33,6 +28,7 @@ import {
   ChevronRight,
   Loader2,
   Monitor,
+  RefreshCw,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -140,6 +136,9 @@ function playNotificationChime(): Promise<void> {
 
 export default function PainelTV() {
   const { isAdmin, profile } = useSupabaseAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isMediaManagementPage = location.pathname === '/painel-tv/midias';
   const [fila, setFila] = useState<FilaItem[]>([]);
   const [pacientes, setPacientes] = useState<Record<string, string>>({});
   const [medicos, setMedicos] = useState<Record<string, string>>({});
@@ -167,7 +166,8 @@ export default function PainelTV() {
   const [allMediaItems, setAllMediaItems] = useState<MediaItem[]>([]);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(true);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const loadFilaRef = useRef<() => Promise<void>>(async () => {});
   const loadMediaRef = useRef<() => Promise<void>>(async () => {});
@@ -187,29 +187,37 @@ export default function PainelTV() {
     if (!profile?.clinica_id) {
       filaLoadSequence.current += 1;
       filaCarregadaUmaVez.current = false;
+      mediaLoadSequence.current += 1;
       setFila([]);
       setPacientes({});
       setMedicos({});
       setSalas({});
+      setAllMediaItems([]);
+      setMediaItems([]);
+      setMediaError('Clínica não identificada. Atualize a sessão para carregar as mídias.');
+      setMediaLoading(false);
       setFilaCarregando(false);
       setFilaErro('Clínica não identificada. Atualize a sessão para carregar o painel.');
       return;
     }
-    filaCarregadaUmaVez.current = false;
-    setFila([]);
-    setPacientes({});
-    setMedicos({});
-    setSalas({});
-    setFilaCarregando(true);
-    setFilaErro(null);
-    void loadFilaRef.current();
+    if (!isMediaManagementPage) {
+      filaCarregadaUmaVez.current = false;
+      setFila([]);
+      setPacientes({});
+      setMedicos({});
+      setSalas({});
+      setFilaCarregando(true);
+      setFilaErro(null);
+      void loadFilaRef.current();
+    }
     void loadMediaRef.current();
 
     // Preload voices
-    if ('speechSynthesis' in window) {
+    if (!isMediaManagementPage && 'speechSynthesis' in window) {
       window.speechSynthesis.getVoices();
     }
-    
+    if (isMediaManagementPage) return;
+
     const timeInterval = setInterval(() => setCurrentTime(new Date()), 1000);
     // Fallback polling every 10s (realtime is primary)
     const dataInterval = setInterval(() => { void loadFilaRef.current(); }, 10000);
@@ -218,11 +226,11 @@ export default function PainelTV() {
       clearInterval(timeInterval);
       clearInterval(dataInterval);
     };
-  }, [profile?.clinica_id]);
+  }, [profile?.clinica_id, isMediaManagementPage]);
 
   // Realtime subscription for instant updates
   useEffect(() => {
-    if (!profile?.clinica_id) return;
+    if (!profile?.clinica_id || isMediaManagementPage) return;
     const channel = supabase
       .channel(canalUnico('painel-tv-fila'))
       .on(
@@ -237,11 +245,11 @@ export default function PainelTV() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile?.clinica_id]);
+  }, [profile?.clinica_id, isMediaManagementPage]);
 
   // Media carousel timer
   useEffect(() => {
-    if (!isPlaying || mediaItems.length === 0) return;
+    if (isMediaManagementPage || !isPlaying || mediaItems.length === 0) return;
     const currentMedia = mediaItems[currentMediaIndex];
     if (!currentMedia || currentMedia.tipo !== 'imagem') return;
 
@@ -250,7 +258,7 @@ export default function PainelTV() {
       setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length);
     }, duration);
     return () => clearTimeout(timer);
-  }, [currentMediaIndex, isPlaying, mediaItems]);
+  }, [currentMediaIndex, isMediaManagementPage, isPlaying, mediaItems]);
 
   useEffect(() => {
     setCurrentMediaIndex((index) => mediaItems.length ? index % mediaItems.length : 0);
@@ -264,7 +272,7 @@ export default function PainelTV() {
   useEffect(() => {
     const clinicaId = profile?.clinica_id;
     // Sem a fila confirmada, a limpeza abaixo apagaria a memória da recarga.
-    if (!somAtivo || !clinicaId || !filaCarregadaUmaVez.current) return;
+    if (isMediaManagementPage || !somAtivo || !clinicaId || !filaCarregadaUmaVez.current) return;
     if (announcedClinicaRef.current !== clinicaId) {
       announcedClinicaRef.current = clinicaId;
       announcedCallsRef.current = lerChamadasAnunciadas(clinicaId);
@@ -292,7 +300,7 @@ export default function PainelTV() {
       if (!currentIds.has(id)) announcedCallsRef.current.delete(id);
     });
     salvarChamadasAnunciadas(clinicaId, announcedCallsRef.current);
-  }, [fila, getPacienteNome, salas, somAtivo, profile?.clinica_id]);
+  }, [fila, getPacienteNome, isMediaManagementPage, salas, somAtivo, profile?.clinica_id]);
 
   const loadFila = async () => {
     const clinicaId = profile?.clinica_id;
@@ -395,8 +403,12 @@ export default function PainelTV() {
     if (!clinicaId) {
       setAllMediaItems([]);
       setMediaItems([]);
+      setMediaError('Clínica não identificada. Atualize a sessão para carregar as mídias.');
+      setMediaLoading(false);
       return;
     }
+    setMediaLoading(true);
+    setMediaError(null);
     try {
       const { data: allData, error: allError } = await supabase
         .from('tv_panel_media')
@@ -410,7 +422,10 @@ export default function PainelTV() {
       setMediaItems(activeItems);
     } catch (error) {
       if (requestSequence !== mediaLoadSequence.current || clinicaAtualRef.current !== clinicaId) return;
+      setMediaError('Não foi possível carregar as mídias. Tente novamente.');
       if (import.meta.env.DEV) console.error('Erro ao carregar mídias:', error);
+    } finally {
+      if (requestSequence === mediaLoadSequence.current && clinicaAtualRef.current === clinicaId) setMediaLoading(false);
     }
   };
   loadMediaRef.current = loadMedia;
@@ -537,6 +552,125 @@ export default function PainelTV() {
   const chamados = fila.filter((f) => f.status === 'chamado');
   const currentMedia = mediaItems[currentMediaIndex];
 
+  if (isMediaManagementPage) {
+    if (!isAdmin()) {
+      return (
+        <main className="min-h-screen bg-background px-4 py-10 text-foreground">
+          <section className="mx-auto max-w-3xl rounded-xl border border-border bg-card p-6">
+            <PageHeader title="Acesso restrito" description="Somente administradores da clínica podem gerenciar as mídias do painel." />
+            <Button className="mt-6" variant="outline" onClick={() => navigate('/painel-tv')}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao painel
+            </Button>
+          </section>
+        </main>
+      );
+    }
+
+    return (
+      <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl space-y-6">
+          <PageHeader
+            title="Mídias do Painel TV"
+            description="Gerencie as imagens e os vídeos exibidos na sala de espera da sua clínica."
+            icon={<Monitor />}
+            actions={(
+              <>
+                <Button type="button" variant="outline" onClick={() => navigate('/painel-tv')}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao painel
+                </Button>
+                <Button type="button" variant="outline" onClick={() => void loadMedia()} disabled={mediaLoading}>
+                  <RefreshCw className={cn('mr-2 h-4 w-4', mediaLoading && 'animate-spin')} />
+                  Atualizar
+                </Button>
+              </>
+            )}
+          />
+
+          <section aria-labelledby="tv-media-upload-title" className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Upload className="h-4 w-4" /></span>
+              <div>
+                <h2 id="tv-media-upload-title" className="font-semibold">Adicionar mídia</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Selecione uma imagem ou vídeo para disponibilizar no painel da sala de espera.</p>
+              </div>
+            </div>
+            <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input id="tv-media-file" type="file" accept="image/*,video/*" onChange={handleFileUpload} disabled={uploading} className="peer absolute left-0 top-0 -z-10 opacity-0" style={{ width: 1, height: 1 }} />
+              <Label
+                htmlFor="tv-media-file"
+                aria-disabled={uploading}
+                className={cn(
+                  'inline-flex min-h-10 w-fit cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2',
+                  uploading && 'pointer-events-none opacity-60'
+                )}
+              >
+                <Upload aria-hidden="true" className="mr-2 h-4 w-4" /> Escolher arquivo
+              </Label>
+              <span className="text-sm text-muted-foreground">A seleção inicia o envio.</span>
+              {uploading && <span role="status" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> Enviando arquivo…</span>}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Formatos aceitos: JPG, PNG, GIF, MP4 e WEBM.</p>
+          </section>
+
+          <section aria-labelledby="tv-media-list-title" className="overflow-hidden rounded-xl border border-border bg-card">
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
+              <div>
+                <h2 id="tv-media-list-title" className="font-semibold">Mídias cadastradas</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Ative ou pause a exibição e remova arquivos da clínica.</p>
+              </div>
+              <Badge variant="secondary" aria-label={`${allMediaItems.length} mídias cadastradas`}>{allMediaItems.length}</Badge>
+            </header>
+
+            {mediaError ? (
+              <div role="alert" className="m-5 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:m-6">
+                <p className="font-medium text-foreground">Lista indisponível</p>
+                <p className="mt-1 text-sm text-muted-foreground">{mediaError}</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void loadMedia()} disabled={mediaLoading}>
+                  <RefreshCw className={cn('mr-2 h-4 w-4', mediaLoading && 'animate-spin')} /> Tentar novamente
+                </Button>
+              </div>
+            ) : mediaLoading && allMediaItems.length === 0 ? (
+              <div role="status" className="flex items-center justify-center gap-2 px-6 py-12 text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> Carregando mídias…</div>
+            ) : allMediaItems.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <ImageIcon aria-hidden="true" className="mx-auto h-8 w-8 text-muted-foreground" />
+                <p className="mt-3 font-medium">Nenhuma mídia cadastrada</p>
+                <p className="mt-1 text-sm text-muted-foreground">Adicione uma imagem ou vídeo acima para começar.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {allMediaItems.map((media) => (
+                  <li key={media.id} className="flex flex-wrap items-center gap-3 px-4 py-4 sm:flex-nowrap sm:px-6">
+                    <div className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                      {media.tipo === 'imagem' ? <img src={media.url} alt={`Prévia: ${media.nome}`} className="h-full w-full object-cover" /> : <Video aria-hidden="true" className="h-6 w-6 text-muted-foreground" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium" title={media.nome}>{media.nome}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                        <Badge variant="outline">{media.tipo === 'video' ? 'Vídeo' : 'Imagem'}</Badge>
+                        {media.tipo === 'imagem' && <span>{media.duracao_exibicao}s por exibição</span>}
+                        <span className={cn('inline-flex items-center gap-1.5', media.ativo ? 'text-emerald-700' : 'text-muted-foreground')}>
+                          <span aria-hidden="true" className={cn('h-1.5 w-1.5 rounded-full', media.ativo ? 'bg-emerald-600' : 'bg-muted-foreground')} />
+                          {media.ativo ? 'Ativa' : 'Pausada'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="ml-auto flex items-center gap-3">
+                      <Switch checked={media.ativo} onCheckedChange={() => toggleMediaActive(media)} aria-label={`Exibir ${media.nome} no painel`} />
+                      <Button aria-label={`Excluir mídia ${media.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteMedia(media)} className="text-destructive hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#04182B] via-[#0A3558] to-[#062540] text-white relative overflow-hidden">
       {/* Background Media Carousel */}
@@ -613,78 +747,9 @@ export default function PainelTV() {
             </Button>
             
             {/* Settings */}
-            <Dialog open={showSettings} onOpenChange={setShowSettings}>
-              <DialogTrigger asChild>
-                <Button aria-label="Configurar mídias do painel" variant="outline" size="icon" className="rounded-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white">
-                  <Settings className="h-5 w-5" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Monitor className="h-5 w-5 text-[#1080CA]" />
-                    Configurar Mídia do Painel
-                  </DialogTitle>
-                  <DialogDescription>Adicione imagens ou vídeos para exibir no painel da TV</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <Label>Adicionar Nova Mídia</Label>
-                    <div className="flex gap-2">
-                      <Input type="file" accept="image/*,video/*" onChange={handleFileUpload} disabled={uploading} className="flex-1 rounded-xl" />
-                      {uploading && <Loader2 className="h-5 w-5 animate-spin text-[#1080CA]" />}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Formatos aceitos: JPG, PNG, GIF, MP4, WEBM</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Mídias Cadastradas ({allMediaItems.length})</Label>
-                    {allMediaItems.length === 0 ? (
-                      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-[#BFD8EE] bg-[#F3F8FC] py-8 text-center text-muted-foreground">
-                        <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ImageIcon className="h-7 w-7" /></span>
-                        <p className="font-medium text-foreground">Nenhuma mídia cadastrada</p>
-                        <p className="text-sm">Faça upload de imagens ou vídeos acima</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {allMediaItems.map((media) => (
-                          <Card key={media.id} className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
-                            <CardContent className="p-3 flex items-center gap-3">
-                              <div className="h-16 w-24 rounded-xl overflow-hidden bg-[#EEF4FA] flex-shrink-0">
-                                {media.tipo === 'imagem' ? (
-                                  <img src={media.url} alt={media.nome} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center bg-gradient-primary">
-                                    <Video className="h-6 w-6 text-white/80" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium truncate">{media.nome}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]">
-                                    {media.tipo === 'video' ? <Video className="h-3 w-3 mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
-                                    {media.tipo}
-                                  </Badge>
-                                  {media.tipo === 'imagem' && (
-                                    <span className="text-xs text-muted-foreground">{media.duracao_exibicao}s</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Switch checked={media.ativo} onCheckedChange={() => toggleMediaActive(media)} aria-label={`Exibir ${media.nome} no painel`} />
-                                <Button aria-label={`Excluir mídia ${media.nome}`} variant="ghost" size="icon" onClick={() => handleDeleteMedia(media)} className="rounded-full text-destructive hover:text-destructive">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button aria-label="Configurar mídias do painel" variant="outline" size="icon" onClick={() => navigate('/painel-tv/midias')} className="rounded-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white">
+              <Settings className="h-5 w-5" />
+            </Button>
           </div>
         )}
 

@@ -20,6 +20,7 @@ const labelsByPath: Record<string, string> = {
   '/feedback': 'Enviar feedback',
   '/indicadores': 'Indicadores de produtividade',
   '/treinamento': 'Treinamento',
+  '/painel-tv/midias': 'Mídias do Painel TV',
   '/agenda': 'Agenda',
   '/agenda/bloqueios': 'Bloqueios da agenda',
   '/agenda/bloqueios/novo': 'Novo bloqueio',
