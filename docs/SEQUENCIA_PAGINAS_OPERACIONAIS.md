@@ -56,4 +56,4 @@ Atualizacao TISS (2026-10-30): recurso de glosa, decisao da operadora e conferen
 
 Atualização de 30/10/2026: o histórico e a reabertura do caixa diário agora têm páginas próprias (`df095a7`) e foram publicados. Próximos alvos financeiros: edição de lançamentos e auditoria de pagamentos/contas. Conciliação e demais fluxos das etapas 9, 10 e 12 continuam pendentes; o redesenho integral não está concluído.
 
-Atualização de 30/10/2026: edição de saídas do caixa agora tem página própria e cobertura de persistência/rascunho; será publicada após a validação desta etapa. A auditoria de pagamentos/contas, conciliação e demais pendências das etapas 9, 10 e 12 continuam na sequência. O EloLab ainda não está integralmente auditado.
+Atualização de 30/10/2026: edição de saídas do caixa tem página própria e está publicada (`69571cf`). Próximos alvos financeiros: auditar telas de pagamentos e contas, depois concluir conciliação e os fluxos de repasses/faturamento pendentes. As pendências das etapas 9, 10 e 12 continuam na sequência; o EloLab ainda não está integralmente auditado.

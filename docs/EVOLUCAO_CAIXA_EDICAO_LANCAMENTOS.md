@@ -14,4 +14,4 @@ Playwright passou 5/5 cenários, cobrindo a edição, validação de precisão m
 
 ## Publicação
 
-Preencher SHA, imagem, smoke test e rollback após a publicação. Não houve migration.
+Código `69571cf1c4d297e7ebead327528a9029537a9dae`, imagem `easypanel/elolab/app:deploy-20261030-69571cf`. Build de origem verificado, smoke do container isolado e domínio público responderam `healthz=ok`; `/version.json` confirmou o SHA integral e o Swarm ficou com 1/1 réplica na imagem nova. Rollback imediato: `deploy-20261030-df095a7`. Nenhuma migration ou alteração de dados de produção.
