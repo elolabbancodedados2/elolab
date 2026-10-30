@@ -222,6 +222,88 @@ test('evolução é criada na página dedicada e salva com paciente e autoria co
   });
 });
 
+test('relatório de alta usa uma página própria e volta ao mesmo contexto clínico', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  const reportRecord = {
+    ...record,
+  };
+  await installPageMocks(page, reportRecord);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/prontuarios?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
+  await expect(page.getByRole('heading', { name: 'Evolução clínica', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Alta', exact: true }).click();
+  await expect(page).toHaveURL(/\/prontuarios\/atendimento\?.*tela=relatorio-alta/);
+  await expect(page.getByRole('heading', { name: 'Relatório de alta', exact: true })).toBeVisible();
+  await expect(page.getByTestId('clinical-discharge-report')).toBeVisible();
+  await expect(page.getByText('Cefaleia recorrente há três dias')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('clinical-discharge-report-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Relatório de alta', exact: true })).toBeVisible();
+  await expect(page.getByText('Cefaleia recorrente há três dias')).toBeVisible();
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: info.outputPath('clinical-discharge-report-desktop.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Voltar à evolução' }).click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
+  await expect(page.getByRole('heading', { name: 'Evolução clínica', exact: true })).toBeVisible();
+});
+
+test('biblioteca de protocolos ocupa a página e aplica só sugestões explícitas ao rascunho', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  const chartWrites: Record<string, unknown>[] = [];
+  await installPageMocks(page, { ...record, id: '00000000-0000-4000-9000-000000000109', assinado: false }, { updates: chartWrites, creates: chartWrites });
+  await page.route('**/rest/v1/protocolos_clinicos*', route => route.request().method() === 'GET'
+    ? route.fulfill({ json: [{
+      id: '00000000-0000-4000-9000-000000000181', clinica_id: clinic, ativo: true,
+      nome: 'Cefaleia QA', condicao: 'Cefaleia', descricao: 'Referência sintética para teste.',
+      passos: [{ ordem: 1, acao: 'Revisar sinais de alerta.' }],
+      medicamentos_sugeridos: [{ nome: 'Medicamento QA', posologia: 'Conferir dose individualmente.' }],
+      exames_sugeridos: ['Exame QA'], orientacoes: 'Orientação sintética revisável.', especialidade: 'Clínica geral',
+    }] })
+    : route.fallback());
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/prontuarios?paciente=${patient}`);
+  await page.getByRole('button', { name: 'Novo Atendimento', exact: true }).first().click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
+  await page.getByRole('tab', { name: 'Conduta' }).click();
+  await page.getByRole('button', { name: 'Aplicar Protocolo Clínico' }).click();
+
+  await expect(page).toHaveURL(/\/prontuarios\/atendimento\?.*tela=protocolos/);
+  await expect(page.getByTestId('clinical-protocols-page')).toBeVisible();
+  await expect(page.getByRole('note')).toContainText('não geram pedidos automaticamente');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByLabel('Buscar protocolos clínicos').fill('Cefaleia');
+  await page.getByRole('button', { name: /Cefaleia QA/ }).click();
+  await expect(page.getByText('Exames Sugeridos')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Aplicar sugestões à evolução' })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('clinical-protocols-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: info.outputPath('clinical-protocols-desktop.png'), fullPage: true, animations: 'disabled' });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Protocolos clínicos', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Cefaleia QA/ }).click();
+  const applyProtocol = page.getByRole('button', { name: 'Aplicar sugestões à evolução' });
+  await expect(applyProtocol).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await applyProtocol.scrollIntoViewIfNeeded();
+  const applyBox = await applyProtocol.boundingBox();
+  const bottomNavigation = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(applyBox).not.toBeNull();
+  expect(bottomNavigation).not.toBeNull();
+  expect(applyBox!.y + applyBox!.height).toBeLessThanOrEqual(bottomNavigation!.y);
+
+  await applyProtocol.click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1&secao=conduta`);
+  await expect(page.getByRole('textbox', { name: 'Conduta' })).toHaveValue(/Orientação sintética revisável/);
+  await page.getByRole('tab', { name: 'Prescrição' }).click();
+  await expect(page.getByLabel('Medicamento 1: nome')).toHaveValue('Medicamento QA');
+  expect(chartWrites).toHaveLength(0);
+});
+
 test('protege a evolução não salva ao voltar e preserva o texto ao cancelar o descarte', async ({ page }, info) => {
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
   const creates: Record<string, unknown>[] = [];

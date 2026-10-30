@@ -837,10 +837,21 @@ export default function Prontuarios() {
   const secaoProntuario = ['anamnese', 'exame', 'diagnostico', 'conduta', 'prescricao', 'anexos', 'historico', 'adendos', 'auditoria'].includes(secaoProntuarioParam || '')
     ? secaoProntuarioParam!
     : 'anamnese';
+  const telaProntuario = searchParams.get('tela');
   const changeProntuarioSection = (section: string) => {
     const params = new URLSearchParams(searchParams);
     if (section === 'anamnese') params.delete('secao');
     else params.set('secao', section);
+    setSearchParams(params, { replace: true });
+  };
+  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta') => {
+    const params = new URLSearchParams(searchParams);
+    params.set('tela', tool);
+    setSearchParams(params);
+  };
+  const closeProntuarioTool = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('tela');
     setSearchParams(params, { replace: true });
   };
   const routeOpenedRef = useRef(false);
@@ -859,8 +870,6 @@ export default function Prontuarios() {
   const [currentProntuario, setCurrentProntuario] = useState<Record<string, any>>({});
   const prontuarioAposDescartarRef = useRef<Record<string, any> | null>(null);
   const [prescricoes, setPrescricoes] = useState<PrescricaoForm[]>([]);
-  const [showProtocols, setShowProtocols] = useState(false);
-  const [showDischargeReport, setShowDischargeReport] = useState(false);
   const [sinaisVitais, setSinaisVitais] = useState<SinaisVitais>(emptySinaisVitais);
   const [isEditing, setIsEditing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -889,12 +898,17 @@ export default function Prontuarios() {
     navigationAllowedRef.current = false;
   }, [location.pathname, location.search]);
   const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string) => {
+    const secaoAtual = searchParams.get('secao');
+    if (secaoAtual && !params.has('secao')) params.set('secao', secaoAtual);
+    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta') {
+      params.set('tela', telaProntuario);
+    }
     const routeState = location.state as { returnTo?: unknown } | null;
     const returnTo = isEvolucaoWorkspace && typeof routeState?.returnTo === 'string'
       ? routeState.returnTo
       : `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`;
     navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo } });
-  }, [isEvolucaoWorkspace, location.state, navigate]);
+  }, [isEvolucaoWorkspace, location.state, navigate, searchParams, telaProntuario]);
   const returnFromEvolucao = useCallback(() => {
     const routeState = location.state as { returnTo?: unknown } | null;
     const pacienteId = currentProntuario.paciente_id || selectedPacienteId;
@@ -1801,18 +1815,21 @@ export default function Prontuarios() {
       const novas = protocol.medicamentos_sugeridos.map((med: any) => ({
         medicamento: med.nome, dosagem: '', posologia: med.posologia, duracao: '', quantidade: '', observacoes: '',
       }));
-      setPrescricoes([...prescricoes, ...novas]);
+      setPrescricoes(prev => [...prev, ...novas]);
+      setHasUnsavedChanges(true);
+      changeVersionRef.current += 1;
     }
-    let conduta = currentProntuario.conduta || '';
-    if (protocol.orientacoes) conduta += `\n\n[Protocolo: ${protocol.nome}]\n${protocol.orientacoes}`;
-    updateField('conduta', conduta.trim());
-    setShowProtocols(false);
-    toast.success('Protocolo aplicado', { description: `"${protocol.nome}" aplicado.` });
+    if (protocol.orientacoes?.trim()) {
+      const conduta = currentProntuario.conduta || '';
+      updateField('conduta', `${conduta}\n\n[Protocolo: ${protocol.nome}]\n${protocol.orientacoes}`.trim());
+    }
+    closeProntuarioTool();
+    toast.success('Sugestões adicionadas à evolução', { description: `Revise os dados de "${protocol.nome}" antes de salvar e assinar.` });
   };
 
   const getDischargeReportData = () => ({
     paciente: { nome: selectedPaciente?.nome || '', dataNascimento: selectedPaciente?.data_nascimento, cpf: selectedPaciente?.cpf },
-    medico: { nome: user?.nome || 'Médico' },
+    medico: { nome: medicoDoProntuario?.nome || user?.nome || 'Médico', crm: medicoDoProntuario?.crm, especialidade: medicoDoProntuario?.especialidade },
     consulta: {
       data: currentProntuario.data || todaySaoPauloDateOnly(),
       queixaPrincipal: currentProntuario.queixa_principal,
@@ -1841,6 +1858,45 @@ export default function Prontuarios() {
       {isEvolucaoWorkspace && <Button variant="outline" onClick={returnFromEvolucao}>Voltar aos prontuários</Button>}
     </div>
   );
+
+  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta') {
+    if (pacienteSelecionadoQuery.isLoading || (routePacienteId && !isProntuarioOpen)) {
+      return (
+        <section role="status" className="mx-auto flex min-h-48 max-w-5xl items-center justify-center gap-3 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />Restaurando o contexto clínico…
+        </section>
+      );
+    }
+
+    if (!isProntuarioOpen || !selectedPaciente) {
+      return (
+        <section role="alert" className="mx-auto max-w-5xl space-y-4 rounded-xl border border-warning/40 bg-warning/10 p-5">
+          <h1 className="text-lg font-semibold">Não há uma evolução aberta</h1>
+          <p className="text-sm text-muted-foreground">Volte aos prontuários e abra uma evolução autorizada antes de acessar este recurso.</p>
+          <Button variant="outline" onClick={closeProntuarioTool}>Voltar</Button>
+        </section>
+      );
+    }
+
+    if (telaProntuario === 'relatorio-alta') {
+      return <DischargeReport onClose={closeProntuarioTool} hasUnsavedChanges={hasUnsavedChanges} data={getDischargeReportData()} />;
+    }
+
+    return (
+      <section className="mx-auto w-full max-w-5xl space-y-5" data-testid="clinical-protocols-page">
+        <PageHeader
+          title="Protocolos clínicos"
+          description={`Referências para a evolução de ${selectedPaciente.nome_social || selectedPaciente.nome}.`}
+          icon={<ClipboardList />}
+          actions={<Button variant="outline" onClick={closeProntuarioTool} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />Voltar à evolução</Button>}
+        />
+        <p role="note" className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+          As sugestões precisam de revisão profissional. Aplicar adiciona medicamentos ao rascunho de prescrição e orientações à conduta; etapas e exames ficam como referência e não geram pedidos automaticamente.
+        </p>
+        <ClinicalProtocols fullPage onSelectProtocol={handleApplyProtocol} />
+      </section>
+    );
+  }
 
   // ═══════════════════════════════════════════════════════════
   // ─── RENDER ─────────────────────────────────────────────
@@ -2424,7 +2480,7 @@ export default function Prontuarios() {
                     </>
                   );
                 })()}
-                <Button variant="outline" size="sm" onClick={() => setShowDischargeReport(true)} className="text-xs h-7 gap-1">
+                <Button variant="outline" size="sm" onClick={() => openProntuarioTool('relatorio-alta')} className="text-xs h-7 gap-1">
                   <FileCheck className="h-3 w-3" />Alta
                 </Button>
               </div>
@@ -2662,7 +2718,7 @@ export default function Prontuarios() {
                 <TabsContent value="conduta" className="space-y-4 pt-1">
                   <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <div className="flex justify-end">
-                    <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-xs h-6 gap-1">
+                    <Button variant="outline" size="sm" onClick={() => openProntuarioTool('protocolos')} className="text-xs h-6 gap-1">
                       <CalendarCheck className="h-3 w-3" />Aplicar Protocolo Clínico
                     </Button>
                   </div>
@@ -2715,7 +2771,7 @@ export default function Prontuarios() {
                           <Printer className="h-3 w-3" />Receita PDF
                         </Button>
                       )}
-                      <Button variant="outline" size="sm" onClick={() => setShowProtocols(true)} className="text-xs h-6 gap-1"><CalendarCheck className="h-3 w-3" />Protocolos</Button>
+                      <Button variant="outline" size="sm" onClick={() => openProntuarioTool('protocolos')} className="text-xs h-6 gap-1"><CalendarCheck className="h-3 w-3" />Protocolos</Button>
                       <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="text-xs h-6 gap-1"><Plus className="h-3 w-3" />Adicionar</Button>
                     </div>
                   </div>
@@ -3052,16 +3108,6 @@ export default function Prontuarios() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Protocols Dialog */}
-      <Dialog open={showProtocols} onOpenChange={setShowProtocols}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Protocolos Clínicos</DialogTitle></DialogHeader>
-          <ClinicalProtocols onSelectProtocol={handleApplyProtocol} />
-        </DialogContent>
-      </Dialog>
-
-      <DischargeReport isOpen={showDischargeReport} onClose={() => setShowDischargeReport(false)} data={getDischargeReportData()} />
 
     </div>
   );

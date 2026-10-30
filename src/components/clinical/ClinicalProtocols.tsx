@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { 
   ClipboardList, 
@@ -9,7 +8,9 @@ import {
   Pill, 
   TestTube,
   FileText,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -51,14 +52,15 @@ interface Protocol {
 interface ClinicalProtocolsProps {
   onSelectProtocol?: (protocol: Protocol) => void;
   className?: string;
+  fullPage?: boolean;
 }
 
-export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProtocolsProps) {
+export function ClinicalProtocols({ onSelectProtocol, className, fullPage = false }: ClinicalProtocolsProps) {
   const { user, profile } = useSupabaseAuth();
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data: protocols, isLoading } = useQuery({
+  const { data: protocols, isLoading, error, refetch } = useQuery({
     queryKey: ['clinical-protocols', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -101,8 +103,8 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
   }
 
   return (
-    <Card className={className}>
-      <CardHeader>
+    <Card className={cn(fullPage && 'border-0 bg-transparent shadow-none', className)}>
+      {!fullPage && <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ClipboardList className="h-5 w-5" />
           Protocolos Clínicos
@@ -112,11 +114,12 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
             </Badge>
           )}
         </CardTitle>
-      </CardHeader>
-      <CardContent>
+      </CardHeader>}
+      <CardContent className={fullPage ? 'p-0' : undefined}>
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
+            aria-label="Buscar protocolos clínicos"
             placeholder="Buscar protocolo..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -124,7 +127,19 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
           />
         </div>
 
-        <ScrollArea className="h-[400px]">
+        {error ? (
+          <div role="alert" className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2 text-sm">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div>
+                <p className="font-medium text-foreground">Não foi possível carregar os protocolos.</p>
+                <p className="text-muted-foreground">O rascunho da evolução continua preservado nesta tela.</p>
+              </div>
+            </div>
+            <Button variant="outline" onClick={() => void refetch()}><RefreshCw className="mr-2 h-4 w-4" />Tentar novamente</Button>
+          </div>
+        ) : (
+        <ScrollArea className={fullPage ? 'h-auto max-h-none' : 'h-[400px]'}>
           <div className="space-y-3">
             {filteredProtocols?.map((protocol) => (
               <Collapsible
@@ -185,7 +200,7 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
                       {protocol.medicamentos_sugeridos && protocol.medicamentos_sugeridos.length > 0 && (
                         <div>
                           <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-                            <Pill className="h-4 w-4 text-blue-500" />
+                            <Pill className="h-4 w-4 text-primary" />
                             Medicamentos Sugeridos
                           </h4>
                           <ul className="space-y-1 text-sm">
@@ -203,7 +218,7 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
                       {protocol.exames_sugeridos && protocol.exames_sugeridos.length > 0 && (
                         <div>
                           <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-                            <TestTube className="h-4 w-4 text-purple-500" />
+                            <TestTube className="h-4 w-4 text-primary" />
                             Exames Sugeridos
                           </h4>
                           <div className="flex flex-wrap gap-1">
@@ -220,7 +235,7 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
                       {protocol.orientacoes && (
                         <div>
                           <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-                            <FileText className="h-4 w-4 text-amber-500" />
+                            <FileText className="h-4 w-4 text-muted-foreground" />
                             Orientações ao Paciente
                           </h4>
                           <p className="text-sm text-muted-foreground">
@@ -229,12 +244,12 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
                         </div>
                       )}
 
-                      {onSelectProtocol && (
+                      {onSelectProtocol && (protocol.medicamentos_sugeridos?.length > 0 || Boolean(protocol.orientacoes?.trim())) && (
                         <Button
                           onClick={() => onSelectProtocol(protocol)}
                           className="w-full mt-4"
                         >
-                          Aplicar Protocolo
+                          Aplicar sugestões à evolução
                         </Button>
                       )}
                     </div>
@@ -244,12 +259,13 @@ export function ClinicalProtocols({ onSelectProtocol, className }: ClinicalProto
             ))}
 
             {filteredProtocols?.length === 0 && (
-              <p className="text-center text-muted-foreground py-8">
-                Nenhum protocolo encontrado.
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {protocols?.length === 0 ? 'Nenhum protocolo clínico ativo cadastrado para esta clínica.' : 'Nenhum protocolo corresponde à busca.'}
               </p>
             )}
           </div>
         </ScrollArea>
+        )}
       </CardContent>
     </Card>
   );

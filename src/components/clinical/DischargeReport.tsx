@@ -1,26 +1,18 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 
-import { motion, AnimatePresence } from 'framer-motion';
 import { ptBR } from 'date-fns/locale';
-import { FileText, Download, Printer } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { PageHeader } from '@/components/PageHeader';
 import type jsPDF from 'jspdf';
 import { ageFromDateOnly, parseDateOnly } from '@/lib/dateOnly';
 
 interface DischargeReportProps {
-  isOpen: boolean;
   onClose: () => void;
+  hasUnsavedChanges?: boolean;
   data: {
     paciente: {
       nome: string;
@@ -56,9 +48,9 @@ interface DischargeReportProps {
   clinicaCNPJ?: string;
 }
 
-export function DischargeReport({ 
-  isOpen, 
+export function DischargeReport({
   onClose, 
+  hasUnsavedChanges = false,
   data,
   clinicaNome = 'EloLab Clínica',
   clinicaEndereco = '',
@@ -74,13 +66,13 @@ export function DischargeReport({
     let y = 15;
 
     // Top colored bar
-    doc.setFillColor(0, 120, 200);
+    doc.setFillColor(20, 86, 192);
     doc.rect(0, 0, pageWidth, 4, 'F');
 
     // Clinic name
     doc.setFontSize(20);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 90, 160);
+    doc.setTextColor(11, 35, 70);
     doc.text(clinicaNome, pageWidth / 2, y, { align: 'center' });
     y += 6;
 
@@ -95,7 +87,7 @@ export function DischargeReport({
     }
 
     // Divider line
-    doc.setDrawColor(0, 120, 200);
+    doc.setDrawColor(20, 86, 192);
     doc.setLineWidth(0.5);
     doc.line(20, y, pageWidth - 20, y);
     y += 8;
@@ -119,10 +111,10 @@ export function DischargeReport({
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 90, 160);
+    doc.setTextColor(11, 35, 70);
     doc.text(title, 20, y);
     y += 1;
-    doc.setDrawColor(0, 120, 200);
+    doc.setDrawColor(20, 86, 192);
     doc.setLineWidth(0.3);
     doc.line(20, y, 80, y);
     y += 5;
@@ -138,7 +130,7 @@ export function DischargeReport({
       doc.setPage(i);
 
       // Bottom colored bar
-      doc.setFillColor(0, 120, 200);
+      doc.setFillColor(20, 86, 192);
       doc.rect(0, pageHeight - 4, pageWidth, 4, 'F');
 
       // Signature area (last page only)
@@ -206,7 +198,8 @@ export function DischargeReport({
     y = drawSection(doc, 'DADOS DO ATENDIMENTO', y, pageWidth);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Data: ${format(parseDateOnly(data.consulta.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`, 22, y);
+    const dataAtendimento = parseDateOnly(data.consulta.data);
+    doc.text(`Data: ${dataAtendimento ? format(dataAtendimento, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : data.consulta.data || 'Não informada'}`, 22, y);
     y += 5;
     doc.text(`Médico: ${nomeMedico(data.medico.nome)}${data.medico.crm ? ` - CRM ${data.medico.crm}` : ''}`, 22, y);
     y += 5;
@@ -268,9 +261,10 @@ export function DischargeReport({
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
 
-      doc.setFillColor(240, 248, 255);
+      doc.setFillColor(245, 248, 252);
       doc.roundedRect(20, y - 3, pageWidth - 40, 14, 2, 2, 'F');
-      doc.text(`Data prevista: ${format(parseDateOnly(data.retorno.data)!, "dd/MM/yyyy", { locale: ptBR })}`, 24, y + 3);
+      const dataRetorno = parseDateOnly(data.retorno.data);
+      doc.text(`Data prevista: ${dataRetorno ? format(dataRetorno, "dd/MM/yyyy", { locale: ptBR }) : data.retorno.data}`, 24, y + 3);
       if (data.retorno.motivo) {
         doc.text(`Motivo: ${data.retorno.motivo}`, 24, y + 8);
       }
@@ -295,142 +289,99 @@ export function DischargeReport({
   };
 
   const idade = calcularIdade(data.paciente.dataNascimento);
+  const dataAtendimento = parseDateOnly(data.consulta.data);
+  const dataRetorno = data.retorno?.data ? parseDateOnly(data.retorno.data) : null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Relatório de Alta
-          </DialogTitle>
-          <DialogDescription>
-            Resumo do atendimento para o paciente
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6 py-4">
-          {/* Patient Info */}
-          <div>
-            <h3 className="font-semibold text-sm text-muted-foreground mb-2">DADOS DO PACIENTE</h3>
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <p className="font-medium text-lg">{data.paciente.nome}</p>
-              <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-                {data.paciente.cpf && <span>CPF: {data.paciente.cpf}</span>}
-                {idade && <span>{idade} anos</span>}
-              </div>
-            </div>
+    <section className="mx-auto w-full max-w-5xl space-y-6" data-testid="clinical-discharge-report">
+      <PageHeader
+        title="Relatório de alta"
+        description="Prévia do resumo clínico para imprimir ou baixar. Esta tela não altera o prontuário."
+        icon={<FileText />}
+        actions={(
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <Button variant="outline" onClick={onClose} className="min-h-10 flex-1 sm:flex-none">
+              <ArrowLeft className="mr-2 h-4 w-4" />Voltar à evolução
+            </Button>
+            <Button variant="outline" onClick={handlePrint} className="min-h-10 flex-1 sm:flex-none">
+              <Printer className="mr-2 h-4 w-4" />Imprimir
+            </Button>
+            <Button onClick={handleDownload} className="min-h-10 flex-1 sm:flex-none">
+              <Download className="mr-2 h-4 w-4" />Baixar PDF
+            </Button>
           </div>
+        )}
+      />
 
-          {/* Consultation Info */}
-          <div>
-            <h3 className="font-semibold text-sm text-muted-foreground mb-2">ATENDIMENTO</h3>
-            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm">Data:</span>
-                <span className="font-medium">
-                  {format(parseDateOnly(data.consulta.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm">Médico:</span>
-                <span className="font-medium">
-                  {nomeMedico(data.medico.nome)}
-                  {data.medico.crm && <span className="text-muted-foreground ml-1">(CRM {data.medico.crm})</span>}
-                </span>
-              </div>
-              {data.medico.especialidade && (
-                <div className="flex justify-between">
-                  <span className="text-sm">Especialidade:</span>
-                  <Badge variant="secondary">{data.medico.especialidade}</Badge>
-                </div>
-              )}
-            </div>
+      {hasUnsavedChanges && (
+        <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+          Esta prévia inclui alterações ainda não salvas na evolução. Volte ao atendimento para salvá-las.
+        </p>
+      )}
+
+      <article className="space-y-7 rounded-xl border border-border bg-card p-4 sm:p-6 lg:p-8">
+        <section aria-labelledby="discharge-patient-heading">
+          <h2 id="discharge-patient-heading" className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">DADOS DO PACIENTE</h2>
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-border pb-5">
+            <p className="text-lg font-semibold text-foreground">{data.paciente.nome || 'Paciente não identificado'}</p>
+            {data.paciente.cpf && <span className="text-sm text-muted-foreground">CPF: {data.paciente.cpf}</span>}
+            {idade && <span className="text-sm text-muted-foreground">{idade} anos</span>}
           </div>
+        </section>
 
-          <Separator />
-
-          {/* Clinical Details */}
-          {data.consulta.queixaPrincipal && (
+        <section aria-labelledby="discharge-appointment-heading">
+          <h2 id="discharge-appointment-heading" className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground">ATENDIMENTO</h2>
+          <dl className="grid gap-x-6 gap-y-4 border-b border-border pb-5 sm:grid-cols-2">
             <div>
-              <h3 className="font-semibold text-sm text-muted-foreground mb-2">QUEIXA PRINCIPAL</h3>
-              <p className="text-sm">{data.consulta.queixaPrincipal}</p>
+              <dt className="text-xs text-muted-foreground">Data</dt>
+              <dd className="mt-1 font-medium">{dataAtendimento ? format(dataAtendimento, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : data.consulta.data || 'Não informada'}</dd>
             </div>
-          )}
-
-          {data.consulta.hipoteseDiagnostica && (
             <div>
-              <h3 className="font-semibold text-sm text-muted-foreground mb-2">HIPÓTESE DIAGNÓSTICA</h3>
-              <p className="text-sm">{data.consulta.hipoteseDiagnostica}</p>
+              <dt className="text-xs text-muted-foreground">Médico</dt>
+              <dd className="mt-1 font-medium">{nomeMedico(data.medico.nome)}{data.medico.crm && <span className="ml-1 text-muted-foreground">(CRM {data.medico.crm})</span>}</dd>
             </div>
-          )}
+            {data.medico.especialidade && (
+              <div>
+                <dt className="text-xs text-muted-foreground">Especialidade</dt>
+                <dd className="mt-1"><Badge variant="secondary">{data.medico.especialidade}</Badge></dd>
+              </div>
+            )}
+          </dl>
+        </section>
 
-          {data.consulta.conduta && (
-            <div>
-              <h3 className="font-semibold text-sm text-muted-foreground mb-2">CONDUTA</h3>
-              <p className="text-sm">{data.consulta.conduta}</p>
-            </div>
-          )}
+        <Separator />
+        {data.consulta.queixaPrincipal && <section><h2 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">QUEIXA PRINCIPAL</h2><p className="whitespace-pre-wrap text-sm leading-6">{data.consulta.queixaPrincipal}</p></section>}
+        {data.consulta.hipoteseDiagnostica && <section><h2 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">HIPÓTESE DIAGNÓSTICA</h2><p className="whitespace-pre-wrap text-sm leading-6">{data.consulta.hipoteseDiagnostica}</p></section>}
+        {data.consulta.conduta && <section><h2 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">CONDUTA</h2><p className="whitespace-pre-wrap text-sm leading-6">{data.consulta.conduta}</p></section>}
 
-          {/* Prescriptions */}
-          {data.prescricoes && data.prescricoes.length > 0 && (
-            <div>
-              <h3 className="font-semibold text-sm text-muted-foreground mb-2">PRESCRIÇÕES</h3>
-              <div className="space-y-2">
-                {data.prescricoes.map((p, index) => (
-                  <div key={index} className="p-3 border rounded-lg">
-                    <p className="font-medium">
-                      {index + 1}. {p.medicamento}
-                      {p.dosagem && <span className="text-muted-foreground"> - {p.dosagem}</span>}
-                    </p>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {p.posologia && <span>Posologia: {p.posologia}</span>}
-                      {p.duracao && <span className="ml-4">Duração: {p.duracao}</span>}
-                    </div>
+        {data.prescricoes && data.prescricoes.length > 0 && (
+          <section>
+            <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">PRESCRIÇÕES</h2>
+            <ol className="divide-y divide-border border-y border-border">
+              {data.prescricoes.map((p, index) => (
+                <li key={`${p.medicamento}-${index}`} className="py-3">
+                  <p className="font-medium text-foreground">{index + 1}. {p.medicamento}{p.dosagem && <span className="text-muted-foreground"> - {p.dosagem}</span>}</p>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {p.posologia && <span>Posologia: {p.posologia}</span>}
+                    {p.duracao && <span className="ml-4">Duração: {p.duracao}</span>}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
-          {/* Orientations */}
-          {data.orientacoes && (
-            <div>
-              <h3 className="font-semibold text-sm text-muted-foreground mb-2">ORIENTAÇÕES</h3>
-              <p className="text-sm whitespace-pre-wrap">{data.orientacoes}</p>
+        {data.orientacoes && <section><h2 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">ORIENTAÇÕES</h2><p className="whitespace-pre-wrap text-sm leading-6">{data.orientacoes}</p></section>}
+        {data.retorno?.data && (
+          <section>
+            <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">RETORNO</h2>
+            <div className="border-l-2 border-primary pl-3">
+              <p className="font-medium">{dataRetorno ? format(dataRetorno, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : data.retorno.data}</p>
+              {data.retorno.motivo && <p className="text-sm text-muted-foreground">{data.retorno.motivo}</p>}
             </div>
-          )}
-
-          {/* Return */}
-          {data.retorno?.data && (
-            <div>
-              <h3 className="font-semibold text-sm text-muted-foreground mb-2">RETORNO</h3>
-              <div className="p-3 border rounded-lg bg-primary/5">
-                <p className="font-medium">
-                  {format(parseDateOnly(data.retorno.data)!, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                </p>
-                {data.retorno.motivo && (
-                  <p className="text-sm text-muted-foreground">{data.retorno.motivo}</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Fechar
-          </Button>
-          <Button variant="outline" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" />
-            Imprimir
-          </Button>
-          <Button onClick={handleDownload}>
-            <Download className="h-4 w-4 mr-2" />
-            Baixar PDF
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </section>
+        )}
+      </article>
+    </section>
   );
 }
