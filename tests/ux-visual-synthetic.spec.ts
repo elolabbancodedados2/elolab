@@ -4243,3 +4243,62 @@ test('productivity metrics respect high-contrast tokens at desktop widths', asyn
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
   expect(synthetic.writes.every(write => write.includes('/rpc/'))).toBe(true);
 });
+
+test('reception payment is a dedicated page and confirms through the idempotent RPC', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'recepcao', accountsPopulated: true });
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const lancamentoId = '00000000-0000-4000-9000-000000000041';
+  let paymentPayload: Record<string, unknown> | undefined;
+
+  await page.route('**/rest/v1/lancamentos*', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('id') !== `eq.${lancamentoId}`) return route.fallback();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{
+      id: lancamentoId, clinica_id: '00000000-0000-4000-8000-000000000002', tipo: 'receita', categoria: 'procedimento',
+      descricao: 'Procedimento ambulatorial QA', paciente_id: '00000000-0000-4000-8000-000000000004', valor: 850,
+      valor_pago: 300, desconto: 0, acrescimo: 0, status: 'parcial', agendamento_id: null,
+    }]) });
+  });
+  await page.route('**/rest/v1/caixa_diario*', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 'synthetic-cash', aberto: true, data: today }]),
+  }));
+  await page.route('**/rest/v1/rpc/registrar_pagamento*', async route => {
+    paymentPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ repetido: false }) });
+  });
+  await page.route('**/functions/v1/payment-receipt*', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ emailStatus: 'sent' }),
+  }));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/recepcao/pagamentos/${lancamentoId}`);
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Receber pagamento' })).toBeVisible();
+  await expect(main.getByText('Pessoa Exemplo QA', { exact: true })).toBeVisible();
+  await expect(main.getByText('R$ 550,00')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('recepcao-payment-page-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('recepcao-payment-page-desktop.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await main.getByRole('button', { name: 'PIX' }).click();
+  const confirmPayment = main.getByRole('button', { name: 'Confirmar pagamento' });
+  await confirmPayment.scrollIntoViewIfNeeded();
+  const mobileNavigation = page.getByRole('navigation', { name: 'Navegação principal' });
+  if (await mobileNavigation.isVisible()) {
+    const [buttonBounds, navBounds] = await Promise.all([confirmPayment.boundingBox(), mobileNavigation.boundingBox()]);
+    expect(!!buttonBounds && !!navBounds && buttonBounds.y + buttonBounds.height <= navBounds.y, 'o botão de recebimento deve ficar acima da navegação fixa no celular').toBe(true);
+  }
+  await confirmPayment.click();
+  await expect(page).toHaveURL('/recepcao');
+  await expect(page.getByText(/Pagamento de.*550,00 confirmado!/)).toBeVisible();
+  expect(paymentPayload).toMatchObject({ p_lancamento_id: lancamentoId, p_desconto: 0, p_acrescimo: 0 });
+  expect(paymentPayload?.p_chave_idempotencia).toEqual(expect.any(String));
+  expect(paymentPayload?.p_pagamentos).toEqual([{ forma_pagamento: 'pix', valor: 550 }]);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});

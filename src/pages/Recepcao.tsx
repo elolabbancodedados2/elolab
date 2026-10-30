@@ -1,7 +1,7 @@
 import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { printReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -41,9 +41,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -149,8 +146,9 @@ const fadeUp = {
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
 
 // ─── Main Component ─────────────────────────────────────
-export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => void; task?: 'walk-in' } = {}) {
+export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => void; task?: 'walk-in' | 'payment' } = {}) {
   const navigate = useNavigate();
+  const { lancamentoId } = useParams<{ lancamentoId: string }>();
   const queryClient = useQueryClient();
   const { profile, hasAnyRole } = useSupabaseAuth();
   const podeRegistrarTriagem = hasAnyRole(['admin', 'medico', 'enfermagem']);
@@ -167,7 +165,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   const searchRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingCheckinId, setProcessingCheckinId] = useState<string | null>(null);
-   const [showPagamento, setShowPagamento] = useState(false);
    const [selectedLancamento, setSelectedLancamento] = useState<any>(null);
    const [selectedPacienteBalcao, setSelectedPacienteBalcao] = useState<any>(null);
    const [formaPagamento, setFormaPagamento] = useState('');
@@ -192,6 +189,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     */
    const [chaveIdempotencia, setChaveIdempotencia] = useState('');
    const [obsPagamento, setObsPagamento] = useState('');
+   const [paymentDirty, setPaymentDirty] = useState(false);
+   const paymentFormSeededId = useRef<string | null>(null);
+   const paymentCompleted = useRef(false);
    const [now, setNow] = useState(Date.now());
    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
    const [pendingAction, setPendingAction] = useState<{type: string; agId?: string; filaId?: string} | null>(null);
@@ -249,6 +249,43 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     isError: erroPacienteEncaixe,
     refetch: recarregarPacienteEncaixe,
   } = usePacienteResumo(encaixePacienteId);
+  const pagamentoLancamentoQuery = useQuery({
+    queryKey: ['recepcao-pagamento', profile?.clinica_id, lancamentoId],
+    enabled: task === 'payment' && !!profile?.clinica_id && !!lancamentoId,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await supabase.from('lancamentos')
+        .select('*')
+        .eq('id', lancamentoId)
+        .eq('clinica_id', profile!.clinica_id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const pacientePagamentoQuery = usePacienteResumo(pagamentoLancamentoQuery.data?.paciente_id);
+  useEffect(() => {
+    const lancamento = pagamentoLancamentoQuery.data;
+    if (task !== 'payment' || !lancamentoId || !lancamento || paymentFormSeededId.current === lancamentoId) return;
+    if (lancamento.paciente_id && (pacientePagamentoQuery.isLoading || pacientePagamentoQuery.isError)) return;
+    paymentFormSeededId.current = lancamentoId;
+    paymentCompleted.current = false;
+    setPaymentDirty(false);
+    setSelectedLancamento(lancamento);
+    setSelectedPacienteBalcao(pacientePagamentoQuery.data ?? null);
+    setFormaPagamento('');
+    setDesconto(Number(lancamento.desconto || 0));
+    setAcrescimo(Number(lancamento.acrescimo || 0));
+    setValorReceberAgora(calcularSaldoPagamento(
+      Number(lancamento.valor || 0),
+      Number(lancamento.desconto || 0),
+      Number(lancamento.acrescimo || 0),
+      Number(lancamento.valor_pago || 0),
+    ).toFixed(2));
+    setObsPagamento('');
+    setFormasExtras([]);
+    setChaveIdempotencia(crypto.randomUUID());
+  }, [task, lancamentoId, pagamentoLancamentoQuery.data, pacientePagamentoQuery.data, pacientePagamentoQuery.isLoading, pacientePagamentoQuery.isError]);
   const medicosQuery = useMedicos({ suppressGlobalErrorToast: true });
   const { data: medicos = [] } = medicosQuery;
   const { data: salas = [] } = useSalas();
@@ -725,23 +762,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         return;
       }
 
-      setSelectedLancamento(lancamentoSelecionado);
-     setSelectedPacienteBalcao(pac);
-     setFormaPagamento('');
-     setDesconto(Number(lancamentoSelecionado.desconto || 0));
-      setAcrescimo(Number(lancamentoSelecionado.acrescimo || 0));
-     setValorReceberAgora(calcularSaldoPagamento(
-       Number(lancamentoSelecionado.valor || 0),
-       Number(lancamentoSelecionado.desconto || 0),
-       Number(lancamentoSelecionado.acrescimo || 0),
-       Number(lancamentoSelecionado.valor_pago || 0),
-     ).toFixed(2));
-     setObsPagamento('');
-     setFormasExtras([]);
-     // Uma chave por ABERTURA do diálogo. Se o operador confirmar duas vezes,
-     // as duas chamadas levam a mesma chave e o banco cobra uma vez só.
-     setChaveIdempotencia(crypto.randomUUID());
-     setShowPagamento(true);
+      navigate(`/recepcao/pagamentos/${encodeURIComponent(lancamentoSelecionado.id)}`);
    }
 
     async function handleChamarBalcao(lanc: any, pac: any) {
@@ -928,6 +949,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         p_observacoes: sanitizeText(obsPagamento) || null,
       });
       if (error) throw error;
+      paymentCompleted.current = true;
 
       const pagamentoRepetido = Boolean(resultado?.repetido);
       if (pagamentoRepetido) {
@@ -962,9 +984,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
       // Card "Recebido hoje" do painel: sem isto ficava em R$ 0,00 até recarregar.
       queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-      setShowPagamento(false);
-      setSelectedLancamento(null);
-      setSelectedPacienteBalcao(null);
       if (!pagamentoRepetido) toast.success(`Pagamento de ${valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} confirmado!`);
       if (falhaNoRecibo) {
         toast.warning('Pagamento confirmado; recibo não enviado', {
@@ -979,6 +998,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         const rotulos = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma.value, forma.label]));
         gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
       }
+      navigate('/recepcao', { replace: true });
     } catch (err: any) {
       toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
     }
@@ -1257,6 +1277,71 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }
 
   // ─── Render ───────────────────────────────────────────
+  if (task === 'payment') {
+    const lancamento = selectedLancamento?.id === lancamentoId ? selectedLancamento : null;
+    const paciente = selectedPacienteBalcao;
+    const valorBase = Number(lancamento?.valor || 0);
+    const saldo = lancamento ? calcularSaldoPagamento(valorBase, desconto, acrescimo, Number(lancamento.valor_pago || 0)) : 0;
+    const valorValido = lancamento ? validarValorRecebido(valorReceberAgora, saldo) : null;
+    const pacienteNaoLocalizado = Boolean(pagamentoLancamentoQuery.data?.paciente_id && pacientePagamentoQuery.isSuccess && !pacientePagamentoQuery.data);
+
+    return (
+      <div className="mx-auto max-w-6xl space-y-6 pb-10">
+        <UnsavedChangesGuard dirty={paymentDirty} busy={isProcessing} completed={paymentCompleted} />
+        <PageHeader title="Receber pagamento" description={paciente?.nome ? `Cobrança de ${paciente.nome}` : 'Registre o recebimento da cobrança selecionada.'} icon={<Receipt />} actions={<Button type="button" variant="outline" onClick={() => navigate('/recepcao')}>Voltar para a recepção</Button>} />
+        {pagamentoLancamentoQuery.isError && <ErrorState compact title="Não foi possível carregar esta cobrança" error={pagamentoLancamentoQuery.error} onRetry={() => void pagamentoLancamentoQuery.refetch()} />}
+        {pacientePagamentoQuery.isError && pagamentoLancamentoQuery.data?.paciente_id && <ErrorState compact title="Não foi possível confirmar o paciente desta cobrança" error={pacientePagamentoQuery.error} onRetry={() => void pacientePagamentoQuery.refetch()} />}
+        {pacienteNaoLocalizado && <ErrorState compact title="Paciente não encontrado" description="A cobrança está vinculada a um cadastro que não está dispon?vel nesta clínica. Confirme o vínculo antes de receber." />}
+        {pagamentoLancamentoQuery.isSuccess && !pagamentoLancamentoQuery.data && <ErrorState compact title="Cobrança não encontrada" description="Ela pode ter sido removida ou pertencer a outra clínica." />}
+        {(pagamentoLancamentoQuery.isLoading || (pagamentoLancamentoQuery.data?.paciente_id && pacientePagamentoQuery.isLoading) || (pagamentoLancamentoQuery.data && !lancamento && !pacienteNaoLocalizado && !pacientePagamentoQuery.isError)) && <p role="status" className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">Carregando os dados da cobrança e do paciente?</p>}
+
+        {lancamento && !pacienteNaoLocalizado && Number.isFinite(valorBase) && valorBase > 0 && saldo > 0 && (
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <Card className="border-border">
+              <CardHeader className="border-b border-border px-5 py-4"><CardTitle className="text-base">Resumo da cobrança</CardTitle></CardHeader>
+              <CardContent className="space-y-5 p-5">
+                <div>
+                  <p className="font-medium text-foreground">{paciente?.nome || 'Paciente não vinculado'}</p>
+                  {paciente?.cpf && <p className="mt-1 text-sm text-muted-foreground">CPF {paciente.cpf}</p>}
+                  <p className="mt-3 text-sm text-muted-foreground">{lancamento.descricao || 'Atendimento'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Cobrança {String(lancamento.id).slice(0, 8).toUpperCase()}</p>
+                </div>
+                <dl className="space-y-3 border-t border-border pt-4 text-sm">
+                  <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Valor original</dt><dd className="font-medium tabular-nums">{formatCurrency(valorBase)}</dd></div>
+                  {desconto > 0 && <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Desconto</dt><dd className="tabular-nums">− {formatCurrency(desconto)}</dd></div>}
+                  {acrescimo > 0 && <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Acréscimo</dt><dd className="tabular-nums">+ {formatCurrency(acrescimo)}</dd></div>}
+                  {Number(lancamento.valor_pago || 0) > 0 && <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Já recebido</dt><dd className="tabular-nums">{formatCurrency(Number(lancamento.valor_pago || 0))}</dd></div>}
+                  <div className="flex items-baseline justify-between gap-4 border-t border-border pt-3"><dt className="font-semibold">Saldo a receber</dt><dd className="text-xl font-semibold tabular-nums text-primary">{formatCurrency(saldo)}</dd></div>
+                </dl>
+                {!lancamento.paciente_id && <p className="border-l-2 border-warning pl-3 text-xs text-muted-foreground">Esta cobrança não tem paciente vinculado. Confira a descrição antes de receber.</p>}
+              </CardContent>
+            </Card>
+
+            <Card className="border-border">
+              <CardHeader className="border-b border-border px-5 py-4"><CardTitle className="text-base">Dados do recebimento</CardTitle></CardHeader>
+              <CardContent className="space-y-5 p-5">
+                <div role="group" aria-labelledby="forma-pagamento-label" className="space-y-2">
+                  <Label id="forma-pagamento-label">Forma de pagamento</Label>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {FORMAS_PAGAMENTO.map(fp => <button type="button" key={fp.value} onClick={() => { setPaymentDirty(true); setFormaPagamento(fp.value); }} aria-pressed={formaPagamento === fp.value} className={cn('flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border p-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', formaPagamento === fp.value ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:bg-muted/50')}><fp.icon aria-hidden="true" className={cn('h-5 w-5', formaPagamento === fp.value ? 'text-primary' : fp.color)} />{fp.label}</button>)}
+                  </div>
+                </div>
+                <div className="space-y-2"><Label htmlFor="valor-recebido-agora">Valor recebido agora (R$)</Label><Input id="valor-recebido-agora" type="number" min="0.01" max={saldo} step="0.01" value={valorReceberAgora} onChange={event => { setPaymentDirty(true); setValorReceberAgora(event.target.value); }} aria-describedby="saldo-apos-recebimento" /><p id="saldo-apos-recebimento" aria-live="polite" className="text-xs text-muted-foreground">{valorValido === null ? `Saldo atual: ${formatCurrency(saldo)}.` : `Ficará pendente: ${formatCurrency(saldo - valorValido)}.`}</p></div>
+                {formasExtras.length > 0 && <div role="group" aria-labelledby="forma-pagamento-adicional-label" className="space-y-2"><Label id="forma-pagamento-adicional-label">Dividir com outra forma</Label>{formasExtras.map((extra, i) => <div key={i} className="flex items-center gap-2"><Select value={extra.forma} onValueChange={value => { setPaymentDirty(true); setFormasExtras(items => items.map((item, index) => index === i ? { ...item, forma: value } : item)); }}><SelectTrigger aria-label={`Forma de pagamento adicional ${i + 1}`} className="h-10 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger><SelectContent>{FORMAS_PAGAMENTO.filter(fp => fp.value !== formaPagamento).map(fp => <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>)}</SelectContent></Select><Input type="number" min={0} step="0.01" placeholder="R$" aria-label={`Valor da forma de pagamento adicional ${i + 1}`} className="h-10 w-28" value={extra.valor || ''} onChange={event => { setPaymentDirty(true); setFormasExtras(items => items.map((item, index) => index === i ? { ...item, valor: Number(event.target.value) || 0 } : item)); }} /><Button type="button" variant="ghost" size="icon" aria-label={`Remover forma de pagamento adicional ${i + 1}`} className="h-10 w-10 shrink-0 text-destructive" onClick={() => { setPaymentDirty(true); setFormasExtras(items => items.filter((_, index) => index !== i)); }}><XCircle className="h-4 w-4" /></Button></div>)}</div>}
+                {formaPagamento && <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={() => { setPaymentDirty(true); setFormasExtras(items => [...items, { forma: '', valor: 0 }]); }}><DollarSign className="h-4 w-4" />Dividir com outra forma de pagamento</Button>}
+                <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="recepcao-desconto">Desconto (R$)</Label><Input id="recepcao-desconto" type="number" min={0} step="0.01" value={desconto || ''} onChange={event => { setPaymentDirty(true); setDesconto(Number(event.target.value) || 0); }} /></div><div className="space-y-2"><Label htmlFor="recepcao-acrescimo">Acréscimo (R$)</Label><Input id="recepcao-acrescimo" type="number" min={0} step="0.01" value={acrescimo || ''} onChange={event => { setPaymentDirty(true); setAcrescimo(Number(event.target.value) || 0); }} /></div></div>
+                <div className="space-y-2"><Label htmlFor="recepcao-observacoes-pagamento">Observações <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea id="recepcao-observacoes-pagamento" placeholder="Informação complementar sobre o recebimento" value={obsPagamento} onChange={event => { setPaymentDirty(true); setObsPagamento(event.target.value); }} rows={3} /></div>
+                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={isProcessing} onClick={() => navigate('/recepcao')}>Cancelar</Button><Button type="button" className="gap-2" disabled={!formaPagamento || isProcessing || !lancamento || valorValido === null || (Boolean(lancamento.paciente_id) && !paciente)} onClick={() => void handleConfirmarPagamento()}>{isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-4 w-4" />}Confirmar pagamento</Button></div>
+                {!formaPagamento && <p role="status" className="text-right text-xs text-muted-foreground">Escolha a forma de pagamento para confirmar.</p>}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+        {lancamento && (!Number.isFinite(valorBase) || valorBase <= 0 || saldo <= 0) && <ErrorState compact title="Esta cobrança não possui saldo para receber" description="Atualize a recepção para consultar o estado mais recente do lançamento." />}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       <PageHeader
@@ -1805,211 +1890,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           )}
         </div>
       </Tabs>
-
-      {/* Payment Dialog */}
-      <Dialog open={showPagamento} onOpenChange={open => {
-        if (open || !isProcessing) setShowPagamento(open);
-      }}>
-        <DialogContent className="sm:max-w-md">
-           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-success" />
-              Confirmar Pagamento
-            </DialogTitle>
-            <DialogDescription>Registre o pagamento do paciente.</DialogDescription>
-          </DialogHeader>
-
-          {selectedLancamento && (
-            <div className="space-y-4">
-              {/* Resumo Valor / Pago / Saldo, para a recepcionista não precisar
-                  fazer a conta de cabeça antes de receber. */}
-              {(() => {
-                const bruto = Number(selectedLancamento.valor || 0);
-                const devido = Number((bruto - desconto + acrescimo).toFixed(2));
-                const jaPago = Number(selectedLancamento.valor_pago || 0);
-                const saldo = calcularSaldoPagamento(bruto, desconto, acrescimo, jaPago);
-                return (
-                  <div className="rounded-xl bg-muted/50 p-4 space-y-2">
-                    <p className="text-sm font-medium">{selectedLancamento.descricao}</p>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Valor</span>
-                      <span className="tabular-nums">{formatCurrency(devido)}</span>
-                    </div>
-                    {jaPago > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Já pago</span>
-                        <span className="tabular-nums text-success">− {formatCurrency(jaPago)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-baseline border-t pt-2">
-                      <span className="text-sm font-medium">Saldo a receber</span>
-                      <span className="font-bold text-lg tabular-nums">{formatCurrency(saldo)}</span>
-                    </div>
-                    {(desconto > 0 || acrescimo > 0) && (
-                      <div className="text-xs text-muted-foreground">
-                        Original: {formatCurrency(bruto)}
-                        {desconto > 0 && ` • Desc: -${formatCurrency(desconto)}`}
-                        {acrescimo > 0 && ` • Acrés: +${formatCurrency(acrescimo)}`}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <div role="group" aria-labelledby="forma-pagamento-label" className="space-y-2">
-                <Label id="forma-pagamento-label" className="text-xs font-medium">Forma de Pagamento</Label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {FORMAS_PAGAMENTO.map(fp => (
-                    <button
-                      type="button"
-                      key={fp.value}
-                      onClick={() => setFormaPagamento(fp.value)}
-                      aria-pressed={formaPagamento === fp.value}
-                      className={cn(
-                        'flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border-2 p-3 text-xs font-medium transition-all',
-                        formaPagamento === fp.value
-                          ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-border hover:border-primary/30 text-muted-foreground'
-                      )}
-                    >
-                      <fp.icon className={cn('h-5 w-5', formaPagamento === fp.value ? 'text-primary' : fp.color)} />
-                      {fp.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="valor-recebido-agora" className="text-xs font-medium">Valor recebido agora (R$)</Label>
-                <Input
-                  id="valor-recebido-agora"
-                  type="number"
-                  min="0.01"
-                  max={(() => {
-                    const bruto = Number(selectedLancamento.valor || 0);
-                    return calcularSaldoPagamento(bruto, desconto, acrescimo, Number(selectedLancamento.valor_pago || 0));
-                  })()}
-                  step="0.01"
-                  value={valorReceberAgora}
-                  onChange={event => setValorReceberAgora(event.target.value)}
-                  aria-describedby="saldo-apos-recebimento"
-                />
-                {(() => {
-                  const bruto = Number(selectedLancamento.valor || 0);
-                  const saldo = calcularSaldoPagamento(bruto, desconto, acrescimo, Number(selectedLancamento.valor_pago || 0));
-                  const recebido = validarValorRecebido(valorReceberAgora, saldo);
-                  return (
-                    <p id="saldo-apos-recebimento" className="text-xs text-muted-foreground" aria-live="polite">
-                      {recebido === null ? `Saldo atual: ${formatCurrency(saldo)}.` : `Ficará pendente: ${formatCurrency((saldo - recebido))}.`}
-                    </p>
-                  );
-                })()}
-              </div>
-
-              {/* ─── Pagamento dividido ───
-                  As formas informadas dividem o valor recebido nesta etapa; a
-                  primeira forma escolhida absorve o restante. */}
-              {formasExtras.length > 0 && (
-                <div role="group" aria-labelledby="forma-pagamento-adicional-label" className="space-y-2">
-                  <Label id="forma-pagamento-adicional-label" className="text-xs font-medium">Dividir com outra forma</Label>
-                  {formasExtras.map((extra, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <Select
-                        value={extra.forma}
-                        onValueChange={v => setFormasExtras(fs => fs.map((f, j) => j === i ? { ...f, forma: v } : f))}
-                      >
-                        <SelectTrigger aria-label={`Forma de pagamento adicional ${i + 1}`} className="h-9 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger>
-                        <SelectContent>
-                          {FORMAS_PAGAMENTO.filter(fp => fp.value !== formaPagamento).map(fp => (
-                            <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number" min={0} step="0.01" placeholder="R$"
-                        aria-label={`Valor da forma de pagamento adicional ${i + 1}`}
-                        className="h-9 w-28"
-                        value={extra.valor || ''}
-                        onChange={e => setFormasExtras(fs => fs.map((f, j) => j === i ? { ...f, valor: Number(e.target.value) || 0 } : f))}
-                      />
-                      <Button
-                        type="button" variant="ghost" size="icon" aria-label={`Remover forma de pagamento adicional ${i + 1}`}
-                        className="h-9 w-9 shrink-0 text-destructive"
-                        onClick={() => setFormasExtras(fs => fs.filter((_, j) => j !== i))}
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {formaPagamento && (
-                <Button
-                  type="button" variant="outline" size="sm" className="w-full gap-2 h-8 text-xs"
-                  onClick={() => setFormasExtras(fs => [...fs, { forma: '', valor: 0 }])}
-                >
-                  <DollarSign className="h-3.5 w-3.5" />
-                  Dividir com outra forma de pagamento
-                </Button>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="recepcao-desconto" className="text-xs">Desconto (R$)</Label>
-                  <Input
-                    id="recepcao-desconto"
-                    type="number"
-                    min={0}
-                    value={desconto || ''}
-                    onChange={e => setDesconto(Number(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="recepcao-acrescimo" className="text-xs">Acréscimo (R$)</Label>
-                  <Input
-                    id="recepcao-acrescimo"
-                    type="number"
-                    min={0}
-                    value={acrescimo || ''}
-                    onChange={e => setAcrescimo(Number(e.target.value) || 0)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="recepcao-observacoes-pagamento" className="text-xs">Observações</Label>
-                <Textarea
-                  id="recepcao-observacoes-pagamento"
-                  placeholder="Opcional..."
-                  value={obsPagamento}
-                  onChange={e => setObsPagamento(e.target.value)}
-                  rows={2}
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            {!formaPagamento && (
-              <p className="mr-auto self-center text-xs text-muted-foreground" role="status">Escolha a forma de pagamento para confirmar.</p>
-            )}
-            <Button type="button" variant="outline" disabled={isProcessing} onClick={() => setShowPagamento(false)}>Cancelar</Button>
-            <Button
-              onClick={handleConfirmarPagamento}
-              disabled={!formaPagamento || isProcessing || !selectedLancamento || validarValorRecebido(
-                valorReceberAgora,
-                calcularSaldoPagamento(Number(selectedLancamento.valor || 0), desconto, acrescimo, Number(selectedLancamento.valor_pago || 0)),
-              ) === null}
-              className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
-            >
-              {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Confirmar Pagamento
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Confirmation Dialog for Destructive Actions */}
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
         <AlertDialogContent>
