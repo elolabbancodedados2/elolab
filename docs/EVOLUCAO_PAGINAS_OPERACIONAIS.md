@@ -708,3 +708,13 @@ Validação: Playwright passou 3/3 cenários de fechamento e 6/6 com a regressã
 Limites: ainda não houve teste manual com leitor de tela, validação de RLS em sessão de produção ou operação real de fechamento. As operações do caixa/PDV, conciliação, repasses, faturamento e glosas seguem pendentes.
 
 Publicação: commit `658f3ccd3ffc46df533b57b858174a06452dc7a9`, imagem `easypanel/elolab/app:deploy-20261030-658f3cc`. `/healthz` respondeu `200 ok`, `/version.json` confirmou o SHA integral e o Swarm concluiu com 1/1 réplica ativa. Fonte anterior preservada em `code.before-658f3cc`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-4bfa55a`. Nenhuma migration ou alteração de dados de produção.
+
+## Financeiro — sangria, suprimento e despesa em páginas próprias (30/10/2026)
+
+Diagnóstico: retirada, recomposição e despesa eram três tarefas diferentes dentro do caixa diário. Os formulários interrompiam a conferência do caixa e compartilhavam o mesmo espaço com a operação principal.
+
+Implementação: `/recepcao/caixa/sangria`, `/recepcao/caixa/suprimento` e `/recepcao/caixa/despesa` abrem formulários específicos para usuários admin, recepção e financeiro. As telas conferem o caixa aberto de hoje na clínica ativa, preservam valores, motivo/categoria e forma de pagamento após falha e reutilizam o mesmo identificador para verificar uma gravação que possa ter sido confirmada sem resposta. O lançamento continua na tabela `lancamentos`, com os mesmos campos e invalidações. As opções de pagamento, inclusive cheque e cartões, foram preservadas. A tentativa de sair com dados exige confirmação; cancelar retorna à aba diária. Nenhuma regra, permissão, contrato, migration ou dado real foi alterado.
+
+Validação: Playwright passou 10 cenários combinados de movimento, abertura e fechamento. Os movimentos foram interceptados com dados sintéticos; foram cobertos erro e nova tentativa idempotente, categorias, formas de pagamento, caixa indisponível, casas decimais e navegação móvel até a ação, sem depender de diálogo para a tarefa. TypeScript, `npm run check:a11y`, ESLint focal e `git diff --check` passaram. ESLint não reportou erros nem `any` novo na página; permanecem 19 avisos `any` no arquivo legado `CaixaDiario.tsx`. Capturas renderizadas em 390 px e 1440 px foram inspecionadas. Sem operação financeira real, validação autenticada de RLS ou ensaio manual com leitor de tela.
+
+Publicação: preencher após confirmar build, Swarm, `/healthz` e `/version.json`.

@@ -80,42 +80,6 @@ function temPrecisaoDeCentavos(value: number): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
 }
 
-function novaChaveMovimentoCaixa(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, caractere => {
-      const aleatorio = Math.floor(Math.random() * 16);
-      return (caractere === 'x' ? aleatorio : (aleatorio & 0x3) | 0x8).toString(16);
-    });
-}
-
-async function inserirMovimentoCaixaUmaVez(payload: Record<string, unknown>): Promise<void> {
-  const { error } = await (supabase.from('lancamentos') as any).insert(payload);
-  if (!error) return;
-
-  // Se a resposta da gravação se perdeu, a mesma chave (id) permite conferir
-  // se o banco já confirmou esse movimento antes de o usuário tentar de novo.
-  const { data: existente, error: erroLeitura } = await (supabase.from('lancamentos') as any)
-    .select('id, tipo, valor, descricao, forma_pagamento, categoria, data, data_vencimento, clinica_id')
-    .eq('id', payload.id)
-    .eq('clinica_id', payload.clinica_id)
-    .maybeSingle();
-
-  if (!erroLeitura && existente) {
-    const mesmoMovimento = existente.tipo === payload.tipo
-      && Number(existente.valor) === Number(payload.valor)
-      && existente.descricao === payload.descricao
-      && existente.forma_pagamento === payload.forma_pagamento
-      && existente.categoria === payload.categoria
-      && existente.data === payload.data
-      && existente.data_vencimento === payload.data_vencimento;
-    if (mesmoMovimento) return;
-    throw new Error('Já existe um lançamento associado a esta tentativa com outros dados. Atualize o caixa antes de registrar outro movimento.');
-  }
-
-  throw error;
-}
-
 function salvarEstadoLocalCaixa(estado: unknown, userId?: string | null, clinicaId?: string | null): boolean {
   const registros = [
     userId ? [`caixa_estado_${userId}`, estado] as const : null,
@@ -195,7 +159,6 @@ const FORMA_LABELS: Record<string, string> = {
   transferencia: 'Transferência',
 };
 
-const CATEGORIAS_DESPESA = ['Material de escritório', 'Limpeza', 'Alimentação', 'Transporte', 'Manutenção', 'Fornecedor', 'Troco', 'Outros'];
 
 const escapeHtml = (valor: unknown) => String(valor ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -260,8 +223,6 @@ export default function CaixaDiario() {
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
   const [showLancamento, setShowLancamento] = useState(false);
-  const [showSangria, setShowSangria] = useState(false);
-  const [showSuprimento, setShowSuprimento] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
   const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
@@ -284,8 +245,6 @@ export default function CaixaDiario() {
   const [pacienteSearch, setPacienteSearch] = useState('');
   const [pacientePopoverOpen, setPacientePopoverOpen] = useState(false);
   const posIdempotenciaRef = useRef<{ fingerprint: string; chave: string } | null>(null);
-  const sangriaIdempotenciaRef = useRef<{ clinicaId: string; id: string } | null>(null);
-  const suprimentoIdempotenciaRef = useRef<{ clinicaId: string; id: string } | null>(null);
 
   const [lancamentoForm, setLancamentoForm] = useState({
     tipo: 'receita' as LancamentoTipo,
@@ -294,11 +253,6 @@ export default function CaixaDiario() {
     forma_pagamento: 'dinheiro' as FormaPagamento,
   });
 
-  const [sangriaForm, setSangriaForm] = useState({ valor: '', motivo: '' });
-  const [suprimentoForm, setSuprimentoForm] = useState({ valor: '', descricao: '' });
-  const [showDespesa, setShowDespesa] = useState(false);
-  const [despesaForm, setDespesaForm] = useState({ valor: '', descricao: '', categoria: 'Outros', forma_pagamento: 'dinheiro' as FormaPagamento });
-  const despesaIdempotenciaRef = useRef<{ clinicaId: string; id: string } | null>(null);
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | LancamentoTipo>('todos');
 
   // ─── Queries ────────────────────────────────────
@@ -767,124 +721,6 @@ export default function CaixaDiario() {
     },
   });
 
-  const adicionarSangriaMutation = useMutation({
-    mutationFn: async () => {
-      if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
-      const valor = parseMoneyInput(sangriaForm.valor);
-      if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
-        throw new Error('Informe um valor válido, maior que zero e com até duas casas decimais.');
-      }
-      if (!sangriaForm.motivo.trim()) throw new Error('Motivo obrigatório');
-      if (sangriaIdempotenciaRef.current?.clinicaId !== profile.clinica_id) {
-        sangriaIdempotenciaRef.current = { clinicaId: profile.clinica_id, id: novaChaveMovimentoCaixa() };
-      }
-      const id = sangriaIdempotenciaRef.current.id;
-      await inserirMovimentoCaixaUmaVez({
-        id,
-        tipo: 'sangria', valor,
-        descricao: `Sangria — ${sangriaForm.motivo}`, forma_pagamento: 'dinheiro',
-        categoria: 'sangria', status: 'pago', data_vencimento: today, data: today, clinica_id: profile.clinica_id,
-      });
-    },
-    onSuccess: () => {
-      sangriaIdempotenciaRef.current = null;
-      toast.success('Sangria registrada!');
-      setShowSangria(false);
-      setSangriaForm({ valor: '', motivo: '' });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-    },
-    onError: (e: any) => {
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.error(e?.message || 'Não foi possível confirmar a sangria.', {
-        description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
-      });
-    },
-  });
-
-  const adicionarSuprimentoMutation = useMutation({
-    mutationFn: async () => {
-      if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
-      const valor = parseMoneyInput(suprimentoForm.valor);
-      if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
-        throw new Error('Informe um valor válido, maior que zero e com até duas casas decimais.');
-      }
-      if (suprimentoIdempotenciaRef.current?.clinicaId !== profile.clinica_id) {
-        suprimentoIdempotenciaRef.current = { clinicaId: profile.clinica_id, id: novaChaveMovimentoCaixa() };
-      }
-      const id = suprimentoIdempotenciaRef.current.id;
-      await inserirMovimentoCaixaUmaVez({
-        id,
-        tipo: 'suprimento', valor,
-        descricao: suprimentoForm.descricao.trim() || 'Suprimento de Caixa', forma_pagamento: 'dinheiro',
-        categoria: 'suprimento', status: 'pago', data_vencimento: today, data: today, clinica_id: profile.clinica_id,
-      });
-    },
-    onSuccess: () => {
-      suprimentoIdempotenciaRef.current = null;
-      toast.success('Suprimento adicionado!');
-      setShowSuprimento(false);
-      setSuprimentoForm({ valor: '', descricao: '' });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-    },
-    onError: (e: any) => {
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      toast.error(e?.message || 'Não foi possível confirmar o suprimento.', {
-        description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
-      });
-    },
-  });
-
-  const valorDespesaInformado = parseMoneyInput(despesaForm.valor);
-  const despesaInvalida = valorDespesaInformado === null
-    || !Number.isFinite(valorDespesaInformado)
-    || valorDespesaInformado <= 0
-    || !temPrecisaoDeCentavos(valorDespesaInformado);
-
-  const adicionarDespesaMutation = useMutation({
-    mutationFn: async () => {
-      if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
-      const valor = parseMoneyInput(despesaForm.valor);
-      if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
-        throw new Error('Informe um valor válido, maior que zero e com até duas casas decimais.');
-      }
-      if (!despesaForm.descricao.trim()) throw new Error('Descreva a despesa');
-      if (despesaIdempotenciaRef.current?.clinicaId !== profile.clinica_id) {
-        despesaIdempotenciaRef.current = { clinicaId: profile.clinica_id, id: novaChaveMovimentoCaixa() };
-      }
-      const id = despesaIdempotenciaRef.current.id;
-      await inserirMovimentoCaixaUmaVez({
-        id,
-        tipo: 'despesa', valor,
-        descricao: despesaForm.descricao.trim(), forma_pagamento: despesaForm.forma_pagamento,
-        categoria: despesaForm.categoria, status: 'pago', data_vencimento: today, data: today, data_pagamento: new Date().toISOString(), clinica_id: profile.clinica_id,
-      });
-    },
-    onSuccess: () => {
-      despesaIdempotenciaRef.current = null;
-      toast.success('Despesa registrada!');
-      setShowDespesa(false);
-      setDespesaForm({ valor: '', descricao: '', categoria: 'Outros', forma_pagamento: 'dinheiro' });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-    },
-    onError: (e: any) => {
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      toast.error(e?.message || 'Não foi possível registrar a despesa.', {
-        description: 'Se a conexão caiu, tente novamente sem alterar os dados; o caixa verificará a tentativa antes de gravar outro movimento.',
-      });
-    },
-  });
-
   const deletarLancamentoMutation = useMutation({
     mutationFn: async (id: string) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
@@ -1035,16 +871,6 @@ export default function CaixaDiario() {
   const isOpen = caixaHoje?.aberto === true;
   const podeReabrir = Boolean(profile?.roles?.some(role => role === 'admin' || role === 'financeiro'));
 
-  const valorSangriaInformado = parseMoneyInput(sangriaForm.valor);
-  const sangriaInvalida = valorSangriaInformado === null
-    || !Number.isFinite(valorSangriaInformado)
-    || valorSangriaInformado <= 0
-    || !temPrecisaoDeCentavos(valorSangriaInformado);
-  const valorSuprimentoInformado = parseMoneyInput(suprimentoForm.valor);
-  const suprimentoInvalido = valorSuprimentoInformado === null
-    || !Number.isFinite(valorSuprimentoInformado)
-    || valorSuprimentoInformado <= 0
-    || !temPrecisaoDeCentavos(valorSuprimentoInformado);
   const valorManualInformado = parseMoneyInput(manualValor);
   const valorManualInvalido = valorManualInformado === null
     || valorManualInformado <= 0
@@ -1165,13 +991,13 @@ export default function CaixaDiario() {
                 <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda
                 </Button>
-                <Button onClick={() => setShowDespesa(true)} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
+                <Button onClick={() => navigate('/recepcao/caixa/despesa', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
                   <TrendingDown className="h-4 w-4" /> Despesa
                 </Button>
-                <Button onClick={() => setShowSangria(true)} variant="outline" className="h-11 gap-2 rounded-full border-warning/30 text-warning-foreground hover:bg-warning/10">
+                <Button onClick={() => navigate('/recepcao/caixa/sangria', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-warning/30 text-warning-foreground hover:bg-warning/10">
                   <ArrowDownToLine className="h-4 w-4" /> Sangria
                 </Button>
-                <Button onClick={() => setShowSuprimento(true)} variant="outline" className="h-11 gap-2 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                <Button onClick={() => navigate('/recepcao/caixa/suprimento', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                   <ArrowUpFromLine className="h-4 w-4" /> Suprimento
                 </Button>
                 <Button onClick={() => imprimirRelatorioFechamento(caixaHoje, lancamentos)} variant="ghost" className="h-11 gap-2 rounded-full text-muted-foreground" title="Relatório parcial do caixa">
@@ -2077,142 +1903,6 @@ export default function CaixaDiario() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Sangria */}
-      <Dialog open={showSangria} onOpenChange={open => {
-        if (open || !adicionarSangriaMutation.isPending) setShowSangria(open);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowDownToLine className="h-5 w-5 text-amber-600" /> Registrar Sangria
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-              <div className="space-y-1.5">
-              <Label htmlFor="caixa-sangria-valor" className="text-xs">Valor (R$) *</Label>
-              <Input id="caixa-sangria-valor" type="text" inputMode="decimal" placeholder="0,00" value={sangriaForm.valor}
-                onChange={e => setSangriaForm(p => ({ ...p, valor: e.target.value }))} />
-              {sangriaInvalida && (
-                <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="caixa-sangria-motivo" className="text-xs">Motivo *</Label>
-              <Input id="caixa-sangria-motivo" placeholder="Motivo da retirada" value={sangriaForm.motivo}
-                onChange={e => setSangriaForm(p => ({ ...p, motivo: e.target.value }))} />
-              {!sangriaForm.motivo.trim() && (
-                <p className="text-xs text-muted-foreground">O motivo fica registrado para conferência do caixa.</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={adicionarSangriaMutation.isPending} onClick={() => setShowSangria(false)}>Cancelar</Button>
-            <Button onClick={() => adicionarSangriaMutation.mutate()} disabled={adicionarSangriaMutation.isPending || sangriaInvalida || !sangriaForm.motivo.trim()}
-              className="gap-2 bg-amber-600 hover:bg-amber-700 text-white">
-              {adicionarSangriaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Registrar Sangria
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Suprimento */}
-      <Dialog open={showSuprimento} onOpenChange={open => {
-        if (open || !adicionarSuprimentoMutation.isPending) setShowSuprimento(open);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowUpFromLine className="h-5 w-5 text-blue-600" /> Registrar Suprimento
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="caixa-suprimento-valor" className="text-xs">Valor (R$) *</Label>
-              <Input id="caixa-suprimento-valor" type="text" inputMode="decimal" placeholder="0,00" value={suprimentoForm.valor}
-                onChange={e => setSuprimentoForm(p => ({ ...p, valor: e.target.value }))} />
-              {suprimentoInvalido && (
-                <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="caixa-suprimento-descricao" className="text-xs">Descrição</Label>
-              <Input id="caixa-suprimento-descricao" placeholder="Descrição do suprimento" value={suprimentoForm.descricao}
-                onChange={e => setSuprimentoForm(p => ({ ...p, descricao: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={adicionarSuprimentoMutation.isPending} onClick={() => setShowSuprimento(false)}>Cancelar</Button>
-            <Button onClick={() => adicionarSuprimentoMutation.mutate()} disabled={adicionarSuprimentoMutation.isPending || suprimentoInvalido}
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-              {adicionarSuprimentoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Adicionar Suprimento
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Despesa */}
-      <Dialog open={showDespesa} onOpenChange={open => {
-        if (open || !adicionarDespesaMutation.isPending) setShowDespesa(open);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-destructive" /> Registrar despesa
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="caixa-despesa-valor" className="text-xs">Valor (R$) *</Label>
-              <Input id="caixa-despesa-valor" type="text" inputMode="decimal" placeholder="0,00" value={despesaForm.valor} autoFocus
-                onChange={e => setDespesaForm(p => ({ ...p, valor: e.target.value }))} />
-              {despesaForm.valor.trim() !== '' && despesaInvalida && (
-                <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="caixa-despesa-descricao" className="text-xs">Descrição *</Label>
-              <Input id="caixa-despesa-descricao" placeholder="Ex.: Água mineral, material de limpeza, motoboy..." value={despesaForm.descricao}
-                onChange={e => setDespesaForm(p => ({ ...p, descricao: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="caixa-despesa-categoria" className="text-xs">Categoria</Label>
-                <Select value={despesaForm.categoria} onValueChange={v => setDespesaForm(p => ({ ...p, categoria: v }))}>
-                  <SelectTrigger id="caixa-despesa-categoria"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIAS_DESPESA.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="caixa-despesa-forma" className="text-xs">Pago com</Label>
-                <Select value={despesaForm.forma_pagamento} onValueChange={v => setDespesaForm(p => ({ ...p, forma_pagamento: v as FormaPagamento }))}>
-                  <SelectTrigger id="caixa-despesa-forma"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dinheiro">Dinheiro da gaveta</SelectItem>
-                    <SelectItem value="pix">PIX</SelectItem>
-                    <SelectItem value="credito">Cartão de crédito</SelectItem>
-                    <SelectItem value="debito">Cartão de débito</SelectItem>
-                    <SelectItem value="transferencia">Transferência</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">Despesas pagas em dinheiro saem do valor esperado na gaveta; nas outras formas entram só no resultado financeiro.</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" disabled={adicionarDespesaMutation.isPending} onClick={() => setShowDespesa(false)}>Cancelar</Button>
-            <Button onClick={() => adicionarDespesaMutation.mutate()} disabled={adicionarDespesaMutation.isPending || despesaInvalida || !despesaForm.descricao.trim()}
-              className="gap-2 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {adicionarDespesaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Registrar despesa
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
