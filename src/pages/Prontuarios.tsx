@@ -746,14 +746,14 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
 }
 
 // ─── Anexos Wrapper ────────────────────────────────────────
-function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal, onAdicionarAnexo }: { pacienteId: string; prontuarioId: string; readOnly: boolean; podeGerenciarPortal: boolean; onAdicionarAnexo: () => void }) {
+function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal, onAdicionarAnexo, portalAnexoId, patientName, onManagePortal, onClosePortalPage }: { pacienteId: string; prontuarioId: string; readOnly: boolean; podeGerenciarPortal: boolean; onAdicionarAnexo: () => void; portalAnexoId?: string | null; patientName?: string; onManagePortal?: (anexoId: string) => void; onClosePortalPage?: () => void }) {
   const [anexos, setAnexos] = useState<any[]>([]);
   const [erro, setErro] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const loadAnexos = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('anexos_prontuario').select('id,nome_arquivo,url_arquivo,categoria,descricao,created_at').eq('prontuario_id', prontuarioId).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('anexos_prontuario').select('id,nome_arquivo,tipo_arquivo,tamanho_bytes,url_arquivo,categoria,descricao,created_at').eq('prontuario_id', prontuarioId).order('created_at', { ascending: false });
       if (error) throw error;
       setErro(null);
       setAnexos(data || []);
@@ -765,9 +765,10 @@ function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal
     }
   }, [prontuarioId]);
   useEffect(() => { loadAnexos(); }, [loadAnexos]);
+  if (portalAnexoId) return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} portalAnexoId={portalAnexoId} patientName={patientName} onManagePortal={onManagePortal} onClosePortalPage={onClosePortalPage} portalPageError={erro} onRetryPortalPage={() => { void loadAnexos(); }} portalPageLoading={loading} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
   if (loading) return <Skeleton className="h-32 w-full" />;
   if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os anexos" onRetry={() => { void loadAnexos(); }} />;
-  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
+  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} patientName={patientName} onManagePortal={onManagePortal} onClosePortalPage={onClosePortalPage} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -842,23 +843,34 @@ export default function Prontuarios() {
     ? secaoProntuarioParam!
     : 'anamnese';
   const telaProntuario = searchParams.get('tela');
+  const routeAnexoId = searchParams.get('anexo');
   const changeProntuarioSection = (section: string) => {
     const params = new URLSearchParams(searchParams);
     if (section === 'anamnese') params.delete('secao');
     else params.set('secao', section);
     setSearchParams(params, { replace: true });
   };
-  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta' | 'alertas-medicamentos') => {
+  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta' | 'alertas-medicamentos' | 'anexo-portal', anexoId?: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('tela', tool);
     if (tool === 'alertas-medicamentos') params.set('secao', 'prescricao');
+    if (tool === 'anexo-portal' && anexoId) {
+      params.set('secao', 'anexos');
+      params.set('anexo', anexoId);
+    }
     setSearchParams(params);
   };
   const focusMedicationReviewAfterCloseRef = useRef(false);
+  const focusPortalAttachmentAfterCloseRef = useRef<string | null>(null);
   const closeProntuarioTool = () => {
     const params = new URLSearchParams(searchParams);
     params.delete('tela');
+    if (telaProntuario === 'anexo-portal') params.delete('anexo');
     setSearchParams(params, { replace: true });
+  };
+  const closePortalAttachmentPage = () => {
+    focusPortalAttachmentAfterCloseRef.current = routeAnexoId;
+    closeProntuarioTool();
   };
   const closeMedicationReview = () => {
     focusMedicationReviewAfterCloseRef.current = true;
@@ -874,6 +886,28 @@ export default function Prontuarios() {
         trigger.scrollIntoView({ block: 'nearest' });
       }
     });
+  }, [telaProntuario]);
+  useEffect(() => {
+    if (telaProntuario === 'anexo-portal' || !focusPortalAttachmentAfterCloseRef.current) return;
+    const anexoId = focusPortalAttachmentAfterCloseRef.current;
+    focusPortalAttachmentAfterCloseRef.current = null;
+    let attempts = 0;
+    let timer: number | undefined;
+    const focusTrigger = () => {
+      const trigger = document.getElementById(`portal-trigger-${anexoId}`);
+      if (trigger instanceof HTMLElement) {
+        trigger.focus();
+        trigger.scrollIntoView({ block: 'nearest' });
+      } else if (attempts < 40) {
+        attempts += 1;
+        timer = window.setTimeout(focusTrigger, 50);
+      }
+    };
+    const frame = window.requestAnimationFrame(focusTrigger);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [telaProntuario]);
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
@@ -921,15 +955,16 @@ export default function Prontuarios() {
   const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string) => {
     const secaoAtual = searchParams.get('secao');
     if (secaoAtual && !params.has('secao')) params.set('secao', secaoAtual);
-    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos') {
+    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal') {
       params.set('tela', telaProntuario);
+      if (telaProntuario === 'anexo-portal' && routeAnexoId) params.set('anexo', routeAnexoId);
     }
     const routeState = location.state as { returnTo?: unknown } | null;
     const returnTo = isEvolucaoWorkspace && typeof routeState?.returnTo === 'string'
       ? routeState.returnTo
       : `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`;
     navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo } });
-  }, [isEvolucaoWorkspace, location.state, navigate, searchParams, telaProntuario]);
+  }, [isEvolucaoWorkspace, location.state, navigate, routeAnexoId, searchParams, telaProntuario]);
   const returnFromEvolucao = useCallback(() => {
     const routeState = location.state as { returnTo?: unknown } | null;
     const pacienteId = currentProntuario.paciente_id || selectedPacienteId;
@@ -1893,7 +1928,7 @@ export default function Prontuarios() {
     </div>
   );
 
-  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos') {
+  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal') {
     if (pacienteSelecionadoQuery.isLoading || (routePacienteId && !isProntuarioOpen)) {
       return (
         <section role="status" className="mx-auto flex min-h-48 max-w-5xl items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -1909,6 +1944,24 @@ export default function Prontuarios() {
           <p className="text-sm text-muted-foreground">Volte aos prontuários e abra uma evolução autorizada antes de acessar este recurso.</p>
           <Button variant="outline" onClick={closeProntuarioTool}>Voltar</Button>
         </section>
+      );
+    }
+
+    if (telaProntuario === 'anexo-portal') {
+      if (!routeAnexoId || !currentProntuario.id || !selectedPacienteId) {
+        return <section role="alert" className="mx-auto max-w-5xl space-y-4 rounded-xl border border-warning/40 bg-warning/10 p-5"><h1 className="text-lg font-semibold">Anexo não identificado</h1><p className="text-sm text-muted-foreground">Volte à lista de anexos e escolha novamente o documento.</p><Button variant="outline" onClick={closeProntuarioTool}>Voltar aos anexos</Button></section>;
+      }
+      return (
+        <AnexosWrapper
+          pacienteId={selectedPacienteId}
+          prontuarioId={currentProntuario.id}
+          readOnly={isReadOnly || salvandoProntuario}
+          podeGerenciarPortal={user?.roles?.some((role) => ['admin', 'medico'].includes(role)) ?? false}
+          onAdicionarAnexo={() => navigate(`/prontuarios/${currentProntuario.id}/anexos/novo`)}
+          portalAnexoId={routeAnexoId}
+          patientName={selectedPaciente.nome_social || selectedPaciente.nome}
+          onClosePortalPage={closePortalAttachmentPage}
+        />
       );
     }
 
@@ -2920,6 +2973,7 @@ export default function Prontuarios() {
                       readOnly={isReadOnly || salvandoProntuario}
                       podeGerenciarPortal={user?.roles?.some((role) => ['admin', 'medico'].includes(role)) ?? false}
                       onAdicionarAnexo={() => navigate(`/prontuarios/${currentProntuario.id}/anexos/novo`)}
+                      onManagePortal={(anexoId) => openProntuarioTool('anexo-portal', anexoId)}
                     />
                   ) : (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">

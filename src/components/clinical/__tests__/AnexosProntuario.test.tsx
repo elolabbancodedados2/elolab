@@ -149,12 +149,22 @@ describe('AnexosProntuario', () => {
     abrir.mockRestore();
   });
 
-  it('permits an authorized clinician to publish an attachment with origin and future validity', async () => {
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoRemovido={vi.fn()} />);
+  it('routes portal management to its own page without opening a dialog', async () => {
+    const manage = vi.fn();
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onManagePortal={manage} onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Disponibilizar no portal para resultado.pdf' }));
-    fireEvent.change(screen.getByLabelText('Validade do documento'), { target: { value: '2027-01-10' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Publicar documento no portal' }));
+
+    expect(manage).toHaveBeenCalledWith('anexo-1');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('publishes an attachment from the full page with the existing scoped RPC', async () => {
+    const close = vi.fn();
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal portalAnexoId="anexo-1" patientName="Pessoa Exemplo" onClosePortalPage={close} onAnexoRemovido={vi.fn()} />);
+
+    fireEvent.change(await screen.findByLabelText('Validade do acesso'), { target: { value: '2027-01-10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Disponibilizar no portal' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('gerenciar_documento_portal_paciente', {
       p_anexo_id: 'anexo-1',
@@ -162,18 +172,19 @@ describe('AnexosProntuario', () => {
       p_validade_ate: '2027-01-10',
       p_origem: 'clinica',
     }));
-    expect(await screen.findByText(/Disponível no portal/)).toBeVisible();
+    expect(close).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('revokes a published attachment through the scoped publication RPC', async () => {
+  it('revokes a published attachment from its full page using the same RPC', async () => {
     mocks.publicationIn.mockResolvedValue({
       data: [{ anexo_id: 'anexo-1', publicado: true, validade_ate: '2027-01-10', origem: 'externo' }],
       error: null,
     });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoRemovido={vi.fn()} />);
+    const close = vi.fn();
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal portalAnexoId="anexo-1" onClosePortalPage={close} onAnexoRemovido={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Revogar documento do portal para resultado.pdf' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar revogação do portal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Revogar acesso ao documento' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('gerenciar_documento_portal_paciente', {
       p_anexo_id: 'anexo-1',
@@ -181,6 +192,28 @@ describe('AnexosProntuario', () => {
       p_validade_ate: '2027-01-10',
       p_origem: 'externo',
     }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('retries publication status after a load error before enabling portal changes', async () => {
+    mocks.publicationIn
+      .mockResolvedValueOnce({ data: null, error: new Error('Status indispon?vel') })
+      .mockResolvedValueOnce({ data: [], error: null });
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal portalAnexoId="anexo-1" onClosePortalPage={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Tentar novamente' }));
+
+    expect(await screen.findByLabelText('Validade do acesso')).toBeVisible();
+    expect(mocks.rpc).not.toHaveBeenCalledWith('gerenciar_documento_portal_paciente', expect.anything());
+  });
+
+  it('does not expose portal changes on a direct page without permission', async () => {
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} portalAnexoId="anexo-1" onClosePortalPage={vi.fn()} onAnexoRemovido={vi.fn()} />);
+
+    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(screen.queryByLabelText('Validade do acesso')).not.toBeInTheDocument();
+    expect(mocks.from).not.toHaveBeenCalledWith('documentos_portal_paciente');
   });
 
   it('does not show portal publication controls without explicit permission', () => {

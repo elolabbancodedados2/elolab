@@ -375,3 +375,81 @@ test('alertas de medicamentos abrem em tela propria e retornam a prescricao', as
   await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=prescricao`);
   await expect(page.getByRole('button', { name: 'Ver todos os 1 alertas de medicamentos' })).toBeFocused();
 });
+
+test('document sharing in the patient portal uses a contextual page and returns focus to the attachment', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  await installPageMocks(page);
+  const attachment = {
+    id: '00000000-0000-4000-9000-000000000151',
+    prontuario_id: recordId,
+    nome_arquivo: 'resultado-qa.pdf',
+    tipo_arquivo: 'application/pdf',
+    tamanho_bytes: 2400,
+    url_arquivo: `${recordId}/resultado-qa.pdf`,
+    categoria: 'laudo',
+    descricao: 'Laudo sintético para validação visual.',
+    created_at: '2026-10-29T10:00:00.000Z',
+  };
+  let published = false;
+  const portalCalls: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/anexos_prontuario*', route => route.request().method() === 'GET'
+    ? route.fulfill({ json: [attachment] })
+    : route.fallback());
+  await page.route('**/rest/v1/documentos_portal_paciente*', route => route.request().method() === 'GET'
+    ? route.fulfill({ json: published ? [{ anexo_id: attachment.id, publicado: true, validade_ate: '2027-01-10', origem: 'clinica' }] : [] })
+    : route.fallback());
+  await page.route('**/rest/v1/rpc/gerenciar_documento_portal_paciente*', route => {
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    portalCalls.push(payload);
+    published = payload.p_publicado === true;
+    return route.fulfill({ json: { publicado: published, validade_ate: payload.p_validade_ate, origem: payload.p_origem } });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=anexos`);
+  const openPage = page.getByRole('button', { name: 'Disponibilizar no portal para resultado-qa.pdf' });
+  await expect(openPage).toBeVisible();
+  await openPage.click();
+
+  await expect(page).toHaveURL(/tela=anexo-portal.*anexo=00000000-0000-4000-9000-000000000151/);
+  await expect(page.getByTestId('attachment-portal-page')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Disponibilizar documento no portal', exact: true })).toBeVisible();
+  await expect(page.getByText('Pessoa Exemplo QA', { exact: true })).toBeVisible();
+  await expect(page.getByRole('note')).toContainText('link privado');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page).toHaveURL(/paciente=.*prontuario=.*secao=anexos/);
+  await page.reload();
+  await expect(page.getByTestId('attachment-portal-page')).toBeVisible();
+  await expect(page.getByLabel('Validade do acesso')).toBeVisible();
+
+  await page.getByLabel('Validade do acesso').fill('2027-01-10');
+  const publish = page.getByRole('button', { name: 'Disponibilizar no portal', exact: true });
+  await publish.scrollIntoViewIfNeeded();
+  await page.locator('main#main-content').evaluate(element => element.scrollTo(0, element.scrollHeight));
+  const actionBounds = await publish.boundingBox();
+  const mobileNavigation = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(actionBounds).not.toBeNull();
+  expect(mobileNavigation).not.toBeNull();
+  expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(mobileNavigation!.y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByLabel('Validade do acesso').evaluate(element => (element as HTMLInputElement).blur());
+  await page.locator('main#main-content').evaluate(element => element.scrollTo(0, 0));
+  await page.screenshot({ path: info.outputPath('attachment-portal-mobile.png'), fullPage: true, animations: 'disabled' });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator('main#main-content').evaluate(element => element.scrollTo(0, 0));
+  await page.screenshot({ path: info.outputPath('attachment-portal-desktop.png'), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await publish.click();
+
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=anexos`);
+  await expect(page.getByRole('button', { name: 'Revogar documento do portal para resultado-qa.pdf' })).toBeFocused();
+  expect(portalCalls).toEqual([{
+    p_anexo_id: attachment.id,
+    p_publicado: true,
+    p_validade_ate: '2027-01-10',
+    p_origem: 'clinica',
+  }]);
+  await expect(page.getByRole('button', { name: 'Revogar documento do portal para resultado-qa.pdf' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
