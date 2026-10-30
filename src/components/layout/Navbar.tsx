@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { formatDate, primeiroNome } from '@/lib/formatters';
-import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, MessageSquarePlus } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, MessageSquarePlus, LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,6 +28,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { ContextualHelp } from '@/components/ContextualHelp';
 import { toast } from 'sonner';
 import { BarraHorario } from './BarraHorario';
+import logoHorizontalWhite from '@/assets/elolab-logo-identidade-dark.png';
+import logoMark from '@/assets/elolab-symbol-identidade.png';
+import { getNavigationMode } from '@/config/sidebarMenu';
 
 const roleLabels: Record<AppRole, string> = {
   admin: 'Admin',
@@ -43,9 +46,13 @@ interface NavbarProps {
 }
 
 export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
-  const { user, profile, signOut, isAdmin } = useSupabaseAuth();
+  const { user, profile, signOut, isAdmin, isPlatformAdmin } = useSupabaseAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const navigationMode = isPlatformAdmin && !profile?.clinica_id
+    ? 'platform'
+    : getNavigationMode(location.pathname, isPlatformAdmin);
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
   const operationalSeenRef = useRef<{ owner: string; initialized: boolean; ids: Set<string> }>({ owner: '', initialized: false, ids: new Set() });
 
@@ -179,12 +186,12 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header className="sticky top-0 z-30 flex min-h-[64px] items-center gap-1 border-b border-border bg-card px-2 pt-[env(safe-area-inset-top)] sm:min-h-[72px] sm:px-3 md:px-6 xl:px-8">
+    <header className="sticky top-0 z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-background/15 bg-foreground px-2 pt-[env(safe-area-inset-top)] text-background shadow-sm sm:gap-3 sm:px-4 md:px-5">
       {/* Left: Hamburger */}
       <Button
         variant="ghost"
         size="icon"
-        className="h-11 w-11 shrink-0 rounded-2xl bg-card/70 lg:hidden"
+        className="h-11 w-11 shrink-0 rounded-xl text-background hover:bg-background/10 hover:text-background lg:hidden"
         aria-label={mobileMenuOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
         aria-expanded={mobileMenuOpen}
         aria-controls="menu-principal-mobile"
@@ -193,15 +200,62 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
         <Menu className="h-5 w-5" />
       </Button>
 
+      <div className="flex shrink-0 items-center gap-2">
+        <Link
+          to={profile?.clinica_id ? '/dashboard' : '/painel-admin'}
+          aria-label="EloLab"
+          className="flex shrink-0 items-center focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-foreground"
+        >
+          <img src={logoHorizontalWhite} alt="EloLab" className="hidden h-8 w-auto sm:block" />
+          <img src={logoMark} alt="EloLab" className="size-8 object-contain sm:hidden" />
+        </Link>
+
+        {isPlatformAdmin && (
+          <nav aria-label="Alternar área" className="flex shrink-0 items-center gap-1 rounded-xl border border-background/15 bg-background/5 p-1">
+            {profile?.clinica_id ? (
+              <Link
+                to="/dashboard"
+                aria-label="App"
+                aria-current={navigationMode === 'app' ? 'page' : undefined}
+                className={cn(
+                  'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-foreground sm:px-2.5',
+                  navigationMode === 'app' ? 'bg-background text-foreground' : 'text-background/80 hover:bg-background/10 hover:text-background',
+                )}
+              >
+                <LayoutDashboard aria-hidden="true" className="size-4" />
+                <span className="hidden xl:inline">App</span>
+              </Link>
+            ) : (
+              <Button type="button" variant="ghost" disabled aria-label="App: vínculo da clínica ainda não configurado" className="min-h-10 px-2 text-background/50 sm:px-2.5">
+                <LayoutDashboard aria-hidden="true" className="size-4" />
+                <span className="hidden xl:inline">App</span>
+              </Button>
+            )}
+            <Link
+              to="/painel-admin"
+              aria-label="Painel Admin"
+              aria-current={navigationMode === 'platform' ? 'page' : undefined}
+              className={cn(
+                'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-foreground sm:px-2.5',
+                navigationMode === 'platform' ? 'bg-background text-foreground' : 'text-background/80 hover:bg-background/10 hover:text-background',
+              )}
+            >
+              <ShieldCheck aria-hidden="true" className="size-4" />
+              <span className="hidden xl:inline">Painel Admin</span>
+            </Link>
+          </nav>
+        )}
+      </div>
+
       {/* Left: Search */}
-      <div className="min-w-0 flex-1 sm:max-w-[280px]">
+      <div className="min-w-0 flex-1 sm:max-w-sm sm:flex-none [&_button]:border-background/20 [&_button]:bg-background/10 [&_button]:text-background [&_button]:hover:bg-background/15 [&_button]:focus-visible:ring-background/40 [&_kbd]:border-background/20 [&_kbd]:text-background/80">
         <GlobalSearch />
       </div>
 
       {profile?.clinica_id && profile.role && (
         <div role="group" aria-label="Contexto ativo" title={activeClinic?.nome || 'Clínica ativa'} className="hidden 2xl:flex min-w-0 max-w-[180px] shrink-0 flex-col px-2">
-          <span className="truncate text-xs font-semibold text-foreground">{activeClinic?.nome || 'Clínica ativa'}</span>
-          <span className="truncate text-[10px] text-muted-foreground">{roleLabels[profile.role]}</span>
+          <span className="truncate text-xs font-semibold text-background">{activeClinic?.nome || 'Clínica ativa'}</span>
+          <span className="truncate text-xs text-background/75">{roleLabels[profile.role]}</span>
         </div>
       )}
 
@@ -211,8 +265,8 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       </div>
 
       {/* Right actions */}
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <ContextualHelp />
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
+        <ContextualHelp className="hidden text-background/85 hover:bg-background/10 hover:text-background sm:inline-flex" />
         {/* Quick Add */}
         <DropdownMenu>
           <Tooltip>
@@ -269,7 +323,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-11 w-11 rounded-full border border-border/70 bg-card text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
+                  className="relative h-11 w-11 rounded-xl text-background/85 hover:bg-background/10 hover:text-background"
                   aria-label="Abrir notificações"
                 >
                   <Bell className="h-[17px] w-[17px]" />
@@ -393,20 +447,20 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
         </DropdownMenu>
 
         {/* Divider */}
-        <div className="hidden md:block w-px h-7 bg-border/60 mx-1" />
+        <div aria-hidden="true" className="mx-1.5 hidden h-7 w-px bg-background/20 md:block" />
 
         {/* User */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex min-h-11 min-w-11 items-center justify-center gap-2.5 rounded-full px-1 py-1 outline-none transition-all hover:bg-card focus-visible:ring-2 focus-visible:ring-ring md:justify-start md:pr-3">
+            <button aria-label={`Perfil de ${primeiroNome(profile?.nome) || 'usuário'}`} className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-1 py-1 text-background outline-none transition-colors hover:bg-background/10 focus-visible:ring-2 focus-visible:ring-ring md:justify-start md:pr-2">
               <Avatar className="h-10 w-10 ring-1 ring-border">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                   {profile?.nome ? getInitials(profile.nome) : 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden md:flex flex-col items-start">
-                <span className="text-[13px] font-semibold leading-tight">{primeiroNome(profile?.nome)}</span>
-                <span className="flex items-center gap-1 text-[10px] text-success font-semibold leading-tight">
+                <span className="text-sm font-semibold leading-tight">{primeiroNome(profile?.nome)}</span>
+                <span className="flex items-center gap-1 text-xs text-background/80 font-medium leading-tight">
                   <span className="h-1.5 w-1.5 rounded-full bg-success" />
                   Online
                 </span>

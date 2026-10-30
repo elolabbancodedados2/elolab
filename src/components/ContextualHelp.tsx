@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { getContextualHelp, getVisibleHelpLinks, HELP_TERMS, type HelpTermKey } from '@/lib/contextualHelp';
+import { cn } from '@/lib/utils';
 
 /** Explicação curta de um termo, ao lado do rótulo ou título a que se refere. */
 export function FieldHelp({ term }: { term: HelpTermKey }) {
@@ -35,7 +36,7 @@ export function FieldHelp({ term }: { term: HelpTermKey }) {
   );
 }
 
-export function ContextualHelp() {
+export function ContextualHelp({ className }: { className?: string }) {
   const { pathname } = useLocation();
   const { profile } = useSupabaseAuth();
   const help = getContextualHelp(pathname);
@@ -52,7 +53,7 @@ export function ContextualHelp() {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-11 w-11 rounded-xl text-muted-foreground hover:bg-accent/60 hover:text-foreground sm:h-9 sm:w-9"
+              className={cn('h-11 w-11 rounded-xl text-muted-foreground hover:bg-accent/60 hover:text-foreground sm:h-9 sm:w-9', className)}
               aria-label="Abrir ajuda desta tela"
             >
               <CircleHelp className="h-[18px] w-[18px]" aria-hidden="true" />

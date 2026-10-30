@@ -2,9 +2,7 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ChevronLeft, ChevronDown, LayoutDashboard, PanelLeftOpen, Search, ShieldCheck } from 'lucide-react';
-import logoHorizontal from '@/assets/elolab-logo-identidade.png';
-import logoMark from '@/assets/elolab-symbol-identidade.png';
+import { ChevronLeft, ChevronDown, PanelLeftOpen, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -170,17 +168,9 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
     >
       {/* ─── Header ─── */}
       <div className={cn(
-        'flex items-center shrink-0',
-        isCollapsed ? 'justify-center px-2 h-[76px]' : 'justify-between px-5 h-[76px]'
+        'flex h-14 shrink-0 items-center',
+        isCollapsed ? 'justify-center px-2' : 'justify-end px-4'
       )}>
-        {!isCollapsed ? (
-          <img src={logoHorizontal} alt="EloLab" className="h-auto w-[148px] object-contain" />
-        ) : (
-          <div className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-card">
-            <img src={logoMark} alt="EloLab" className="h-9 w-9 object-contain" />
-          </div>
-        )}
-
         {!isCollapsed && !forceExpanded && (
           <Button
             variant="ghost"
@@ -195,63 +185,6 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
       </div>
 
       {/* ─── Search ─── */}
-      {isPlatformAdmin && (
-        <div
-          role="group"
-          aria-label="Alternar área"
-          className={cn(
-            'grid gap-1.5 pb-4',
-            isCollapsed ? 'grid-cols-1 px-2' : 'grid-cols-2 px-4',
-          )}
-        >
-          {profile?.clinica_id && (
-            <Link
-              to="/dashboard"
-              onClick={onNavigate}
-              aria-label="App"
-              aria-current={navigationMode === 'app' ? 'page' : undefined}
-              className={cn(
-                'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
-                navigationMode === 'app'
-                  ? 'border border-sidebar-border bg-card text-primary shadow-xs'
-                  : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-              )}
-            >
-              <LayoutDashboard className="h-4 w-4 shrink-0" />
-              {!isCollapsed && <span>App</span>}
-            </Link>
-          )}
-          {!profile?.clinica_id && (
-            <Button
-              type="button"
-              variant="ghost"
-              disabled
-              title="O vínculo da clínica da conta proprietária ainda não foi configurado."
-              aria-label="App: vínculo da clínica ainda não configurado"
-              className="flex min-h-12 justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold text-sidebar-accent-foreground/45"
-            >
-              <LayoutDashboard className="h-4 w-4 shrink-0" />
-              {!isCollapsed && <span>App</span>}
-            </Button>
-          )}
-          <Link
-            to="/painel-admin"
-            onClick={onNavigate}
-            aria-label="Painel Admin"
-            aria-current={navigationMode === 'platform' ? 'page' : undefined}
-            className={cn(
-              'flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-2 text-sm font-semibold transition-all',
-              navigationMode === 'platform'
-                ? 'border border-sidebar-border bg-card text-primary shadow-xs'
-                : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            )}
-          >
-            <ShieldCheck className="h-4 w-4 shrink-0" />
-            {!isCollapsed && <span>Painel Admin</span>}
-          </Link>
-        </div>
-      )}
-
       {!isCollapsed && (
         <div className="px-4 pb-4">
           <div className="relative">

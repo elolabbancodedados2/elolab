@@ -29,42 +29,44 @@ export function MainLayout() {
   usePersonalPreferences();
 
   return (
-    <div className="flex h-[100dvh] min-h-[100svh] overflow-hidden bg-background">
+    <div className="flex h-[100dvh] min-h-[100svh] flex-col overflow-hidden bg-background">
       <SkipLink targetId="main-content" />
       <RouteAccessibility />
-      {/* Desktop Sidebar */}
-      <nav className="hidden h-full shrink-0 border-r border-border bg-sidebar lg:block" aria-label="Menu principal">
-        <Sidebar />
-      </nav>
+      <Navbar mobileMenuOpen={mobileMenuOpen} onMenuClick={() => setMobileMenuOpen(open => !open)} />
 
-      {/* Mobile Sidebar */}
-      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent id="menu-principal-mobile" side="left" className="w-[min(86vw,320px)] border-r-0 p-0 pt-[env(safe-area-inset-top)]">
-          <SheetTitle className="sr-only">Menu principal</SheetTitle>
-          <SheetDescription className="sr-only">
-            Navegue entre os módulos da clínica.
-          </SheetDescription>
-          <nav aria-label="Menu principal mobile" className="h-full">
-            <Sidebar forceExpanded onNavigate={() => setMobileMenuOpen(false)} />
-          </nav>
-        </SheetContent>
-      </Sheet>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Desktop Sidebar */}
+        <nav className="hidden h-full shrink-0 border-r border-border bg-sidebar lg:block" aria-label="Menu principal">
+          <Sidebar />
+        </nav>
 
-      {/* Main Content */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <UpgradeNotice />
-        <Navbar mobileMenuOpen={mobileMenuOpen} onMenuClick={() => setMobileMenuOpen(open => !open)} />
-        <ImpersonationBanner />
-        <main 
-          id="main-content" 
-          className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain scroll-pt-20"
-          role="main"
-          tabIndex={-1}
-        >
-          <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(2rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
-            <Breadcrumbs />
-            <div className="animate-fade-in">
-              {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
+        {/* Mobile Sidebar */}
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetContent id="menu-principal-mobile" side="left" className="w-[min(86vw,320px)] border-r-0 p-0 pt-[env(safe-area-inset-top)]">
+            <SheetTitle className="sr-only">Menu principal</SheetTitle>
+            <SheetDescription className="sr-only">
+              Navegue entre os módulos da clínica.
+            </SheetDescription>
+            <nav aria-label="Menu principal mobile" className="h-full">
+              <Sidebar forceExpanded onNavigate={() => setMobileMenuOpen(false)} />
+            </nav>
+          </SheetContent>
+        </Sheet>
+
+        {/* Main Content */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <UpgradeNotice />
+          <ImpersonationBanner />
+          <main
+            id="main-content"
+            className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain scroll-pt-20"
+            role="main"
+            tabIndex={-1}
+          >
+            <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(2rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
+              <Breadcrumbs />
+              <div className="animate-fade-in">
+                {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
                   envolvendo tudo: um registro com campo inesperado em Analytics
                   derrubava também a agenda, a fila e o caixa, e o usuário via a
                   tela de erro no lugar do sistema inteiro. Isso transformava
@@ -73,14 +75,15 @@ export function MainLayout() {
                   A `key` pelo pathname remonta a barreira ao navegar: sem ela,
                   a tela de erro ficaria grudada mesmo depois de trocar de
                   módulo pelo menu, que continua funcionando. */}
-              <ErrorBoundary key={location.pathname}>
-                <Outlet />
-              </ErrorBoundary>
+                <ErrorBoundary key={location.pathname}>
+                  <Outlet />
+                </ErrorBoundary>
+              </div>
+              <RodapeLegal />
             </div>
-            <RodapeLegal />
-          </div>
-        </main>
-        <MobileTabBar menuOpen={mobileMenuOpen} onOpenMenu={() => setMobileMenuOpen(true)} />
+          </main>
+          <MobileTabBar menuOpen={mobileMenuOpen} onOpenMenu={() => setMobileMenuOpen(true)} />
+        </div>
       </div>
 
       <ChatPanel />
