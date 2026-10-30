@@ -937,3 +937,9 @@ Inativação e reativação passaram do diálogo para `/pacientes/:patientId/sta
 Playwright 3/3, Vitest relacionado 10/10, TypeScript, build, acessibilidade, permissões, falhas silenciosas e colunas passaram. As telas renderizadas em mobile (390 px) e desktop (1440 px) foram inspecionadas; o botão principal fica acima da navegação inferior. As gravações E2E foram interceptadas; nenhum paciente real foi alterado. ESLint focal teve zero erros e 54 avisos preexistentes de `any` em `Pacientes.tsx`. Detalhes: [alteração de status do paciente](EVOLUCAO_STATUS_PACIENTE_PAGINA.md).
 
 Publicação: commit 7205376b0434f8ba833551804cc889fd4011c9ed, imagem easypanel/elolab/app:deploy-20261030-7205376, rollback deploy-20261030-ea619d0. O smoke isolado, os dois domínios, SHA em /version.json e Swarm 1/1 foram confirmados; a fonte anterior está em code.before-20261030-7205376. Hash do .env permaneceu igual.
+
+## Ficha do paciente — estorno de pagamento em página própria
+
+A ação de estorno no extrato do paciente saiu do diálogo e abre `/pacientes/:patientId/cobrancas/:lancamentoId/estorno`. O fluxo preserva a RPC `estornar_pagamento`, os perfis autorizados, o pagamento acionado, o motivo auditável e o retorno à aba Financeiro com rolagem restaurada. A página recusa cobranças de outra ficha. Playwright 5/5, TypeScript, build, acessibilidade, permissões, falhas silenciosas e colunas passaram; capturas mobile e desktop foram inspecionadas. Nenhuma escrita financeira real ocorreu. Detalhes e publicação: [estorno a partir da ficha](EVOLUCAO_ESTORNO_PACIENTE_PAGINA.md).
+
+Publicado em 30/10/2026: commit `5b603fa525ac516630d513b16af024b7576ee22a`, imagem `deploy-20261030-5b603fa`, rollback `deploy-20261030-7205376`. Smoke isolado, saúde, SHA nos dois domínios e Swarm 1/1 confirmados; hash do `.env` permaneceu igual.
