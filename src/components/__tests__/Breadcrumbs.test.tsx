@@ -15,6 +15,7 @@ describe('Breadcrumbs', () => {
     '/estoque/record-qa/historico',
     '/tarefas/record-qa/editar',
     '/precos-servicos/exames/convenios/record-qa/editar',
+    '/recepcao/caixa/record-qa/fechar',
   ])('não cria links para segmentos de registro sem página em %s', path => {
     render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);
     expect(screen.queryByText('Record qa')).not.toBeInTheDocument();
@@ -32,6 +33,13 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Finalizar atendimento')).toBeInTheDocument();
     expect(screen.queryByText(appointmentId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(appointmentId))).toBe(false);
+  });
+  it('omite o identificador do caixa no breadcrumb de fechamento', () => {
+    const cashId = '00000000-0000-4000-9000-000000000015';
+    render(<MemoryRouter initialEntries={[`/recepcao/caixa/${cashId}/fechar`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Fechar caixa')).toBeInTheDocument();
+    expect(screen.queryByText(cashId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(cashId))).toBe(false);
   });
   it('omite o identificador do prontuário no breadcrumb do novo adendo', () => {
     const recordId = '00000000-0000-4000-9000-000000000013';

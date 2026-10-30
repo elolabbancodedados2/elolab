@@ -42,7 +42,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { SectionFallback } from '@/components/ui/loading-skeleton';
 import { PageHeader } from '@/components/PageHeader';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { mesmoValor, diferencaEmReais, parseValorContado } from '@/lib/dinheiro';
+import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
@@ -124,18 +124,6 @@ function salvarEstadoLocalCaixa(estado: unknown, userId?: string | null, clinica
   let sucesso = true;
   for (const [chave, valor] of registros) {
     try { localStorage.setItem(chave, JSON.stringify(valor)); } catch { sucesso = false; }
-  }
-  return sucesso;
-}
-
-function limparEstadoLocalCaixa(userId?: string | null, clinicaId?: string | null): boolean {
-  const chaves = [
-    userId ? `caixa_estado_${userId}` : null,
-    clinicaId ? `caixa_estado_clinica_${clinicaId}` : null,
-  ].filter(Boolean) as string[];
-  let sucesso = true;
-  for (const chave of chaves) {
-    try { localStorage.removeItem(chave); } catch { sucesso = false; }
   }
   return sucesso;
 }
@@ -271,7 +259,6 @@ export default function CaixaDiario() {
   const [activeTab, setActiveTab] = useState(['tipos', 'precos'].includes(location.state?.cashTab) ? location.state.cashTab : 'hoje');
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
-  const [showFechamento, setShowFechamento] = useState(false);
   const [showLancamento, setShowLancamento] = useState(false);
   const [showSangria, setShowSangria] = useState(false);
   const [showSuprimento, setShowSuprimento] = useState(false);
@@ -279,12 +266,8 @@ export default function CaixaDiario() {
   const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
   const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
   const [showDetalhesCaixa, setShowDetalhesCaixa] = useState<CaixaDiarioType | null>(null);
-  const [caixaParaFechar, setCaixaParaFechar] = useState<CaixaDiarioType | null>(null);
-
-  const [valorFechamento, setValorFechamento] = useState('');
   const [showReabertura, setShowReabertura] = useState(false);
   const [motivoReabertura, setMotivoReabertura] = useState('');
-  const [obsFechamento, setObsFechamento] = useState('');
 
   // POS state
   const [carrinho, setCarrinho] = useState<ProdutoCarrinho[]>([]);
@@ -556,17 +539,12 @@ export default function CaixaDiario() {
     return calcularTotaisCaixa(caixaHoje?.valor_abertura || 0, lancamentos);
   }, [lancamentos, caixaHoje]);
 
-  const totaisFechamento = useMemo(() => {
-    if (!caixaParaFechar || caixaParaFechar.id === caixaHoje?.id) return totais;
-    return calcularTotaisCaixa(caixaParaFechar.valor_abertura, lancamentosDetalhe);
-  }, [caixaParaFechar, caixaHoje?.id, lancamentosDetalhe, totais]);
-
   const saldoEsperadoGaveta = useMemo(() => {
-    if (caixaParaFechar && caixaParaFechar.id !== caixaHoje?.id) {
-      return calcularSaldoGaveta(caixaParaFechar.valor_abertura, lancamentosDetalhe);
+    if (showDetalhesCaixa && showDetalhesCaixa.id !== caixaHoje?.id) {
+      return calcularSaldoGaveta(showDetalhesCaixa.valor_abertura, lancamentosDetalhe);
     }
     return calcularSaldoGaveta(caixaHoje?.valor_abertura || 0, lancamentos);
-  }, [caixaParaFechar, caixaHoje?.id, caixaHoje?.valor_abertura, lancamentosDetalhe, lancamentos]);
+  }, [showDetalhesCaixa, caixaHoje?.id, caixaHoje?.valor_abertura, lancamentosDetalhe, lancamentos]);
 
   const breakdownFormas = useMemo(() => {
     const formas: Record<string, number> = {};
@@ -684,54 +662,6 @@ export default function CaixaDiario() {
     sangria: lancamentos.filter(l => l.tipo === 'sangria').length,
     suprimento: lancamentos.filter(l => l.tipo === 'suprimento').length,
   }), [lancamentos]);
-
-  const fecharCaixaMutation = useMutation({
-    mutationFn: async ({ caixa: caixaSolicitado, valor, observacoes }: { caixa?: CaixaDiarioType; valor: number | null; observacoes?: string | null }) => {
-      const caixa = caixaSolicitado || caixaHoje;
-      if (!caixa) throw new Error('Não há um caixa para fechar. Atualize a tela e tente novamente.');
-      if (valor === null || !Number.isFinite(valor) || valor < 0) throw new Error('Informe um valor contado válido para fechar o caixa');
-      const { data, error } = await supabase.rpc('fechar_caixa_diario', {
-        p_caixa_id: caixa.id,
-        p_valor_contado: valor,
-        p_observacoes: observacoes ?? (obsFechamento || null),
-      });
-      if (error) throw error;
-      validarResultadoRpcCaixa(data);
-      return { caixa, valor };
-    },
-    onSuccess: ({ caixa, valor }) => {
-      // A close from the history does not change today's reception state.
-      let estadoLocalLimpo = true;
-      if (caixa.data === today) {
-        estadoLocalLimpo = limparEstadoLocalCaixa(profile?.id, profile?.clinica_id);
-      }
-      setShowDetalhesCaixa(current => current?.id === caixa.id ? {
-        ...current,
-        aberto: false,
-        valor_fechamento: valor,
-        operador_fechamento: profile?.nome || current.operador_fechamento,
-      } : current);
-
-      toast.success('Caixa fechado com sucesso!');
-      if (!estadoLocalLimpo) toast.warning('O caixa foi fechado, mas a Recepção pode exibir o estado anterior até atualizar. Recarregue a tela da Recepção.');
-      setShowFechamento(false);
-      setValorFechamento('');
-      setObsFechamento('');
-      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['historico-caixas'] });
-      queryClient.invalidateQueries({ queryKey: ['caixas-abertos-antigos'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-detalhe'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-    },
-    onError: (e: any) => {
-      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      toast.error(e?.message || 'Erro ao fechar caixa');
-    },
-  });
 
   const reabrirCaixaMutation = useMutation({
     mutationFn: async () => {
@@ -1105,14 +1035,6 @@ export default function CaixaDiario() {
   const isOpen = caixaHoje?.aberto === true;
   const podeReabrir = Boolean(profile?.roles?.some(role => role === 'admin' || role === 'financeiro'));
 
-  // Fechamento com diferença exige justificativa. Antes o botão seguava
-  // habilitado com a observação opcional: caixa que não batia fechava em
-  // silêncio, e a divergência morria com o dia — sem rastro de explicação.
-  const contadoFechamento = parseValorContado(valorFechamento);
-  const fechamentoNaoBate = Boolean(
-    contadoFechamento !== null &&
-    !mesmoValor(contadoFechamento, saldoEsperadoGaveta),
-  );
   const valorSangriaInformado = parseMoneyInput(sangriaForm.valor);
   const sangriaInvalida = valorSangriaInformado === null
     || !Number.isFinite(valorSangriaInformado)
@@ -1225,7 +1147,7 @@ export default function CaixaDiario() {
               {caixasAbertosAntigos.map(caixa => (
                 <div key={caixa.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-2">
                   <span className="text-sm">{fmtDate(caixa.data)} · Abertura {fmt(caixa.valor_abertura)}</span>
-                  <Button size="sm" variant="outline" onClick={() => { setCaixaParaFechar(caixa); setShowDetalhesCaixa(caixa); }}>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/recepcao/caixa/${caixa.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })}>
                     Revisar e regularizar
                   </Button>
                 </div>
@@ -1255,7 +1177,7 @@ export default function CaixaDiario() {
                 <Button onClick={() => imprimirRelatorioFechamento(caixaHoje, lancamentos)} variant="ghost" className="h-11 gap-2 rounded-full text-muted-foreground" title="Relatório parcial do caixa">
                   <Printer className="h-4 w-4" /> Relatório parcial
                 </Button>
-                <Button onClick={() => { setCaixaParaFechar(caixaHoje); setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }} disabled={loadingLanc || lancamentosExcederamLimite} variant="destructive" className="ml-auto h-11 gap-2 rounded-full px-5">
+                <Button onClick={() => navigate(`/recepcao/caixa/${caixaHoje.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} disabled={loadingLanc || erroLancamentos || lancamentosExcederamLimite} variant="destructive" className="ml-auto h-11 gap-2 rounded-full px-5">
                   <Lock className="h-4 w-4" /> Fechar Caixa
                 </Button>
               </>
@@ -1666,11 +1588,10 @@ export default function CaixaDiario() {
                     <div key={cx.id}
                       role="button" tabIndex={0}
                       className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer group"
-                      onClick={() => { setCaixaParaFechar(cx); setShowDetalhesCaixa(cx); }}
+                      onClick={() => setShowDetalhesCaixa(cx)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
-                          setCaixaParaFechar(cx);
                           setShowDetalhesCaixa(cx);
                         }
                       }}
@@ -2295,104 +2216,8 @@ export default function CaixaDiario() {
         </DialogContent>
       </Dialog>
 
-      {/* Fechar Caixa */}
-      <Dialog open={showFechamento} onOpenChange={open => {
-        if (open || !fecharCaixaMutation.isPending) setShowFechamento(open);
-      }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-destructive" /> Fechar Caixa — {fmtDate(caixaParaFechar?.data || today)}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-5">
-            {/* Resumo */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[
-                { label: 'Abertura', value: caixaParaFechar?.valor_abertura ?? caixaHoje?.valor_abertura ?? 0, color: 'text-foreground' },
-                { label: 'Receitas', value: totaisFechamento.receita, color: 'text-emerald-600', prefix: '+' },
-                { label: 'Despesas', value: totaisFechamento.despesa, color: 'text-red-500', prefix: '−' },
-                { label: 'Sangrias', value: totaisFechamento.sangria, color: 'text-amber-600', prefix: '−' },
-                { label: 'Suprimentos', value: totaisFechamento.suprimento, color: 'text-blue-600', prefix: '+' },
-                { label: 'Dinheiro esperado', value: saldoEsperadoGaveta, color: saldoEsperadoGaveta >= 0 ? 'text-emerald-600' : 'text-red-500' },
-              ].map(item => (
-                <div key={item.label} className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                  <p className={cn('text-lg font-bold tabular-nums', item.color)}>
-                    {item.prefix || ''}{fmt(item.value)}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <Separator />
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="valor-contado-fechamento" className="text-xs font-medium">Dinheiro contado na gaveta (R$)</Label>
-                <Input type="text" inputMode="decimal" placeholder="Digite o valor contado" value={valorFechamento}
-                  id="valor-contado-fechamento" onChange={e => setValorFechamento(e.target.value)} step="0.01" min="0" required autoFocus />
-                {valorFechamento.trim() === '' && <p className="text-xs text-muted-foreground">Informe o valor contado; use 0 se não houver dinheiro no caixa.</p>}
-              </div>
-              {contadoFechamento !== null && (() => {
-                // Comparação em centavos (ver src/lib/dinheiro.ts). Com `===`
-                // entre floats, a operadora contava o caixa certinho e o painel
-                // acusava divergência exibindo "Diferença: R$ 0,00".
-                const contado = contadoFechamento;
-                const bate = mesmoValor(contado, saldoEsperadoGaveta);
-                const diferenca = diferencaEmReais(contado, saldoEsperadoGaveta);
-
-                return (
-                  <div className={cn(
-                    'p-3 rounded-lg border',
-                    bate
-                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
-                  )}>
-                    <p className="text-xs text-muted-foreground">Diferença</p>
-                    <p className={cn('text-xl font-bold tabular-nums',
-                      bate ? 'text-emerald-600' : 'text-red-500'
-                    )}>
-                      {fmt(diferenca)}
-                    </p>
-                  </div>
-                );
-              })()}
-              <div className="space-y-1.5">
-                <Label htmlFor="caixa-observacoes-fechamento" className="text-xs">
-                  Observações {fechamentoNaoBate ? '(obrigatórias — o caixa não bate)' : '(opcional)'}
-                </Label>
-                <Textarea
-                  id="caixa-observacoes-fechamento"
-                  placeholder={fechamentoNaoBate
-                    ? 'Explique a diferença: troco não conferido, sangria não registrada...'
-                    : 'Anotações sobre o fechamento...'}
-                  value={obsFechamento}
-                  onChange={e => setObsFechamento(e.target.value)}
-                  rows={2}
-                />
-                {fechamentoNaoBate && obsFechamento.trim().length < 5 && (
-                  <p className="text-xs text-destructive">
-                    Descreva o motivo da diferença antes de fechar (mínimo 5 caracteres).
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={fecharCaixaMutation.isPending} onClick={() => setShowFechamento(false)}>Cancelar</Button>
-            <Button onClick={() => fecharCaixaMutation.mutate({ caixa: caixaParaFechar || undefined, valor: contadoFechamento })}
-              disabled={fecharCaixaMutation.isPending || (!!caixaParaFechar && caixaParaFechar.id === caixaHoje?.id && (loadingLanc || erroLancamentos || lancamentosExcederamLimite)) || (loadingLancamentosDetalhe || erroLancamentosDetalhe || lancamentosDetalheExcederamLimite) && !!caixaParaFechar && caixaParaFechar.id !== caixaHoje?.id || contadoFechamento === null || (fechamentoNaoBate && obsFechamento.trim().length < 5)}
-              variant="destructive" className="gap-2">
-              {fecharCaixaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Confirmar Fechamento
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Detalhes de Caixa Anterior */}
-      <Dialog open={!!showDetalhesCaixa} onOpenChange={(open) => { if (!open) { setShowDetalhesCaixa(null); setCaixaParaFechar(null); } }}>
+      <Dialog open={!!showDetalhesCaixa} onOpenChange={(open) => { if (!open) setShowDetalhesCaixa(null); }}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -2483,7 +2308,7 @@ export default function CaixaDiario() {
                     {showDetalhesCaixa.data < today && <p className="mt-1 text-xs text-muted-foreground">Este caixa ficou aberto após a virada do dia. Fechar aqui não libera pagamentos para dias anteriores.</p>}
                   </div>
                   <Button variant="destructive" className="gap-2" disabled={loadingLancamentosDetalhe || erroLancamentosDetalhe || lancamentosDetalheExcederamLimite}
-                    onClick={() => { setValorFechamento(''); setObsFechamento(''); setShowFechamento(true); }}>
+                    onClick={() => navigate(`/recepcao/caixa/${showDetalhesCaixa.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } })}>
                     <Lock className="h-4 w-4" /> {showDetalhesCaixa.data < today ? 'Regularizar fechamento' : 'Fechar caixa'}
                   </Button>
                 </div>

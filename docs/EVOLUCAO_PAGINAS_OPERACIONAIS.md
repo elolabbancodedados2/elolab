@@ -695,3 +695,14 @@ Validação: Playwright 3/3 cobriu abertura com payload preservado após falha e
 Limites: não houve leitura manual com leitor de tela, validação autenticada de RLS ou operação real; gravações foram interceptadas com dados sintéticos.
 
 Publicação: commit `4bfa55a284f0ab4467525a357e640edad39fb238`, imagem `easypanel/elolab/app:deploy-20261030-4bfa55a`. `/healthz` respondeu `ok`, `/version.json` confirmou o SHA integral e o Swarm reportou 1/1 réplica ativa. Fonte anterior preservada em `code.before-4bfa55a`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-6aef3d6`. Nenhuma migration ou alteração de dados de produção.
+
+
+## Financeiro — fechamento do caixa diário em página própria (30/10/2026)
+
+Diagnóstico: o fechamento ocupava um modal compartilhado entre o caixa de hoje e registros antigos, escondia o workspace e dependia de estado da tela anterior para identificar o período. Uma divergência exigia justificativa; movimentos incompletos bloqueavam o fechamento.
+
+Implementação: `/recepcao/caixa/:caixaId/fechar` carrega o registro pelo ID e pela clínica ativa, consulta novamente todos os movimentos do período e mantém o bloqueio para caixa já fechado, erro de leitura ou excesso de movimentos. A tela informa a contagem esperada, aceita valores brasileiros com vírgula e ponto, exige justificativa mínima de cinco caracteres quando há diferença, protege o rascunho e permite repetir após erro explícito. A regularização de caixa antigo preserva o alerta de que não libera pagamentos de dias anteriores. Os pontos de entrada do caixa atual, da lista de caixas antigos e dos detalhes históricos levam à mesma tela. A gravação continua na RPC `fechar_caixa_diario`; o estado local só é limpo para o caixa da data atual. Nenhuma regra, permissão, RPC, contrato, migration ou dado real foi alterado.
+
+Validação: Playwright passou 3/3 cenários de fechamento e 6/6 com a regressão de abertura, incluindo erro com rascunho preservado e nova tentativa idêntica, bloqueio por caixa já fechado, justificativa obrigatória quando há diferença, valor equilibrado sem justificativa e regularização antiga. Vitest passou 34 testes focados em navegação, caixa e permissões. TypeScript, `npm run check:a11y`, ESLint dos arquivos tocados e `git diff --check` passaram; ESLint sem erros e 24 avisos `no-explicit-any` já existentes em `CaixaDiario.tsx`. Inspecionei capturas reais do navegador em 390 px e 1440 px; a ação móvel fica acima da barra fixa, sem transbordamento horizontal, e o breadcrumb não expõe o ID do caixa. As gravações usaram mocks sintéticos.
+
+Limites: ainda não houve teste manual com leitor de tela, validação de RLS em sessão de produção ou operação real de fechamento. As operações do caixa/PDV, conciliação, repasses, faturamento e glosas seguem pendentes.
