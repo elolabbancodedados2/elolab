@@ -15,7 +15,6 @@ import { chamarPacienteNaFila } from '@/lib/filaChamada';
 import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
 import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { linkWhatsApp } from '@/lib/whatsapp';
-import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
 import { ChecklistRecepcao } from '@/components/recepcao/ChecklistRecepcao';
 import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
@@ -35,12 +34,16 @@ import {
   Timer, Phone, XCircle, Receipt, Eye, CalendarPlus, FileText,
   FlaskConical, RotateCcw, ClipboardCheck, ClipboardList, Lock as LockIcon, LockOpen, Activity,
   UserPlus, DoorOpen, MessageCircle, UserX, ArrowUpDown, Hourglass, Link2, Printer,
+  LayoutGrid, List, Mail, CalendarDays, MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -162,6 +165,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }, []);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
+  const [viewMode, setViewMode] = useState<'fluxo' | 'lista'>('fluxo');
+  const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
   const [medicoFiltro, setMedicoFiltro] = useState('todos');
   const [ordenacao, setOrdenacao] = useState<'horario' | 'espera'>('horario');
   const [marcandoFalta, setMarcandoFalta] = useState<{ agId: string; nome: string } | null>(null);
@@ -582,9 +587,90 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      aguardando: enriched.filter(e => e.step === 0).length,
      balcao: enriched.filter(e => e.step === 1).length,
      atendimento: enriched.filter(e => e.step === 2 || e.step === 3).length,
+     emConsulta: enriched.filter(e => e.ag.status === 'em_atendimento').length,
      concluido: enriched.filter(e => e.step === 4).length,
      faltou: enriched.filter(e => e.ag.status === 'faltou').length,
    }), [enriched]);
+
+   const selectedReceptionEntry = useMemo(
+     () => filtered.find(item => item.ag.id === selectedAgendamentoId) ?? filtered[0] ?? null,
+     [filtered, selectedAgendamentoId],
+   );
+
+   const workflowStages = [
+     { id: 'checkin', title: 'Check-in', subtitle: 'Pacientes chegando', count: stats.aguardando, icon: Clock, items: filtered.filter(item => item.step === 0) },
+     { id: 'balcao', title: 'Balcão', subtitle: 'Aguardando liberação', count: stats.balcao, icon: Banknote, items: filtered.filter(item => item.step === 1) },
+     { id: 'atendimento', title: 'Atendimento', subtitle: 'Na clínica', count: stats.atendimento, icon: Stethoscope, items: filtered.filter(item => item.step === 2 || item.step === 3) },
+     { id: 'concluido', title: 'Concluído', subtitle: 'Atendimentos finalizados', count: stats.concluido, icon: CheckCircle2, items: filtered.filter(item => item.step === 4) },
+   ];
+
+   const boardColumns = activeTab === 'todos'
+     ? workflowStages
+     : activeTab === 'faltou'
+       ? [{ id: 'faltou', title: 'Não compareceu', subtitle: 'Reagendamentos pendentes', count: stats.faltou, icon: XCircle, items: filtered }]
+       : workflowStages.filter(stage => stage.id === activeTab);
+
+   const boardActionFor = (item: any): { label: string; icon: any; run: () => void } | null => {
+     const saldo = item.lanc ? calcularSaldoPagamento(
+       Number(item.lanc.valor || 0),
+       Number(item.lanc.desconto || 0),
+       Number(item.lanc.acrescimo || 0),
+       Number(item.lanc.valor_pago || 0),
+     ) : 0;
+
+     if (item.ag.status === 'faltou' || item.step === 4) {
+       return { label: 'Reagendar', icon: CalendarPlus, run: () => navigate(`/agenda?reagendar=${item.ag.id}`) };
+     }
+     if (item.step === 0) {
+       return { label: 'Fazer check-in', icon: UserCheck, run: () => { void handleCheckin(item.ag.id); } };
+     }
+     if (item.step === 1) {
+       return item.lanc && saldo > 0
+         ? { label: 'Receber pagamento', icon: DollarSign, run: () => { void openPagamento(item.lanc, item.pac); } }
+         : { label: 'Chamar ao balcão', icon: Bell, run: () => { void handleChamarBalcao(item.lanc, item.pac); } };
+     }
+     if (item.step === 2 && item.fila) {
+       return item.ag.status === 'em_atendimento'
+         ? { label: 'Finalizar atendimento', icon: Check, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) }
+         : { label: 'Iniciar atendimento', icon: Play, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } };
+     }
+     if (item.step === 3) {
+       if (item.lanc && saldo > 0) {
+         return { label: 'Receber saldo', icon: DollarSign, run: () => { void openPagamento(item.lanc, item.pac); } };
+       }
+       if (item.fila) {
+         return { label: 'Concluir atendimento', icon: CheckCircle2, run: () => handleConcluir(item.ag.id, item.fila.id) };
+       }
+     }
+     return null;
+   };
+
+   const selectedPatientName = selectedReceptionEntry?.pac?.nome_social || selectedReceptionEntry?.pac?.nome || 'Paciente';
+   const selectedStageLabel = !selectedReceptionEntry
+     ? ''
+     : selectedReceptionEntry.ag.status === 'faltou'
+       ? 'Não compareceu'
+       : selectedReceptionEntry.step === 0
+         ? 'Aguardando check-in'
+         : selectedReceptionEntry.step === 1
+           ? 'No balcão'
+           : selectedReceptionEntry.step === 2
+             ? selectedReceptionEntry.ag.status === 'em_atendimento' ? 'Em consulta' : 'Aguardando chamada'
+             : selectedReceptionEntry.step === 3
+               ? 'Consulta finalizada'
+               : 'Atendido';
+   const selectedAllergies = Array.isArray(selectedReceptionEntry?.pac?.alergias)
+     ? selectedReceptionEntry.pac.alergias.filter(Boolean).join(', ')
+     : typeof selectedReceptionEntry?.pac?.alergias === 'string'
+       ? selectedReceptionEntry.pac.alergias
+       : '';
+   const selectedBalance = selectedReceptionEntry?.lanc ? calcularSaldoPagamento(
+     Number(selectedReceptionEntry.lanc.valor || 0),
+     Number(selectedReceptionEntry.lanc.desconto || 0),
+     Number(selectedReceptionEntry.lanc.acrescimo || 0),
+     Number(selectedReceptionEntry.lanc.valor_pago || 0),
+   ) : 0;
+   const selectedBoardAction = selectedReceptionEntry ? boardActionFor(selectedReceptionEntry) : null;
 
    // Próximo a chamar: quem já pagou e espera há mais tempo.
    const proximoAChamarId = useMemo(() => {
@@ -1376,42 +1462,56 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-4 pb-8">
       <PageHeader
-        title="Painel de Recepção"
-        description={`${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} · Fluxo completo do paciente`}
-        icon={<Users />}
+        title="Recepção"
+        description={`Acompanhe o fluxo de pacientes de hoje · ${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })}`}
         actions={(
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" className="gap-2 rounded-full" onClick={registrarPendencia}>
-              <ClipboardCheck aria-hidden="true" className="h-4 w-4" />Registrar pendência
+            <Button type="button" variant="outline" className="gap-2" onClick={() => navigate('/agenda')}>
+              <CalendarDays aria-hidden="true" data-icon="inline-start" />Ver agenda do dia
             </Button>
-            <Button type="button" variant="outline" className="gap-2 rounded-full" onClick={abrirPassagemDeTurno}>
-              <ClipboardList aria-hidden="true" className="h-4 w-4" />Passagem de turno
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="icon" aria-label="Mais ações da recepção"><MoreHorizontal aria-hidden="true" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={registrarPendencia}><ClipboardCheck aria-hidden="true" data-icon="inline-start" />Registrar pendência</DropdownMenuItem>
+                <DropdownMenuItem onSelect={abrirPassagemDeTurno}><ClipboardList aria-hidden="true" data-icon="inline-start" />Passagem de turno</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       />
 
-      {/* Stats */}
-      {/* As quatro caixas de contagem viraram o painel do dia: as mesmas
-          informações mais o dinheiro (recebido, a receber, adicional pendente),
-          e cada cartão filtra a lista abaixo. */}
-      {/* Antes do painel do dia: consulta de outro dia parada em "em
-          atendimento" nunca faturou, e ninguém a vê em tela nenhuma — a fila
-          só guarda quem aguarda ou já terminou. */}
-      <AtendimentosEmAberto onFinalizar={agendamentoId => abrirFinalizacao(agendamentoId, 'atendimentos-abertos')} />
+      <div role="group" aria-label="Resumo da recepção" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[
+          { label: 'Agendamentos hoje', value: enriched.length, icon: CalendarDays, tone: 'text-primary' },
+          { label: 'Atendidos', value: stats.concluido, icon: CheckCircle2, tone: 'text-success' },
+          { label: 'Em atendimento', value: stats.emConsulta, icon: Stethoscope, tone: 'text-info' },
+          { label: 'Aguardando check-in', value: stats.aguardando, icon: Clock, tone: stats.aguardando > 0 ? 'text-warning-foreground' : 'text-muted-foreground' },
+        ].map(metric => (
+          <Card key={metric.label} className="rounded-lg border-border/80 shadow-none">
+            <CardContent className="flex min-h-[4.75rem] items-center justify-between gap-3 p-3 sm:p-4">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-muted-foreground">{metric.label}</p>
+                <p className={cn('mt-1 text-2xl font-semibold tabular-nums leading-none', metric.tone)}>{metric.value}</p>
+              </div>
+              <metric.icon aria-hidden="true" className={cn('size-5 shrink-0', metric.tone)} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-      <PainelDoDia
-        atendimentos={enriched}
-        clinicaId={profile?.clinica_id}
-        hoje={today}
-        carregandoAtendimentos={loadingAg || filaRecepcaoQuery.isLoading}
-        erroAtendimentos={agendaHojeQuery.isError || filaRecepcaoQuery.isError}
-        erroFinanceiro={lancamentosErro}
-        abaAtiva={activeTab as any}
-        onFiltrar={setActiveTab}
-      />
+      <details className="group rounded-lg border border-border/70 bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium marker:hidden">
+          <span>Atendimentos em aberto de outros dias</span>
+          <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+        </summary>
+        <div className="border-t border-border/70 p-3">
+          <AtendimentosEmAberto onFinalizar={agendamentoId => abrirFinalizacao(agendamentoId, 'atendimentos-abertos')} />
+        </div>
+      </details>
 
       {/* Search + Tabs */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -1472,36 +1572,37 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
               <Hourglass className="h-3.5 w-3.5" /> Espera média {esperaMediaMin} min
             </span>
           )}
+          <div role="group" aria-label="Modo de visualização" className="flex h-10 items-center gap-1 rounded-full border border-border bg-card p-1">
+            <Button type="button" size="sm" variant={viewMode === 'fluxo' ? 'default' : 'ghost'} aria-pressed={viewMode === 'fluxo'} onClick={() => setViewMode('fluxo')} className="h-8 rounded-full px-3">
+              <LayoutGrid aria-hidden="true" data-icon="inline-start" />Fluxo
+            </Button>
+            <Button type="button" size="sm" variant={viewMode === 'lista' ? 'default' : 'ghost'} aria-pressed={viewMode === 'lista'} onClick={() => setViewMode('lista')} className="h-8 rounded-full px-3">
+              <List aria-hidden="true" data-icon="inline-start" />Lista
+            </Button>
+          </div>
         </div>
       </motion.div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        {/* A recepção trabalha em tablet. Cinco abas com ícone e contador não
-            cabem em 768px: os rótulos eram cortados e o conteúdo empurrava a
-            página para fora da área visível. O contêiner rola na horizontal e
-            cada aba para de encolher, então "Atendimento (12)" continua
-            legível em vez de virar "Atend...". */}
-        <div className="overflow-x-auto -mx-1 px-1 pb-1 lg:overflow-visible">
-          <TabsList className="w-max min-w-full justify-start bg-muted/50 p-1 gap-1 lg:w-full lg:flex-wrap">
-            <TabsTrigger value="todos" className="shrink-0">
-              Todos ({enriched.length})
-            </TabsTrigger>
-            <TabsTrigger value="checkin" className="shrink-0">
-              <Clock className="h-3.5 w-3.5 mr-1" /> Check-in ({stats.aguardando})
-            </TabsTrigger>
-            <TabsTrigger value="balcao" className="shrink-0">
-              <DollarSign className="h-3.5 w-3.5 mr-1" /> Balcão ({stats.balcao})
-            </TabsTrigger>
-            <TabsTrigger value="atendimento" className="shrink-0">
-              <Stethoscope className="h-3.5 w-3.5 mr-1" /> Atendimento ({stats.atendimento})
-            </TabsTrigger>
-            <TabsTrigger value="concluido" className="shrink-0">
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluído ({stats.concluido})
-            </TabsTrigger>
-            <TabsTrigger value="faltou" className="shrink-0">
-              <XCircle className="h-3.5 w-3.5 mr-1" /> Não compareceu ({stats.faltou})
-            </TabsTrigger>
-          </TabsList>
+      <section aria-label="Fluxo da recepção" className="space-y-3">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div role="group" aria-label="Filtrar por etapa do atendimento" className="flex min-w-0 overflow-x-auto rounded-lg border border-border/80 bg-card">
+            {workflowStages.map((stage, index) => (
+              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => setActiveTab(stage.id)} className={cn('relative h-auto min-h-[3.75rem] min-w-[190px] flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-2 text-left last:border-r-0', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-full border', activeTab === stage.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted text-muted-foreground')}>
+                    <stage.icon aria-hidden="true" className="size-4" />
+                  </span>
+                  <span className="min-w-0"><span className="block truncate text-xs font-semibold">{stage.title}</span><span className="block truncate text-[10px] text-muted-foreground">{stage.subtitle}</span></span>
+                </span>
+                <Badge variant={activeTab === stage.id ? 'default' : 'outline'} className="shrink-0 tabular-nums">{stage.count}</Badge>
+                {index < workflowStages.length - 1 && <ChevronRight aria-hidden="true" className="absolute -right-2 top-1/2 z-10 size-3 -translate-y-1/2 text-muted-foreground/50" />}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Button type="button" variant={activeTab === 'todos' ? 'secondary' : 'ghost'} size="sm" aria-pressed={activeTab === 'todos'} onClick={() => setActiveTab('todos')} className="h-8 gap-1.5 px-2 text-xs"><LayoutGrid aria-hidden="true" className="size-3.5" />Todas as etapas ({enriched.length})</Button>
+            <Button type="button" variant={activeTab === 'faltou' ? 'destructive' : 'ghost'} size="sm" aria-pressed={activeTab === 'faltou'} onClick={() => setActiveTab('faltou')} className="h-8 gap-1.5 px-2 text-xs"><XCircle aria-hidden="true" className="size-3.5" />Não compareceu ({stats.faltou})</Button>
+          </div>
         </div>
 
         <div className="mt-0">
@@ -1555,6 +1656,169 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                 />
               </CardContent>
             </Card>
+          ) : viewMode === 'fluxo' ? (
+            <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className={cn('grid min-w-0 gap-2.5', boardColumns.length === 4 ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1')}>
+                {boardColumns.map(stage => (
+                  <section key={stage.id} aria-label={`${stage.title}: ${stage.count} pacientes`} className="min-w-0 overflow-hidden rounded-lg border border-border/80 bg-muted/20">
+                    <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-card px-3 py-3">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <stage.icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
+                        <div className="min-w-0">
+                          <h2 className="truncate text-sm font-semibold text-foreground">{stage.title}</h2>
+                          <p className="truncate text-[10px] text-muted-foreground">{stage.subtitle}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 tabular-nums">{stage.count}</Badge>
+                    </div>
+                    <div className="flex min-h-28 flex-col gap-2 p-2">
+                      {stage.items.length === 0 ? (
+                        <p className="rounded-md border border-dashed border-border/80 bg-card/70 px-2 py-5 text-center text-xs text-muted-foreground">
+                          Nenhum paciente nesta etapa.
+                        </p>
+                      ) : stage.items.map(item => {
+                        const patientName = item.pac?.nome_social || item.pac?.nome || 'Paciente';
+                        const initials = patientName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'PA';
+                        const appointmentMinutes = minutosDaHora(item.ag.hora_inicio);
+                        const late = item.step === 0 && appointmentMinutes !== null && appointmentMinutes < minutosAgora;
+                        const selected = selectedReceptionEntry?.ag.id === item.ag.id;
+                        const action = boardActionFor(item);
+                        const statusText = item.ag.status === 'faltou'
+                          ? 'Não compareceu'
+                          : late
+                            ? `Atrasado ${minutosAgora - (appointmentMinutes ?? 0)} min`
+                            : item.step === 0
+                              ? item.fila ? 'Chegou agora' : 'No horário'
+                              : item.step === 1
+                                ? 'Aguardando balcão'
+                                : item.step === 2
+                                  ? item.ag.status === 'em_atendimento' ? 'Em consulta' : 'Aguardando chamada'
+                                  : item.step === 3
+                                    ? 'Consulta finalizada'
+                                    : 'Atendido';
+                        return (
+                          <Card key={item.ag.id} data-testid="reception-appointment-card" className={cn('rounded-md border-border/80 bg-card shadow-none transition-colors', selected && 'border-primary ring-1 ring-primary/30')}>
+                            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 p-2.5 pb-1">
+                              <CardTitle className="text-sm font-semibold tabular-nums text-foreground">{item.ag.hora_inicio?.slice(0, 5) || '—'}</CardTitle>
+                                <Badge variant={late || item.ag.status === 'faltou' ? 'destructive' : item.step === 4 ? 'secondary' : 'outline'} className="max-w-[62%] truncate px-1.5 text-[10px]">
+                                  {statusText}
+                                </Badge>
+                            </CardHeader>
+                            <CardContent className="space-y-2.5 p-2.5 pt-1">
+                              <button type="button" onClick={() => setSelectedAgendamentoId(item.ag.id)} aria-pressed={selected} aria-label={`Selecionar ${patientName}`} className="flex w-full min-w-0 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                                <Avatar className="size-9 shrink-0 border border-border/70">
+                                  <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{initials}</AvatarFallback>
+                                </Avatar>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-semibold text-foreground">{patientName}</span>
+                                  <span className="block truncate text-[10px] text-muted-foreground">{item.ag.tipo || 'Consulta'}{item.med?.nome ? ` · ${item.med.nome}` : ''}</span>
+                                </span>
+                                <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                              </button>
+                              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/70 pt-2 text-[10px] text-muted-foreground">
+                                {item.sala?.nome && <span className="inline-flex min-w-0 items-center gap-1"><DoorOpen aria-hidden="true" className="size-3 shrink-0" /><span className="truncate">{item.sala.nome}</span></span>}
+                                {item.fila?.horario_chegada && item.step < 3 && <EsperaIndicador desde={item.fila.horario_chegada} className="text-[10px] font-medium" />}
+                                {item.fila?.prioridade && item.fila.prioridade !== 'normal' && <Badge variant={item.fila.prioridade === 'urgente' ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[9px]">{item.fila.prioridade === 'urgente' ? 'Urgente' : 'Preferencial'}</Badge>}
+                                {item.pac?.alergias && (Array.isArray(item.pac.alergias) ? item.pac.alergias.length > 0 : Boolean(item.pac.alergias)) && <Badge variant="destructive" className="px-1.5 py-0 text-[9px]">Alergia</Badge>}
+                              </div>
+                            </CardContent>
+                            {action && <CardFooter className="p-2.5 pt-0"><Button type="button" size="sm" onClick={action.run} disabled={isProcessing} className="h-8 w-full justify-center gap-1.5 rounded-md px-2 text-[11px]">
+                                <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
+                            </Button></CardFooter>}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+
+              <aside aria-label="Paciente selecionado" className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm lg:sticky lg:top-20 lg:self-start">
+                {selectedReceptionEntry ? (
+                  <>
+                    <div className="space-y-3 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-muted-foreground">Paciente selecionado</p>
+                        <Badge variant={selectedReceptionEntry.ag.status === 'em_atendimento' ? 'default' : 'outline'} className="max-w-[55%] truncate text-[10px]">
+                          {selectedStageLabel}
+                        </Badge>
+                      </div>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar className="size-11 shrink-0 border border-border/70">
+                          <AvatarFallback className="bg-primary/10 font-semibold text-primary">{selectedPatientName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'PA'}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <h2 className="truncate text-sm font-semibold text-foreground">{selectedPatientName}</h2>
+                          {selectedReceptionEntry.pac?.data_nascimento && <p className="truncate text-[11px] text-muted-foreground">Nascimento {String(selectedReceptionEntry.pac.data_nascimento).slice(0, 10).split('-').reverse().join('/')}</p>}
+                        </div>
+                      </div>
+                      <div className="grid gap-1.5 text-[11px] text-muted-foreground">
+                        {selectedReceptionEntry.pac?.telefone && <a className="flex min-w-0 items-center gap-2 hover:text-primary" href={`tel:${selectedReceptionEntry.pac.telefone}`}><Phone aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{selectedReceptionEntry.pac.telefone}</span></a>}
+                        {selectedReceptionEntry.pac?.email && <a className="flex min-w-0 items-center gap-2 hover:text-primary" href={`mailto:${selectedReceptionEntry.pac.email}`}><Mail aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{selectedReceptionEntry.pac.email}</span></a>}
+                      </div>
+                    </div>
+                    <Separator />
+                    <Tabs defaultValue="resumo" className="p-3">
+                      <TabsList className="grid h-9 w-full grid-cols-4 rounded-md bg-muted/60 p-1">
+                        <TabsTrigger value="resumo" className="min-h-7 rounded-sm px-1 text-[10px]">Resumo</TabsTrigger>
+                        <TabsTrigger value="agenda" className="min-h-7 rounded-sm px-1 text-[10px]">Agenda</TabsTrigger>
+                        <TabsTrigger value="financeiro" className="min-h-7 rounded-sm px-1 text-[10px]">Financeiro</TabsTrigger>
+                        <TabsTrigger value="historico" className="min-h-7 rounded-sm px-1 text-[10px]">Histórico</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="resumo" className="mt-3 space-y-3">
+                        {selectedAllergies && <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-2.5 text-xs text-destructive"><AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" /><span><strong>Alergia:</strong> {selectedAllergies}</span></div>}
+                        <div className="rounded-md border border-border/80 bg-muted/20 p-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Observações do agendamento</p>
+                          <p className="mt-1 text-xs text-foreground">{selectedReceptionEntry.ag.observacoes || 'Nenhuma observação registrada.'}</p>
+                        </div>
+                        {selectedReceptionEntry.step >= 0 && selectedReceptionEntry.ag.status !== 'faltou' && <ChecklistRecepcao appointment={selectedReceptionEntry.ag} patient={selectedReceptionEntry.pac} clinicId={profile?.clinica_id ?? ''} today={today} onEditPatient={() => navigate(`/pacientes/${encodeURIComponent(selectedReceptionEntry.ag.paciente_id)}/editar`, { state: { returnTo: '/recepcao' } })} />}
+                      </TabsContent>
+                      <TabsContent value="agenda" className="mt-3 space-y-3 text-xs">
+                        <dl className="grid gap-2">
+                          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Horário</dt><dd className="font-medium tabular-nums">{selectedReceptionEntry.ag.hora_inicio?.slice(0, 5) || '—'}</dd></div>
+                          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Tipo</dt><dd className="text-right font-medium">{selectedReceptionEntry.ag.tipo || 'Consulta'}</dd></div>
+                          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Profissional</dt><dd className="truncate text-right font-medium">{selectedReceptionEntry.med?.nome || 'Não informado'}</dd></div>
+                          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Sala</dt><dd className="text-right font-medium">{selectedReceptionEntry.sala?.nome || 'Não definida'}</dd></div>
+                        </dl>
+                        <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={() => navigate('/agenda')}><CalendarDays aria-hidden="true" data-icon="inline-start" />Abrir agenda</Button>
+                      </TabsContent>
+                      <TabsContent value="financeiro" className="mt-3 space-y-3">
+                        {lancamentosErro ? <p role="alert" className="text-xs text-destructive">Não foi possível carregar os dados financeiros deste atendimento.</p> : selectedReceptionEntry.lanc ? (
+                          <>
+                            <dl className="grid gap-2 text-xs">
+                              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Cobrança</dt><dd className="font-medium">{selectedReceptionEntry.lanc.status || 'Pendente'}</dd></div>
+                              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Valor</dt><dd className="font-medium tabular-nums">{formatCurrency(Number(selectedReceptionEntry.lanc.valor || 0))}</dd></div>
+                              {Number(selectedReceptionEntry.lanc.valor_pago || 0) > 0 && <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Recebido</dt><dd className="font-medium tabular-nums">{formatCurrency(Number(selectedReceptionEntry.lanc.valor_pago || 0))}</dd></div>}
+                              <div className="flex justify-between gap-3 border-t border-border pt-2"><dt className="font-medium">Saldo</dt><dd className="font-semibold tabular-nums">{formatCurrency(selectedBalance)}</dd></div>
+                            </dl>
+                            {selectedBalance > 0 && <Button type="button" size="sm" className="w-full gap-2" onClick={() => void openPagamento(selectedReceptionEntry.lanc, selectedReceptionEntry.pac)} disabled={isProcessing}><DollarSign aria-hidden="true" data-icon="inline-start" />Receber pagamento</Button>}
+                          </>
+                        ) : <p className="text-xs text-muted-foreground">Não há cobrança vinculada a este agendamento.</p>}
+                      </TabsContent>
+                      <TabsContent value="historico" className="mt-3 space-y-3">
+                        <p className="text-xs text-muted-foreground">Abra o prontuário para consultar o histórico clínico completo deste paciente.</p>
+                        {selectedReceptionEntry.ag.paciente_id && <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={() => navigate(`/prontuarios?paciente=${selectedReceptionEntry.ag.paciente_id}`)}><FileText aria-hidden="true" data-icon="inline-start" />Abrir prontuário</Button>}
+                      </TabsContent>
+                    </Tabs>
+                    <Separator />
+                    <div className="space-y-2 p-3">
+                      <p className="text-xs font-semibold text-foreground">Ações</p>
+                      {selectedBoardAction && <Button type="button" className="w-full justify-center gap-2" onClick={selectedBoardAction.run} disabled={isProcessing}>
+                        <selectedBoardAction.icon aria-hidden="true" data-icon="inline-start" />{selectedBoardAction.label}
+                      </Button>}
+                      {podeRegistrarTriagem && [1, 2].includes(selectedReceptionEntry.step) && selectedReceptionEntry.ag.status !== 'em_atendimento' && triagensRegistradasQuery.isSuccess && !triagensRegistradasQuery.data?.includes(selectedReceptionEntry.ag.id) && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => void handleEncaminharTriagem(selectedReceptionEntry.ag.id, selectedReceptionEntry.ag.paciente_id)} disabled={isProcessing}><Activity aria-hidden="true" className="size-3.5" />Abrir triagem</Button>}
+                      <div className="grid grid-cols-2 gap-2">
+                        {selectedReceptionEntry.ag.paciente_id && <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/prontuarios?paciente=${selectedReceptionEntry.ag.paciente_id}`)}><FileText aria-hidden="true" className="size-3.5" />Prontuário</Button>}
+                        <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/agenda?reagendar=${selectedReceptionEntry.ag.id}`)}><CalendarPlus aria-hidden="true" className="size-3.5" />Reagendar</Button>
+                      </div>
+                      {podeGerenciarRecepcao && selectedReceptionEntry.ag.paciente_id && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => abrirPortalPaciente(selectedReceptionEntry.ag.paciente_id)}><Link2 aria-hidden="true" className="size-3.5" />Preparar pré-check-in</Button>}
+                      {selectedReceptionEntry.fila && selectedReceptionEntry.fila.status !== 'finalizado' && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => void imprimirSenha(selectedReceptionEntry.fila.id, selectedReceptionEntry.fila.horario_chegada)}><Printer aria-hidden="true" className="size-3.5" />Imprimir senha {receptionTicketCode(selectedReceptionEntry.fila.id)}</Button>}
+                      {podeGerenciarRecepcao && selectedReceptionEntry.fila && ['aguardando', 'chamado'].includes(selectedReceptionEntry.fila.status) && <Select value={selectedReceptionEntry.fila.prioridade || 'normal'} onValueChange={prioridade => void alterarPrioridade(selectedReceptionEntry.fila.id, prioridade)}><SelectTrigger aria-label="Prioridade da fila" className="h-9 text-xs" disabled={savingPriorityId === selectedReceptionEntry.fila.id}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Prioridade normal</SelectItem><SelectItem value="preferencial">Preferencial</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>}
+                    </div>
+                  </>
+                ) : <div className="p-5 text-sm text-muted-foreground">Selecione um paciente para ver os detalhes e as ações.</div>}
+              </aside>
+            </div>
           ) : (
             <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-1">
               <AnimatePresence mode="popLayout">
@@ -1972,7 +2236,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
             </motion.div>
           )}
         </div>
-      </Tabs>
+      </section>
       {/* Confirmation Dialog for Destructive Actions */}
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
         <AlertDialogContent>

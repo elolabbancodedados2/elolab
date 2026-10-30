@@ -297,7 +297,7 @@ export function useAgendamentos(date?: string, options?: { enabled?: boolean }) 
  */
 export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean; resumoPaciente?: boolean; resumoRecepcao?: boolean; suppressGlobalErrorToast?: boolean }) {
   const camposPaciente = options?.resumoRecepcao
-    ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, numero_carteira, validade_carteira, ativo'
+    ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, numero_carteira, validade_carteira, alergias, ativo'
     : options?.resumoPaciente
     ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, alergias, ativo'
     : '*';
