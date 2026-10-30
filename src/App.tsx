@@ -26,6 +26,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MinhaFilaTarefas = lazy(() => import("@/pages/MinhaFilaTarefas"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const AppointmentPage = lazy(() => import("@/pages/AppointmentPage"));
+const BloqueioAgendaPage = lazy(() => import("@/components/agenda/BloqueioAgenda").then(module => ({ default: module.BloqueioAgenda })));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const ConsentimentoLGPDTaskPage = lazy(() => import("@/pages/ConsentimentoLGPDTaskPage"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
@@ -287,6 +288,8 @@ function AppRoutes() {
                           <Route path="/indicadores" element={<IndicadoresProdutividade />} />
                           <Route path="/treinamento" element={<Treinamento />} />
                           <Route path="/agenda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Agenda /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/bloqueios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="manage-blocks" /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/bloqueios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="create-block" creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/:prontuarioId/adendos/novo" element={<SupabaseProtectedRoute allowedRoles={['medico']}><NovoAdendoProntuarioPage /></SupabaseProtectedRoute>} />

@@ -19,8 +19,6 @@ import { WeeklyView } from './views/WeeklyView';
 import { MonthlyView } from './views/MonthlyView';
 import { WaitingListSidebar } from './WaitingListSidebar';
 import { ColorSchemeDialog } from './ColorSchemeDialog';
-import { BloqueioAgenda } from './BloqueioAgenda';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -217,7 +215,6 @@ export function AgendaPage() {
   const [medicoFilter, setMedicoFilter] = useState<string[]>(() => location.state?.agendaFilters?.medicos || []);
   const [waitingOpen, setWaitingOpen] = useState(true);
   const [colorOpen, setColorOpen] = useState(false);
-  const [blockOpen, setBlockOpen] = useState(false);
   const [dialogState, setDialogState] = useState<{ open: boolean; initial: any | null }>({ open: false, initial: null });
   const openingAppointment = useRef(false);
   useEffect(() => {
@@ -801,6 +798,20 @@ export function AgendaPage() {
     setDialogState({ open: true, initial: { medico_id, data: activeDate, hora_inicio, status: 'agendado', tipo: 'consulta' } });
   };
 
+  const openBlockManagement = () => {
+    const query = new URLSearchParams(searchParams);
+    for (const key of ['agendamento', 'reagendar', 'espera', 'paciente']) query.delete(key);
+    query.set('data', activeDate);
+    query.set('view', activeView);
+    navigate('/agenda/bloqueios', {
+      state: {
+        agendaReturnTo: `/agenda?${query}`,
+        agendaFilters: { search, status: statusFilter, medicos: medicoFilter },
+        initial: { medico_id: medicoFilter.length === 1 ? medicoFilter[0] : undefined },
+      },
+    });
+  };
+
   if (isMedicoOnly && loadingCurrentMedico) return <AgendaSkeleton />;
   if (isMedicoOnly && currentMedicoError) {
     return <ErrorState title="Não foi possível identificar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
@@ -832,7 +843,7 @@ export function AgendaPage() {
           onStatusFilterChange={setStatusFilter}
           onMedicoFilterChange={setMedicoFilter}
           onNewAppointment={() => setDialogState({ open: true, initial: { data: activeDate } })}
-          onNewBlock={() => setBlockOpen(true)}
+          onNewBlock={openBlockManagement}
           onOpenColorScheme={() => setColorOpen(true)}
           onToggleWaiting={() => setWaitingOpen(o => !o)}
           waitingCount={waiting.length}
@@ -973,13 +984,6 @@ export function AgendaPage() {
         convenios={convenios}
         tipos={tipos}
       />
-
-      <Dialog open={blockOpen} onOpenChange={setBlockOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Bloqueios de agenda</DialogTitle></DialogHeader>
-          <BloqueioAgenda />
-        </DialogContent>
-      </Dialog>
 
     </div>
   );

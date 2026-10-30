@@ -21,6 +21,8 @@ const labelsByPath: Record<string, string> = {
   '/indicadores': 'Indicadores de produtividade',
   '/treinamento': 'Treinamento',
   '/agenda': 'Agenda',
+  '/agenda/bloqueios': 'Bloqueios da agenda',
+  '/agenda/bloqueios/novo': 'Novo bloqueio',
   '/agenda/nova': 'Nova consulta',
   '/prontuarios': 'Prontuários',
   '/prontuarios/atendimento': 'Atendimento clínico',
