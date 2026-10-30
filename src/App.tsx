@@ -139,6 +139,7 @@ const PlatformSeguranca = lazy(() => import("@/pages/PlatformSeguranca"));
 const PlatformConsumo = lazy(() => import("@/pages/PlatformConsumo"));
 const PlatformOnboarding = lazy(() => import("@/pages/PlatformOnboarding"));
 const OnboardingClinica = lazy(() => import("@/pages/OnboardingClinica"));
+const InitialProductTourPage = lazy(() => import("@/pages/InitialProductTourPage"));
 const PlatformDominios = lazy(() => import("@/pages/PlatformDominios"));
 const PlatformRelatoriosAgendados = lazy(() => import("@/pages/PlatformRelatoriosAgendados"));
 const TiposConsulta = lazy(() => import("@/pages/TiposConsulta"));
@@ -296,6 +297,7 @@ function AppRoutes() {
                           }
                         >
                           <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/tour-inicial" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao', 'enfermagem', 'financeiro']}><InitialProductTourPage /></SupabaseProtectedRoute>} />
                           <Route path="/boas-vindas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><BoasVindasClinica /></SupabaseProtectedRoute>} />
                           <Route path="/chat" element={<ChatInterno />} />
                           <Route path="/notificacoes" element={<CentralNotificacoes />} />

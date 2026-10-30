@@ -11,6 +11,7 @@ const labelsByPath: Record<string, string> = {
   '/politica-cookies': 'Política de cookies',
   '/termos-uso': 'Termos de uso',
   '/dashboard': 'Painel principal',
+  '/tour-inicial': 'Tour do EloLab',
   '/boas-vindas': 'Boas-vindas',
   '/chat': 'Chat interno',
   '/notificacoes': 'Central de notificações',

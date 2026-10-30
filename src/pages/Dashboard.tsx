@@ -6,7 +6,6 @@ import { formatAppointmentStatus, isAppointmentClosed, isAppointmentCompleted } 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { OnboardingWizard } from '@/components/OnboardingWizard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -842,7 +841,6 @@ function AdminDashboard() {
 
   return (
     <div className="space-y-6 pb-10">
-      <OnboardingWizard />
       <RoleWorkspace roles={user?.roles || []} />
       {fontesNoLimite.length > 0 && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
@@ -872,6 +870,9 @@ function AdminDashboard() {
                   </Button>
                   <Button asChild variant="outline" className="h-10 border-border bg-card/80 text-foreground hover:bg-card">
                     <Link to="/pacientes"><UserPlus className="h-4 w-4" />Cadastrar paciente</Link>
+                  </Button>
+                  <Button asChild variant="ghost" className="h-10 gap-2 text-primary hover:bg-primary/5">
+                    <Link to="/tour-inicial"><Sparkles className="h-4 w-4" />Conhecer o EloLab</Link>
                   </Button>
                 </div>
               </div>

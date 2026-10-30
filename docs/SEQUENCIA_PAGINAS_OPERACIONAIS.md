@@ -11,6 +11,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 - Encaminhamentos: criação, consulta e contra-referência.
 - Exames: solicitação, consulta e resultado.
 - Agente IA: criação de sessão de WhatsApp em página própria.
+- Tour de primeiros passos: acesso opcional em página própria; o diálogo automático foi removido.
 
 ## Ordem de execução e verificação
 

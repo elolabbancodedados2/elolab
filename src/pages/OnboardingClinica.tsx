@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, CalendarCheck, Check, Clock3, LayoutDashboard, MessageCircle,
-  PartyPopper, RefreshCw, Rocket, Stethoscope, UsersRound,
+  PartyPopper, RefreshCw, Rocket, Sparkles, Stethoscope, UsersRound,
 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -110,6 +110,9 @@ export default function OnboardingClinica() {
         actions={<>
           <Button asChild variant="outline" className="rounded-full gap-2">
             <Link to="/dashboard"><LayoutDashboard className="h-4 w-4" />Ir ao dashboard</Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-full gap-2">
+            <Link to="/tour-inicial"><Sparkles className="h-4 w-4" />Conhecer o EloLab</Link>
           </Button>
           <Button variant="outline" className="rounded-full gap-2" onClick={() => query.refetch()} disabled={query.isFetching}>
             <RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
