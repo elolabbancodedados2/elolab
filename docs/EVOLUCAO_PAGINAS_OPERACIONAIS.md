@@ -683,3 +683,15 @@ Validação: suíte Playwright de contas a receber passou 10/10, incluindo rota 
 Limites: validação com resposta sintética, sem leitor de tela manual, teste autenticado de RLS ou operação real no caixa.
 
 Publicação: commit `6aef3d64f0264e67429c45e0ecad81f42927b345`, imagem `easypanel/elolab/app:deploy-20261030-6aef3d6`. `/healthz` respondeu `ok`, `/version.json` confirmou o SHA integral e o Swarm reportou a nova réplica como ativa. Fonte anterior preservada em `code.before-6aef3d6`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-6280cc33`. Nenhuma migration ou alteração de dados de produção.
+
+## Caixa diário — abertura em página própria (30/10/2026)
+
+Diagnóstico: a abertura do caixa, embora curta, era feita em diálogo sobre o workspace e não protegia o valor contado contra descarte acidental. Três pontos de entrada diferentes abriam o mesmo modal.
+
+Implementação: `/recepcao/caixa/abrir` centraliza os três pontos de entrada em uma página protegida para admin, recepção e financeiro. Mostra a data de abertura, orienta a contagem do numerário, aceita zero e valida valores até centavos. Mantém o alerta de caixas de dias anteriores; se o caixa da data atual já existir aberto ou encerrado, impede nova tentativa e direciona à tela diária. A gravação continua na RPC `abrir_caixa_diario`; preserva a sincronização local para a recepção, invalida as mesmas consultas e retorna à aba de caixa. O formulário protege alterações não salvas e conserva o valor após erro explícito. Nenhuma regra, permissão, RPC, contrato, migration ou dado real foi alterado.
+
+Validação: Playwright 3/3 cobriu abertura com payload preservado após falha e repetição, prevenção de duplicidade quando o caixa do dia está encerrado e aviso de caixa antigo aberto. A suíte existente de caixa e recepção passou 14/14; TypeScript, `npm run check:a11y`, build com SHA conhecido e `git diff --check` passaram. ESLint: zero erros e 25 avisos preexistentes de `any` em `CaixaDiario.tsx`; a página nova não adicionou avisos. Capturas renderizadas mobile (390 px) e desktop (1440 px) foram inspecionadas; sem modal ou transbordamento horizontal, e a ação móvel fica acima da navegação fixa. Nenhuma abertura real foi executada.
+
+Limites: não houve leitura manual com leitor de tela, validação autenticada de RLS ou operação real; gravações foram interceptadas com dados sintéticos.
+
+Publicação: commit `4bfa55a284f0ab4467525a357e640edad39fb238`, imagem `easypanel/elolab/app:deploy-20261030-4bfa55a`. `/healthz` respondeu `ok`, `/version.json` confirmou o SHA integral e o Swarm reportou 1/1 réplica ativa. Fonte anterior preservada em `code.before-4bfa55a`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-6aef3d6`. Nenhuma migration ou alteração de dados de produção.
