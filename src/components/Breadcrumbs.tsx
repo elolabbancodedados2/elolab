@@ -27,7 +27,7 @@ export function Breadcrumbs() {
         if (!isLast && /^\/prontuarios\/[^/]+\/anexos$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/adendos$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/retornos$/.test(path)) return null;
-        if (!isLast && /^\/contas\/receber\/[^/]+$/.test(path) && /^\/contas\/receber\/[^/]+\/recebimento$/.test(location.pathname)) return null;
+        if (!isLast && /^\/contas\/receber\/[^/]+$/.test(path) && /^\/contas\/receber\/[^/]+\/(?:recebimento|estorno)$/.test(location.pathname)) return null;
         if (!isLast && location.pathname.includes('/consentimentos/') && /^\/pacientes\/[^/]+(?:\/consentimentos(?:\/[^/]+)?)?$/.test(path)) return null;
         // These record segments have edit/work pages, but no standalone detail route.
         if (!isLast && /^\/(?:exames\/laboratorios|gestao-fluxo\/salas|precos-servicos\/tipos|precos-servicos\/exames\/convenios|equipe\/funcionarios|usuarios|estoque|tarefas|retornos|convenios|convenios\/[^/]+\/exames)\/[^/]+$/.test(path)) return null;

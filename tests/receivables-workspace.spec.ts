@@ -191,6 +191,70 @@ test('receivable payment protects a modified draft when returning to the list', 
   await expect(page).toHaveURL('/contas?tab=receber&status=atrasado');
 });
 
+test('payment reversal opens its own page and keeps the audited reason after a server rejection', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  const payloads: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/rpc/estornar_pagamento', async route => {
+    payloads.push(route.request().postDataJSON());
+    if (payloads.length === 1) return route.fulfill({ status: 400, json: { code: 'P0001', message: 'Falha sintética ao estornar' } });
+    return route.fulfill({ status: 200, json: { success: true } });
+  });
+  await page.goto('/contas?tab=receber&status=atrasado');
+  const conta = page.getByRole('row').filter({ hasText: 'Procedimento ambulatorial' });
+  await conta.getByRole('button', { name: /Mais ações da conta/ }).click();
+  await page.getByRole('menuitem', { name: 'Estornar pagamento' }).click();
+
+  await expect(page).toHaveURL('/contas/receber/00000000-0000-4000-9000-000000000041/estorno');
+  await expect(page.getByRole('heading', { name: 'Estornar pagamento' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).not.toContainText('00000000-0000-4000-9000-000000000041');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const action = page.getByRole('button', { name: 'Confirmar estorno' });
+  await action.scrollIntoViewIfNeeded();
+  const actionBox = await action.boundingBox();
+  const mobileNavigationBox = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(actionBox).not.toBeNull();
+  expect(mobileNavigationBox).not.toBeNull();
+  expect(actionBox!.y + actionBox!.height).toBeLessThan(mobileNavigationBox!.y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('payment-reversal-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('#main-content').evaluate(element => element.scrollTo(0, 0));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('payment-reversal-desktop.png'), fullPage: true, animations: 'disabled' });
+  await action.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('payment-reversal-desktop-actions.png'), animations: 'disabled' });
+  await expect(page.getByRole('combobox', { name: 'Pagamento a estornar' })).toContainText('300');
+  await page.getByLabel('Motivo do estorno').fill('Pagamento lançado em duplicidade');
+  await page.getByRole('button', { name: 'Confirmar estorno' }).click();
+  await expect(page.getByText('Falha sintética ao estornar')).toBeVisible();
+  await expect(page.getByLabel('Motivo do estorno')).toHaveValue('Pagamento lançado em duplicidade');
+
+  await page.getByRole('button', { name: 'Confirmar estorno' }).click();
+  await expect(page).toHaveURL('/contas?tab=receber&status=atrasado');
+  expect(payloads).toHaveLength(2);
+  expect(payloads[0]).toMatchObject({
+    p_pagamento_id: '00000000-0000-4000-9000-000000000051',
+    p_motivo: 'Pagamento lançado em duplicidade',
+  });
+  expect(payloads[1]).toMatchObject(payloads[0]);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('payment reversal explains when the account has no active payment', async ({ page }) => {
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  await page.route('http://127.0.0.1:54321/rest/v1/pagamentos**', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'content-range': '*/0' }, body: '[]' });
+  });
+
+  await page.goto('/contas/receber/00000000-0000-4000-9000-000000000041/estorno');
+  await expect(page.getByRole('heading', { name: 'Nenhum pagamento ativo para estornar' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirmar estorno' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Voltar às contas a receber' })).toBeVisible();
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
 test('new receivable opens as a page, survives reload, and restores list context', async ({ page }, info) => {
   const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   await page.setViewportSize({ width: 390, height: 844 });

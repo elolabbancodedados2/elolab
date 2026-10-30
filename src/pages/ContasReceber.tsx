@@ -189,13 +189,6 @@ export default function ContasReceber() {
   const selectedMonth = parseFinanceMonth(searchParams.get('mes'));
   const filterPeriodo = selectedMonth ? 'mes_selecionado' : searchParams.get('periodo') || 'mes_atual';
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isEstornoOpen, setIsEstornoOpen] = useState(false);
-  const [carregandoPagamentosEstorno, setCarregandoPagamentosEstorno] = useState(false);
-  const [isEstornando, setIsEstornando] = useState(false);
-  const [contaEstorno, setContaEstorno] = useState<any>(null);
-  const [pagamentosEstornaveis, setPagamentosEstornaveis] = useState<PagamentoEstornavel[]>([]);
-  const [pagamentoEstornoId, setPagamentoEstornoId] = useState('');
-  const [motivoEstorno, setMotivoEstorno] = useState('');
   const [contaParaCancelar, setContaParaCancelar] = useState<any>(null);
   const [isCancelandoConta, setIsCancelandoConta] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
@@ -213,7 +206,6 @@ export default function ContasReceber() {
   const [baixaIncerta, setBaixaIncerta] = useState(false);
   const [pointBlocksManual, setPointBlocksManual] = useState(false);
   const submissionLock = useRef(false);
-  const estornoSubmissionLock = useRef(false);
   const cancelamentoSubmissionLock = useRef(false);
   const [chavesBaixa, setChavesBaixa] = useState<Record<string, string>>({});
   const navigationAllowedRef = useRef(false);
@@ -701,82 +693,13 @@ export default function ContasReceber() {
     }
   };
 
-  const handleEstornar = async (conta: any) => {
-    try {
-      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
-      setCarregandoPagamentosEstorno(true);
-      const data = await buscarEmBlocos<PagamentoEstornavel>(
-        () => supabase.from('pagamentos')
-          .select('id, valor, forma_pagamento, data_pagamento, observacoes')
-          .eq('lancamento_id', conta.id)
-          .eq('clinica_id', profile.clinica_id)
-          .is('estornado_em', null)
-          .order('data_pagamento', { ascending: false })
-          .order('id', { ascending: true }),
-        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
-      );
-      if (data.length > LIMITE_BUSCA_EM_BLOCOS) {
-        throw new Error(`Esta conta ultrapassa ${LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} pagamentos ativos. Consulte o financeiro antes de estornar.`);
-      }
-      if (!data.length) {
-        throw new Error('Esta conta não tem um pagamento individual registrado para estornar. Registros antigos precisam ser conferidos pelo financeiro antes de qualquer ajuste.');
-      }
-      setContaEstorno(conta);
-      setPagamentosEstornaveis(data);
-      setPagamentoEstornoId(data[0].id);
-      setMotivoEstorno('');
-      setIsEstornoOpen(true);
-    } catch (e: any) {
-      toast.error('Não foi possível preparar o estorno.', { description: mensagemDeErro(e) });
-    } finally {
-      setCarregandoPagamentosEstorno(false);
-    }
-  };
-
-  const handleConfirmarEstorno = async () => {
-    if (estornoSubmissionLock.current) return;
-    if (!pagamentoEstornoId) {
-      toast.error('Selecione o pagamento que será estornado.');
-      return;
-    }
-    if (motivoEstorno.trim().length < 5) {
-      toast.error('Informe o motivo do estorno (mínimo 5 caracteres).');
-      return;
-    }
-
-    estornoSubmissionLock.current = true;
-    setIsEstornando(true);
-    try {
-      const { data, error } = await supabase.rpc('estornar_pagamento', {
-        p_pagamento_id: pagamentoEstornoId,
-        p_motivo: motivoEstorno.trim(),
-      });
-      if (error) throw error;
-      const resultado = data as any;
-      if (!resultado?.success) throw new Error(resultado?.error || 'O pagamento não foi estornado.');
-
-      const pagamento = pagamentosEstornaveis.find(item => item.id === pagamentoEstornoId);
-      toast.success('Estorno registrado.', {
-        description: `${pagamento ? fmt(Number(pagamento.valor)) : 'Pagamento'} estornado. A conta foi recalculada.`,
-      });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
-      setIsEstornoOpen(false);
-      setContaEstorno(null);
-      setPagamentosEstornaveis([]);
-      setPagamentoEstornoId('');
-      setMotivoEstorno('');
-    } catch (e: any) {
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
-      toast.error('Não foi possível estornar o pagamento.', { description: mensagemDeErro(e) });
-    } finally {
-      estornoSubmissionLock.current = false;
-      setIsEstornando(false);
-    }
-  };
+  const handleEstornar = (conta: any) => navigate(`/contas/receber/${encodeURIComponent(conta.id)}/estorno`, {
+    state: {
+      returnTo: `${location.pathname}${location.search}`,
+      restoreSearchTerm: searchTerm,
+      restoreFilterCategoria: filterCategoria,
+    },
+  });
 
   const handleCancelar = (conta: any) => setContaParaCancelar(conta);
 
@@ -1237,9 +1160,9 @@ export default function ContasReceber() {
                                   <Eye className="h-4 w-4" /> Ver Detalhes
                                 </DropdownMenuItem>
                                 {['pago', 'parcial'].includes(conta.status) && (
-                                  <DropdownMenuItem disabled={carregandoPagamentosEstorno} onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
-                                    {carregandoPagamentosEstorno ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}
-                                    {carregandoPagamentosEstorno ? 'Carregando pagamentos…' : 'Estornar pagamento'}
+                                  <DropdownMenuItem onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
+                                    <Repeat className="h-4 w-4" />
+                                    Estornar pagamento
                                   </DropdownMenuItem>
                                 )}
                                 {(conta.status === 'pendente' || conta.status === 'atrasado') && (
@@ -1529,60 +1452,6 @@ export default function ContasReceber() {
           />
         </main>
       )}
-
-      {/* Estorno individual com motivo auditável no banco */}
-      <Dialog
-        open={isEstornoOpen}
-        onOpenChange={(open) => { if (!open && !isEstornando) setIsEstornoOpen(false); }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Estornar pagamento</DialogTitle>
-            <DialogDescription>
-              O estorno preserva o histórico, registra o motivo e recalcula o saldo da conta.
-              {contaEstorno ? ` Conta: ${contaEstorno.descricao}.` : ''}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Pagamento</Label>
-              <Select value={pagamentoEstornoId} onValueChange={setPagamentoEstornoId} disabled={isEstornando}>
-                <SelectTrigger aria-label="Pagamento a estornar"><SelectValue placeholder="Selecione o pagamento" /></SelectTrigger>
-                <SelectContent>
-                  {pagamentosEstornaveis.map(pagamento => {
-                    const forma = FORMAS_PAGAMENTO.find(item =>
-                      item.value === pagamento.forma_pagamento || formaPagamentoRPC[item.value] === pagamento.forma_pagamento
-                    )?.label || pagamento.forma_pagamento;
-                    return (
-                      <SelectItem key={pagamento.id} value={pagamento.id}>
-                        {fmt(Number(pagamento.valor))} · {forma} · {format(new Date(pagamento.data_pagamento), 'dd/MM/yyyy HH:mm')}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="motivo-estorno">Motivo do estorno *</Label>
-              <Textarea
-                id="motivo-estorno"
-                value={motivoEstorno}
-                onChange={event => setMotivoEstorno(event.target.value)}
-                placeholder="Ex.: pagamento duplicado, forma de pagamento incorreta..."
-                rows={3}
-                disabled={isEstornando}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEstornoOpen(false)} disabled={isEstornando}>Voltar</Button>
-            <Button onClick={handleConfirmarEstorno} disabled={isEstornando || motivoEstorno.trim().length < 5} className="gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {isEstornando && <Loader2 className="h-4 w-4 animate-spin" />}
-              Confirmar estorno
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={!!contaParaCancelar}

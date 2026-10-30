@@ -544,12 +544,16 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
 
     if (method === 'GET' && pathname === '/rest/v1/lancamentos' && options.accountsPopulated) {
       const tipo = requestUrl.searchParams.get('tipo')?.replace(/^eq\./, '');
-      await json(route, syntheticAccountRows.filter((row) => !tipo || row.tipo === tipo));
+      const id = requestUrl.searchParams.get('id')?.replace(/^eq\./, '');
+      await json(route, syntheticAccountRows.filter((row) => (!tipo || row.tipo === tipo) && (!id || row.id === id)));
       return;
     }
 
     if (method === 'GET' && pathname === '/rest/v1/pagamentos' && options.accountsPopulated) {
-      await json(route, syntheticPayments);
+      const lancamentoId = requestUrl.searchParams.get('lancamento_id')?.replace(/^eq\./, '');
+      const clinicaId = requestUrl.searchParams.get('clinica_id')?.replace(/^eq\./, '');
+      await json(route, syntheticPayments.filter((payment) =>
+        (!lancamentoId || payment.lancamento_id === lancamentoId) && (!clinicaId || payment.clinica_id === clinicaId)));
       return;
     }
 
