@@ -14,6 +14,13 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Novo lote TISS')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Faturamento de convênios' })).toHaveAttribute('href', '/faturamento-convenios');
   });
+  it('hides the lot identifier on its return page', () => {
+    const lotId = '00000000-0000-4000-9000-000000000221';
+    render(<MemoryRouter initialEntries={[`/faturamento-convenios/lotes/${lotId}/retorno`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Registrar retorno do lote')).toBeInTheDocument();
+    expect(screen.queryByText(lotId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(lotId))).toBe(false);
+  });
   it.each([
     '/exames/laboratorios/record-qa/editar',
     '/gestao-fluxo/salas/record-qa/editar',

@@ -18,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
-import { isValidDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { FieldHelp } from '@/components/ContextualHelp';
 import { Link, useLocation } from 'react-router-dom';
@@ -74,16 +74,10 @@ export default function FaturamentoConvenios() {
   const [glosaOpen, setGlosaOpen] = useState(false);
   const [glosaParaRecurso, setGlosaParaRecurso] = useState<any | null>(null);
   const [glosaParaRetorno, setGlosaParaRetorno] = useState<any | null>(null);
-  const [loteParaRetorno, setLoteParaRetorno] = useState<any | null>(null);
   const [decisaoOperadora, setDecisaoOperadora] = useState<'aceita' | 'mantida'>('aceita');
   const [valorRecuperado, setValorRecuperado] = useState('');
-  const [valorPagoLote, setValorPagoLote] = useState('');
   const [loteParaConfirmarEnvio, setLoteParaConfirmarEnvio] = useState<any | null>(null);
-  const [dataPagamentoLote, setDataPagamentoLote] = useState(() => todaySaoPauloDateOnly());
-  const [registrarFinanceiro, setRegistrarFinanceiro] = useState(false);
-  const [motivoAjusteLote, setMotivoAjusteLote] = useState('');
   const [saving, setSaving] = useState(false);
-  const [savingRetornoLote, setSavingRetornoLote] = useState(false);
   const [loteEnviandoId, setLoteEnviandoId] = useState<string | null>(null);
   const [glosaAtualizandoId, setGlosaAtualizandoId] = useState<string | null>(null);
   const glosaAtualizacaoLock = useRef(false);
@@ -258,80 +252,6 @@ export default function FaturamentoConvenios() {
     finally { setLoteEnviandoId(null); }
   }
 
-  function abrirRetornoLote(lote: any) {
-    setLoteParaRetorno(lote);
-    setValorPagoLote(String(lote.valor_pago || 0));
-    setDataPagamentoLote(todaySaoPauloDateOnly());
-    setRegistrarFinanceiro(false);
-    setMotivoAjusteLote('');
-  }
-
-  async function salvarRetornoLote() {
-    if (!loteParaRetorno) return;
-    const valor = Number(valorPagoLote);
-    if (!Number.isFinite(valor) || valor < 0 || valor > Number(loteParaRetorno.valor_apresentado)) {
-      toast.error('Informe o total recebido entre zero e o valor apresentado no lote.');
-      return;
-    }
-    if (!temNoMaximoDuasCasas(valor)) {
-      toast.error('O total recebido deve ter no máximo duas casas decimais.');
-      return;
-    }
-    if (!isValidDateOnly(dataPagamentoLote) || dataPagamentoLote > todaySaoPauloDateOnly()) {
-      toast.error('Informe uma data de recebimento válida, igual ou anterior a hoje.');
-      return;
-    }
-    if (valor < Number(loteParaRetorno.valor_pago || 0) && motivoAjusteLote.trim().length < 5) {
-      toast.error('Explique a correção do valor recebido (mínimo 5 caracteres).');
-      return;
-    }
-    if (registrarFinanceiro
-      && valor < Number(loteParaRetorno.valor_conciliado_financeiro || 0)
-      && motivoAjusteLote.trim().length < 5) {
-      toast.error('Explique a redução do total já conciliado no financeiro (mínimo 5 caracteres).');
-      return;
-    }
-    setSavingRetornoLote(true);
-    try {
-      const { data, error } = await (supabase as any).rpc('registrar_retorno_lote_tiss', {
-        p_lote_id: loteParaRetorno.id,
-        p_valor_pago: Number(valor.toFixed(2)),
-        p_motivo_ajuste: motivoAjusteLote.trim() || null,
-        p_data_pagamento: dataPagamentoLote,
-        p_registrar_financeiro: registrarFinanceiro,
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error('O retorno não foi confirmado pelo banco.');
-      await queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] });
-      setLoteParaRetorno(null);
-      setValorPagoLote('');
-      setMotivoAjusteLote('');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
-        queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
-        queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }),
-      ]);
-      if (data.repetido) {
-        toast.info('Este total já estava registrado no lote. Nenhum lançamento duplicado foi criado.');
-      } else if (Number(data.variacao_financeira || 0) < 0) {
-        toast.success('Correção registrada no histórico e no fluxo financeiro.');
-      } else if (registrarFinanceiro && Number(data.variacao_financeira || 0) > 0) {
-        toast.success(data.status === 'pago'
-          ? 'Lote registrado como pago e receita incluída no fluxo financeiro.'
-          : 'Pagamento parcial registrado e incluído no fluxo financeiro.');
-      } else if (registrarFinanceiro) {
-        toast.success('Retorno atualizado; o valor recebido já estava conciliado no financeiro.');
-      } else {
-        toast.success('Retorno atualizado no lote. Nenhum lançamento financeiro foi criado.');
-      }
-    } catch (error: any) {
-      toast.error('Não foi possível registrar o retorno do lote.', { description: error?.message });
-    } finally {
-      setSavingRetornoLote(false);
-    }
-  }
-
   async function updateGlosa(id: string, status: 'recurso_preparacao' | 'recurso_enviado' | 'aceita' | 'mantida', extra: Record<string, unknown> = {}) {
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return false; }
     if (glosaAtualizacaoLock.current) return false;
@@ -472,7 +392,7 @@ export default function FaturamentoConvenios() {
                 <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" onClick={() => setLoteGuias(l)} aria-label={`Conferir guias do lote ${l.numero_lote}`}>Guias ({guiasPorLote.get(l.id)?.length ?? 0})</Button>
                 <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo operacional XML (não é arquivo TISS de transmissão)"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
                 {l.status === 'rascunho' && <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={loteEnviandoId !== null || envioBloqueado(l.id)} title={envioBloqueado(l.id) ? 'Corrija as pendências das guias antes de registrar o envio' : undefined} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
-                {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" onClick={() => abrirRetornoLote(l)}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Button>}
+                {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button asChild size="sm" variant="outline" className="h-9 rounded-full text-xs"><Link to={`/faturamento-convenios/lotes/${l.id}/retorno`} state={{ filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } }}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Link></Button>}
               </div></TableCell>
             </TableRow>)}</TableBody>
           </Table></div></div>}
@@ -532,27 +452,6 @@ export default function FaturamentoConvenios() {
       </AlertDialogContent>
     </AlertDialog>
 
-    <Dialog open={!!loteParaRetorno} onOpenChange={open => { if (!open && !savingRetornoLote) setLoteParaRetorno(null); }}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">Lote {loteParaRetorno?.numero_lote} · apresentado {brl(Number(loteParaRetorno?.valor_apresentado || 0))}</p>
-        <Field label="Valor total recebido até agora"><Input disabled={savingRetornoLote} type="number" min="0" max={loteParaRetorno?.valor_apresentado || 0} step="0.01" value={valorPagoLote} onChange={event => setValorPagoLote(event.target.value)} /></Field>
-        <Field label="Data do retorno ou recebimento"><Input disabled={savingRetornoLote} type="date" max={todaySaoPauloDateOnly()} value={dataPagamentoLote} onChange={event => setDataPagamentoLote(event.target.value)} /></Field>
-        <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
-          <input type="checkbox" checked={registrarFinanceiro} onChange={event => setRegistrarFinanceiro(event.target.checked)} className="mt-0.5" disabled={savingRetornoLote} />
-          <span>Conciliar a diferença no Fluxo de Caixa. Marque somente depois de conferir que esse valor ainda não foi lançado manualmente.</span>
-        </label>
-        {registrarFinanceiro && <p className="text-xs text-muted-foreground">Já conciliado: {brl(Number(loteParaRetorno?.valor_conciliado_financeiro || 0))}. O sistema lançará apenas a diferença até o total recebido.</p>}
-        {(Number(valorPagoLote) < Number(loteParaRetorno?.valor_pago || 0)
-          || (registrarFinanceiro && Number(valorPagoLote) < Number(loteParaRetorno?.valor_conciliado_financeiro || 0)))
-          && <Field label="Motivo da correção"><Textarea rows={3} disabled={savingRetornoLote} value={motivoAjusteLote} onChange={event => setMotivoAjusteLote(event.target.value)} placeholder="Explique por que o total será reduzido…" /></Field>}
-        <p className="text-xs text-muted-foreground">Informe o total acumulado, não apenas a parcela deste retorno. Para reduzir um valor já registrado, explique o ajuste. Se o total recebido for menor que o apresentado, o lote ficará como pago parcial.</p>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setLoteParaRetorno(null)} disabled={savingRetornoLote}>Cancelar</Button>
-          <Button onClick={salvarRetornoLote} disabled={savingRetornoLote || !valorPagoLote.trim() || (Number(valorPagoLote) === Number(loteParaRetorno?.valor_pago || 0) && !!loteParaRetorno?.retorno_em && (!registrarFinanceiro || Number(valorPagoLote) === Number(loteParaRetorno?.valor_conciliado_financeiro || 0))) || (Number(valorPagoLote) < Number(loteParaRetorno?.valor_pago || 0) && motivoAjusteLote.trim().length < 5) || (registrarFinanceiro && Number(valorPagoLote) < Number(loteParaRetorno?.valor_conciliado_financeiro || 0) && motivoAjusteLote.trim().length < 5)}>{savingRetornoLote && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Salvar retorno</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
     <Dialog open={glosaOpen} onOpenChange={open => { if (!saving) setGlosaOpen(open); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>Registrar glosa</DialogTitle></DialogHeader>

@@ -24,6 +24,7 @@ export function Breadcrumbs() {
         if (!isLast && /^\/todos-templates\/(?:prescricoes|atestados|email)(?:\/[^/]+)?$/.test(path)) return null;
         if (!isLast && /^\/atendimentos\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/repasses-medicos\/[^/]+$/.test(path) && /^\/repasses-medicos\/[^/]+\/pagamento$/.test(location.pathname)) return null;
+        if (!isLast && /^\/faturamento-convenios\/lotes\/[^/]+$/.test(path) && /^\/faturamento-convenios\/lotes\/[^/]+\/retorno$/.test(location.pathname)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/anexos$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/adendos$/.test(path)) return null;
