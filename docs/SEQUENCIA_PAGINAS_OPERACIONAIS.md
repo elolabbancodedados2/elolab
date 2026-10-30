@@ -47,4 +47,6 @@ Atualização de 30/10/2026: venda/PDV (`28e426e`) agora também tem workspace p
 Atualizacao de 30/10/2026: pagamento de repasse agora ocorre em pagina propria (`e71673f`), com verificacao da receita, RPC transacional e recuperacao idempotente. Permanecem conciliacao bancaria OFX e faturamento/glosas na etapa 11, alem das auditorias das etapas 9, 10 e 12. A sequencia integral ainda esta em andamento.
 
 
-Atualiza??o de 30/10/2026: importa??o de extrato OFX agora tem p?gina pr?pria (1ac12fc), preserva a compet?ncia do Fluxo de Caixa e n?o cria lan?amentos automaticamente. Na etapa 11 continuam pendentes os fluxos de faturamento TISS/glosas. As etapas 9, 10 e 12 ainda precisam de auditoria operacional e conclus?o; a sequ?ncia integral continua em andamento.
+Atualização de 30/10/2026: importação do extrato OFX tem página própria (1ac12fc), preserva a competência do Fluxo de Caixa e não cria lançamentos automaticamente. Na etapa 11, criação de lote TISS agora também tem página própria (68782fe); retorno do lote, registro de glosa, preparação de recurso e decisão da operadora seguem em modais. As etapas 9, 10 e 12 ainda exigem auditoria operacional; a sequência integral continua em andamento.
+
+Atualização de 30/10/2026: criação de lote TISS agora tem página própria (68782fe). Permanecem em modais o retorno do lote, o registro de glosa, a preparação do recurso e a decisão da operadora. A migração financeira e a auditoria das etapas 9, 10 e 12 continuam em andamento.
