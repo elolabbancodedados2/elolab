@@ -21,6 +21,7 @@ import { mensagemDeErro } from '@/lib/erros';
 
 interface ContaEstorno {
   id: string;
+  paciente_id: string | null;
   descricao: string;
   valor: number | string;
   valor_pago: number | string | null;
@@ -46,18 +47,34 @@ const formatarMoeda = (valor: number | string | null | undefined) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor ?? 0));
 
 export default function ContaReceberEstorno() {
-  const { lancamentoId = '' } = useParams();
+  const { lancamentoId = '', patientId = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown; restoreFilterCategoria?: unknown } | null;
-  const returnTo = typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo)
-    ? routeState.returnTo
-    : '/contas?tab=receber';
+  const routeState = location.state as { returnTo?: unknown; returnState?: unknown; returnScrollTop?: unknown; patientId?: unknown; paymentId?: unknown; restoreSearchTerm?: unknown; restoreFilterCategoria?: unknown } | null;
+  const hasPatientRouteContext = /^[0-9a-f-]{36}$/i.test(patientId)
+    && routeState?.patientId === patientId
+    && typeof routeState.returnTo === 'string'
+    && (routeState.returnTo === '/pacientes/' + patientId || routeState.returnTo.startsWith('/pacientes/' + patientId + '?'));
+  const safePatientReturnTo = hasPatientRouteContext ? routeState.returnTo as string : '';
+  const returnTo = safePatientReturnTo
+    || (patientId ? '/pacientes/' + encodeURIComponent(patientId) + '?tab=financeiro' : null)
+    || (typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo) ? routeState.returnTo : '/contas?tab=receber');
+  const returnLabel = patientId ? 'Voltar à ficha do paciente' : 'Voltar às contas a receber';
+  const minReasonLength = patientId ? 3 : 5;
   const restoreSearchTerm = typeof routeState?.restoreSearchTerm === 'string' ? routeState.restoreSearchTerm : '';
   const restoreFilterCategoria = typeof routeState?.restoreFilterCategoria === 'string' ? routeState.restoreFilterCategoria : 'todas';
-  const [paymentId, setPaymentId] = useState('');
+  const patientReturnState = safePatientReturnTo
+    ? {
+        ...(routeState?.returnState && typeof routeState.returnState === 'object' && !Array.isArray(routeState.returnState)
+          ? routeState.returnState as Record<string, unknown>
+          : {}),
+        ...(typeof routeState?.returnScrollTop === 'number' ? { returnScrollTop: routeState.returnScrollTop } : {}),
+      }
+    : null;
+  const preferredPaymentId = typeof routeState?.paymentId === 'string' ? routeState.paymentId : '';
+  const [paymentId, setPaymentId] = useState(preferredPaymentId);
   const [reason, setReason] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -65,12 +82,16 @@ export default function ContaReceberEstorno() {
   const submissionLock = useRef(false);
   const navigationAllowed = useRef(false);
 
+  useEffect(() => {
+    document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [location.pathname]);
+
   const contaQuery = useQuery({
     queryKey: ['lancamento-estorno', profile?.clinica_id ?? null, lancamentoId],
     enabled: Boolean(profile?.clinica_id && lancamentoId),
     queryFn: async () => {
       const { data, error } = await supabase.from('lancamentos')
-        .select('id, descricao, valor, valor_pago, status, tipo')
+        .select('id, paciente_id, descricao, valor, valor_pago, status, tipo')
         .eq('id', lancamentoId)
         .eq('clinica_id', profile!.clinica_id!)
         .eq('tipo', 'receita')
@@ -103,16 +124,20 @@ export default function ContaReceberEstorno() {
 
   const pagamentos = useMemo(() => pagamentosQuery.data ?? [], [pagamentosQuery.data]);
   const paymentIdExists = pagamentos.some(pagamento => pagamento.id === paymentId);
-  const hasUnsavedChanges = Boolean(reason.trim()) || (paymentIdExists && paymentId !== pagamentos[0]?.id);
+  const baselinePaymentId = pagamentos.some(pagamento => pagamento.id === preferredPaymentId)
+    ? preferredPaymentId
+    : pagamentos[0]?.id;
+  const hasUnsavedChanges = Boolean(reason.trim()) || (paymentIdExists && paymentId !== baselinePaymentId);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     !navigationAllowed.current && hasUnsavedChanges && !submitting &&
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
 
   useEffect(() => {
     if (pagamentos.length && !pagamentos.some(pagamento => pagamento.id === paymentId)) {
-      setPaymentId(pagamentos[0].id);
+      const preferred = pagamentos.find(pagamento => pagamento.id === preferredPaymentId);
+      setPaymentId(preferred?.id ?? pagamentos[0].id);
     }
-  }, [pagamentos, paymentId]);
+  }, [pagamentos, paymentId, preferredPaymentId]);
 
   useEffect(() => { navigationAllowed.current = false; }, [location.pathname, location.search]);
   useEffect(() => {
@@ -126,11 +151,11 @@ export default function ContaReceberEstorno() {
   }, [hasUnsavedChanges]);
 
   const returnToList = () => navigate(returnTo, {
-    state: { restoreSearchTerm, restoreFilterCategoria },
+    state: patientId ? patientReturnState : { restoreSearchTerm, restoreFilterCategoria },
   });
 
   const confirmarEstorno = async () => {
-    if (submissionLock.current || !paymentId || reason.trim().length < 5) return;
+    if (submissionLock.current || !paymentId || reason.trim().length < minReasonLength) return;
     submissionLock.current = true;
     setSubmitting(true);
     setSubmitError('');
@@ -152,9 +177,12 @@ export default function ContaReceberEstorno() {
         queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
         queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] }),
         queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] }),
+        ...(patientId ? [queryClient.invalidateQueries({ queryKey: ['extrato-paciente'] })] : []),
       ]);
       navigationAllowed.current = true;
-      navigate(returnTo, { state: { restoreSearchTerm, restoreFilterCategoria } });
+      navigate(returnTo, {
+        state: patientId ? patientReturnState : { restoreSearchTerm, restoreFilterCategoria },
+      });
     } catch (error) {
       setSubmitError(mensagemDeErro(error));
       await Promise.all([
@@ -185,17 +213,23 @@ export default function ContaReceberEstorno() {
       <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6">
         <PageHeader title="Estornar pagamento" description="Confira o registro antes de continuar." icon={<Repeat />} />
         <ErrorState title="Não foi possível carregar a conta" error={contaQuery.error} onRetry={() => contaQuery.refetch()} />
-        <Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às contas a receber</Button>
+        <Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />{returnLabel}</Button>
       </div>
     );
   }
 
-  if (!contaQuery.data) {
+  if (!contaQuery.data || (patientId && contaQuery.data.paciente_id !== patientId)) {
+    const patientMismatch = Boolean(contaQuery.data && patientId && contaQuery.data.paciente_id !== patientId);
     return (
       <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6">
-        <PageHeader title="Estornar pagamento" description="A conta pode ter sido removida ou não pertence à clínica ativa." icon={<Repeat />} />
-        <ErrorState title="Conta não encontrada" description="Não localizamos esta receita para a clínica ativa. Volte à lista e atualize os dados." />
-        <Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às contas a receber</Button>
+        <PageHeader title="Estornar pagamento" description={patientMismatch ? 'A cobrança não pertence à ficha de paciente aberta.' : 'A conta pode ter sido removida ou não pertence à clínica ativa.'} icon={<Repeat />} />
+        <ErrorState
+          title={patientMismatch ? 'Cobrança de outro paciente' : 'Conta não encontrada'}
+          description={patientMismatch
+            ? 'Por segurança, não é possível estornar esta cobrança pela ficha atual. Volte ao paciente correto e abra o lançamento por lá.'
+            : 'Não localizamos esta receita para a clínica ativa. Volte à lista e atualize os dados.'}
+        />
+        <Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />{returnLabel}</Button>
       </div>
     );
   }
@@ -211,7 +245,7 @@ export default function ContaReceberEstorno() {
         title="Estornar pagamento"
         description="O estorno mantém o lançamento original, registra o motivo e recalcula o saldo da conta."
         icon={<Repeat />}
-        actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às contas a receber</Button>}
+        actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />{returnLabel}</Button>}
       />
 
       <Card>
@@ -288,7 +322,7 @@ export default function ContaReceberEstorno() {
               <Button variant="outline" onClick={returnToList} disabled={submitting}>Cancelar</Button>
               <Button
                 onClick={confirmarEstorno}
-                disabled={submitting || !paymentIdExists || reason.trim().length < 5}
+                disabled={submitting || !paymentIdExists || reason.trim().length < minReasonLength}
                 className="gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}

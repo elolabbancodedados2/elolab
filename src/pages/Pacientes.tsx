@@ -184,6 +184,7 @@ export default function Pacientes() {
   const patientTaskPage = newPatientPage || !!patientId;
   const patientFormPage = newPatientPage || editPatientPage;
   const listFocusId = (location.state as { focusId?: unknown } | null)?.focusId;
+  const returnScrollTop = (location.state as { returnScrollTop?: unknown } | null)?.returnScrollTop;
   useEffect(() => {
     if (patientTaskPage || typeof listFocusId !== 'string') return;
     const timeout = window.setTimeout(() => {
@@ -197,6 +198,16 @@ export default function Pacientes() {
   }, [patientTaskPage, listFocusId, location.pathname, location.search, location.state, navigate]);
   const [taskReadyFor, setTaskReadyFor] = useState('');
   const [taskError, setTaskError] = useState<unknown>(null);
+  useEffect(() => {
+    if (!patientId || patientFormPage || taskReadyFor !== location.pathname || typeof returnScrollTop !== 'number') return;
+    const timeout = window.setTimeout(() => {
+      document.getElementById('main-content')?.scrollTo({ top: Math.max(0, returnScrollTop), behavior: 'auto' });
+      const rest = { ...((location.state ?? {}) as Record<string, unknown>) };
+      delete rest.returnScrollTop;
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: Object.keys(rest).length ? rest : null });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [patientId, patientFormPage, taskReadyFor, location.pathname, location.search, location.state, returnScrollTop, navigate]);
   const initializedTask = useRef('');
   const completedTask = useRef(false);
   const [initialFormSnapshot, setInitialFormSnapshot] = useState(JSON.stringify(initialFormData));

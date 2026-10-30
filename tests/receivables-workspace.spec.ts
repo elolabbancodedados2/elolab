@@ -192,7 +192,7 @@ test('receivable payment protects a modified draft when returning to the list', 
 });
 
 test('payment reversal opens its own page and keeps the audited reason after a server rejection', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   const payloads: Record<string, unknown>[] = [];
   await page.route('**/rest/v1/rpc/estornar_pagamento', async route => {
     payloads.push(route.request().postDataJSON());
@@ -241,8 +241,8 @@ test('payment reversal opens its own page and keeps the audited reason after a s
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('payment reversal explains when the account has no active payment', async ({ page }) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+test('payment reversal explains when the account has no active payment', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   await page.route('http://127.0.0.1:54321/rest/v1/pagamentos**', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'content-range': '*/0' }, body: '[]' });

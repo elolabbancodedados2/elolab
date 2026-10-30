@@ -356,6 +356,7 @@ function AppRoutes() {
                           <Route path="/pacientes/:patientId/consentimentos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><ConsentimentoLGPDTaskPage task="novo" /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/consentimentos/:consentType/revogar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><ConsentimentoLGPDTaskPage task="revogar" /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/status" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><PatientStatusPage /></SupabaseProtectedRoute>} />
+                          <Route path="/pacientes/:patientId/cobrancas/:lancamentoId/estorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><ContaReceberEstorno /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/autorizacoes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AutorizacoesConvenioPage /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/duplicidades" element={<SupabaseProtectedRoute allowedRoles={['admin']}><RevisaoDuplicidadesPacientesPage /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Pacientes /></SupabaseProtectedRoute>} />

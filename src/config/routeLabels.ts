@@ -219,6 +219,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/pacientes\/[^/]+\/editar$/.test(path)) return 'Editar paciente';
   if (/^\/pacientes\/[^/]+\/autorizacoes$/.test(path)) return 'Autorizações do convênio';
   if (/^\/pacientes\/[^/]+\/status$/.test(path)) return 'Alterar status do paciente';
+  if (/^\/pacientes\/[^/]+\/cobrancas\/[^/]+\/estorno$/.test(path)) return 'Estornar pagamento';
   if (/^\/pacientes\/[^/]+$/.test(path)) return 'Ficha do paciente';
   if (/^\/atestados\/[^/]+$/.test(path)) return 'Detalhes do atestado';
   if (/^\/encaminhamentos\/[^/]+$/.test(path)) return 'Detalhes do encaminhamento';
