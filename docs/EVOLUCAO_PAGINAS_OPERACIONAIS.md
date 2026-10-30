@@ -524,4 +524,4 @@ Validação: 11 cenários Playwright passaram cobrindo rota nova e legado, atalh
 
 Limite desta entrega: a triagem pode ser acessada e concluída sem agendamento, conforme o fluxo avulso já existente. A decisão clínica permanece com profissional autorizado; os testes sintéticos não constituem auditoria clínica nem declaração completa de WCAG.
 
-Publicação: pendente nesta atualização do registro.
+Publicação: build `93e867b95e1b0a16c81ec7c64684d7cc0f5156f5`, imagem `easypanel/elolab/app:deploy-20261029-93e867b9`. Swarm concluído em `stop-first`; `/healthz` respondeu `ok` e `/version.json` confirmou o build. Fonte ativa atualizada preservando `.env` sem exibir conteúdo; fonte anterior preservada em `code.before-20261029-93e867b9`. Rollback: imagem `deploy-20261029-ddc17f58`.
