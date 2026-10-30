@@ -549,3 +549,15 @@ Integração e autorização preservadas: somente admin/recepção acessam este 
 Validação: dois cenários Playwright passaram cobrindo larguras 390/1280 px, permissão de saída protegida e fluxo sintético completo de agendamento/check-in/cobrança. Quatorze testes unitários de recepção e check-in passaram; TypeScript e build passaram. Lint focal sem erros, 59 avisos existentes de `any`. Capturas mobile e desktop prontas para envio foram visualizadas em `test-results/ux-visual-synthetic-recept-b8549--a-dedicated-protected-form-chromium/` e `test-results/ux-visual-synthetic-recept-6c3c9-nd-check-in-without-a-modal-chromium/`. Testes interceptaram gravações; nenhum paciente real foi alterado.
 
 Publicação: build `1e43732c02f325a5f8f24b0179334fcd96aee2c6`, imagem `easypanel/elolab/app:deploy-20261029-1e43732c`. Swarm atualizado em `stop-first`; `/healthz` respondeu `ok` e `/version.json` confirmou o build. Fonte anterior em `code.before-20261029-1e43732c`; rollback da imagem `deploy-20261029-3b67483d`.
+
+## Recepção — recebimento em página própria (29/10/2026)
+
+Diagnóstico: o recebimento era um modal longo sobre a worklist. A recepcionista precisava conferir paciente, cobrança, valor já recebido, saldo e forma de pagamento sem sair do contexto do atendimento.
+
+Implementação: a rota `/recepcao/pagamentos/:lancamentoId` abre uma página acessível pela ação de recebimento e por URL direta. A cobrança é consultada pelo ID e pela clínica ativa; o paciente é confirmado antes de liberar a confirmação. O resumo mostra valor original, pagamentos anteriores e saldo. A tela mantém pagamento dividido, desconto, acréscimo, observações, comprovante e feedback do recibo. O rascunho fica protegido ao sair.
+
+Integração preservada: verificação do caixa aberto, reparo de cobrança antiga de exame sem valor, RPC transacional `registrar_pagamento`, chave de idempotência, envio do recibo, invalidação dos painéis e comprovante PDF. A rota respeita admin, recepção e financeiro, como o acesso operacional existente. Sem alteração em contratos, permissões do backend, migrations, Edge Functions ou dados reais.
+
+Validação: o teste Playwright primeiro falhou porque a rota ainda não existia; depois passou com leitura e recebimento sintéticos, conferência do payload e da idempotência, sem diálogo, em 390 e 1440 px. O botão principal foi conferido acima da navegação fixa no celular. 29 testes unitários de recepção/check-in passaram. Build passou; lint focal sem erros e com 59 avisos `any` nos arquivos verificados. Capturas mobile e desktop foram efetivamente inspecionadas em `test-results/ux-visual-synthetic-recept-90e2e--through-the-idempotent-RPC-chromium/`. Nenhum recebimento real foi executado.
+
+Publicação: commit `af68e69f52f7a07f6bc6e19544038bed729ff3ee`, imagem `easypanel/elolab/app:deploy-20261029-af68e69`. Swarm confirmou `completed`, 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o build. A fonte anterior foi preservada em `code.before-20261029-af68e69`, incluindo o `.env` sem ler ou exibir seu conteúdo. Rollback da imagem: `deploy-20261029-1e43732c`.
