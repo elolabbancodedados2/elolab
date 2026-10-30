@@ -1,5 +1,5 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { 
@@ -16,7 +16,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -93,8 +92,8 @@ interface AnexosProntuarioProps {
   prontuarioId: string;
   pacienteId: string;
   anexos: Anexo[];
-  onAnexoAdicionado: () => void;
   onAnexoRemovido: () => void;
+  onAdicionarAnexo?: () => void;
   readOnly?: boolean;
   podeGerenciarPortal?: boolean;
 }
@@ -121,20 +120,15 @@ export function AnexosProntuario({
   prontuarioId, 
   pacienteId, 
   anexos, 
-  onAnexoAdicionado,
   onAnexoRemovido,
+  onAdicionarAnexo,
   readOnly = false,
   podeGerenciarPortal = false,
 }: AnexosProntuarioProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [categoria, setCategoria] = useState('documento');
-  const [descricao, setDescricao] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [publicacoesPortal, setPublicacoesPortal] = useState<Record<string, PublicacaoPortal>>({});
   const [portalStatusLoading, setPortalStatusLoading] = useState(true);
   const [portalStatusError, setPortalStatusError] = useState(false);
@@ -215,118 +209,6 @@ export function AnexosProntuario({
       toast({ title: 'Não foi possível atualizar o portal', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
     } finally {
       setSavingPortalStatus(false);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Check file size (10MB max)
-      if (file.size > 10 * 1024 * 1024) {
-        toast({
-          title: 'Arquivo muito grande',
-          description: 'O tamanho máximo permitido é 10MB.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Check file type
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'image/webp'];
-      if (!allowedTypes.includes(file.type)) {
-        toast({
-          title: 'Tipo de arquivo não permitido',
-          description: 'Apenas imagens (JPEG, PNG, GIF, WebP) e PDFs são permitidos.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setSelectedFile(file);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (readOnly) return;
-    if (!selectedFile) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione um arquivo para enviar.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setUploading(true);
-    let uploadedPath: string | null = null;
-    let cleanupFailed = false;
-    try {
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${prontuarioId}/${Date.now()}.${fileExt}`;
-
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(fileName, selectedFile);
-
-      if (uploadError) throw uploadError;
-      uploadedPath = uploadData?.path || fileName;
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Save metadata to database
-      const { error: dbError } = await supabase
-        .from('anexos_prontuario')
-        .insert({
-          prontuario_id: prontuarioId,
-          paciente_id: pacienteId,
-          nome_arquivo: selectedFile.name,
-          tipo_arquivo: selectedFile.type,
-          tamanho_bytes: selectedFile.size,
-          // Guardamos o PATH, não uma URL. O bucket medical-attachments é
-          // privado, então getPublicUrl() gerava um link que nunca abria.
-          url_arquivo: fileName,
-          categoria,
-          descricao: descricao || null,
-          uploaded_by: user?.id,
-        });
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: 'Arquivo enviado',
-        description: 'O anexo foi adicionado ao prontuário.',
-      });
-
-      setIsOpen(false);
-      setSelectedFile(null);
-      setCategoria('documento');
-      setDescricao('');
-      onAnexoAdicionado();
-    } catch (error) {
-      if (uploadedPath) {
-        try {
-          const { error: cleanupError } = await supabase.storage.from(BUCKET).remove([uploadedPath]);
-          if (cleanupError) {
-            cleanupFailed = true;
-            console.error('Falha ao limpar arquivo após erro no upload:', cleanupError);
-          }
-        } catch (cleanupError) {
-          cleanupFailed = true;
-          console.error('Falha ao limpar arquivo após erro no upload:', cleanupError);
-        }
-      }
-      console.error('Erro ao fazer upload:', error);
-      toast({
-        title: 'Erro no upload',
-        description: cleanupFailed
-          ? 'Não foi possível salvar os dados do anexo nem remover o arquivo temporário. Entre em contato com o suporte.'
-          : 'Não foi possível enviar o arquivo. O arquivo selecionado continua disponível para tentar novamente.',
-        variant: 'destructive',
-      });
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -448,7 +330,7 @@ export function AnexosProntuario({
                 <Badge variant="secondary">{anexos.length}</Badge>
               )}
             </div>
-            <Button onClick={() => setIsOpen(true)} size="sm" disabled={readOnly}>
+            <Button onClick={onAdicionarAnexo} size="sm" disabled={readOnly}>
               <Upload className="h-4 w-4 mr-2" />
               Adicionar Anexo
             </Button>
@@ -547,87 +429,6 @@ export function AnexosProntuario({
           )}
         </CardContent>
       </Card>
-
-      {/* Dialog de Upload */}
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Adicionar Anexo</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="medical-attachment-file">Arquivo *</Label>
-              <Input
-                id="medical-attachment-file"
-                type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                onChange={handleFileSelect}
-              />
-              <p className="text-xs text-muted-foreground">
-                Formatos aceitos: JPEG, PNG, GIF, WebP, PDF (máx. 10MB)
-              </p>
-            </div>
-
-            {selectedFile && (
-              <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                {getFileIcon(selectedFile.type)}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatFileSize(selectedFile.size)}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Categoria</Label>
-              <Select value={categoria} onValueChange={setCategoria}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIAS.map((cat) => (
-                    <SelectItem key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Descrição (opcional)</Label>
-              <Textarea
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                placeholder="Descreva o conteúdo do anexo..."
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleUpload} disabled={uploading || !selectedFile || readOnly}>
-              {uploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Enviando...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Enviar
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!portalTarget} onOpenChange={(open) => { if (!open && !savingPortalStatus) setPortalTarget(null); }}>
         <DialogContent>

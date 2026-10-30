@@ -20,6 +20,7 @@ type SyntheticClinicOptions = {
   employeesPopulated?: boolean;
   employeeWithoutRoles?: boolean;
   prontuarioPopulated?: boolean;
+  prontuarioDraft?: boolean;
   receptionOverdue?: boolean;
   agendaPopulated?: boolean;
   waitingListPopulated?: boolean;
@@ -127,7 +128,8 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     agendamento_retorno_id: null,
     clinica_id: TEST_CLINIC_ID,
   }] : [];
-  const syntheticProntuarios = options.prontuarioPopulated ? [
+  const hasSyntheticProntuario = Boolean(options.prontuarioPopulated || options.prontuarioDraft);
+  const syntheticProntuarios = hasSyntheticProntuario ? [
     {
       id: '00000000-0000-4000-9000-000000000101', clinica_id: TEST_CLINIC_ID,
       paciente_id: TEST_PATIENT_ID, medico_id: '00000000-0000-4000-8000-000000000003',
@@ -140,7 +142,10 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       exames_fisicos: 'Paciente alerta, orientada, sem déficits focais.', hipotese_diagnostica: 'Cefaleia tensional',
       conduta: 'Hidratação, repouso e retorno se houver piora.', sinais_vitais: { pressao_sistolica: 122, pressao_diastolica: 78, frequencia_cardiaca: 72, temperatura: 36.7, saturacao: 98 },
       diagnostico_principal: 'R51 — Cefaleia', diagnosticos_secundarios: [], plano_terapeutico: 'Acompanhamento clínico.',
-      assinado: true, assinado_em: new Date().toISOString(), assinado_por: TEST_USER_ID, crm_assinante: '000000/SP',
+      assinado: !options.prontuarioDraft,
+      assinado_em: options.prontuarioDraft ? null : new Date().toISOString(),
+      assinado_por: options.prontuarioDraft ? null : TEST_USER_ID,
+      crm_assinante: options.prontuarioDraft ? null : '000000/SP',
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       medicos: { nome: 'Dra. Marina Ribeiro', crm: '000000', especialidade: 'Clínica geral' },
     },
@@ -157,7 +162,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       medicos: { nome: 'Dra. Marina Ribeiro', crm: '000000', especialidade: 'Clínica geral' },
     },
   ] : [];
-  const syntheticPrescriptions = options.prontuarioPopulated ? [{
+  const syntheticPrescriptions = hasSyntheticProntuario ? [{
     id: '00000000-0000-4000-9000-000000000111',
     prontuario_id: '00000000-0000-4000-9000-000000000101',
     paciente_id: TEST_PATIENT_ID, medico_id: '00000000-0000-4000-8000-000000000003',
@@ -165,6 +170,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     posologia: '1 comprimido a cada 8 horas se necessário', quantidade: '9', duracao: '3 dias',
     observacoes: 'Uso sintético de demonstração.', data_emissao: todaySaoPaulo,
   }] : [];
+  const syntheticAttachments: Array<Record<string, unknown>> = [];
   const dateOffset = (days: number) => {
     const date = new Date(`${todaySaoPaulo}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate() + days);
@@ -443,7 +449,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     if (method === 'HEAD' && ['/rest/v1/pacientes', '/rest/v1/agendamentos', '/rest/v1/lancamentos'].includes(pathname)) {
       const isMonthCount = requestUrl.searchParams.has('created_at');
       const populated = pathname === '/rest/v1/pacientes'
-        ? options.receptionPopulated || options.queuePopulated || options.agendaPopulated || options.analyticsPopulated || options.accountsPopulated || options.prontuarioPopulated
+        ? options.receptionPopulated || options.queuePopulated || options.agendaPopulated || options.analyticsPopulated || options.accountsPopulated || hasSyntheticProntuario
         : pathname === '/rest/v1/agendamentos'
           ? options.receptionPopulated || options.queuePopulated || options.agendaPopulated || options.analyticsPopulated
           : options.accountsPopulated;
@@ -552,13 +558,13 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       return;
     }
 
-    if (method === 'GET' && pathname === '/rest/v1/prontuarios' && options.prontuarioPopulated) {
+    if (method === 'GET' && pathname === '/rest/v1/prontuarios' && hasSyntheticProntuario) {
       const select = requestUrl.searchParams.get('select') || '*';
       const idFilter = requestUrl.searchParams.get('id')?.replace(/^eq\./, '');
       if (select === 'medicamentos_em_uso,sinais_vitais,data') {
         await json(route, syntheticProntuarios[0]);
       } else if (requestUrl.searchParams.get('assinado') === 'eq.false') {
-        await json(route, []);
+        await json(route, syntheticProntuarios.filter(item => !item.assinado));
       } else if (idFilter) {
         await json(route, syntheticProntuarios.find(item => item.id === idFilter) ?? null);
       } else {
@@ -567,7 +573,22 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       return;
     }
 
-    if (method === 'GET' && pathname === '/rest/v1/prescricoes' && options.prontuarioPopulated) {
+    if (pathname === '/rest/v1/anexos_prontuario' && hasSyntheticProntuario) {
+      if (method === 'GET') {
+        const recordId = requestUrl.searchParams.get('prontuario_id')?.replace(/^eq\./, '');
+        await json(route, syntheticAttachments.filter(item => !recordId || item.prontuario_id === recordId));
+        return;
+      }
+      if (method === 'POST') {
+        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        const attachment = { ...payload, id: `synthetic-attachment-${syntheticAttachments.length + 1}`, created_at: new Date().toISOString() };
+        syntheticAttachments.push(attachment);
+        await json(route, attachment, 201);
+        return;
+      }
+    }
+
+    if (method === 'GET' && pathname === '/rest/v1/prescricoes' && hasSyntheticProntuario) {
       const prontuarioId = requestUrl.searchParams.get('prontuario_id')?.replace(/^eq\./, '');
       await json(route, syntheticPrescriptions.filter(prescription => !prontuarioId || prescription.prontuario_id === prontuarioId));
       return;
@@ -584,7 +605,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
       return;
     }
 
-    if (method === 'GET' && pathname === '/rest/v1/medicos' && (options.receptionPopulated || options.queuePopulated || options.agendaPopulated || options.prontuarioPopulated)) {
+    if (method === 'GET' && pathname === '/rest/v1/medicos' && (options.receptionPopulated || options.queuePopulated || options.agendaPopulated || hasSyntheticProntuario)) {
       await json(route, [{
         id: '00000000-0000-4000-8000-000000000003', nome: 'Dra. Marina Ribeiro', crm: '000000',
         tipo_registro: 'CRM', crm_uf: 'SP', especialidade: 'Clínica geral',
@@ -723,7 +744,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
         convenio_id: null,
         numero_carteira: null,
         validade_carteira: null,
-        alergias: options.prontuarioPopulated ? ['Dipirona'] : [],
+        alergias: hasSyntheticProntuario ? ['Dipirona'] : [],
         observacoes: 'Dados fictícios: usar apenas em testes locais.',
         foto_url: null,
         nome_responsavel: null,

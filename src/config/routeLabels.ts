@@ -130,6 +130,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/prontuarios\/[^/]+\/anexos\/novo$/.test(pathname)) return 'Adicionar anexo ao prontuário';
   if (/^\/prontuarios\/[^/]+\/adendos\/novo$/.test(pathname)) return 'Novo adendo ao prontuário';
   if (/^\/atendimentos\/[^/]+\/finalizar$/.test(pathname)) return 'Finalizar atendimento';
   if (/^\/recepcao\/pagamentos\/[^/]+$/.test(pathname)) return 'Receber pagamento';

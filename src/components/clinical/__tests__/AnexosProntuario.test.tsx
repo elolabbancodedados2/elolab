@@ -33,7 +33,7 @@ describe('read-only attachments', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('keeps viewing and downloading available while disabling attachment changes', () => {
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} readOnly onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} readOnly onAnexoRemovido={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: 'Adicionar Anexo' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' })).toBeDisabled();
@@ -73,27 +73,21 @@ describe('AnexosProntuario', () => {
     mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
   });
 
-  it('remove o arquivo do Storage se não conseguir salvar os metadados', async () => {
-    const adicionado = vi.fn();
-    mocks.insert.mockResolvedValue({ error: new Error('Falha no banco') });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[]} onAnexoAdicionado={adicionado} onAnexoRemovido={vi.fn()} />);
+  it('encaminha a inclusão para a página própria sem abrir modal', () => {
+    const navigate = vi.fn();
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[]} onAdicionarAnexo={navigate} onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar Anexo' }));
-    const arquivo = new File(['laudo clínico'], 'resultado.pdf', { type: 'application/pdf' });
-    fireEvent.change(screen.getByLabelText('Arquivo *'), { target: { files: [arquivo] } });
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
 
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Erro no upload' })));
-    expect(mocks.remove).toHaveBeenCalledWith(['prontuario-1/arquivo.pdf']);
-    expect(adicionado).not.toHaveBeenCalled();
-    expect(mocks.toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Arquivo enviado' }));
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('mantém o registro do anexo se o Storage falhar ao excluí-lo', async () => {
     const removido = vi.fn();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     mocks.remove.mockResolvedValue({ error: new Error('Storage indisponível') });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={removido} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={removido} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' }));
 
@@ -115,7 +109,7 @@ describe('AnexosProntuario', () => {
     const navegar = vi.fn();
     const aba = { opener: window, close: vi.fn(), location: { replace: navegar } } as unknown as Window;
     const abrir = vi.spyOn(window, 'open').mockReturnValue(aba);
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Baixar anexo resultado.pdf' }));
 
@@ -130,7 +124,7 @@ describe('AnexosProntuario', () => {
 
   it('registra visualização antes de mostrar o anexo', async () => {
     mocks.createSignedUrl.mockResolvedValue({ data: { signedUrl: 'https://storage.example/signed-file' }, error: null });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Visualizar anexo resultado.pdf' }));
 
@@ -145,7 +139,7 @@ describe('AnexosProntuario', () => {
     mocks.rpc.mockResolvedValue({ data: null, error: new Error('Auditoria indisponível') });
     const aba = { opener: window, close: vi.fn(), location: { replace: vi.fn() } } as unknown as Window;
     const abrir = vi.spyOn(window, 'open').mockReturnValue(aba);
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Baixar anexo resultado.pdf' }));
 
@@ -156,7 +150,7 @@ describe('AnexosProntuario', () => {
   });
 
   it('permits an authorized clinician to publish an attachment with origin and future validity', async () => {
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Disponibilizar no portal para resultado.pdf' }));
     fireEvent.change(screen.getByLabelText('Validade do documento'), { target: { value: '2027-01-10' } });
@@ -176,7 +170,7 @@ describe('AnexosProntuario', () => {
       data: [{ anexo_id: 'anexo-1', publicado: true, validade_ate: '2027-01-10', origem: 'externo' }],
       error: null,
     });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Revogar documento do portal para resultado.pdf' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar revogação do portal' }));
@@ -190,7 +184,7 @@ describe('AnexosProntuario', () => {
   });
 
   it('does not show portal publication controls without explicit permission', () => {
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoAdicionado={vi.fn()} onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /portal para resultado\.pdf/i })).not.toBeInTheDocument();
     expect(mocks.from).not.toHaveBeenCalledWith('documentos_portal_paciente');
