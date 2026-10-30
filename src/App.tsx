@@ -301,6 +301,7 @@ function AppRoutes() {
                           <Route path="/feedback" element={<FeedbackProduto />} />
                           <Route path="/indicadores" element={<IndicadoresProdutividade />} />
                           <Route path="/treinamento" element={<Treinamento />} />
+                          <Route path="/treinamento/:tutorialKey" element={<Treinamento />} />
                           <Route path="/agenda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Agenda /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="manage-blocks" /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="create-block" creationPage /></SupabaseProtectedRoute>} />

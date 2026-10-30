@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Treinamento from '../Treinamento';
 
@@ -31,11 +31,20 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-function renderTreinamento() {
+function CurrentPath() {
+  const location = useLocation();
+  return <output data-testid="current-path">{location.pathname}{location.search}</output>;
+}
+
+function renderTreinamento(path = '/treinamento') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter><QueryClientProvider client={queryClient}>
-      <Treinamento />
+    <MemoryRouter initialEntries={[path]}><QueryClientProvider client={queryClient}>
+      <Routes>
+        <Route path="/treinamento" element={<Treinamento />} />
+        <Route path="/treinamento/:tutorialKey" element={<Treinamento />} />
+      </Routes>
+      <CurrentPath />
     </QueryClientProvider></MemoryRouter>,
   );
 }
@@ -61,11 +70,27 @@ describe('Treinamento', () => {
 
     const tutorial = await screen.findByRole('heading', { name: 'Fluxo clínico responsável' });
     fireEvent.click(screen.getAllByRole('button', { name: /começar tutorial/i })[1]);
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/treinamento/fluxo-clinico');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Confirme a pessoa atendida' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /próxima/i }));
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/treinamento/fluxo-clinico?etapa=1');
 
     expect(await screen.findByRole('heading', { name: 'Finalize sua etapa' })).toBeInTheDocument();
     expect(screen.queryByText('Revise documentos')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /abrir documentos/i })).not.toBeInTheDocument();
+  });
+
+  it('retoma a etapa indicada no endereço e não abre roteiro restrito ao perfil', async () => {
+    mocks.roles = ['enfermagem'];
+    const current = renderTreinamento('/treinamento/fluxo-clinico?etapa=1');
+
+    expect(await screen.findByRole('heading', { name: 'Finalize sua etapa' })).toBeVisible();
+    expect(screen.getByText('Etapa 2 de 2')).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    current.unmount();
+    renderTreinamento('/treinamento/financeiro-seguro');
+    expect(await screen.findByRole('heading', { name: 'Tutorial não disponível' })).toBeVisible();
   });
 });
