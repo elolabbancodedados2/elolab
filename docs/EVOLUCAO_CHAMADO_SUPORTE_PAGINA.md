@@ -36,4 +36,4 @@ Vitest 11/11 e Playwright 1/1 passaram. ESLint focal sem erros; os avisos `any` 
 
 ## Publicação
 
-Preencher após o rollout e a confirmação pública da versão.
+Commit `85afcc005d382244e5d7550b7f32b3a8e6f27b82`, imagem `easypanel/elolab/app:deploy-20261030-85afcc0`, rollback `deploy-20261030-4947716`. O container isolado respondeu `/healthz=ok` e publicou o SHA esperado em `/version.json`; o domínio público confirmou os mesmos resultados e o Swarm ficou em 1/1. O código anterior foi preservado em `code.before-20261030-85afcc0`; o `.env` permaneceu com o mesmo hash, sem leitura ou exposição. Não houve migration ou alteração de dados de produção. O Swarm teve contenção temporária da porta host-mode, que se resolveu antes da confirmação pública.
