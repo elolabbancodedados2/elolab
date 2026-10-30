@@ -65,7 +65,10 @@ export function MainLayout() {
           >
             <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(2rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
               <Breadcrumbs />
-              <div className="animate-fade-in" data-elo-font-preview={location.pathname === '/dashboard' ? 'dashboard' : undefined}>
+              <div
+                className="animate-fade-in"
+                data-elo-font-preview={location.pathname === '/dashboard' ? 'dashboard' : location.pathname.startsWith('/agenda') ? 'agenda' : undefined}
+              >
                 {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
                   envolvendo tudo: um registro com campo inesperado em Analytics
                   derrubava também a agenda, a fila e o caixa, e o usuário via a

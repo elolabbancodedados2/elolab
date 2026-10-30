@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { parseISO } from 'date-fns';
-import { ArrowLeft, Ban, CalendarDays, Clock3, Info, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, CalendarDays, Clock3, Info, Plus, Trash2 } from '@/components/icons/elolabIcons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -279,7 +279,7 @@ export function BloqueioAgenda({ creationPage = false }: BloqueioAgendaProps) {
                         <SelectTrigger id="block-doctor" aria-label="Profissional *">
                           <SelectValue placeholder="Selecione o profissional" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent data-elo-font-preview="agenda">
                           {medicos.filter(medico => medico.ativo).map(medico => (
                             <SelectItem key={medico.id} value={medico.id}>
                               {nomeMedico(medico.nome || medico.crm)} · {medico.especialidade || 'Geral'}
@@ -301,7 +301,7 @@ export function BloqueioAgenda({ creationPage = false }: BloqueioAgendaProps) {
                     <Label htmlFor="block-type">Motivo do bloqueio *</Label>
                     <Select value={form.tipo} onValueChange={tipo => setForm(previous => ({ ...previous, tipo }))}>
                       <SelectTrigger id="block-type" aria-label="Motivo do bloqueio *"><SelectValue /></SelectTrigger>
-                      <SelectContent>
+                      <SelectContent data-elo-font-preview="agenda">
                         {tiposBloqueio.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                       </SelectContent>
                     </Select>

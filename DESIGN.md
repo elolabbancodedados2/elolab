@@ -18,17 +18,17 @@ colors:
   sidebar: "#0B2346"
 typography:
   display:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Manrope, DM Sans, Inter, system-ui, sans-serif"
     fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.2
   title:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Manrope, DM Sans, Inter, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 700
     lineHeight: 1.375
   body:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "DM Sans, Inter, system-ui, sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.5
@@ -71,7 +71,9 @@ components:
 
 EloLab usa azul primário para ações e foco, navy para estrutura e ciano para destaques funcionais pontuais. A interface prioriza leitura rápida e previsível durante o atendimento, sem tirar destaque de dados clínicos ou estados de segurança.
 
-O sistema usa Inter em toda a experiência e componentes familiares de aplicação web. Cabeçalhos compactos, listas operacionais e formulários mantêm a densidade necessária para o trabalho diário. Superfícies são claras e neutras; cores semânticas continuam reservadas ao significado dos estados. Gradientes decorativos não fazem parte da identidade cromática.
+O sistema migra por módulo para Manrope nos títulos e DM Sans nos textos e controles. A barra global, o Dashboard e a Agenda já seguem essa tipografia; os demais módulos preservam Inter até passarem pela revisão. Cabeçalhos compactos, listas operacionais e formulários mantêm a densidade necessária para o trabalho diário. Superfícies são claras e neutras; cores semânticas continuam reservadas ao significado dos estados. Gradientes decorativos não fazem parte da identidade cromática.
+
+A iconografia dos módulos migrados usa Phosphor Icons, com peso regular no repouso e preenchido para indicar navegação ativa. Evite misturar bibliotecas de ícones dentro da mesma tela.
 
 **Key Characteristics:**
 
@@ -108,11 +110,11 @@ A paleta usa os tokens cromáticos EloLab abaixo e mantém estados semânticos s
 
 ## Typography
 
-**Display Font:** Inter (com system-ui, sans-serif)
-**Body Font:** Inter (com system-ui, sans-serif)
-**Label/Mono Font:** Inter; não há família mono de interface.
+**Display Font:** Manrope (com DM Sans, Inter e system-ui como fallback)
+**Body Font:** DM Sans (com Inter e system-ui como fallback)
+**Label/Mono Font:** DM Sans; não há família mono de interface.
 
-**Character:** Inter mantém uma voz humana e direta sem perder precisão em nomes, tabelas e dados clínicos. Títulos usam peso e escala moderados; rótulos seguem a mesma família para reduzir troca visual.
+**Character:** Manrope dá mais personalidade aos títulos; DM Sans mantém nomes, tabelas e dados clínicos legíveis. Títulos usam peso e escala moderados; rótulos seguem a família de texto para reduzir troca visual.
 
 ### Hierarchy
 

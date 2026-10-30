@@ -40,25 +40,25 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
             <div key={iso} className={cn(
               'border-r border-border/60 last:border-r-0 min-h-[520px] flex flex-col',
               weekend && !isToday && 'bg-muted/10',
-              isToday && 'bg-[#1080CA]/[0.04]',
+              isToday && 'bg-primary/[0.04]',
             )}>
               <button
                 onClick={() => onDayClick(iso)}
                 className={cn(
                   'sticky top-0 z-10 w-full px-3 py-2.5 border-b border-border/60 text-left bg-card/95 backdrop-blur hover:bg-muted/40 transition-colors',
-                  isToday && 'border-b-2 border-b-[#1080CA]',
+                  isToday && 'border-b-2 border-b-primary',
                 )}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={cn(
                       'flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold leading-none',
-                      isToday ? 'bg-gradient-primary text-white shadow-sm' : 'text-foreground',
+                      isToday ? 'bg-primary text-primary-foreground shadow-sm' : 'text-foreground',
                     )}>{format(d, 'd')}</span>
                     <div>
                       <div className={cn(
                         'text-[10px] uppercase tracking-wide',
-                        isToday ? 'font-semibold text-[#1080CA]' : 'text-muted-foreground',
+                        isToday ? 'font-semibold text-primary' : 'text-muted-foreground',
                       )}>
                         {format(d, 'EEE', { locale: ptBR })}
                       </div>
@@ -66,7 +66,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                     </div>
                   </div>
                   {dayAppts.length > 0 && (
-                    <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', isToday && 'bg-gradient-primary text-white')}>
+                    <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', isToday && 'bg-primary text-primary-foreground')}>
                       {dayAppts.length}
                     </Badge>
                   )}
@@ -88,7 +88,7 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                     key={a.id}
                     onClick={(e) => { e.stopPropagation(); onCardClick(a); }}
                     className={cn(
-                      'w-full rounded-lg bg-card border border-border/60 hover:shadow-sm hover:border-[#1080CA]/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
+                      'w-full rounded-lg bg-card border border-border/60 hover:shadow-sm hover:border-primary/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
                       a.status === 'cancelado' && 'opacity-50 line-through',
                     )}
                     style={{ borderLeft: `3px solid ${colorFor(a)}` }}

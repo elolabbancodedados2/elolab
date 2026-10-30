@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video, MessageCircle, CalendarPlus, Copy } from 'lucide-react';
+import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video, MessageCircle, CalendarPlus, Copy } from '@/components/icons/elolabIcons';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { parseDateOnly, toDateOnly } from '@/lib/dateOnly';
 import {
@@ -409,7 +409,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       )}
       </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
+      <ContextMenuContent data-elo-font-preview="agenda" className="w-56">
         <ContextMenuItem onSelect={onClick}><Edit3 className="mr-2 h-4 w-4" /> Abrir / editar</ContextMenuItem>
         {agendamento.tipo === 'telemedicina' && roles.some(role => ['admin', 'medico'].includes(role)) && <ContextMenuItem
           disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)}
@@ -494,7 +494,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
             <SelectTrigger id={`motivo-cancelamento-${agendamento.id}`} aria-label="Motivo do cancelamento" disabled={ocupado}>
               <SelectValue placeholder="Selecione um motivo" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent data-elo-font-preview="agenda">
               {APPOINTMENT_CANCELLATION_REASONS.map((reason) => (
                 <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
               ))}

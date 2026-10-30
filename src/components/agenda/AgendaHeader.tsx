@@ -14,7 +14,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search, X,
   CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard, Pin, SkipForward,
-} from 'lucide-react';
+} from '@/components/icons/elolabIcons';
 import { cn } from '@/lib/utils';
 import { AgendaView } from './AgendaPage';
 import { Link } from 'react-router-dom';
@@ -130,7 +130,7 @@ export function AgendaHeader(p: Props) {
                   {formatWithDatePreference(d, 'dd/MM/yyyy')}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto rounded-2xl p-0">
+              <PopoverContent data-elo-font-preview="agenda" align="start" className="w-auto rounded-2xl p-0">
                 <Calendar
                   mode="single"
                   locale={ptBR}
@@ -181,7 +181,7 @@ export function AgendaHeader(p: Props) {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className={cn('h-11 w-11 shrink-0 sm:h-10 sm:w-10', pill)} aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl">
+            <DropdownMenuContent data-elo-font-preview="agenda" align="end" className="w-56 rounded-xl">
               <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
               <DropdownMenuItem onSelect={p.onOpenColorScheme}><Palette className="mr-2 h-4 w-4" /> Esquema de cores</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Imprimir agenda</DropdownMenuItem>
@@ -194,7 +194,7 @@ export function AgendaHeader(p: Props) {
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-xs text-muted-foreground focus:bg-transparent" disabled>
                 <Keyboard className="mr-2 h-3.5 w-3.5" />
-                <span className="flex-1">← → nav · T hoje · N nova · / buscar</span>
+                <span className="flex-1 leading-relaxed">← → navega · T hoje · N nova<br />D/W/M visão · / busca</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -250,7 +250,7 @@ export function AgendaHeader(p: Props) {
                 {p.medicoFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.medicoFilter.length}</Badge>}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="max-h-80 w-64 overflow-y-auto rounded-xl p-2">
+            <PopoverContent data-elo-font-preview="agenda" className="max-h-80 w-64 overflow-y-auto rounded-xl p-2">
               <div className="mb-1 flex items-center justify-between border-b pb-2">
                 <span className="text-xs font-medium">Filtrar médicos</span>
                 {p.medicoFilter.length > 0 && (
@@ -278,7 +278,7 @@ export function AgendaHeader(p: Props) {
                 {p.statusFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.statusFilter.length}</Badge>}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-56 rounded-xl p-2">
+            <PopoverContent data-elo-font-preview="agenda" className="w-56 rounded-xl p-2">
               <div className="mb-1 flex items-center justify-between border-b pb-2">
                 <span className="text-xs font-medium">Filtrar status</span>
                 {p.statusFilter.length > 0 && (

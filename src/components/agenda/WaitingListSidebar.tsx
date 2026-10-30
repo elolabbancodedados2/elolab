@@ -2,7 +2,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, MessageCircle, Users } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Users } from '@/components/icons/elolabIcons';
 import { cn } from '@/lib/utils';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { getPrioridadeListaEspera } from '@/lib/listaEsperaPrioridade';
@@ -45,7 +45,7 @@ function WaitingCard({ item }: { item: Item }) {
       {...attributes}
       {...listeners}
       className={cn(
-        'rounded-xl border border-border/60 bg-card p-3 cursor-grab active:cursor-grabbing shadow-xs hover:border-[#1080CA]/40 hover:shadow-sm transition-all',
+        'rounded-xl border border-border/60 bg-card p-3 cursor-grab active:cursor-grabbing shadow-xs hover:border-primary/40 hover:shadow-sm transition-all',
         isDragging && 'opacity-40'
       )}
     >
@@ -62,7 +62,7 @@ function WaitingCard({ item }: { item: Item }) {
             aria-label={`Chamar ${nome} no WhatsApp`}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1080CA]/10 text-[#1080CA] transition hover:bg-gradient-primary hover:text-white"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#25D366]/10 text-[#128C7E] transition hover:bg-[#128C7E] hover:text-white"
           >
             <MessageCircle className="h-4 w-4" />
           </a>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Ban, User } from 'lucide-react';
+import { Ban, User } from '@/components/icons/elolabIcons';
 import { cn } from '@/lib/utils';
 import { AppointmentCard } from '../AppointmentCard';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
@@ -102,7 +102,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
       )}
     >
       <div className="flex items-center gap-2">
-        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm', inactive ? 'bg-muted-foreground/50' : 'bg-gradient-primary')}>
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm', inactive ? 'bg-muted-foreground/50' : 'bg-primary')}>
           <User className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
@@ -121,7 +121,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
       {ocupacao !== null && (
         <div className="mt-1 flex items-center gap-1.5" title={`${minutosOcupados} de ${expedienteMinutos} minutos do expediente ocupados`}>
           <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`Ocupação de ${nomeExibido}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={ocupacao}>
-            <div className={cn('h-full rounded-full', ocupacao >= 90 ? 'bg-destructive' : 'bg-gradient-primary')} style={{ width: `${ocupacao}%` }} />
+            <div className={cn('h-full rounded-full', ocupacao >= 90 ? 'bg-destructive' : 'bg-primary')} style={{ width: `${ocupacao}%` }} />
           </div>
           <span className="shrink-0 text-[9px] font-semibold tabular-nums text-muted-foreground">{ocupacao}%</span>
         </div>
@@ -129,7 +129,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
       <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
         {next ? (
           <>
-            <span className="h-1.5 w-1.5 rounded-full bg-[#1080CA]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
             <span>Próximo <span className="font-semibold tabular-nums text-foreground">{next.hora_inicio.slice(0, 5)}</span></span>
             {confirmed > 0 && <span className="text-success">✓ {confirmed}</span>}
           </>
@@ -141,7 +141,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
             type="button"
             onClick={() => onSlotClick(medico.id, vagaLivre)}
             aria-label={`Criar consulta na próxima vaga livre, ${vagaLivre}, com ${nomeExibido}`}
-            className="ml-auto inline-flex items-center gap-1 rounded-full bg-[#1080CA]/10 px-2 py-0.5 font-semibold text-[#1080CA] transition hover:bg-gradient-primary hover:text-white"
+            className="ml-auto inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary transition hover:bg-primary hover:text-primary-foreground"
           >
             Livre <span className="tabular-nums">{vagaLivre}</span>
           </button>
@@ -178,10 +178,10 @@ function DoctorColumn({
       >
         {hoverMin !== null && (
           <div
-            className="pointer-events-none absolute inset-x-0 border-t border-[#1080CA]/60 z-30"
+            className="pointer-events-none absolute inset-x-0 border-t border-primary/60 z-30"
             style={{ top: minutesToPx(hoverMin) }}
           >
-            <span className="absolute -top-2 left-1 rounded bg-[#1080CA] px-1 py-0 text-[10px] font-medium text-white shadow">
+            <span className="absolute -top-2 left-1 rounded bg-primary px-1 py-0 text-[10px] font-medium text-primary-foreground shadow">
               {fromMinutes(START_HOUR * 60 + hoverMin)}
             </span>
           </div>
@@ -221,7 +221,7 @@ function DoctorColumn({
             accessibleName={`Criar consulta ${slot} com ${nomeMedico(medico.nome || medico.crm)}`}
             // Uma única parada de Tab por profissional; setas percorrem os horários.
             tabStop={slot === SLOTS[0]}
-            className="absolute inset-x-0 cursor-pointer border-0 bg-transparent p-0 hover:bg-[#1080CA]/5 focus-visible:z-30 focus-visible:bg-[#1080CA]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1080CA]"
+            className="absolute inset-x-0 cursor-pointer border-0 bg-transparent p-0 hover:bg-primary/5 focus-visible:z-30 focus-visible:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
             style={{ top: minutesToPx(toMinutes(slot) - START_HOUR * 60), height: SLOT_PX }}
           />
         ))}
@@ -280,7 +280,7 @@ function DropSlot({ id, data, className, style, onClick, onKeyDown, accessibleNa
       aria-haspopup="dialog"
       tabIndex={tabStop ? 0 : -1}
       data-agenda-slot="true"
-      className={cn(className, isOver && 'bg-[#1080CA]/10 ring-1 ring-[#1080CA]/40 ring-inset')}
+      className={cn(className, isOver && 'bg-primary/10 ring-1 ring-primary/40 ring-inset')}
     />
   );
 }
@@ -333,7 +333,7 @@ export function DailyMultiDoctorView({
             <button
               type="button"
               onClick={irParaAgora}
-              className="rounded-full bg-gradient-primary px-2 py-0.5 text-[10px] font-bold text-white hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-1"
+              className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
               aria-label={`Ir para o horário atual, ${fromMinutes(nowMin)}`}
             >
               agora {fromMinutes(nowMin)}
@@ -395,10 +395,10 @@ export function DailyMultiDoctorView({
               <div
                 ref={nowLineRef}
                 data-testid="agenda-now-line"
-                className="pointer-events-none absolute inset-x-0 z-40 border-t-2 border-[#1080CA]"
+                className="pointer-events-none absolute inset-x-0 z-40 border-t-2 border-primary"
                 style={{ top: nowPx }}
               >
-                <span className="absolute -top-2 left-0 h-3 w-3 rounded-full bg-gradient-primary shadow ring-2 ring-white" />
+                <span className="absolute -top-2 left-0 h-3 w-3 rounded-full bg-primary shadow ring-2 ring-white" />
               </div>
             )}
             {doctorsToShow.map(({ medico, inactive }: any, idx: number) => (

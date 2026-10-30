@@ -954,7 +954,7 @@ export function AgendaPage() {
 
 
       <AlertDialog open={!!moveForaExpediente} onOpenChange={open => { if (!open) setMoveForaExpediente(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent data-elo-font-preview="agenda">
           <AlertDialogHeader>
             <AlertDialogTitle>Mover para fora do expediente?</AlertDialogTitle>
             <AlertDialogDescription>

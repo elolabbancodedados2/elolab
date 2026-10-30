@@ -106,7 +106,8 @@
   font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
 }
 
-[data-elo-font-preview="dashboard"] :is(h1, h2, h3, h4, .font-display) {
+[data-elo-font-preview="dashboard"] :is(h1, h2, h3, h4, .font-display),
+[data-elo-font-preview="agenda"] :is(h1, h2, h3, h4, .font-display) {
   font-family: 'Manrope', 'DM Sans', 'Inter', system-ui, sans-serif;
 }
 

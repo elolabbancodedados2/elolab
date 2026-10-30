@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
-import { ArrowLeft, CircleX, History, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, CircleX, History, Loader2, MessageCircle } from '@/components/icons/elolabIcons';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -486,7 +486,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-semibold">{paciente.nome_social || paciente.nome}</div>
                   {whatsappPaciente && (
-                    <a href={whatsappPaciente} target="_blank" rel="noopener noreferrer" aria-label="Abrir conversa no WhatsApp" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1080CA]/10 text-[#1080CA] transition hover:bg-gradient-primary hover:text-white">
+                    <a href={whatsappPaciente} target="_blank" rel="noopener noreferrer" aria-label="Abrir conversa no WhatsApp" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#25D366]/10 text-[#128C7E] transition hover:bg-[#128C7E] hover:text-white">
                       <MessageCircle className="h-4 w-4" />
                     </a>
                   )}
@@ -495,7 +495,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 {paciente.telefone && <div className="text-xs text-muted-foreground">Tel: {paciente.telefone}</div>}
                 {ultimoAtendimento && (
                   <div className="mt-1.5 flex items-center gap-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-                    <History className="h-3.5 w-3.5 shrink-0 text-[#1080CA]" />
+                    <History className="h-3.5 w-3.5 shrink-0 text-primary" />
                     <span>
                       Último atendimento: <span className="font-medium text-foreground">{String(ultimoAtendimento.data).split('-').reverse().join('/')} às {String(ultimoAtendimento.hora_inicio).slice(0, 5)}</span>
                       {ultimoAtendimento.medicos?.nome && ` · ${nomeMedico(ultimoAtendimento.medicos.nome)}`}
@@ -516,7 +516,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
               <Label htmlFor="appointment-doctor">Médico *</Label>
               <Select value={form.medico_id} onValueChange={(v) => setForm({ ...form, medico_id: v })}>
                 <SelectTrigger id="appointment-doctor"><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent data-elo-font-preview="agenda">
                   {[...medicos.filter(m => m.ativo !== false), ...(medicoInativoDaConsulta ? [medicoInativoDaConsulta] : [])].map(m => (
                     <SelectItem key={m.id} value={m.id}>
                       {nomeMedico(m.nome || m.crm)} · {m.ativo === false ? 'Inativo (consulta existente)' : m.especialidade || 'Geral'}
@@ -549,7 +549,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 <Label htmlFor="appointment-type">Tipo</Label>
                 <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
                   <SelectTrigger id="appointment-type"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent data-elo-font-preview="agenda">
                     <SelectItem value="consulta">Consulta</SelectItem>
                     <SelectItem value="retorno">Retorno</SelectItem>
                     <SelectItem value="exame">Exame</SelectItem>
@@ -568,7 +568,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 ) : (
                   <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })} disabled={consultaSomenteLeitura}>
                     <SelectTrigger id="appointment-status"><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent data-elo-font-preview="agenda">
                       <SelectItem value="agendado">Agendado</SelectItem>
                       <SelectItem value="confirmado">Confirmado</SelectItem>
                     </SelectContent>
@@ -588,7 +588,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 <Label htmlFor="appointment-room">Sala</Label>
                 <Select value={form.sala_id || 'none'} onValueChange={(v) => setForm({ ...form, sala_id: v === 'none' ? '' : v })}>
                   <SelectTrigger id="appointment-room"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent data-elo-font-preview="agenda">
                     <SelectItem value="none">Sem sala</SelectItem>
                     {salas.map(s => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
                   </SelectContent>
@@ -642,7 +642,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         </footer>
       </div>
       <AlertDialog open={!!foraExpediente} onOpenChange={(o) => !o && setForaExpediente(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent data-elo-font-preview="agenda">
           <AlertDialogHeader>
             <AlertDialogTitle>Fora do expediente do médico</AlertDialogTitle>
             <AlertDialogDescription>{foraExpediente} Deseja agendar mesmo assim?</AlertDialogDescription>
@@ -654,7 +654,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog open={confirmCancel} onOpenChange={(nextOpen) => { if (!deleting) setConfirmCancel(nextOpen); }}>
-        <AlertDialogContent>
+        <AlertDialogContent data-elo-font-preview="agenda">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar consulta?</AlertDialogTitle>
             <AlertDialogDescription>A consulta deixará de ocupar o horário. O registro será mantido no histórico.</AlertDialogDescription>
@@ -665,7 +665,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
               <SelectTrigger id="appointment-cancellation-reason" aria-label="Motivo do cancelamento" disabled={deleting}>
                 <SelectValue placeholder="Selecione um motivo" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent data-elo-font-preview="agenda">
                 {APPOINTMENT_CANCELLATION_REASONS.map((reason) => (
                   <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
                 ))}

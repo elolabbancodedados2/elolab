@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Palette, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Palette, RefreshCw } from '@/components/icons/elolabIcons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
