@@ -753,6 +753,14 @@ export default function Pacientes() {
 
   const filteredPacientes = pacientes;
   const selectedPaciente = patientId ? pacienteDeepLink : pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
+  const navigateToConsentTask = (path: string) => {
+    if (!selectedPaciente) return;
+    const params = new URLSearchParams(location.search);
+    params.set('tab', 'lgpd');
+    if (location.pathname === '/pacientes') params.set('paciente', selectedPaciente.id);
+    const returnTo = `${location.pathname}?${params.toString()}`;
+    navigate(path, { state: { consentReturnTo: returnTo, consentReturnState: location.state } });
+  };
   const consentimentosPacienteQuery = useQuery({
     queryKey: ['consentimentos-paciente', authProfile?.clinica_id, selectedPaciente?.id],
     enabled: Boolean(authProfile?.clinica_id && selectedPaciente?.id),
@@ -2046,12 +2054,11 @@ export default function Pacientes() {
                       clínicas. Agora aparece na ficha, ao lado do resto. */}
                   <TabsContent value="lgpd" className="mt-0 space-y-3">
                     <ConsentimentoLGPD
-                      pacienteId={selectedPaciente.id}
-                      pacienteNome={selectedPaciente.nome}
                       consentimentos={consentimentosPacienteQuery.data ?? []}
                       isLoading={consentimentosPacienteQuery.isLoading}
                       isError={consentimentosPacienteQuery.isError}
-                      onConsentimentoRegistrado={() => { void consentimentosPacienteQuery.refetch(); }}
+                      onNovoConsentimento={() => navigateToConsentTask(`/pacientes/${encodeURIComponent(selectedPaciente.id)}/consentimentos/novo`)}
+                      onRevogarConsentimento={(tipo) => navigateToConsentTask(`/pacientes/${encodeURIComponent(selectedPaciente.id)}/consentimentos/${encodeURIComponent(tipo)}/revogar`)}
                     />
                   </TabsContent>
 

@@ -40,6 +40,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(recordId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(recordId))).toBe(false);
   });
+  it('omite o identificador nas páginas de consentimento', () => {
+    const patientId = '00000000-0000-4000-9000-000000000014';
+    render(<MemoryRouter initialEntries={[`/pacientes/${patientId}/consentimentos/tratamento_dados/revogar`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Revogar consentimento')).toBeInTheDocument();
+    expect(screen.queryByText(patientId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(patientId))).toBe(false);
+  });
   it('exibe o nome correto da Central de Notificações', () => {
     render(
       <MemoryRouter initialEntries={['/notificacoes']}>

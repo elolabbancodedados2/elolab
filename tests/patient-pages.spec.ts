@@ -74,6 +74,66 @@ test('patient detail has its own address, accepts legacy links and preserves loo
   await expect(page.getByRole('tab', { name: 'Endereço', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
+test('patient consent registration and revocation use dedicated responsive pages', async ({ page }, info) => {
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false });
+  let consent: Record<string, unknown> | null = null;
+  await page.route('**/rest/v1/consentimentos_lgpd*', async route => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      return route.fulfill({ json: consent ? [consent] : [], headers: { 'content-range': '0-0/1' } });
+    }
+    if (method === 'POST') {
+      consent = {
+        ...route.request().postDataJSON(),
+        id: '00000000-0000-4000-9000-000000000015',
+        clinica_id: '00000000-0000-4000-8000-000000000002',
+        revogado: false,
+        data_revogacao: null,
+        updated_at: new Date().toISOString(),
+      };
+      return route.fulfill({ status: 201, json: [consent], headers: { 'content-range': '0-0/1' } });
+    }
+    if (method === 'PATCH') {
+      consent = { ...consent, ...route.request().postDataJSON(), updated_at: new Date().toISOString() };
+      return route.fulfill({ status: 200, json: [consent], headers: { 'content-range': '0-0/1' } });
+    }
+    return route.fallback();
+  });
+
+  await page.goto(`/pacientes/${patientId}?tab=lgpd`);
+  await expect(page.getByRole('tab', { name: 'LGPD', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: 'Novo Consentimento' }).click();
+  await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}/consentimentos/novo$`));
+  await expect(page.getByRole('heading', { name: 'Novo consentimento', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`consent-page-${width}.png`), fullPage: true });
+    if (width === 390) {
+      const submit = page.getByRole('button', { name: 'Registrar Consentimento' });
+      await submit.scrollIntoViewIfNeeded();
+      const submitBox = await submit.boundingBox();
+      const bottomNavBox = await page.locator('nav').last().boundingBox();
+      expect(submitBox && bottomNavBox && submitBox.y + submitBox.height < bottomNavBox.y).toBe(true);
+      await page.screenshot({ path: info.outputPath('consent-page-mobile-footer.png') });
+    }
+  }
+
+  await page.getByRole('checkbox', { name: /Comunicações e Marketing/ }).click();
+  await page.getByRole('button', { name: 'Registrar Consentimento' }).click();
+  await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}\\?tab=lgpd$`));
+  await expect(page.getByRole('button', { name: 'Revogar' })).toBeVisible();
+  await page.getByRole('button', { name: 'Revogar' }).click();
+  await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}/consentimentos/comunicacao_marketing/revogar$`));
+  await page.getByLabel('Motivo da revogação').fill('Solicitação do paciente');
+  await page.getByRole('button', { name: 'Confirmar Revogação' }).click();
+  await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}\\?tab=lgpd$`));
+  await expect(page.getByText('Revogado', { exact: true })).toBeVisible();
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
 test('nursing can view a patient but cannot open the editing form', async ({ page }, info) => {
   const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'enfermagem' });
   await page.goto(`/pacientes/${patientId}/editar`);
