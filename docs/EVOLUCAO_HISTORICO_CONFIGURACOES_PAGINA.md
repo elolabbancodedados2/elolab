@@ -35,4 +35,4 @@ Vitest 3/3 e Playwright 1/1 passaram. TypeScript, build, acessibilidade, permiss
 
 ## Publicação
 
-Preencher após o rollout e a confirmação pública da versão.
+Commit `8f8cdd0ad70275a6692ac070b3623dc8a810ec51`, imagem `easypanel/elolab/app:deploy-20261030-8f8cdd0`, rollback `deploy-20261030-85afcc0`. O container isolado confirmou `/healthz=ok` e o SHA esperado em `/version.json`; o domínio público confirmou os mesmos resultados e o Swarm ficou em 1/1. O código anterior foi preservado em `code.before-20261030-8f8cdd0`; o `.env` manteve o mesmo hash, sem leitura ou exposição. Não houve migration ou alteração de dados de produção. O rollout teve contenção transitória da porta host-mode, resolvida antes da confirmação pública.
