@@ -7,6 +7,10 @@ ALTER TABLE public.agendamentos
   ADD COLUMN IF NOT EXISTS recepcao_checklist_em timestamptz,
   ADD COLUMN IF NOT EXISTS recepcao_checklist_por uuid REFERENCES auth.users(id) ON DELETE SET NULL;
 
+CREATE INDEX IF NOT EXISTS agendamentos_recepcao_checklist_por_idx
+  ON public.agendamentos (recepcao_checklist_por)
+  WHERE recepcao_checklist_por IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.auditar_checklist_recepcao()
 RETURNS trigger
 LANGUAGE plpgsql
