@@ -18,7 +18,6 @@ import { DailyMultiDoctorView } from './views/DailyMultiDoctorView';
 import { WeeklyView } from './views/WeeklyView';
 import { MonthlyView } from './views/MonthlyView';
 import { WaitingListSidebar } from './WaitingListSidebar';
-import { ColorSchemeDialog } from './ColorSchemeDialog';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -214,7 +213,6 @@ export function AgendaPage() {
   const [statusFilter, setStatusFilter] = useState<string[]>(() => location.state?.agendaFilters?.status || []);
   const [medicoFilter, setMedicoFilter] = useState<string[]>(() => location.state?.agendaFilters?.medicos || []);
   const [waitingOpen, setWaitingOpen] = useState(true);
-  const [colorOpen, setColorOpen] = useState(false);
   const [dialogState, setDialogState] = useState<{ open: boolean; initial: any | null }>({ open: false, initial: null });
   const openingAppointment = useRef(false);
   useEffect(() => {
@@ -451,7 +449,7 @@ export function AgendaPage() {
     return () => { active = false; };
   }, [esperaIdDaRota, pacienteIdDaRota, profile?.clinica_id, setSearchParams]);
 
-  const { scheme, setScheme, colorFor } = useAgendaColorScheme();
+  const { scheme, colorFor } = useAgendaColorScheme();
 
   const STATUS_CONHECIDOS = useMemo(() => new Set([
     'agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'em_triagem', 'fila_atendimento', 'em_atendimento',
@@ -844,7 +842,12 @@ export function AgendaPage() {
           onMedicoFilterChange={setMedicoFilter}
           onNewAppointment={() => setDialogState({ open: true, initial: { data: activeDate } })}
           onNewBlock={openBlockManagement}
-          onOpenColorScheme={() => setColorOpen(true)}
+          onOpenColorScheme={() => navigate('/agenda/configurar-cores', {
+            state: {
+              returnTo: `${location.pathname}${location.search}`,
+              agendaFilters: { search, status: statusFilter, medicos: medicoFilter },
+            },
+          })}
           onToggleWaiting={() => setWaitingOpen(o => !o)}
           waitingCount={waiting.length}
           totals={totals}
@@ -974,16 +977,6 @@ export function AgendaPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <ColorSchemeDialog
-        open={colorOpen}
-        onOpenChange={setColorOpen}
-        scheme={scheme}
-        onSave={setScheme}
-         medicos={visibleMedicos}
-        convenios={convenios}
-        tipos={tipos}
-      />
 
     </div>
   );

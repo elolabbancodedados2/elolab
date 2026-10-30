@@ -4,7 +4,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 
 ## Entregas já publicadas
 
-- Agenda: criação e edição de consultas; gestão de bloqueios em páginas próprias.
+- Agenda: criação e edição de consultas, gestão de bloqueios e esquema de cores em páginas próprias; visão padrão corrigida para persistir pela identidade autenticada.
 - Pacientes: cadastro, edição e detalhes.
 - Prescrições: criação e conclusão.
 - Atestados: criação, consulta e duplicação.

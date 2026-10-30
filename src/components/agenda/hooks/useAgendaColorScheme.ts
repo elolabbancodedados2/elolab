@@ -31,7 +31,7 @@ const DEFAULT_SCHEME: ColorScheme = {
 
 export const PALETTE = [
   { label: 'Azul primário', value: 'hsl(var(--primary))' },
-  { label: 'Azul-marinho', value: 'hsl(var(--sidebar-background))' },
+  { label: 'Azul-marinho', value: 'hsl(var(--brand-dark))' },
   { label: 'Ciano EloLab', value: 'hsl(var(--highlight))' },
   { label: 'Sucesso', value: 'hsl(var(--success))' },
   { label: 'Aviso', value: 'hsl(var(--warning))' },
@@ -44,36 +44,55 @@ const FALLBACK_COLOR = 'hsl(var(--primary))';
 const KEY = 'agenda_color_scheme';
 
 export function useAgendaColorScheme() {
-  const { profile } = useSupabaseAuth() as any;
+  const { user, profile } = useSupabaseAuth();
+  const userId = user?.id ?? profile?.user_id ?? profile?.id;
   const [scheme, setSchemeState] = useState<ColorScheme>(DEFAULT_SCHEME);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadRevision, setLoadRevision] = useState(0);
 
   useEffect(() => {
-    if (!profile?.user_id) return;
-    (async () => {
-      const { data } = await (supabase.from('configuracoes_clinica' as any)
-        .select('valor').eq('user_id', profile.user_id).eq('chave', KEY).maybeSingle() as any);
-      if (data?.valor) {
-        try {
-          const v = data.valor as ColorScheme;
-          setSchemeState({
-            criterion: v.criterion || DEFAULT_SCHEME.criterion,
-            map: { ...DEFAULT_SCHEME.map, ...(v.map || {}) },
-          });
-        } catch {
-          // preferência salva em formato inválido — mantém o esquema padrão
-        }
+    let active = true;
+    const load = async () => {
+      if (!userId) {
+        setIsLoading(false);
+        return;
       }
-    })();
-  }, [profile?.user_id]);
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const { data, error } = await (supabase.from('configuracoes_clinica' as any)
+          .select('valor').eq('user_id', userId).eq('chave', KEY).maybeSingle() as any);
+        if (error) throw error;
+        if (!active) return;
+        if (data?.valor) {
+          const value = data.valor as ColorScheme;
+          setSchemeState({
+            criterion: value.criterion || DEFAULT_SCHEME.criterion,
+            map: { ...DEFAULT_SCHEME.map, ...(value.map || {}) },
+          });
+        } else {
+          setSchemeState(DEFAULT_SCHEME);
+        }
+      } catch {
+        if (active) setLoadError('Não foi possível carregar as cores salvas. Tente novamente.');
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [userId, loadRevision]);
 
   const setScheme = async (next: ColorScheme) => {
-    setSchemeState(next);
-    if (!profile?.user_id) return;
-    await (supabase.from('configuracoes_clinica' as any).upsert({
-      user_id: profile.user_id,
+    if (!userId) throw new Error('Não foi possível identificar o usuário atual.');
+    const { error } = await (supabase.from('configuracoes_clinica' as any).upsert({
+      user_id: userId,
       chave: KEY,
       valor: next as any,
     }, { onConflict: 'user_id,chave' }) as any);
+    if (error) throw error;
+    setSchemeState(next);
   };
 
   const colorFor = (ag: any) => {
@@ -85,5 +104,5 @@ export function useAgendaColorScheme() {
     }
   };
 
-  return { scheme, setScheme, colorFor };
+  return { scheme, setScheme, colorFor, isLoading, loadError, reload: () => setLoadRevision(revision => revision + 1) };
 }

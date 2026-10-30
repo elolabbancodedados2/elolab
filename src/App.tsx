@@ -140,6 +140,7 @@ const PlatformConsumo = lazy(() => import("@/pages/PlatformConsumo"));
 const PlatformOnboarding = lazy(() => import("@/pages/PlatformOnboarding"));
 const OnboardingClinica = lazy(() => import("@/pages/OnboardingClinica"));
 const InitialProductTourPage = lazy(() => import("@/pages/InitialProductTourPage"));
+const AgendaColorSettingsPage = lazy(() => import("@/pages/AgendaColorSettingsPage"));
 const PlatformDominios = lazy(() => import("@/pages/PlatformDominios"));
 const PlatformRelatoriosAgendados = lazy(() => import("@/pages/PlatformRelatoriosAgendados"));
 const TiposConsulta = lazy(() => import("@/pages/TiposConsulta"));
@@ -309,6 +310,7 @@ function AppRoutes() {
                           <Route path="/treinamento" element={<Treinamento />} />
                           <Route path="/treinamento/:tutorialKey" element={<Treinamento />} />
                           <Route path="/agenda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Agenda /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/configurar-cores" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AgendaColorSettingsPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="manage-blocks" /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="create-block" creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />

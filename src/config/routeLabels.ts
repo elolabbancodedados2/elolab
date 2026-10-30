@@ -23,6 +23,7 @@ const labelsByPath: Record<string, string> = {
   '/treinamento': 'Treinamento',
   '/painel-tv/midias': 'Mídias do Painel TV',
   '/agenda': 'Agenda',
+  '/agenda/configurar-cores': 'Esquema de cores da agenda',
   '/agenda/bloqueios': 'Bloqueios da agenda',
   '/agenda/bloqueios/novo': 'Novo bloqueio',
   '/agenda/nova': 'Nova consulta',

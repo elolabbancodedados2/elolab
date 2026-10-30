@@ -6,6 +6,8 @@ Em 29/10/2026, o responsável pediu páginas próprias no lugar dos modais de tr
 
 O tour de primeiros passos também foi retirado do diálogo automático e movido para uma página opcional: [tour inicial em página própria](EVOLUCAO_TOUR_INICIAL_PAGINA.md). A auditoria geral continua aberta.
 
+A configuração do esquema de cores da Agenda também saiu do diálogo e passou para uma página dedicada; o registro da implementação está em [cores da Agenda em página própria](EVOLUCAO_AGENDA_CORES_PAGINA.md).
+
 Base do plano: `AUDITORIA_COMPLETUDE_MODULOS_2026-10-29.md`. Evolução incremental: agenda → pacientes → prontuário/documentos/exames/laboratório → financeiro → demais cadastros, validando cada fluxo antes de avançar.
 
 ## Agenda — primeira entrega
