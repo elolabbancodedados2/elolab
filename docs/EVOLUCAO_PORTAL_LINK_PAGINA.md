@@ -26,7 +26,7 @@ A ficha do paciente gerava um link de acesso e, quando a cópia automática falh
 
 ## Publicação
 
-Registrar aqui o commit, a imagem publicada, o rollback e os resultados do smoke após o deploy.
+Publicado no commit `53237b4f284ca78037c6c5c8486fdea10cf5258e`, imagem `easypanel/elolab/app:deploy-20261030-53237b4`; rollback `deploy-20261030-0ec8e61`. O smoke isolado e os domínios `app.elolab.com.br` e `elolab.com.br` confirmaram `/healthz=ok` e o SHA publicado; o Swarm ficou 1/1. A fonte anterior está em `code.before-20261030-53237b4`. O `.env` foi copiado e comparado somente por hash, sem alteração. A troca teve uma espera transitória por porta em modo host, resolvida antes da confirmação final.
 
 ## Limites
 
