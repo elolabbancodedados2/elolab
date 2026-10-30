@@ -671,3 +671,15 @@ Validação: suíte Playwright de recebíveis passou 8/8, incluindo navegação,
 Limites: não houve teste manual com leitor de tela, validação de RLS nem uso autenticado da página em produção. As capturas da tela inicial e das ações foram geradas com conta sintética.
 
 Publicação: commit `6280cc336c9d921fd8da1c9a6598cb2b147712ca`, imagem `easypanel/elolab/app:deploy-20261030-6280cc33`. Swarm confirmou 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o SHA integral. Fonte anterior preservada em `code.before-6280cc33`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-f7000e1`. Nenhuma migration ou alteração de dados de produção.
+
+## Financeiro — estorno de pagamento em página própria (30/10/2026)
+
+Diagnóstico: o estorno individual abria um modal na lista de contas a receber, escondendo o contexto e apertando a seleção do pagamento e a justificativa auditável.
+
+Implementação: `/contas/receber/:lancamentoId/estorno` carrega a receita e seus pagamentos ativos com escopo da clínica, aceita somente contas recebidas ou parciais e mantém a autorização admin/financeiro. A página exibe valor e data do pagamento, exige motivo de pelo menos cinco caracteres, limita a justificativa e preserva o texto após erro explícito para nova tentativa. O retorno conserva a aba, os filtros e a busca local; o breadcrumb oculta o UUID. A RPC existente `estornar_pagamento` continua responsável pela transação, auditoria e recálculo. Nenhuma regra de negócio, contrato, RLS, migration ou dado real foi alterado.
+
+Validação: suíte Playwright de contas a receber passou 10/10, incluindo rota própria, ausência de modal, retorno, falha com motivo preservado, pagamentos inexistentes e mocks filtrados por ID/clínica. TypeScript, `npm run check:a11y`, build com SHA conhecido e `git diff --check` passaram. ESLint: zero erros e 24 avisos existentes em `ContasReceber.tsx`; a nova página não gerou avisos. Inspecionei capturas renderizadas mobile (390 px) e desktop (1440 px), incluindo ações no final do formulário; a ação móvel fica acima da navegação fixa e não há transbordamento horizontal. Nenhum estorno real foi executado.
+
+Limites: validação com resposta sintética, sem leitor de tela manual, teste autenticado de RLS ou operação real no caixa.
+
+Publicação: commit `6aef3d64f0264e67429c45e0ecad81f42927b345`, imagem `easypanel/elolab/app:deploy-20261030-6aef3d6`. `/healthz` respondeu `ok`, `/version.json` confirmou o SHA integral e o Swarm reportou a nova réplica como ativa. Fonte anterior preservada em `code.before-6aef3d6`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-6280cc33`. Nenhuma migration ou alteração de dados de produção.
