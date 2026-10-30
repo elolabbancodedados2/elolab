@@ -1,14 +1,14 @@
 import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { printReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { createAutoBilling } from '@/lib/autoBilling';
-import { autoFinalizarAtendimento, autoConfirmarPagamento } from '@/lib/workflowAutomation';
+import { autoConfirmarPagamento } from '@/lib/workflowAutomation';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { primeiraFalhaCheckin, validarCheckin } from '@/lib/checkinValidacao';
 import { chamarPacienteNaFila } from '@/lib/filaChamada';
@@ -20,7 +20,6 @@ import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { AtendimentosEmAberto } from '@/components/recepcao/AtendimentosEmAberto';
-import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { useAgendamentosPeriodo, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
@@ -196,12 +195,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
    const [pendingAction, setPendingAction] = useState<{type: string; agId?: string; filaId?: string} | null>(null);
    /**
-    * Finalização pela Recepção esperando a resposta sobre retorno — mesma
-    * pergunta da Fila, agora pela via da recepção (antes só a Fila
-    * perguntava, e o retorno era esquecido nas outras vias).
-    */
-   const [finalizandoRecepcao, setFinalizandoRecepcao] = useState<{ agId: string; filaId: string; nome: string } | null>(null);
-   /**
     * Encaixe: paciente que chegou sem agendamento. Antes a recepcionista
     * tinha que ir até a Agenda, criar a consulta e voltar para fazer o
     * check-in — três navegações no meio de um balcão cheio. Aqui o caminho
@@ -214,7 +207,19 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    const encaixeCompleted = useRef(false);
    const encaixeSubmitLock = useRef(false);
 
+  const location = useLocation();
   const abrirEncaixe = () => navigate('/recepcao/encaixe');
+  const abrirFinalizacao = (
+    agendamentoId: string,
+    origem: 'recepcao' | 'atendimentos-abertos',
+    filaId?: string,
+  ) => {
+    const query = new URLSearchParams({ origem });
+    if (filaId) query.set('filaId', filaId);
+    navigate(`/atendimentos/${agendamentoId}/finalizar?${query.toString()}`, {
+      state: { returnTo: `${location.pathname}${location.search}` },
+    });
+  };
 
   // Refresh timer every 30s
   useEffect(() => {
@@ -668,47 +673,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       toast.error('Erro ao iniciar atendimento: ' + (err?.message || 'Erro desconhecido'));
     }
     setIsProcessing(false);
-  }
-
-  async function handleFinalizarAtendimento(agId: string, filaId: string, diasRetorno: number | null) {
-    setIsProcessing(true);
-    let finalizado = false;
-    try {
-      const item = enriched.find(e => e.ag.id === agId);
-      if (!item) throw new Error('Agendamento não encontrado');
-      const result = await autoFinalizarAtendimento({
-        agendamentoId: agId,
-        filaId,
-        pacienteId: item.ag.paciente_id,
-        pacienteNome: item.pac?.nome || 'Paciente',
-        medicoId: item.ag.medico_id,
-        convenioId: item.pac?.convenio_id,
-        tipoConsulta: item.ag.tipo,
-        tipoExame: ['exame', 'exames'].includes(String(item.ag.tipo || '').toLocaleLowerCase('pt-BR'))
-          ? item.ag.observacoes
-          : null,
-        clinicaId: profile?.clinica_id,
-        // Pergunta do retorno, respondida no diálogo — mesma pergunta da Fila.
-        agendarRetorno: diasRetorno !== null,
-        diasRetorno: diasRetorno ?? undefined,
-      });
-      if (!result.success) throw new Error(result.message);
-
-      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      finalizado = true;
-
-      toast.success('Atendimento finalizado!', {
-        description: result.actions.join(' • '),
-      });
-    } catch (err: any) {
-      console.error('Erro ao finalizar:', err);
-      toast.error('Erro ao finalizar: ' + (err?.message || 'Erro desconhecido'));
-    }
-    setIsProcessing(false);
-    return finalizado;
   }
 
    async function openPagamento(lanc: any, pac: any) {
@@ -1357,7 +1321,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       {/* Antes do painel do dia: consulta de outro dia parada em "em
           atendimento" nunca faturou, e ninguém a vê em tela nenhuma — a fila
           só guarda quem aguarda ou já terminou. */}
-      <AtendimentosEmAberto />
+      <AtendimentosEmAberto onFinalizar={agendamentoId => abrirFinalizacao(agendamentoId, 'atendimentos-abertos')} />
 
       <PainelDoDia
         atendimentos={enriched}
@@ -1781,11 +1745,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                       <Button
                                         size="sm"
                                         variant="default"
-                                        onClick={() => setFinalizandoRecepcao({
-                                          agId: ag.id,
-                                          filaId: fila.id,
-                                          nome: (pac as any)?.nome_social || pac?.nome || 'Paciente',
-                                        })}
+                                        onClick={() => abrirFinalizacao(ag.id, 'recepcao', fila.id)}
                                         disabled={isProcessing}
                                         className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                                       >
@@ -1937,21 +1897,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* ─── Finalização com pergunta de retorno ───
-          Mesma pergunta da Fila, agora também na via da recepção. Sem isto,
-          o retorno era esquecido em toda finalização que não passasse pela
-          Fila — e "retorno esquecido" é paciente que não volta. */}
-      <FinalizarAtendimentoDialog
-        open={!!finalizandoRecepcao}
-        pacienteNome={finalizandoRecepcao?.nome ?? ''}
-        onClose={() => setFinalizandoRecepcao(null)}
-        onConfirm={async dias => {
-          if (!finalizandoRecepcao) return false;
-          const { agId, filaId } = finalizandoRecepcao;
-          return handleFinalizarAtendimento(agId, filaId, dias);
-        }}
-      />
 
     </div>
   );

@@ -32,10 +32,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { atomicMarkNoShow } from '@/lib/operationalTransitions';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 
 interface Aberto {
   id: string;
@@ -48,13 +46,11 @@ interface Aberto {
   pacientes: { nome: string } | null;
 }
 
-export function AtendimentosEmAberto() {
+export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendamentoId: string) => void }) {
   const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const [ocupado, setOcupado] = useState<string | null>(null);
-  const [acaoOcupada, setAcaoOcupada] = useState<'finalizar' | 'nao-realizado' | null>(null);
-  /** Aguardando a resposta sobre retorno antes de finalizar. */
-  const [finalizando, setFinalizando] = useState<Aberto | null>(null);
+  const [acaoOcupada, setAcaoOcupada] = useState<'nao-realizado' | null>(null);
   const [confirmandoNaoRealizado, setConfirmandoNaoRealizado] = useState<Aberto | null>(null);
 
   const [hoje, setHoje] = useState(() => todaySaoPauloDateOnly());
@@ -82,46 +78,6 @@ export function AtendimentosEmAberto() {
       return (data ?? []) as unknown as Aberto[];
     },
   });
-
-  async function finalizar(a: Aberto, diasRetorno: number | null) {
-    setOcupado(a.id);
-    setAcaoOcupada('finalizar');
-    let finalizado = false;
-    try {
-      const r = await autoFinalizarAtendimento({
-        agendamentoId: a.id,
-        pacienteId: a.paciente_id,
-        pacienteNome: a.pacientes?.nome ?? 'Paciente',
-        medicoId: a.medico_id ?? '',
-        tipoConsulta: a.tipo,
-        tipoExame: ['exame', 'exames'].includes(String(a.tipo || '').toLocaleLowerCase('pt-BR'))
-          ? a.observacoes : null,
-        clinicaId: profile?.clinica_id,
-        // Encerrar um registro antigo é uma correção operacional, não um evento
-        // clínico ocorrido hoje; evite enviar uma notificação com data enganosa.
-        notificarPaciente: false,
-        // Mesma pergunta das outras vias de finalização: sem ela, o retorno
-        // destes pacientes de dias atrás nasceria esquecido.
-        agendarRetorno: diasRetorno !== null,
-        diasRetorno: diasRetorno ?? undefined,
-      });
-      if (!r.success) {
-        atualizar();
-        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-        queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
-        throw new Error(r.message);
-      }
-      toast.success(r.message || 'Atendimento finalizado', { description: r.actions.join(' • ') });
-      atualizar();
-      finalizado = true;
-    } catch (e: any) {
-      toast.error('Não foi possível finalizar', { description: e?.message });
-    } finally {
-      setOcupado(null);
-      setAcaoOcupada(null);
-    }
-    return finalizado;
-  }
 
   async function naoAconteceu(a: Aberto) {
     setOcupado(a.id);
@@ -201,11 +157,9 @@ export function AtendimentosEmAberto() {
                 <Button
                   size="sm" variant="outline" className="h-7 gap-1 text-xs"
                   disabled={ocupado !== null}
-                  onClick={() => setFinalizando(a)}
+                  onClick={() => onFinalizar(a.id)}
                 >
-                  {ocupado === a.id && acaoOcupada === 'finalizar'
-                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                    : <CheckCircle2 className="h-3 w-3 text-success" />}
+                  <CheckCircle2 className="h-3 w-3 text-success" />
                   Foi atendido
                 </Button>
                 <Button
@@ -254,15 +208,6 @@ export function AtendimentosEmAberto() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <FinalizarAtendimentoDialog
-        open={!!finalizando}
-        pacienteNome={finalizando?.pacientes?.nome ?? 'Paciente'}
-        onClose={() => setFinalizando(null)}
-        onConfirm={async dias => {
-          if (finalizando) return finalizar(finalizando, dias);
-          return false;
-        }}
-      />
     </div>
   );
 }

@@ -561,3 +561,17 @@ Integração preservada: verificação do caixa aberto, reparo de cobrança anti
 Validação: o teste Playwright primeiro falhou porque a rota ainda não existia; depois passou com leitura e recebimento sintéticos, conferência do payload e da idempotência, sem diálogo, em 390 e 1440 px. O botão principal foi conferido acima da navegação fixa no celular. 29 testes unitários de recepção/check-in passaram. Build passou; lint focal sem erros e com 59 avisos `any` nos arquivos verificados. Capturas mobile e desktop foram efetivamente inspecionadas em `test-results/ux-visual-synthetic-recept-90e2e--through-the-idempotent-RPC-chromium/`. Nenhum recebimento real foi executado.
 
 Publicação: commit `af68e69f52f7a07f6bc6e19544038bed729ff3ee`, imagem `easypanel/elolab/app:deploy-20261029-af68e69`. Swarm confirmou `completed`, 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o build. A fonte anterior foi preservada em `code.before-20261029-af68e69`, incluindo o `.env` sem ler ou exibir seu conteúdo. Rollback da imagem: `deploy-20261029-1e43732c`.
+
+## Finalização do atendimento — página própria (29/10/2026)
+
+Diagnóstico: a escolha de retorno abria um modal em quatro pontos — Fila, Recepção, Agenda e atendimentos antigos. A camada escura cobria o workspace e ocultava informações usadas na decisão.
+
+Implementação: `/atendimentos/:agendamentoId/finalizar` carrega consulta e entrada de fila por ID e clínica, mostra paciente, profissional, data, horário e estado, permite escolher retorno em 7/15/30/60/90/180 dias ou sem retorno, e confirma em página dedicada. O botão de ação permanece acima da navegação mobile; a data prevista fica visível na opção selecionada. Os quatro pontos de entrada preservam o retorno ao módulo. Atendimentos antigos sem fila seguem aceitos com `filaId` nulo e sem notificação com data enganosa.
+
+Integração preservada: helper e RPC `finalizar_atendimento_atomico`, geração de cobrança, criação do retorno, notificação em fluxos atuais, validação de clínica e permissões existentes. Nenhum contrato, dado real, permissão, migration ou dependência alterado. Removido o modal compartilhado após migrar seus quatro usos.
+
+Validação: Vitest 25/25 em três arquivos, cobrindo fila, atendimentos antigos e breadcrumbs; Playwright 2/2, cobrindo fila com retorno, atendimento antigo sem fila/sem notificação, payloads, navegação e responsividade em 390/768/1440 px; build e verificador de acessibilidade passaram. ESLint focal com zero erros e 85 avisos legados (`any`/dependências de hook). Capturas mobile, tablet e desktop renderizadas foram efetivamente inspecionadas em `test-results/ux-visual-synthetic-appoin-14df6-ps-return-scheduling-atomic-chromium/`.
+
+Limites: os cenários usam dados e respostas sintéticas, sem gravação real ou validação de RLS. Revisão manual com leitor de tela e concorrência contra a RPC em ambiente isolado permanecem pendentes.
+
+Publicação: registrar após o deploy e a verificação de produção.

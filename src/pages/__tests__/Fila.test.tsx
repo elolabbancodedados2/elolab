@@ -79,7 +79,6 @@ vi.mock('framer-motion', () => ({
   motion: { div: ({ children }: { children: React.ReactNode }) => children },
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
 }));
-vi.mock('@/components/fila/FinalizarAtendimentoDialog', () => ({ FinalizarAtendimentoDialog: () => null }));
 
 import Fila from '@/pages/Fila';
 

@@ -7,7 +7,7 @@ import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus
 import { generateFilaShiftHandoff } from '@/lib/filaShiftHandoff';
 import { FILA_REMOVAL_REASONS, filaRemovalReasonLabel, isFilaRemovalReason } from '@/lib/filaRemoval';
 import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserPlus, Play, Check, Loader2, Clock, ArrowUp, ArrowDown,
@@ -24,7 +24,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
 import { formatarEspera, minutosDeEspera } from '@/lib/filaEspera';
 import { explicarBloqueioFila, PERFIS_LIBERACAO_EXCEPCIONAL } from '@/lib/filaBloqueio';
@@ -35,7 +34,6 @@ import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
-import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { useFilaAtendimento, useAgendamentos, useMedicos, useSalas } from '@/hooks/useSupabaseData';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -247,16 +245,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const [motivoSaida, setMotivoSaida] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
   /**
-   * Finalização pendente, esperando a resposta sobre retorno.
-   *
-   * O retorno é decidido AQUI, no momento em que o profissional fecha a
-   * consulta e sabe se o paciente volta — não numa aba do prontuário que
-   * alguém precisa lembrar de abrir. A finalização já sabia agendar retorno; o
-   * parâmetro existia e nenhuma tela passava, e o resultado foi ZERO retornos
-   * em 18 atendimentos finalizados.
-   */
-  const [finalizando, setFinalizando] = useState<{ filaId: string; agendamentoId: string; nome: string } | null>(null);
-  /**
    * Liberação excepcional da trava de pagamento/triagem.
    *
    * O banco aceita `liberado_sem_pagamento`/`liberado_sem_triagem` com
@@ -274,6 +262,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const queueActionLock = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
+  const location = useLocation();
   const navigate = useNavigate();
   const { profile, hasAnyRole } = useSupabaseAuth();
   const { medicoId: meuMedicoId, isMedicoOnly, isLoading: loadingCurrentMedico, error: currentMedicoError, refetch: refetchCurrentMedico } = useCurrentMedico();
@@ -627,55 +616,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
 
 
 
-  /**
-   * Finaliza de verdade, já sabendo se agenda retorno.
-   *
-   * `dias` nulo = sem retorno. A finalização desfaz tudo se o retorno não puder
-   * ser criado, então o "sim" aqui é uma promessa que o banco cumpre ou
-   * cancela inteira.
-   */
-  const confirmarFinalizacao = async (dias: number | null): Promise<boolean> => {
-    if (!finalizando) return false;
-    const { filaId, agendamentoId } = finalizando;
-    const ag = agendamentos.find(a => a.id === agendamentoId);
-    if (!ag) {
-      setFinalizando(null);
-      refresh();
-      toast.warning('O agendamento não está mais disponível. A fila foi atualizada.');
-      return false;
-    }
-
-    const pac = (ag as any).pacientes;
-    const result = await autoFinalizarAtendimento({
-      agendamentoId,
-      filaId,
-      pacienteId: ag.paciente_id,
-      pacienteNome: pac?.nome_social || pac?.nome || 'Paciente',
-      medicoId: ag.medico_id,
-      convenioId: pac?.convenio_id,
-      tipoConsulta: ag.tipo,
-      tipoExame: ['exame', 'exames'].includes(String(ag.tipo || '').toLocaleLowerCase('pt-BR'))
-        ? ag.observacoes : null,
-      clinicaId: profile?.clinica_id,
-      agendarRetorno: dias !== null,
-      diasRetorno: dias ?? undefined,
-    });
-
-    refresh();
-
-    if (!result.success) {
-      toast.error('Não foi possível finalizar o atendimento', { description: result.message });
-      return false;
-    }
-    setFinalizando(null);
-    toast.success(`✅ Atendimento finalizado — ${pac?.nome || 'Paciente'}`, {
-      description: result.actions.join(' • '),
-      duration: 8000,
-      action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') },
-    });
-    return true;
-  };
-
   const performStatusUpdate = async (id: string, status: string, agendamentoId?: string) => {
     // Voice call when chamado
     if (status === 'chamado' && agendamentoId) {
@@ -741,11 +681,10 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     }
 
     if (status === 'finalizado' && agendamentoId) {
-      // Finalizar não acontece direto: abre a pergunta do retorno, e
-      // `confirmarFinalizacao` faz o trabalho com a resposta em mãos. É aqui
-      // que o profissional sabe se o paciente volta — depois de finalizado ele
-      // sai da fila e o momento passa.
-      setFinalizando({ filaId: id, agendamentoId, nome: getPacienteNome(agendamentoId) });
+      const query = new URLSearchParams({ filaId: id, origem: 'fila' });
+      navigate(`/atendimentos/${agendamentoId}/finalizar?${query.toString()}`, {
+        state: { returnTo: `${location.pathname}${location.search}` },
+      });
       return;
     }
 
@@ -1599,19 +1538,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* ─── Retorno ───
-          Perguntado no fechamento porque é aqui que o profissional sabe se o
-          paciente volta. A tela de retorno existia no prontuário, numa aba que
-          é preciso lembrar de abrir — e o resultado foi zero retornos em 18
-          atendimentos. Agora é o componente compartilhado, com trava de duplo
-          clique, e usado por TODAS as vias de finalização. */}
-      <FinalizarAtendimentoDialog
-        open={!!finalizando}
-        pacienteNome={finalizando?.nome ?? ''}
-        onClose={() => setFinalizando(null)}
-        onConfirm={confirmarFinalizacao}
-      />
-
       {/* ─── Liberação excepcional ───
           Emergência, idoso sem cartão, paciente antigo: com a trava ligada,
           não havia saída sem desligar a trava da clínica inteira. O banco

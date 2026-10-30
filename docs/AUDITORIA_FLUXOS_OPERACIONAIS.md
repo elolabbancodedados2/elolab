@@ -471,6 +471,15 @@ Confirmar se abrir paciente, exames e laudos preserva o registro de origem e se 
 - **Validacao:** testes do dialogo cobrem sucesso e falha; testes do painel de atendimentos antigos confirmam que sucesso encerra e falha conserva a acao. Vitest do dialogo, painel antigo e AppointmentCard: 14/14. Playwright na Recepcao simulou falha, manteve o dialogo aberto e concluiu na nova tentativa: 1/1. Inspecionei a captura de erro em 1280 px. TypeScript sem erros.
 - **Limite:** nao validei a finalizacao contra banco isolado nem a recuperacao concorrente em RLS; o contrato continua dependendo de `finalizar_atendimento_atomico`.
 
+### Finalizacao do atendimento em pagina propria - 2026-10-29
+
+- **Perfil e objetivo:** profissional autorizado fecha o atendimento na Fila, Recepcao, Agenda ou na lista de atendimentos antigos; antes da finalizacao, registra explicitamente se e quando o paciente deve retornar.
+- **Diagnostico:** a decisao de retorno era um dialogo compartilhado por quatro origens. O bloqueio escurecia a agenda/fila, reduzia o contexto e, nos atendimentos antigos, concluir no modal misturava correcao operacional com o fluxo clinico do dia.
+- **Decisao e implementacao:** `/atendimentos/:agendamentoId/finalizar` carrega agendamento e fila por identificadores e clinica, permite seis prazos ou `Sem retorno`, mostra a data prevista e protege a escolha ao sair. Todas as quatro origens navegam para essa tela e preservam o destino anterior. Para registros antigos sem fila, o identificador permanece nulo; a opcao nao envia notificacao com data atual. A RPC existente segue responsavel por validar estado, encerrar e faturar atomicamente; erros mantem a selecao para nova tentativa.
+- **Funcionalidades e seguranca preservadas:** roles de admin, recepcao, enfermagem e medico; escopo da clinica; fila, cobranca, retorno, notificacao quando aplicavel e invalidacao dos paineis. Nenhum contrato, permissao do banco ou migration mudou.
+- **Validacao:** Vitest passou (25/25 em tres arquivos), incluindo fila, atendimentos antigos e breadcrumbs; Playwright passou (2/2), verificando a finalizacao com fila e prazo de retorno, o registro antigo sem fila e sem notificacao, navegacao, payload da RPC e larguras 390/768/1440 px. Build e verificador de acessibilidade passaram. ESLint focal: zero erros e 85 avisos preexistentes de `any`/dependencia nos quatro arquivos legados; a nova pagina nao adicionou avisos. Inspecionei capturas renderizadas mobile, tablet e desktop em `test-results/ux-visual-synthetic-appoin-14df6-ps-return-scheduling-atomic-chromium/`.
+- **Limites:** consultas, RPC, notificacao e perfis foram simulados no Playwright; nao executei finalizacao real, validacao RLS nem leitor de tela manual. A garantia de concorrencia/idempotencia depende da RPC existente.
+
 ### Historico longitudinal do paciente - 2026-10-29
 
 #### Diagnostico e decisoes

@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
   invalidateQueries: vi.fn(),
   atomicMarkNoShow: vi.fn(),
-  autoFinalizarAtendimento: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -18,13 +17,6 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ profile: { clinica_id: 'clinic-1' } }),
 }));
 vi.mock('@/lib/operationalTransitions', () => ({ atomicMarkNoShow: mocks.atomicMarkNoShow }));
-vi.mock('@/lib/workflowAutomation', () => ({ autoFinalizarAtendimento: mocks.autoFinalizarAtendimento }));
-vi.mock('@/components/fila/FinalizarAtendimentoDialog', () => ({
-  FinalizarAtendimentoDialog: (props: { open: boolean; onConfirm: (dias: number | null) => Promise<boolean> }) =>
-    props.open
-      ? <button onClick={() => void props.onConfirm(30)}>Confirmar finalização</button>
-      : null,
-}));
 vi.mock('sonner', () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError, warning: vi.fn() },
 }));
@@ -52,7 +44,7 @@ describe('atendimentos antigos em aberto', () => {
   });
 
   it('confirma antes de cancelar e informa que a cobrança pendente será cancelada', async () => {
-    render(<AtendimentosEmAberto />);
+    render(<AtendimentosEmAberto onFinalizar={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Não foi' }));
     expect(await screen.findByRole('heading', { name: 'Marcar como não realizado?' })).toBeInTheDocument();
@@ -72,7 +64,7 @@ describe('atendimentos antigos em aberto', () => {
       success: false,
       message: 'Há pagamento registrado. Estorne ou reconcilie o valor antes de marcar como não realizado.',
     });
-    render(<AtendimentosEmAberto />);
+    render(<AtendimentosEmAberto onFinalizar={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Não foi' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cancelamento' }));
@@ -85,57 +77,26 @@ describe('atendimentos antigos em aberto', () => {
 
   it('mostra estado de carregamento enquanto consulta os atendimentos', () => {
     mocks.useQuery.mockReturnValue({ data: undefined, isLoading: true, isError: false });
-    render(<AtendimentosEmAberto />);
+    render(<AtendimentosEmAberto onFinalizar={vi.fn()} />);
     expect(screen.getByRole('status')).toHaveTextContent('Verificando atendimentos antigos em aberto');
   });
 
   it('mostra erro e permite tentar novamente em vez de ocultar a lista', async () => {
     const refetch = vi.fn();
     mocks.useQuery.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch });
-    render(<AtendimentosEmAberto />);
+    render(<AtendimentosEmAberto onFinalizar={vi.fn()} />);
 
     expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível verificar atendimentos antigos em aberto');
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(refetch).toHaveBeenCalledOnce();
   });
 
-  it('finaliza atendimento antigo sem enviar e-mail de conclusão com data atual', async () => {
-    mocks.autoFinalizarAtendimento.mockResolvedValue({
-      success: true,
-      message: 'Atendimento finalizado com sucesso',
-      actions: ['Cobrança gerada'],
-    });
-    render(<AtendimentosEmAberto />);
+  it('encaminha a finalização do atendimento antigo para a tela própria', () => {
+    const onFinalizar = vi.fn();
+    render(<AtendimentosEmAberto onFinalizar={onFinalizar} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Foi atendido' }));
-    fireEvent.click(screen.getByRole('button', { name: /Confirmar finaliza/ }));
 
-    await waitFor(() => expect(mocks.autoFinalizarAtendimento).toHaveBeenCalledWith(expect.objectContaining({
-      agendamentoId: 'appointment-1',
-      agendarRetorno: true,
-      diasRetorno: 30,
-      notificarPaciente: false,
-    })));
-    expect(mocks.toastSuccess).toHaveBeenCalledWith('Atendimento finalizado com sucesso', { description: 'Cobrança gerada' });
-
-  });
-
-  it('atualiza a lista quando a finalização informa que o atendimento mudou', async () => {
-    mocks.autoFinalizarAtendimento.mockResolvedValue({
-      success: false,
-      message: 'Atendimento mudou desde a última atualização.',
-    });
-    render(<AtendimentosEmAberto />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Foi atendido' }));
-    fireEvent.click(screen.getByRole('button', { name: /Confirmar finaliza/ }));
-
-    await waitFor(() => expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['atendimentos-em-aberto', 'clinic-1'],
-    }));
-    expect(mocks.toastError).toHaveBeenCalledWith('Não foi possível finalizar', {
-      description: 'Atendimento mudou desde a última atualização.',
-    });
-    expect(screen.getByRole('button', { name: /Confirmar finaliza/ })).toBeInTheDocument();
+    expect(onFinalizar).toHaveBeenCalledWith('appointment-1');
   });
 });

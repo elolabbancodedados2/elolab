@@ -26,6 +26,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText('Price qa')).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href') === '/convenios/record-qa/exames')).toBe(true);
   });
+  it('omite o identificador da consulta no breadcrumb de finalização', () => {
+    const appointmentId = '00000000-0000-4000-9000-000000000012';
+    render(<MemoryRouter initialEntries={[`/atendimentos/${appointmentId}/finalizar`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Finalizar atendimento')).toBeInTheDocument();
+    expect(screen.queryByText(appointmentId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(appointmentId))).toBe(false);
+  });
   it('exibe o nome correto da Central de Notificações', () => {
     render(
       <MemoryRouter initialEntries={['/notificacoes']}>

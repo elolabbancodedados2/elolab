@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, PlayCircle, Ban, Trash2, Edit3, User, Receipt, Video, MessageCircle, CalendarPlus, Copy } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
@@ -11,12 +11,10 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
-import { FinalizarAtendimentoDialog } from '@/components/fila/FinalizarAtendimentoDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
 import { APPOINTMENT_CANCELLATION_REASONS, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
@@ -84,6 +82,7 @@ const TIPO_LABEL: Record<string, string> = {
 export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName, onNovaConsulta }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const roles = profile?.roles ?? [];
   const podeAbrirFicha = roles.some(role => ['admin', 'recepcao', 'enfermagem'].includes(role));
@@ -158,8 +157,6 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
    * meses, cinco delas numa clínica em operação.
    */
   const [ocupado, setOcupado] = useState(false);
-  /** Finalização esperando a resposta sobre o retorno (mesma pergunta da Fila). */
-  const [finalizandoCard, setFinalizandoCard] = useState(false);
   /** Confirmação antes de cancelar/remover a consulta. */
   const [cancelandoCard, setCancelandoCard] = useState(false);
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
@@ -299,53 +296,6 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
     }
   };
 
-  /**
-   * Finalizar pela agenda.
-   *
-   * Este era o pior: gravava `finalizado` direto e a consulta NÃO GERAVA
-   * COBRANÇA. O atendimento acontecia, sumia da agenda como concluído, e nunca
-   * virava dinheiro. Agora passa pela finalização de verdade, que fatura e
-   * fecha a fila junto.
-   */
-  const finalizarAtendimento = async (diasRetorno: number | null) => {
-    setOcupado(true);
-    let finalizado = false;
-    try {
-      const { data: item } = await supabase
-        .from('fila_atendimento')
-        .select('id')
-        .eq('agendamento_id', agendamento.id)
-        .neq('status', 'finalizado')
-        .limit(1)
-        .maybeSingle();
-
-      const r = await autoFinalizarAtendimento({
-        agendamentoId: agendamento.id,
-        filaId: item?.id,
-        pacienteId: agendamento.paciente_id,
-        pacienteNome: agendamento.pacientes?.nome ?? patientName ?? 'Paciente',
-        medicoId: agendamento.medico_id,
-        tipoConsulta: agendamento.tipo,
-        clinicaId: profile?.clinica_id,
-        // Retorno perguntado aqui também: antes só a Fila perguntava, e toda
-        // finalização pela Agenda nascia sem retorno marcado.
-        agendarRetorno: diasRetorno !== null,
-        diasRetorno: diasRetorno ?? undefined,
-      });
-      if (!r.success) throw new Error(r.message);
-
-      toast.success('Atendimento finalizado', { description: r.actions.join(' • ') });
-      queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      finalizado = true;
-    } catch (e: any) {
-      toast.error('Não foi possível finalizar', { description: mensagemDeErro(e) });
-    } finally {
-      setOcupado(false);
-    }
-    return finalizado;
-  };
   const remove = async () => {
     if (ocupado) return;
     if (!isAppointmentCancellationReason(motivoCancelamento)) {
@@ -515,19 +465,18 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('aguardando')}>Enviar para a fila</ContextMenuItem>
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
         {agendamento.status === 'em_atendimento' && (
-          <ContextMenuItem disabled={ocupado} onSelect={() => setFinalizandoCard(true)}>Finalizar</ContextMenuItem>
+          <ContextMenuItem
+            disabled={ocupado}
+            onSelect={() => navigate(`/atendimentos/${agendamento.id}/finalizar?origem=agenda`, {
+              state: { returnTo: `${location.pathname}${location.search}` },
+            })}
+          >Finalizar</ContextMenuItem>
         )}
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('faltou')} className="text-warning-foreground"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando', 'aguardando_triagem', 'em_triagem'].includes(agendamento.status)} onSelect={() => setCancelandoCard(true)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Cancelar consulta</ContextMenuItem>
       </ContextMenuContent>
-      <FinalizarAtendimentoDialog
-        open={finalizandoCard}
-        pacienteNome={patientName}
-        onClose={() => setFinalizandoCard(false)}
-        onConfirm={finalizarAtendimento}
-      />
       <ConfirmDialog
         open={cancelandoCard}
         onOpenChange={(o) => { if (!o) { setCancelandoCard(false); setMotivoCancelamento(''); } }}

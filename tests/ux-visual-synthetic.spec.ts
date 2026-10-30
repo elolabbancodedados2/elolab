@@ -4302,3 +4302,140 @@ test('reception payment is a dedicated page and confirms through the idempotent 
   expect(paymentPayload?.p_pagamentos).toEqual([{ forma_pagamento: 'pix', valor: 550 }]);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('appointment completion uses its own page and keeps return scheduling atomic', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'recepcao', queuePopulated: true });
+  const appointmentId = '00000000-0000-4000-9000-000000000012';
+  const filaId = '00000000-0000-4000-9000-000000000062';
+  let finalizationPayload: Record<string, unknown> | undefined;
+  let notificationPayload: Record<string, unknown> | undefined;
+
+  await page.route('**/rest/v1/agendamentos*', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('id') !== `eq.${appointmentId}`) return route.fallback();
+    expect(url.searchParams.get('clinica_id')).toBe('eq.00000000-0000-4000-8000-000000000002');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{
+      id: appointmentId, clinica_id: '00000000-0000-4000-8000-000000000002',
+      paciente_id: '00000000-0000-4000-8000-000000000004', medico_id: '00000000-0000-4000-8000-000000000003',
+      data: '2026-10-29', hora_inicio: '09:00', hora_fim: '09:30',
+      pacientes: { nome: 'Pessoa Exemplo QA', nome_social: null, convenio_id: null },
+      medicos: { nome: 'Dra. Exemplo QA' },
+      tipo: 'Consulta', observacoes: null, status: 'em_atendimento',
+    }]) });
+  });
+  await page.route('**/rest/v1/fila_atendimento*', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('id') !== `eq.${filaId}`) return route.fallback();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{
+      id: filaId, clinica_id: '00000000-0000-4000-8000-000000000002', agendamento_id: appointmentId, status: 'em_atendimento',
+    }]) });
+  });
+  await page.route('**/rest/v1/rpc/finalizar_atendimento_atomico*', async route => {
+    finalizationPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ status_agendamento: 'finalizado', cobranca_criada: false, repetido: false }]) });
+  });
+  await page.route('**/rest/v1/notification_queue*', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    notificationPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/atendimentos/${appointmentId}/finalizar?filaId=${filaId}&origem=fila`);
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Finalizar atendimento' })).toBeVisible();
+  await expect(main.getByText(appointmentId, { exact: true })).toHaveCount(0);
+  await expect(main.getByText('Pessoa Exemplo QA', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await main.evaluate(element => element.scrollTo(0, 0));
+  await page.screenshot({ path: testInfo.outputPath('appointment-finalize-page-mobile-top.png'), animations: 'disabled' });
+  await main.getByText('30 dias', { exact: true }).click();
+  await expect(main.getByText(/Retorno em/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('appointment-finalize-page-mobile-selection.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await main.evaluate(element => element.scrollTo(0, element.scrollHeight));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const tabletNavigation = page.getByRole('navigation', { name: 'Navegação principal' });
+  if (await tabletNavigation.isVisible()) {
+    const [buttonBounds, navBounds] = await Promise.all([
+      main.getByRole('button', { name: 'Confirmar finalização' }).boundingBox(),
+      tabletNavigation.boundingBox(),
+    ]);
+    expect(!!buttonBounds && !!navBounds && buttonBounds.y + buttonBounds.height <= navBounds.y).toBe(true);
+  }
+  await page.screenshot({ path: testInfo.outputPath('appointment-finalize-page-tablet.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await main.evaluate(element => element.scrollTo(0, 0));
+  await expect(main.getByText(/Retorno previsto:/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('appointment-finalize-page-desktop.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const submit = main.getByRole('button', { name: 'Confirmar finalização' });
+  await submit.scrollIntoViewIfNeeded();
+  const mobileNavigation = page.getByRole('navigation', { name: 'Navegação principal' });
+  if (await mobileNavigation.isVisible()) {
+    const [buttonBounds, navBounds] = await Promise.all([submit.boundingBox(), mobileNavigation.boundingBox()]);
+    expect(!!buttonBounds && !!navBounds && buttonBounds.y + buttonBounds.height <= navBounds.y).toBe(true);
+  }
+  await submit.click();
+  await expect(page).toHaveURL('/fila');
+  expect(finalizationPayload).toMatchObject({
+    p_agendamento_id: appointmentId, p_fila_id: filaId, p_agendar_retorno: true, p_dias_retorno: 30,
+  });
+  expect(notificationPayload).toMatchObject({ tipo: 'email', destinatario_id: '00000000-0000-4000-8000-000000000004' });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('old open appointments can be completed without a queue entry or same-day notification', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'recepcao', queuePopulated: false });
+  const appointmentId = '00000000-0000-4000-9000-000000000013';
+  let finalizationPayload: Record<string, unknown> | undefined;
+  let notificationQueued = false;
+
+  await page.route('**/rest/v1/agendamentos*', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('id') !== `eq.${appointmentId}`) return route.fallback();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{
+      id: appointmentId, clinica_id: '00000000-0000-4000-8000-000000000002',
+      paciente_id: '00000000-0000-4000-8000-000000000004', medico_id: '00000000-0000-4000-8000-000000000003',
+      data: '2026-10-01', hora_inicio: '10:00', hora_fim: '10:30',
+      pacientes: { nome: 'Pessoa Exemplo QA', nome_social: null, convenio_id: null },
+      medicos: { nome: 'Dra. Exemplo QA' },
+      tipo: 'Consulta', observacoes: null, status: 'em_atendimento',
+    }]) });
+  });
+  await page.route('**/rest/v1/fila_atendimento*', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('agendamento_id') !== `eq.${appointmentId}`) return route.fallback();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+  await page.route('**/rest/v1/rpc/finalizar_atendimento_atomico*', async route => {
+    finalizationPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ status_agendamento: 'finalizado', cobranca_criada: false, repetido: false }]) });
+  });
+  await page.route('**/rest/v1/notification_queue*', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    notificationQueued = true;
+    await route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto(`/atendimentos/${appointmentId}/finalizar?origem=atendimentos-abertos`);
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Finalizar atendimento' })).toBeVisible();
+  await main.getByText('Sem retorno', { exact: true }).click();
+  await expect(main.getByText('Nenhum retorno será criado para este atendimento.')).toBeVisible();
+  await main.getByRole('button', { name: 'Confirmar finalização' }).click();
+  await expect(page).toHaveURL('/recepcao');
+  expect(finalizationPayload).toMatchObject({
+    p_agendamento_id: appointmentId, p_fila_id: null, p_agendar_retorno: false, p_dias_retorno: null,
+  });
+  expect(notificationQueued).toBe(false);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
