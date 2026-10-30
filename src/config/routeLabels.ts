@@ -23,6 +23,7 @@ const labelsByPath: Record<string, string> = {
   '/agenda': 'Agenda',
   '/agenda/nova': 'Nova consulta',
   '/prontuarios': 'Prontuários',
+  '/prontuarios/atendimento': 'Atendimento clínico',
   '/documentos-clinicos': 'Documentos clínicos',
   '/gestao-fluxo/salas': 'Salas e leitos',
   '/gestao-fluxo/salas/nova': 'Nova sala ou leito',

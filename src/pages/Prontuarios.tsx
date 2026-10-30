@@ -10,7 +10,7 @@ import {
   Printer, BookOpen, ShieldCheck, FileCheck, X, Clipboard,
   Phone, Mail, Building2, CreditCard, Baby, Shield, Lock, PenLine,
   TestTube, ArrowRight, UserCheck, BadgeCheck, Share2, MessageCircle, ExternalLink,
-  Hash, MapPin, Fingerprint, ScrollText,
+  Hash, MapPin, Fingerprint, ScrollText, ArrowLeft,
 } from 'lucide-react';
 
 import { ptBR } from 'date-fns/locale';
@@ -49,7 +49,7 @@ import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dat
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { PatientSearchResult } from '@/components/clinical/PatientSearchResult';
 import { mensagemDeErro } from '@/lib/erros';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { autorizarLeituraHistoricoPaciente, registrarAcessoProntuario, registrarExportacaoProntuarios } from '@/lib/prontuarioAudit';
 import { obterIdentificacaoAssinante } from '@/lib/prontuarioSigner';
 import { lerConfigsClinica } from '@/lib/configClinica';
@@ -827,9 +827,12 @@ export default function Prontuarios() {
   };
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const isEvolucaoWorkspace = location.pathname === '/prontuarios/atendimento';
   const routePacienteId = searchParams.get('paciente');
   const routeAgendamentoId = searchParams.get('agendamento');
   const routeProntuarioId = searchParams.get('prontuario');
+  const routeNovaEvolucao = searchParams.get('nova') === '1';
   const secaoProntuarioParam = searchParams.get('secao');
   const secaoProntuario = ['anamnese', 'exame', 'diagnostico', 'conduta', 'prescricao', 'anexos', 'historico', 'adendos', 'auditoria'].includes(secaoProntuarioParam || '')
     ? secaoProntuarioParam!
@@ -861,6 +864,14 @@ export default function Prontuarios() {
   const [sinaisVitais, setSinaisVitais] = useState<SinaisVitais>(emptySinaisVitais);
   const [isEditing, setIsEditing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const navigationAllowedRef = useRef(false);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (navigationAllowedRef.current || !isEvolucaoWorkspace || !isProntuarioOpen || !hasUnsavedChanges) return false;
+    if (nextLocation.pathname !== '/prontuarios/atendimento') return true;
+    const current = new URLSearchParams(currentLocation.search);
+    const next = new URLSearchParams(nextLocation.search);
+    return ['paciente', 'prontuario', 'agendamento', 'nova'].some(key => current.get(key) !== next.get(key));
+  });
   const [erroPrescricoes, setErroPrescricoes] = useState<unknown>(null);
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
@@ -870,6 +881,28 @@ export default function Prontuarios() {
   const prescricoesRequestRef = useRef(0);
   const { profile: user } = useSupabaseAuth();
   const navigate = useNavigate();
+  const navigateAfterEvolucao = useCallback((to: string) => {
+    navigationAllowedRef.current = true;
+    navigate(to);
+  }, [navigate]);
+  useEffect(() => {
+    navigationAllowedRef.current = false;
+  }, [location.pathname, location.search]);
+  const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string) => {
+    const routeState = location.state as { returnTo?: unknown } | null;
+    const returnTo = isEvolucaoWorkspace && typeof routeState?.returnTo === 'string'
+      ? routeState.returnTo
+      : `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`;
+    navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo } });
+  }, [isEvolucaoWorkspace, location.state, navigate]);
+  const returnFromEvolucao = useCallback(() => {
+    const routeState = location.state as { returnTo?: unknown } | null;
+    const pacienteId = currentProntuario.paciente_id || selectedPacienteId;
+    const fallback = pacienteId
+      ? `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`
+      : '/prontuarios';
+    navigateAfterEvolucao(isEvolucaoWorkspace && typeof routeState?.returnTo === 'string' ? routeState.returnTo : fallback);
+  }, [currentProntuario.paciente_id, isEvolucaoWorkspace, location.state, navigateAfterEvolucao, selectedPacienteId]);
 
   const pacientesBuscaQuery = useBuscaPacientes(searchTerm, { limite: 50 });
   const pacientesBusca = pacientesBuscaQuery.data?.pacientes ?? [];
@@ -1063,8 +1096,11 @@ export default function Prontuarios() {
     setAutoSaveTime(null);
     setIsEditing(true);
     setIsProntuarioOpen(true);
+    const params = new URLSearchParams({ paciente: selectedPacienteId, nova: '1' });
+    if (agendamentoId) params.set('agendamento', agendamentoId);
+    navigateToEvolucao(params, selectedPacienteId);
     return true;
-  }, [selectedPacienteId, isMedicoOnly, medicoId, medicos, loadingMedicos, selectedPaciente]);
+  }, [selectedPacienteId, isMedicoOnly, medicoId, medicos, loadingMedicos, selectedPaciente, navigateToEvolucao]);
 
   // A Fila envia paciente e agendamento. Abrimos a evolução existente ou
   // preparamos uma nova para o médico responsável.
@@ -1123,6 +1159,10 @@ export default function Prontuarios() {
       setAutoSaveTime(null);
       setIsEditing(false);
       setIsProntuarioOpen(true);
+      const params = new URLSearchParams({ paciente: prontuario.paciente_id, prontuario: prontuario.id });
+      if (secaoProntuarioParam) params.set('secao', secaoProntuarioParam);
+      if (contextoDoAgendamento?.id) params.set('agendamento', contextoDoAgendamento.id);
+      navigateToEvolucao(params, prontuario.paciente_id);
       toast.warning('Prontuário aberto em modo de leitura.', {
         description: 'As prescrições não carregaram. Recarregue essa seção antes de editar para evitar substituir dados que não foram exibidos.',
         duration: 9000,
@@ -1135,6 +1175,10 @@ export default function Prontuarios() {
     setIsEditing(false);
     setContextoAgendamento(contextoDoAgendamento);
     setIsProntuarioOpen(true);
+    const params = new URLSearchParams({ paciente: prontuario.paciente_id, prontuario: prontuario.id });
+    if (secaoProntuarioParam) params.set('secao', secaoProntuarioParam);
+    if (contextoDoAgendamento?.id) params.set('agendamento', contextoDoAgendamento.id);
+    navigateToEvolucao(params, prontuario.paciente_id);
     // Registro de acesso ao prontuário — CFM Res. 1.821/2007.
     //
     // Isto vivia num `try { ... } catch { /* silent */ }`, e o supabase-js não
@@ -1149,16 +1193,16 @@ export default function Prontuarios() {
   };
 
   useEffect(() => {
-    const routeKey = `${routePacienteId || ''}:${routeAgendamentoId || ''}:${routeProntuarioId || ''}`;
+    const routeKey = `${location.pathname}:${routePacienteId || ''}:${routeAgendamentoId || ''}:${routeProntuarioId || ''}:${routeNovaEvolucao ? 'nova' : ''}`;
     if (routeKeyRef.current !== routeKey) {
       routeKeyRef.current = routeKey;
       routeOpenedRef.current = false;
       if (routeAgendamentoId) setContextoAgendamento(null);
     }
-  }, [routePacienteId, routeAgendamentoId, routeProntuarioId]);
+  }, [location.pathname, routePacienteId, routeAgendamentoId, routeProntuarioId, routeNovaEvolucao]);
 
   useEffect(() => {
-    if (routeOpenedRef.current || !routeProntuarioId || !routePacienteId
+    if (isProntuarioOpen || routeOpenedRef.current || !routeProntuarioId || !routePacienteId
       || selectedPacienteId !== routePacienteId || !selectedPaciente
       || pacienteSelecionadoQuery.isLoading || pacienteSelecionadoQuery.isError
       || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos
@@ -1167,17 +1211,13 @@ export default function Prontuarios() {
 
     const record = pacienteProntuarios.find((item: any) => item.id === routeProntuarioId);
     routeOpenedRef.current = true;
-    const limparAtalho = () => {
-      const params = new URLSearchParams(searchParams);
-      params.delete('prontuario');
-      setSearchParams(params, { replace: true });
-    };
+    const voltarParaLista = () => navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId)}`, { replace: true });
 
     if (erroHistorico) {
       toast.error('Não foi possível confirmar a autorização de leitura', {
         description: 'O prontuário permaneceu fechado. Tente novamente antes de abrir o adendo.',
       });
-      limparAtalho();
+      voltarParaLista();
       return;
     }
 
@@ -1185,21 +1225,21 @@ export default function Prontuarios() {
       toast.error('Não foi possível reabrir esta evolução', {
         description: 'O prontuário pode ter mudado ou não estar disponível para este paciente, clínica e seção.',
       });
-      limparAtalho();
+      voltarParaLista();
       return;
     }
     void handleViewProntuarioRef.current(record);
-    limparAtalho();
   }, [
+    isProntuarioOpen, location.pathname,
     routeProntuarioId, routePacienteId, selectedPacienteId, selectedPaciente,
     pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError,
     loadingProntuarios, loadingMedicos, erroProntuarios, erroMedicos,
     historicoAuditadoPacienteId, erroHistorico, user?.clinica_id,
-    pacienteProntuarios, searchParams, setSearchParams, secaoProntuario,
+    pacienteProntuarios, navigate, secaoProntuario,
   ]);
 
   useEffect(() => {
-    if (routeOpenedRef.current || !routeAgendamentoId || selectedPacienteId !== routePacienteId
+    if (isProntuarioOpen || routeOpenedRef.current || !routeAgendamentoId || selectedPacienteId !== routePacienteId
       || !selectedPaciente || pacienteSelecionadoQuery.isLoading || pacienteSelecionadoQuery.isError
       || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos) return;
     if (!user?.clinica_id) return;
@@ -1223,18 +1263,11 @@ export default function Prontuarios() {
       // se marcar antes, o cleanup cancela a abertura e a nova execução acha
       // que o atalho já foi atendido.
       routeOpenedRef.current = true;
-      const limparAtalho = () => {
-        const params = new URLSearchParams(searchParams);
-        params.delete('paciente');
-        params.delete('agendamento');
-        setSearchParams(params, { replace: true });
-      };
-
       if (error || !agendamento || agendamento.paciente_id !== routePacienteId) {
         toast.error('Não foi possível abrir este atendimento', {
           description: error?.message || 'O agendamento não pertence a este paciente ou não está disponível nesta clínica.',
         });
-        limparAtalho();
+        navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId || '')}`, { replace: true });
         return;
       }
 
@@ -1251,14 +1284,16 @@ export default function Prontuarios() {
       } else {
         if (handleNovoProntuario(routeAgendamentoId, agendamento.medico_id)) {
           setContextoAgendamento(contexto);
+        } else {
+          navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId || '')}`, { replace: true });
         }
       }
-      limparAtalho();
     };
 
     void abrirAtendimentoDoAtalho();
     return () => { active = false; };
   }, [
+    isProntuarioOpen,
     routeAgendamentoId,
     routePacienteId,
     selectedPacienteId,
@@ -1272,8 +1307,34 @@ export default function Prontuarios() {
     pacienteProntuarios,
     handleNovoProntuario,
     user?.clinica_id,
-    searchParams,
-    setSearchParams,
+    navigate,
+  ]);
+
+  useEffect(() => {
+    if (!isEvolucaoWorkspace || !routeNovaEvolucao || routeAgendamentoId || isProntuarioOpen
+      || routeOpenedRef.current || !routePacienteId || selectedPacienteId !== routePacienteId
+      || !selectedPaciente || pacienteSelecionadoQuery.isLoading || pacienteSelecionadoQuery.isError
+      || loadingProntuarios || loadingMedicos || loadingHistorico || erroProntuarios || erroMedicos
+      || (historicoAuditadoPacienteId !== routePacienteId && !erroHistorico)) return;
+
+    routeOpenedRef.current = true;
+    if (erroHistorico) {
+      toast.error('Não foi possível confirmar a autorização de leitura', {
+        description: 'A evolução não foi aberta. Tente novamente após confirmar o acesso ao histórico.',
+      });
+      navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId)}`, { replace: true });
+      return;
+    }
+
+    if (!handleNovoProntuario(null, searchParams.get('medico'))) {
+      navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId)}`, { replace: true });
+    }
+  }, [
+    isEvolucaoWorkspace, routeNovaEvolucao, routeAgendamentoId, isProntuarioOpen,
+    routePacienteId, selectedPacienteId, selectedPaciente,
+    pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError,
+    loadingProntuarios, loadingMedicos, loadingHistorico, erroProntuarios, erroMedicos,
+    historicoAuditadoPacienteId, erroHistorico, handleNovoProntuario, navigate, searchParams,
   ]);
 
   const handleAddPrescricao = () => {
@@ -1580,12 +1641,12 @@ export default function Prontuarios() {
 
     const params = new URLSearchParams({ medico: responsibleDoctorId });
     if (savedProntuarioId) {
-      navigate(`/prontuarios/${encodeURIComponent(savedProntuarioId)}/retornos/novo?${params.toString()}`);
+      navigateAfterEvolucao(`/prontuarios/${encodeURIComponent(savedProntuarioId)}/retornos/novo?${params.toString()}`);
       return;
     }
 
     params.set('paciente', selectedPaciente.id);
-    navigate(`/prontuarios/retornos/novo?${params.toString()}`);
+    navigateAfterEvolucao(`/prontuarios/retornos/novo?${params.toString()}`);
   };
   const handleSave = async () => {
     if (salvandoProntuario) return;
@@ -1597,6 +1658,7 @@ export default function Prontuarios() {
         if (changeVersionRef.current === versaoAntesDeSalvar) {
           setIsProntuarioOpen(false);
           setContextoAgendamento(null);
+          returnFromEvolucao();
           toast.success('Prontuário salvo', { description: 'Registro salvo com sucesso.' });
         } else {
           toast.warning('O prontuário foi salvo, mas houve novas alterações.', {
@@ -1624,6 +1686,7 @@ export default function Prontuarios() {
     setPendingPatientContextChange(null);
     setIsProntuarioOpen(false);
     setContextoAgendamento(null);
+    navigateAfterEvolucao(`/prontuarios?paciente=${encodeURIComponent(pendingPatientContextChange.pacienteId)}`);
   };
 
   const handleSaveAndChangePatient = async () => {
@@ -1692,7 +1755,10 @@ export default function Prontuarios() {
       return;
     }
     setIsProntuarioOpen(open);
-    if (!open) setContextoAgendamento(null);
+    if (!open) {
+      setContextoAgendamento(null);
+      returnFromEvolucao();
+    }
   };
 
   // Reset auto-save time when dialog closes
@@ -1769,7 +1835,12 @@ export default function Prontuarios() {
     );
   }
 
-  if (selectedPacienteId && erroProntuarios) return <ErrorState error={erroProntuarios} title="Não foi possível carregar o histórico clínico" description="Não é seguro abrir uma evolução nova enquanto não confirmarmos se já existe atendimento para este paciente." onRetry={() => { void refetchProntuarios(); }} />;
+  if (selectedPacienteId && erroProntuarios) return (
+    <div className="space-y-4">
+      <ErrorState error={erroProntuarios} title="Não foi possível carregar o histórico clínico" description="Não é seguro abrir uma evolução nova enquanto não confirmarmos se já existe atendimento para este paciente." onRetry={() => { void refetchProntuarios(); }} />
+      {isEvolucaoWorkspace && <Button variant="outline" onClick={returnFromEvolucao}>Voltar aos prontuários</Button>}
+    </div>
+  );
 
   // ═══════════════════════════════════════════════════════════
   // ─── RENDER ─────────────────────────────────────────────
@@ -1778,6 +1849,7 @@ export default function Prontuarios() {
     <div className="space-y-5">
       {erroMedicos && <ErrorState compact error={erroMedicos} title="Lista de médicos indisponível" description="Não é possível iniciar um atendimento ou assinar um prontuário sem carregar os dados do médico." onRetry={() => { void refetchMedicos(); }} />}
       {erroConvenios && <ErrorState compact error={erroConvenios} title="Convênios indisponíveis" description="A ficha pode ser consultada, mas o convênio do paciente não será identificado até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
+      {!isProntuarioOpen && <>
       <PageHeader
         title="Prontuários"
         description={
@@ -2251,8 +2323,10 @@ export default function Prontuarios() {
         </div>
       </div>
 
+      </>}
+
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* ─── Prontuário Dialog ─────────────────────────────── */}
+      {/* ─── Workspace do prontuário ───────────────────────── */}
       {/* ═══════════════════════════════════════════════════════ */}
       {exportacaoPendente && <ExportacaoClinicaProtegida
         open={Boolean(exportacaoPendente)}
@@ -2265,22 +2339,32 @@ export default function Prontuarios() {
           catch (error) { throw new Error(`Exportação bloqueada porque a auditoria não pôde ser registrada: ${mensagemDeErro(error)}`); }
         }}
       />}
-      <Dialog open={isProntuarioOpen} onOpenChange={handleProntuarioOpenChange}>
-        <DialogContent
-          className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col"
-          onEscapeKeyDown={(e) => {
-            // Item 05 (P1): Escape não descarta dados sem confirmação
-            if (salvandoProntuario) { e.preventDefault(); return; }
-            if (hasUnsavedChanges) { e.preventDefault(); setPerguntandoDescartar(true); }
-          }}
-        >
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
-              <span className="flex items-center gap-2 text-base">
-                <Stethoscope className="h-4 w-4 text-primary" />
-                {currentProntuario.id ? 'Prontuário' : 'Novo Atendimento'}
-                {selectedPaciente && <span className="text-muted-foreground font-normal text-sm">— {selectedPaciente.nome}</span>}
-              </span>
+      {isProntuarioOpen && <section
+        data-testid="prontuario-workspace"
+        aria-labelledby="prontuario-workspace-title"
+        className="flex h-[calc(100dvh-15rem)] min-h-[24rem] flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-sm"
+      >
+          <header className="flex flex-shrink-0 flex-col gap-3 border-b border-border/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-full"
+                aria-label="Voltar aos prontuários"
+                onClick={() => handleProntuarioOpenChange(false)}
+                disabled={salvandoProntuario}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Atendimento clínico</p>
+                <h1 id="prontuario-workspace-title" className="truncate text-lg font-extrabold text-foreground sm:text-xl">
+                  {currentProntuario.id ? 'Evolução clínica' : 'Nova evolução'}
+                </h1>
+                {selectedPaciente && <p className="truncate text-sm text-muted-foreground">{selectedPaciente.nome_social || selectedPaciente.nome}</p>}
+              </div>
+            </div>
               <div className="flex gap-1.5 flex-wrap">
                 {selectedPaciente && (medicoId || user?.id) && (
                   <ReturnScheduler
@@ -2344,8 +2428,7 @@ export default function Prontuarios() {
                   <FileCheck className="h-3 w-3" />Alta
                 </Button>
               </div>
-            </DialogTitle>
-          </DialogHeader>
+          </header>
 
           {/* Patient summary strip */}
           {selectedPaciente && (
@@ -2863,7 +2946,7 @@ export default function Prontuarios() {
           </ScrollArea>
 
           {/* Footer */}
-          <DialogFooter className="flex-shrink-0 flex-col gap-3 border-t border-border/40 pt-3 sm:flex-row">
+          <footer className="flex flex-shrink-0 flex-col gap-3 border-t border-border/40 bg-card px-4 py-3 sm:flex-row sm:px-6">
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3 sm:flex-1">
                 {currentProntuario.id && (
@@ -2909,28 +2992,35 @@ export default function Prontuarios() {
               {/* Confirmação antes de fechar com evolução não salva — antes
                   era um window.confirm nativo, fora do padrão do app. */}
               <UnsavedChangesDialog
-                open={perguntandoDescartar}
+                open={perguntandoDescartar || blocker.state === 'blocked'}
                 onOpenChange={(o) => {
                   if (!o) {
                     setPerguntandoDescartar(false);
                     prontuarioAposDescartarRef.current = null;
+                    if (blocker.state === 'blocked') blocker.reset();
                   }
                 }}
                 onConfirm={() => {
                   const proximoProntuario = prontuarioAposDescartarRef.current;
                   prontuarioAposDescartarRef.current = null;
                   setPerguntandoDescartar(false);
+                  setHasUnsavedChanges(false);
+                  if (blocker.state === 'blocked') {
+                    blocker.proceed();
+                    return;
+                  }
                   setIsProntuarioOpen(false);
                   setContextoAgendamento(null);
                   if (proximoProntuario) {
                     window.setTimeout(() => void handleViewProntuario(proximoProntuario), 150);
+                  } else {
+                    returnFromEvolucao();
                   }
                 }}
               />
             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+      </section>}
 
       <Dialog
         open={!!pendingPatientContextChange}

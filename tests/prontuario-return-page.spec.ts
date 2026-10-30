@@ -63,6 +63,15 @@ async function installPageMocks(page: Page, pageRecord = record, chartChanges: {
   return writes;
 }
 
+async function selectResponsibleDoctor(page: Page) {
+  const select = page.getByLabel('Médico responsável pela evolução *');
+  await select.click();
+  await select.press('ArrowDown');
+  await select.press('Enter');
+  await select.press('Escape');
+  await expect(page.getByRole('option', { name: 'Dra. Marina Ribeiro' })).toHaveCount(0);
+}
+
 test('retorno clínico abre em página, grava contexto do prontuário e volta ao paciente', async ({ page }, info) => {
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
   const writes = await installPageMocks(page);
@@ -89,7 +98,7 @@ test('retorno clínico abre em página, grava contexto do prontuário e volta ao
   await page.getByLabel('Observações').fill('Retorno solicitado no atendimento sintético.');
   await page.getByRole('button', { name: 'Agendar retorno', exact: true }).click();
 
-  await expect(page).toHaveURL(`/prontuarios?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
   expect(writes).toHaveLength(1);
   expect(writes[0]).toMatchObject({
     paciente_id: patient,
@@ -139,9 +148,10 @@ test('salva a evolução alterada como rascunho antes de abrir o agendamento', a
   const writes = await installPageMocks(page, { ...record, id: newRecordId, assinado: false }, { creates: chartCreates });
   await page.goto(`/prontuarios?paciente=${patient}`);
   await page.getByRole('button', { name: 'Novo Atendimento', exact: true }).first().click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.getByLabel('Médico responsável pela evolução *').click();
-  await page.getByRole('option', { name: 'Dra. Marina Ribeiro' }).click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
+  await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await selectResponsibleDoctor(page);
   await page.getByLabel('Queixa principal').fill('Queixa sintética revisada antes do retorno');
   await page.getByRole('button', { name: /Agendar Retorno/ }).click();
 
@@ -165,9 +175,72 @@ test('o prontuário encaminha o agendamento sem abrir diálogo e bloqueia navega
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/prontuarios?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
 
-  await expect(page.getByRole('heading', { name: 'Prontuário', exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evolução clínica', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
   await page.getByRole('button', { name: /Agendar Retorno/ }).click();
   await expect(page).toHaveURL(`/prontuarios/${recordId}/retornos/novo?medico=${doctor}`);
   await expect(page.getByRole('heading', { name: 'Agendar retorno clínico', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('evolução é criada na página dedicada e salva com paciente e autoria corretos', async ({ page }, info) => {
+  const newRecordId = '00000000-0000-4000-9000-000000000103';
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  const creates: Record<string, unknown>[] = [];
+  await installPageMocks(page, { ...record, id: newRecordId, assinado: false }, { creates });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/prontuarios?paciente=${patient}`);
+  await page.getByRole('button', { name: 'Novo Atendimento', exact: true }).first().click();
+
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
+  await expect(page.getByRole('heading', { name: 'Nova evolução', exact: true })).toBeVisible();
+  await expect(page.getByText('Pessoa Exemplo QA', { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Nova evolução', exact: true })).toBeVisible();
+  await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
+
+  await expect(page.getByRole('button', { name: 'Salvar Prontuário', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('new-clinical-note-mobile.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await selectResponsibleDoctor(page);
+  await page.getByLabel('Queixa principal').fill('Dor de cabeça sintética em avaliação');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: info.outputPath('new-clinical-note-desktop.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Salvar Prontuário', exact: true }).click();
+
+  await expect(page).toHaveURL(`/prontuarios?paciente=${patient}`);
+  expect(creates).toHaveLength(1);
+  expect(creates[0]).toMatchObject({
+    paciente_id: patient,
+    medico_id: doctor,
+    queixa_principal: 'Dor de cabeça sintética em avaliação',
+    clinica_id: clinic,
+  });
+});
+
+test('protege a evolução não salva ao voltar e preserva o texto ao cancelar o descarte', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  const creates: Record<string, unknown>[] = [];
+  await installPageMocks(page, { ...record, assinado: false }, { creates });
+  await page.goto(`/prontuarios?paciente=${patient}`);
+  await page.getByRole('button', { name: 'Novo Atendimento', exact: true }).first().click();
+  await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
+  await selectResponsibleDoctor(page);
+  await page.getByLabel('Queixa principal').fill('Texto clínico que precisa permanecer');
+
+  await page.getByRole('navigation', { name: 'Menu principal' }).getByRole('link', { name: 'Agenda', exact: true }).click();
+  const discardDialog = page.getByRole('alertdialog');
+  await expect(discardDialog).toContainText('Alterações não salvas');
+  await discardDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
+  await expect(page.getByLabel('Queixa principal')).toHaveValue('Texto clínico que precisa permanecer');
+
+  await page.getByRole('button', { name: 'Voltar aos prontuários' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();
+  await expect(page).toHaveURL(`/prontuarios?paciente=${patient}`);
+  expect(creates).toHaveLength(0);
 });

@@ -274,7 +274,7 @@ function AppRoutes() {
                           <Route path="/prontuarios/:prontuarioId/anexos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoAnexoProntuarioPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/retornos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoRetornoProntuarioPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/:prontuarioId/retornos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoRetornoProntuarioPage /></SupabaseProtectedRoute>} />
-                          <Route path="/prontuarios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
+                          <Route path="/prontuarios/*" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos/nova-prescricao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prescricoes creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
