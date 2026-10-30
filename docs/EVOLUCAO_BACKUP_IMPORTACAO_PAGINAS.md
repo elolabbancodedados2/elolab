@@ -46,4 +46,4 @@ Também foram corrigidas falhas do typecheck em respostas JSON das RPCs TISS, ch
 
 ## Publicação
 
-Preencher após o rollout e a confirmação pública da versão.
+Publicado em 30/10/2026 no commit `39660dbc9a082dcf7e11e2107e199fe0980536cf`, imagem `easypanel/elolab/app:deploy-20261030-39660dbc`. O smoke da imagem e o domínio público responderam `/healthz=ok` e `/version.json` com o SHA integral esperado; o serviço Swarm ficou em 1/1. O código anterior permanece disponível em `deploy-20261030-d99ee0ef` e em `code.before-20261030-39660dbc`. O hash do `.env` foi conferido sem revelar valores e permaneceu igual. Nenhuma migration foi aplicada nem dado real foi alterado.
