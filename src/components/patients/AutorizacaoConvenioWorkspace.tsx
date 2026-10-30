@@ -1,22 +1,21 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertCircle, CheckCircle2, Clock, XCircle, Loader2, Phone } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { AlertCircle, CheckCircle2, Clock, XCircle, Loader2, Phone, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 import { parseDateOnly } from '@/lib/dateOnly';
+import { PageHeader } from '@/components/PageHeader';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
-interface AutorizacaoConvenioModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+interface AutorizacaoConvenioWorkspaceProps {
+  onExit: () => void;
   pacienteId: string;
   pacienteNome: string;
   convenioId?: string;
@@ -24,32 +23,53 @@ interface AutorizacaoConvenioModalProps {
   procedimento?: string;
 }
 
-export function AutorizacaoConvenioModal({
-  open,
-  onOpenChange,
+interface AutorizacaoConvenio {
+  id: string;
+  descricao: string | null;
+  status: string;
+  numero_autorizacao: string | null;
+  data_solicitacao: string | null;
+  data_autorizacao: string | null;
+  data_expiracao: string | null;
+  observacoes: string | null;
+  convenios: { nome: string; telefone: string | null } | null;
+}
+
+interface ConvenioAtivo {
+  id: string;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  carencia: number | null;
+}
+
+export function AutorizacaoConvenioWorkspace({
+  onExit,
   pacienteId,
   pacienteNome,
   convenioId,
   tipoServico = 'consulta',
   procedimento = 'Consulta Médica',
-}: AutorizacaoConvenioModalProps) {
-  const [autorizacoes, setAutorizacoes] = useState<any[]>([]);
+}: AutorizacaoConvenioWorkspaceProps) {
+  const [autorizacoes, setAutorizacoes] = useState<AutorizacaoConvenio[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showNewAuth, setShowNewAuth] = useState(false);
-  const [convenios, setConvenios] = useState<any[]>([]);
+  const [convenios, setConvenios] = useState<ConvenioAtivo[]>([]);
   const [selectedConvenio, setSelectedConvenio] = useState(convenioId || '');
   const [descricao, setDescricao] = useState(procedimento);
   const [datosCarencia, setDadosCarencia] = useState('');
   const loadRequestId = useRef(0);
+  const completed = useRef(false);
+  const submitLock = useRef(false);
 
   const loadData = useCallback(async () => {
     const requestId = ++loadRequestId.current;
     setLoading(true);
     setLoadError(null);
     try {
-      const { data: auths, error: errorAutorizacoes } = await (supabase as any)
+      const { data: auths, error: errorAutorizacoes } = await supabase
         .from('autorizacoes_convenio')
         .select('*, convenios(nome, telefone)')
         .eq('paciente_id', pacienteId)
@@ -57,7 +77,7 @@ export function AutorizacaoConvenioModal({
       if (errorAutorizacoes) throw errorAutorizacoes;
       if (requestId !== loadRequestId.current) return;
 
-      setAutorizacoes(auths || []);
+      setAutorizacoes((auths || []) as AutorizacaoConvenio[]);
 
       const { data: convs, error: errorConvenios } = await supabase
         .from('convenios')
@@ -78,26 +98,31 @@ export function AutorizacaoConvenioModal({
   }, [pacienteId, convenioId]);
 
   useEffect(() => {
-    if (!open) {
-      loadRequestId.current += 1;
-      return;
-    }
+    completed.current = false;
     setSelectedConvenio(convenioId || '');
     setDescricao(procedimento);
     setDadosCarencia('');
     setShowNewAuth(false);
     void loadData();
-  }, [open, pacienteId, convenioId, procedimento, loadData]);
+    return () => { loadRequestId.current += 1; };
+  }, [pacienteId, convenioId, procedimento, loadData]);
+
+  const convenioInicial = convenioId || convenios[0]?.id || '';
+  const dirty = showNewAuth && (
+    selectedConvenio !== convenioInicial || descricao.trim() !== procedimento.trim() || datosCarencia.trim().length > 0
+  );
 
   const handleSolicitarAutorizacao = async () => {
+    if (submitLock.current) return;
     if (!selectedConvenio || !descricao.trim()) {
       toast.error('Preencha convênio e descrição do procedimento');
       return;
     }
 
+    submitLock.current = true;
     setSubmitting(true);
     try {
-      const { data: auth, error } = await (supabase as any).rpc('solicitar_autorizacao_convenio', {
+      const { data: auth, error } = await supabase.rpc('solicitar_autorizacao_convenio', {
         p_paciente_id: pacienteId,
         p_convenio_id: selectedConvenio,
         p_tipo_servico: tipoServico,
@@ -112,16 +137,27 @@ export function AutorizacaoConvenioModal({
       setShowNewAuth(false);
       setDescricao(procedimento);
       setDadosCarencia('');
-      if (auth?.email_enfileirado) {
+      completed.current = true;
+      const emailEnfileirado = typeof auth === 'object' && auth !== null && !Array.isArray(auth)
+        && 'email_enfileirado' in auth && auth.email_enfileirado === true;
+      if (emailEnfileirado) {
         toast.success('Solicitação enviada ao e-mail do convênio', { description: 'O retorno continuará pendente até a clínica registrar a resposta.' });
       } else {
         toast.warning('Solicitação registrada internamente', { description: 'Este convênio não possui e-mail cadastrado. Entre em contato manualmente e atualize o status depois.' });
       }
-    } catch (e: any) {
-      toast.error('Erro ao solicitar autorização: ' + e.message);
+    } catch (e: unknown) {
+      toast.error('Erro ao solicitar autorização: ' + (e instanceof Error ? e.message : 'Tente novamente.'));
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
+  };
+
+  const cancelarFormulario = () => {
+    setShowNewAuth(false);
+    setSelectedConvenio(convenioInicial);
+    setDescricao(procedimento);
+    setDadosCarencia('');
   };
 
   const getStatusBadge = (status: string) => {
@@ -142,19 +178,16 @@ export function AutorizacaoConvenioModal({
   const selectedConvenioData = convenios.find(c => c.id === selectedConvenio);
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => {
-      if (!nextOpen && submitting) return;
-      onOpenChange(nextOpen);
-    }}>
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Phone className="h-5 w-5 text-primary" />
-            Autorização Convênio
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto space-y-4 py-4">
+    <section className="mx-auto w-full max-w-5xl space-y-5" data-testid="patient-insurance-authorizations-page">
+      <UnsavedChangesGuard dirty={dirty} busy={submitting} completed={completed} />
+      <PageHeader
+        title="Autorizações do convênio"
+        description="Acompanhe solicitações deste paciente e registre um novo pedido sem sair do contexto."
+        icon={<Phone />}
+        actions={<Button variant="outline" onClick={onExit} disabled={submitting}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao paciente</Button>}
+      />
+      <section className="space-y-5 rounded-lg border bg-card p-4 sm:p-6">
+        <div className="space-y-5">
           {/* Patient info */}
           <div className="p-3 rounded-lg bg-muted/50 space-y-1">
             <p className="text-sm font-medium">{pacienteNome}</p>
@@ -163,6 +196,11 @@ export function AutorizacaoConvenioModal({
             </p>
           </div>
 
+          {!loading && !loadError && convenios.length === 0 && (
+            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" role="status">
+              Nenhum convênio ativo está cadastrado. Cadastre ou ative um convênio antes de solicitar autorização.
+            </p>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -287,9 +325,9 @@ export function AutorizacaoConvenioModal({
                     />
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-blue-800 dark:text-blue-300">
+                  <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <p className="text-xs text-foreground">
                       A solicitação será enviada ao convênio. Você receberá a resposta de autorização em breve.
                     </p>
                   </div>
@@ -299,14 +337,11 @@ export function AutorizacaoConvenioModal({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Fechar
-          </Button>
+        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
           {!showNewAuth && (
             <Button
               onClick={() => setShowNewAuth(true)}
-              disabled={submitting || loading}
+              disabled={submitting || loading || !!loadError || convenios.length === 0}
               className="gap-2"
             >
               <Phone className="h-4 w-4" />
@@ -317,14 +352,14 @@ export function AutorizacaoConvenioModal({
             <>
               <Button
                 variant="outline"
-                onClick={() => setShowNewAuth(false)}
+                onClick={cancelarFormulario}
                 disabled={submitting}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleSolicitarAutorizacao}
-                disabled={submitting}
+                disabled={submitting || !selectedConvenio || !descricao.trim()}
                 className="gap-2"
               >
                 {submitting ? (
@@ -336,8 +371,8 @@ export function AutorizacaoConvenioModal({
               </Button>
             </>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </section>
+    </section>
   );
 }

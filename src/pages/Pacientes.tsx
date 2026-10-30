@@ -44,7 +44,6 @@ import { PatientStats, PatientListTable } from '@/components/patients';
 import { RevisaoDuplicidadesDialog } from '@/components/patients/RevisaoDuplicidadesDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
-import { AutorizacaoConvenioModal } from '@/components/AutorizacaoConvenioModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
@@ -209,8 +208,6 @@ export default function Pacientes() {
   // contexto do card) e de outros lugares que queiram apontar direto.
   const [searchParams] = useSearchParams();
 
-  /** Modal de guias/senhas de autorização do convênio do paciente. */
-  const [showAutorizacao, setShowAutorizacao] = useState(false);
   const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
   const [portalRevokeTarget, setPortalRevokeTarget] = useState<{ id: string; nome: string } | null>(null);
   const [isRevokingPortal, setIsRevokingPortal] = useState(false);
@@ -763,6 +760,16 @@ export default function Pacientes() {
     if (location.pathname === '/pacientes') params.set('paciente', selectedPaciente.id);
     const returnTo = `${location.pathname}?${params.toString()}`;
     navigate(path, { state: { consentReturnTo: returnTo, consentReturnState: location.state } });
+  };
+  const navigateToAuthorizations = () => {
+    if (!selectedPaciente) return;
+    const params = new URLSearchParams(location.search);
+    if (location.pathname === '/pacientes') params.set('paciente', selectedPaciente.id);
+    const query = params.toString();
+    const returnTo = `${location.pathname}${query ? `?${query}` : ''}`;
+    navigate(`/pacientes/${encodeURIComponent(selectedPaciente.id)}/autorizacoes`, {
+      state: { patientReturnTo: returnTo, patientReturnState: location.state },
+    });
   };
   const consentimentosPacienteQuery = useQuery({
     queryKey: ['consentimentos-paciente', authProfile?.clinica_id, selectedPaciente?.id],
@@ -2114,7 +2121,7 @@ export default function Pacientes() {
                           size="sm"
                           variant="outline"
                           className="gap-1.5 rounded-xl text-xs"
-                          onClick={() => setShowAutorizacao(true)}
+                          onClick={navigateToAuthorizations}
                         >
                           <FileCheck className="h-3.5 w-3.5" />
                           Gerenciar
@@ -2955,16 +2962,6 @@ export default function Pacientes() {
         </DialogContent>
       </Dialog>
 
-      {/* Autorizações de convênio do paciente selecionado */}
-      {selectedPaciente && (
-        <AutorizacaoConvenioModal
-          open={showAutorizacao}
-          onOpenChange={setShowAutorizacao}
-          pacienteId={selectedPaciente.id}
-          pacienteNome={selectedPaciente.nome}
-          convenioId={selectedPaciente.convenio_id || undefined}
-        />
-      )}
     </div>
   );
 }

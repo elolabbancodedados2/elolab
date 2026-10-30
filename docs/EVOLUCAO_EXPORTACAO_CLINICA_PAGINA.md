@@ -31,4 +31,14 @@ O passo final de exportação protegida pedia senha e confirmação em um diálo
 
 ## Limites e publicação
 
-Não houve mudança de contrato, migration ou uso de dados clínicos reais. A validação usou Bundle e conta sintéticos. Identificador da imagem, smoke test, rollback e checagem pública serão registrados após a publicação.
+Não houve mudança de contrato, migration ou uso de dados clínicos reais. A validação usou Bundle e conta sintéticos.
+
+## Publicação
+
+- Commit: `7c4a69d1a0fe7ddc781909e91117e3daae81544d`.
+- Imagem: `easypanel/elolab/app:deploy-20261030-7c4a69d`.
+- O smoke isolado confirmou `/healthz=ok` e o SHA integral em `/version.json`; o Swarm concluiu a atualização (`completed`) com 1/1 réplica.
+- `https://app.elolab.com.br/healthz` respondeu `ok` e o `/version.json` público confirmou o mesmo SHA.
+- Rollback imediato: `easypanel/elolab/app:deploy-20261030-66e9522`.
+- Código anterior preservado em `/etc/easypanel/projects/elolab/app/code.before-20261030-7c4a69d`. O `.env` da nova cópia foi comparado por hash, sem leitura ou exposição.
+- Não houve migration, alteração de dados de produção ou mudança nas permissões.

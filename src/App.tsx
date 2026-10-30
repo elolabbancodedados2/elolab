@@ -29,6 +29,7 @@ const AppointmentPage = lazy(() => import("@/pages/AppointmentPage"));
 const BloqueioAgendaPage = lazy(() => import("@/components/agenda/BloqueioAgenda").then(module => ({ default: module.BloqueioAgenda })));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const ConsentimentoLGPDTaskPage = lazy(() => import("@/pages/ConsentimentoLGPDTaskPage"));
+const AutorizacoesConvenioPage = lazy(() => import("@/pages/AutorizacoesConvenioPage"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
 const FilaOperacional = lazy(() => import("@/pages/Fila"));
 const FilaPassagemPage = lazy(() => import("@/pages/FilaPassagemPage"));
@@ -343,6 +344,7 @@ function AppRoutes() {
                           <Route path="/laudos-lab/:coletaId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><LaudoPage /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/consentimentos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><ConsentimentoLGPDTaskPage task="novo" /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/consentimentos/:consentType/revogar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><ConsentimentoLGPDTaskPage task="revogar" /></SupabaseProtectedRoute>} />
+                          <Route path="/pacientes/:patientId/autorizacoes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AutorizacoesConvenioPage /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Pacientes /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Pacientes /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><Pacientes /></SupabaseProtectedRoute>} />
