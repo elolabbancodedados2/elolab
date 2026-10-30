@@ -29,7 +29,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
-import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
 import { Database } from '@/integrations/supabase/types';
 
 import {
@@ -188,7 +187,6 @@ export default function ContasReceber() {
   const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
   const selectedMonth = parseFinanceMonth(searchParams.get('mes'));
   const filterPeriodo = selectedMonth ? 'mes_selecionado' : searchParams.get('periodo') || 'mes_atual';
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [contaParaCancelar, setContaParaCancelar] = useState<any>(null);
   const [isCancelandoConta, setIsCancelandoConta] = useState(false);
   const [selectedConta, setSelectedConta] = useState<any>(null);
@@ -556,8 +554,13 @@ export default function ContasReceber() {
   };
 
   const handleViewDetail = (conta: any) => {
-    setSelectedConta(conta);
-    setIsDetailOpen(true);
+    navigate(`/contas/receber/${encodeURIComponent(conta.id)}/detalhes`, {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+        restoreSearchTerm: searchTerm,
+        restoreFilterCategoria: filterCategoria,
+      },
+    });
   };
 
   const descontoBaixa = baixaData.desconto.trim() === '' ? 0 : parseMoneyInput(baixaData.desconto);
@@ -1473,85 +1476,6 @@ export default function ContasReceber() {
               Confirmar cancelamento
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Detail Dialog */}
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5 text-primary" /> Detalhes da Conta
-            </DialogTitle>
-          </DialogHeader>
-          {selectedConta && (() => {
-            const status = STATUS_CONFIG[selectedConta.status || 'pendente'];
-            const catInfo = CATEGORIAS_MAP[selectedConta.categoria] || CATEGORIAS_MAP.outros;
-            return (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Paciente</p>
-                    <p className="font-bold">{getPacienteNome(selectedConta)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Categoria</p>
-                    <p className="font-medium">{catInfo?.label || selectedConta.categoria}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Valor</p>
-                    <p className="font-black text-lg">{fmt(selectedConta.valor)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Status</p>
-                    <Badge className={cn(status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Vencimento</p>
-                    <p>{selectedConta.data_vencimento ? format(new Date(selectedConta.data_vencimento + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Forma Pgto</p>
-                    <p>{FORMAS_PAGAMENTO.find(f => f.value === selectedConta.forma_pagamento)?.label || selectedConta.forma_pagamento || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Competência</p>
-                    <p>{selectedConta.competencia || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Centro Custo</p>
-                    <p>{CENTROS_CUSTO_RECEITA.find(c => c.value === selectedConta.centro_custo)?.label || selectedConta.centro_custo || '—'}</p>
-                  </div>
-                  {selectedConta.numero_documento && (
-                    <div className="col-span-2">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Nº Documento</p>
-                      <p>{selectedConta.numero_documento}</p>
-                    </div>
-                  )}
-                </div>
-                {selectedConta.descricao && (
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Descrição</p>
-                    <p className="text-sm">{selectedConta.descricao}</p>
-                  </div>
-                )}
-                {selectedConta.observacoes && (
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Observações</p>
-                    <p className="text-sm text-muted-foreground">{selectedConta.observacoes}</p>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">Histórico de vencimento, valor e classificação</span>
-                  <HistoricoLancamentoButton lancamentoId={selectedConta.id} descricao={selectedConta.descricao} rotulos={Object.fromEntries(CATEGORIAS_RECEITA.map(c => [c.value, c.label]))} />
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Criado em: {selectedConta.created_at ? format(new Date(selectedConta.created_at), "dd/MM/yyyy 'às' HH:mm") : '—'}
-                </p>
-              </div>
-            );
-          })()}
         </DialogContent>
       </Dialog>
 

@@ -159,6 +159,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/recepcao\/caixa\/lancamentos\/[^/]+\/editar$/.test(pathname)) return 'Editar lançamento do caixa';
   if (/^\/contas\/receber\/[^/]+\/recebimento$/.test(pathname)) return 'Receber pagamento';
   if (/^\/contas\/receber\/[^/]+\/estorno$/.test(pathname)) return 'Estornar pagamento';
+  if (/^\/contas\/receber\/[^/]+\/detalhes$/.test(pathname)) return 'Detalhes da conta a receber';
   if (/^\/contas\/pagar\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento da conta';
   if (/^\/laudos-lab\/[^/]+$/.test(pathname)) return 'Conferência do laudo';
   if (/^\/guias-externas\/(?!nova$|portal$)[^/]+$/.test(pathname)) return 'Detalhe da guia';
