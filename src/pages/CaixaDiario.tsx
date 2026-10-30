@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
+import { useState, useMemo, lazy, Suspense, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -44,22 +44,12 @@ import { PageHeader } from '@/components/PageHeader';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
-import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { canAccessCashTab, canAccessRestrictedCashTabs } from '@/lib/cashierAccess';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
 
-function toMoney(value: unknown): number {
-  const normalized = typeof value === 'string'
-    ? value.trim().replace(/\s/g, '').includes(',')
-      ? value.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.')
-      : value.trim().replace(/\s/g, '')
-    : value;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 function parseMoneyInput(value: string): number | null {
   const trimmed = value.trim();
@@ -72,9 +62,6 @@ function parseMoneyInput(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function firstPositiveMoney(...values: unknown[]): number {
-  return values.map(toMoney).find(value => value > 0) || 0;
-}
 
 function temPrecisaoDeCentavos(value: number): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
@@ -197,15 +184,6 @@ function baixarArquivo(nome: string, conteudo: string, tipo: string) {
 }
 
 
-interface ProdutoCarrinho {
-  id: string;
-  nome: string;
-  valor: number;
-  quantidade: number;
-  quantidadeDisponivel?: number;
-  origem: 'consulta' | 'exame' | 'produto' | 'manual';
-}
-
 export default function CaixaDiario() {
   const { profile } = useSupabaseAuth();
   const roles = [...new Set([...(profile?.roles ?? []), ...(profile?.role ? [profile.role] : [])])];
@@ -222,36 +200,12 @@ export default function CaixaDiario() {
   const [activeTab, setActiveTab] = useState(['tipos', 'precos'].includes(location.state?.cashTab) ? location.state.cashTab : 'hoje');
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
-  const [showLancamento, setShowLancamento] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
   const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
   const [showDetalhesCaixa, setShowDetalhesCaixa] = useState<CaixaDiarioType | null>(null);
   const [showReabertura, setShowReabertura] = useState(false);
   const [motivoReabertura, setMotivoReabertura] = useState('');
-
-  // POS state
-  const [carrinho, setCarrinho] = useState<ProdutoCarrinho[]>([]);
-  const [catalogoTab, setCatalogoTab] = useState<'consultas' | 'exames' | 'produtos' | 'manual'>('consultas');
-  const [catalogoSearch, setCatalogoSearch] = useState('');
-  const [lancFormaPagamento, setLancFormaPagamento] = useState<FormaPagamento>('dinheiro');
-  const [lancDesconto, setLancDesconto] = useState('');
-  const [manualNome, setManualNome] = useState('');
-  const [manualValor, setManualValor] = useState('');
-
-  // Paciente vinculado à venda (opcional)
-  const [pacienteId, setPacienteId] = useState<string | null>(null);
-  const [pacienteNome, setPacienteNome] = useState<string>('');
-  const [pacienteSearch, setPacienteSearch] = useState('');
-  const [pacientePopoverOpen, setPacientePopoverOpen] = useState(false);
-  const posIdempotenciaRef = useRef<{ fingerprint: string; chave: string } | null>(null);
-
-  const [lancamentoForm, setLancamentoForm] = useState({
-    tipo: 'receita' as LancamentoTipo,
-    valor: '',
-    descricao: '',
-    forma_pagamento: 'dinheiro' as FormaPagamento,
-  });
 
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | LancamentoTipo>('todos');
 
@@ -325,114 +279,6 @@ export default function CaixaDiario() {
   const lancamentos = lancamentosData?.movimentos ?? SEM_LANCAMENTOS;
   const lancamentosExcederamLimite = Boolean(lancamentosData?.excedeuLimite);
 
-  // Catálogo de tipos de consulta
-  const { data: tiposConsulta = [], isLoading: carregandoTiposConsulta, isError: erroTiposConsulta, refetch: recarregarTiposConsulta } = useQuery({
-    queryKey: ['tipos-consulta-caixa', profile?.clinica_id],
-    queryFn: async () => {
-      if (!profile?.clinica_id) return [];
-      const { data, error } = await supabase
-        .from('tipos_consulta')
-        .select('id, nome, valor_particular')
-        .eq('clinica_id', profile.clinica_id)
-        .eq('ativo', true)
-        .order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id && showLancamento,
-  });
-
-  // Catálogo de produtos (estoque com valor_venda)
-  const { data: produtosEstoque = [], isLoading: carregandoProdutos, isError: erroProdutos, refetch: recarregarProdutos } = useQuery({
-    queryKey: ['produtos-caixa', profile?.clinica_id],
-    queryFn: async () => {
-      if (!profile?.clinica_id) return [];
-      const { data, error } = await supabase
-        .from('estoque')
-        .select('id, nome, categoria, valor_venda, quantidade, validade')
-        .eq('clinica_id', profile.clinica_id)
-        .gt('quantidade', 0)
-        .order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id && showLancamento,
-  });
-
-  // Catálogo de venda direta: preço particular/configurado ou preço de venda.
-  // Preços de convênio não entram aqui porque o PDV não seleciona convênio;
-  // usar um deles sem contexto poderia cobrar o valor de outro plano.
-  const { data: examesCatalogo = [], isLoading: carregandoExames, isError: erroExames, refetch: recarregarExames } = useQuery({
-    queryKey: ['exames-caixa', profile?.clinica_id, profile?.id],
-    queryFn: async () => {
-      if (!profile?.clinica_id) return [];
-      const itemsByName = new Map<string, { id: string; nome: string; valor: number }>();
-      const normalizarNome = (nome: unknown) => String(nome || '')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR')
-        .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
-
-      // 1. Preços internos salvos em configuracoes_clinica
-      let cfgRows: any[] = [];
-      let erroConfiguracaoInterna: unknown = null;
-      if (profile?.clinica_id) {
-        const { data, error } = await (supabase as any)
-          .from('configuracoes_clinica')
-          .select('valor, updated_at')
-          .eq('chave', 'precos_exames_internos')
-          .eq('clinica_id', profile.clinica_id)
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        cfgRows = data || [];
-        erroConfiguracaoInterna = error;
-      }
-      if (cfgRows.length === 0 && profile?.id) {
-        const { data, error } = await (supabase as any)
-          .from('configuracoes_clinica')
-          .select('valor, updated_at')
-          .eq('chave', 'precos_exames_internos')
-          .eq('user_id', profile.id)
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        cfgRows = data || [];
-        if (error) throw error;
-      }
-      if (cfgRows.length === 0 && erroConfiguracaoInterna) throw erroConfiguracaoInterna;
-      const internalPrices = cfgRows[0]?.valor;
-      if (Array.isArray(internalPrices)) {
-        internalPrices.forEach((e: any) => {
-          const valor = toMoney(e.valor);
-          if (e.nome && valor > 0) {
-            const nomeNormalizado = normalizarNome(e.nome);
-            if (nomeNormalizado && !itemsByName.has(nomeNormalizado)) {
-              itemsByName.set(nomeNormalizado, { id: `interno-${nomeNormalizado}`, nome: e.nome, valor });
-            }
-          }
-        });
-      }
-
-      // O catálogo estruturado só fornece preço particular/de venda e serve
-      // como fallback quando a clínica ainda não mantém a lista interna.
-      const { data: catalogoExames, error: erroCatalogoExames } = await supabase
-        .from('tipo_exames_catalog')
-        .select('id, nome, preco_venda')
-        .eq('clinica_id', profile.clinica_id)
-        .eq('ativo', true);
-      if (erroCatalogoExames) throw erroCatalogoExames;
-      if (catalogoExames) {
-        catalogoExames.forEach((e: any) => {
-          const valor = firstPositiveMoney(e.preco_venda);
-          const nomeNormalizado = normalizarNome(e.nome);
-          if (nomeNormalizado && !itemsByName.has(nomeNormalizado) && Number.isFinite(valor) && valor > 0) {
-            itemsByName.set(nomeNormalizado, { id: e.id, nome: e.nome, valor });
-          }
-        });
-      }
-
-      return [...itemsByName.values()].sort((a, b) => a.nome.localeCompare(b.nome));
-    },
-    enabled: !!profile?.clinica_id && showLancamento,
-  });
-
   // Histórico de caixas anteriores
   const {
     data: historicosCaixa = [],
@@ -456,14 +302,6 @@ export default function CaixaDiario() {
     },
     enabled: !!profile?.clinica_id && activeTab === 'historico',
   });
-
-  // Pacientes (busca para vincular à venda)
-  const pacienteBuscaQuery = useBuscaPacientes(pacienteSearch, {
-    limite: 20,
-    enabled: pacientePopoverOpen,
-  });
-  const buscandoPacientes = pacienteBuscaQuery.isFetching || pacienteBuscaQuery.isPlaceholderData || pacienteBuscaQuery.isDebouncing;
-  const pacientesBusca = buscandoPacientes ? [] : pacienteBuscaQuery.data?.pacientes ?? [];
 
   // Lançamentos do caixa em detalhe
   const { data: lancamentosDetalheData, isLoading: loadingLancamentosDetalhe, isError: erroLancamentosDetalhe, refetch: recarregarLancamentosDetalhe } = useQuery({
@@ -509,98 +347,6 @@ export default function CaixaDiario() {
     return formas;
   }, [lancamentos]);
 
-  // Catálogo filtrado
-  const consultasFiltradas = useMemo(() => {
-    const q = catalogoSearch.toLowerCase();
-    return tiposConsulta.filter((tc: any) =>
-      !q || tc.nome?.toLowerCase().includes(q)
-    );
-  }, [tiposConsulta, catalogoSearch]);
-
-  const produtosFiltrados = useMemo(() => {
-    const q = catalogoSearch.toLowerCase();
-    return produtosEstoque.filter((p: any) => (!p.validade || p.validade >= today) && (
-      !q || p.nome?.toLowerCase().includes(q) || p.categoria?.toLowerCase().includes(q)
-    ));
-  }, [produtosEstoque, catalogoSearch, today]);
-  const temProdutoVencidoNaBusca = useMemo(() => {
-    const q = catalogoSearch.toLowerCase();
-    return produtosEstoque.some((p: any) => p.validade && p.validade < today &&
-      (!q || p.nome?.toLowerCase().includes(q) || p.categoria?.toLowerCase().includes(q)));
-  }, [produtosEstoque, catalogoSearch, today]);
-
-  const examesFiltrados = useMemo(() => {
-    const q = catalogoSearch.toLowerCase();
-    return examesCatalogo.filter((e: any) =>
-      !q || e.nome?.toLowerCase().includes(q)
-    );
-  }, [examesCatalogo, catalogoSearch]);
-
-  // Cart helpers
-  const addToCart = (item: Omit<ProdutoCarrinho, 'quantidade'>) => {
-    const valor = toMoney(item.valor);
-    if (valor <= 0) {
-      toast.error(`O item "${item.nome}" não possui preço cadastrado.`);
-      return;
-    }
-    const existente = carrinho.find(p => p.id === item.id && p.origem === item.origem);
-    if (item.origem === 'produto' && (item.quantidadeDisponivel ?? 0) <= (existente?.quantidade ?? 0)) {
-      toast.error((item.quantidadeDisponivel ?? 0) <= 0
-        ? `"${item.nome}" está sem estoque disponível.`
-        : `Há somente ${item.quantidadeDisponivel} unidade(s) de "${item.nome}" disponível(is).`);
-      return;
-    }
-    setCarrinho(prev => {
-      const existing = prev.find(p => p.id === item.id && p.origem === item.origem);
-      if (existing) {
-        return prev.map(p => p.id === item.id && p.origem === item.origem
-          ? { ...p, quantidade: p.quantidade + 1 }
-          : p
-        );
-      }
-      return [...prev, { ...item, valor, quantidade: 1 }];
-    });
-  };
-
-  const removeFromCart = (id: string) => {
-    setCarrinho(prev => prev.filter(p => p.id !== id));
-  };
-
-  const updateCartQty = (id: string, qty: number) => {
-    if (qty <= 0) return removeFromCart(id);
-    const item = carrinho.find(p => p.id === id);
-    if (item?.origem === 'produto' && qty > (item.quantidadeDisponivel ?? 0)) {
-      toast.error(`Há somente ${item.quantidadeDisponivel ?? 0} unidade(s) de "${item.nome}" disponível(is).`);
-      return;
-    }
-    setCarrinho(prev => prev.map(p => p.id === id ? { ...p, quantidade: qty } : p));
-  };
-
-  const carrinhoSubtotal = useMemo(
-    () => carrinho.reduce((s, i) => s + i.valor * i.quantidade, 0),
-    [carrinho],
-  );
-  const descontoInformado = lancDesconto.trim() === '' ? 0 : parseMoneyInput(lancDesconto);
-  const descontoInvalido = descontoInformado === null
-    || descontoInformado < 0
-    || descontoInformado > carrinhoSubtotal
-    || (carrinhoSubtotal > 0 && descontoInformado >= carrinhoSubtotal)
-    || !temPrecisaoDeCentavos(descontoInformado);
-  const carrinhoTotal = Math.max(0, carrinhoSubtotal - (descontoInformado ?? 0));
-
-  const resetPOS = () => {
-    setCarrinho([]);
-    setCatalogoSearch('');
-    setLancFormaPagamento('dinheiro');
-    setLancDesconto('');
-    setManualNome('');
-    setManualValor('');
-    setCatalogoTab('consultas');
-    setPacienteId(null);
-    setPacienteNome('');
-    setPacienteSearch('');
-  };
-
   const lancamentosFiltrados = useMemo(() => {
     const porTipo = tipoFiltro === 'todos' ? lancamentos : lancamentos.filter(l => l.tipo === tipoFiltro);
     if (!searchTerm.trim()) return porTipo;
@@ -642,82 +388,6 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
       queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
       toast.error(e?.message || 'Erro ao reabrir caixa');
-    },
-  });
-
-  const adicionarLancamentoMutation = useMutation({
-    mutationFn: async () => {
-      if (!profile?.clinica_id || !caixaHoje?.id) throw new Error('Caixa não está aberto');
-      if (carrinho.length === 0) throw new Error('Adicione pelo menos um item');
-      if (descontoInvalido) throw new Error('O desconto deve ser menor que o subtotal para manter um valor de venda maior que zero.');
-      if (!Number.isFinite(carrinhoTotal) || carrinhoTotal <= 0) throw new Error('O total da venda deve ser maior que zero');
-      if (carrinho.some(item => item.origem === 'exame') && !pacienteId) {
-        throw new Error('Selecione o paciente para registrar os exames vendidos no prontuário.');
-      }
-      const descricao = carrinho.map(i => `${i.nome}${i.quantidade > 1 ? ` x${i.quantidade}` : ''}`).join(', ');
-      const valorCobrado = carrinho.reduce((sum, item) => sum + item.valor * item.quantidade, 0);
-      const fingerprint = JSON.stringify({
-        clinic: profile.clinica_id,
-        patient: pacienteId,
-        date: today,
-        items: carrinho.map(({ id, origem, quantidade, valor }) => ({ id, origem, quantidade, valor })),
-        forma: lancFormaPagamento,
-        pago: carrinhoTotal,
-      });
-      if (posIdempotenciaRef.current?.fingerprint !== fingerprint) {
-        const chave = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-        posIdempotenciaRef.current = { fingerprint, chave };
-      }
-      const produtos = carrinho
-        .filter(item => item.origem === 'produto')
-        .map(item => ({ item_id: item.id, quantidade: item.quantidade }));
-      const exames = carrinho
-        .filter(item => item.origem === 'exame')
-        .map(item => ({ nome: item.nome, quantidade: item.quantidade, valor: item.valor }));
-      const idempotencia = posIdempotenciaRef.current;
-      if (!idempotencia) throw new Error('Não foi possível proteger esta venda contra duplicidade. Tente novamente.');
-      const { data, error } = await (supabase as any).rpc('registrar_venda_pdv', {
-        p_chave: idempotencia.chave,
-        p_clinica_id: profile.clinica_id,
-        p_paciente_id: pacienteId || null,
-        p_data: today,
-        p_descricao: descricao,
-        p_valor_cobrado: Number(valorCobrado.toFixed(2)),
-        p_valor_pago: Number(carrinhoTotal.toFixed(2)),
-        p_forma_pagamento: lancFormaPagamento,
-        p_produtos: produtos,
-        p_exames: exames,
-      });
-      if (error) throw error;
-      const venda = Array.isArray(data) ? data[0] : data;
-      if (!venda?.lancamento_id) throw new Error('O caixa não confirmou o registro da venda. Atualize a tela antes de tentar novamente.');
-
-      return { jaRegistrada: Boolean(venda.ja_registrada) };
-    },
-    onSuccess: (resultado) => {
-      posIdempotenciaRef.current = null;
-      toast.success(resultado?.jaRegistrada
-        ? 'Venda já estava registrada. O estoque não foi baixado novamente.'
-        : pacienteId ? 'Venda registrada e vinculada ao paciente!' : 'Venda registrada!');
-      setShowLancamento(false);
-      resetPOS();
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      queryClient.invalidateQueries({ queryKey: ['exames'] });
-      queryClient.invalidateQueries({ queryKey: ['produtos-caixa', profile?.clinica_id] });
-      queryClient.invalidateQueries({ queryKey: ['estoque'] });
-    },
-    onError: (e: any) => {
-      // Uma falha de rede pode ocorrer depois do RPC ter confirmado a venda;
-      // reconcilia estoque e caixa antes que o usuário repita a operação.
-      queryClient.invalidateQueries({ queryKey: ['produtos-caixa', profile?.clinica_id] });
-      queryClient.invalidateQueries({ queryKey: ['estoque'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      toast.error(e?.message || 'Erro');
     },
   });
 
@@ -871,11 +541,6 @@ export default function CaixaDiario() {
   const isOpen = caixaHoje?.aberto === true;
   const podeReabrir = Boolean(profile?.roles?.some(role => role === 'admin' || role === 'financeiro'));
 
-  const valorManualInformado = parseMoneyInput(manualValor);
-  const valorManualInvalido = valorManualInformado === null
-    || valorManualInformado <= 0
-    || !temPrecisaoDeCentavos(valorManualInformado);
-
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* ─── Header ─── */}
@@ -924,7 +589,7 @@ export default function CaixaDiario() {
               </Button>
             ) : isOpen ? (
               <Button
-                onClick={() => setShowLancamento(true)}
+                onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })}
                 className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
               >
                 <ShoppingCart className="h-4 w-4" /> Nova Venda
@@ -988,7 +653,7 @@ export default function CaixaDiario() {
               </Button>
             ) : isOpen ? (
               <>
-                <Button onClick={() => setShowLancamento(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
+                <Button onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda
                 </Button>
                 <Button onClick={() => navigate('/recepcao/caixa/despesa', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
@@ -1496,7 +1161,6 @@ export default function CaixaDiario() {
 
       {/* ═══ DIALOGS ═══ */}
 
-      {/* ═══ PDV — Ponto de Venda ═══ */}
       <Dialog
         open={showReabertura}
         onOpenChange={(open) => {
@@ -1542,367 +1206,6 @@ export default function CaixaDiario() {
               Reabrir caixa
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showLancamento} onOpenChange={open => {
-        if (!open && adicionarLancamentoMutation.isPending) return;
-        setShowLancamento(open);
-        if (!open) resetPOS();
-      }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-primary" /> Ponto de Venda
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0 overflow-hidden">
-            {/* ── Catálogo (esquerda) ── */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="relative mb-3">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-8 h-9 text-sm" placeholder="Buscar consulta, exame, produto..."
-                  value={catalogoSearch} onChange={e => setCatalogoSearch(e.target.value)} autoFocus />
-              </div>
-
-              <Tabs value={catalogoTab} onValueChange={v => setCatalogoTab(v as any)} className="flex-1 flex flex-col min-h-0">
-                <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto">
-                  <TabsTrigger value="consultas" className="text-xs gap-1"><Stethoscope className="h-3.5 w-3.5" /> Consultas</TabsTrigger>
-                  <TabsTrigger value="exames" className="text-xs gap-1"><FlaskConical className="h-3.5 w-3.5" /> Exames</TabsTrigger>
-                  <TabsTrigger value="produtos" className="text-xs gap-1"><ShoppingBag className="h-3.5 w-3.5" /> Produtos</TabsTrigger>
-                  <TabsTrigger value="manual" className="text-xs gap-1"><FileText className="h-3.5 w-3.5" /> Manual</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="consultas" className="flex-1 overflow-y-auto mt-2 space-y-1.5 max-h-[40vh]">
-                  {erroTiposConsulta ? (
-                    <div className="flex flex-col items-center gap-2 py-8 text-center" role="alert">
-                      <p className="text-sm text-destructive">Não foi possível carregar os tipos de consulta.</p>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void recarregarTiposConsulta()}>Tentar novamente</Button>
-                    </div>
-                  ) : carregandoTiposConsulta ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">Carregando consultas…</p>
-                  ) : consultasFiltradas.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      <Stethoscope className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      <p>Nenhum tipo de consulta cadastrado</p>
-                      <p className="text-xs">Cadastre em Configurações → Tipos de Consulta</p>
-                    </div>
-                  ) : consultasFiltradas.map((tc: any) => (
-                    <button key={tc.id}
-                      type="button"
-                      onClick={() => addToCart({ id: tc.id, nome: tc.nome, valor: tc.valor_particular || 0, origem: 'consulta' })}
-                      className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-primary/10">
-                          <Stethoscope className="h-4 w-4 text-primary" />
-                        </div>
-                        <span className="font-medium text-sm">{tc.nome}</span>
-                      </div>
-                      <span className="font-bold text-sm text-primary tabular-nums">{fmt(tc.valor_particular || 0)}</span>
-                    </button>
-                  ))}
-                </TabsContent>
-
-                <TabsContent value="exames" className="flex-1 overflow-y-auto mt-2 space-y-1.5 max-h-[40vh]">
-                  {!erroExames && !carregandoExames && examesFiltrados.length > 0 && (
-                    <p className="px-1 pb-1 text-xs text-muted-foreground">Venda direta usa o preço particular cadastrado para o exame.</p>
-                  )}
-                  {erroExames ? (
-                    <div className="flex flex-col items-center gap-2 py-8 text-center" role="alert">
-                      <p className="text-sm text-destructive">Não foi possível carregar os preços dos exames.</p>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void recarregarExames()}>Tentar novamente</Button>
-                    </div>
-                  ) : carregandoExames ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">Carregando exames…</p>
-                  ) : examesFiltrados.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      <FlaskConical className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      <p>Nenhum exame com preço cadastrado</p>
-                      <p className="text-xs">Cadastre preços em Preços de Exames</p>
-                    </div>
-                  ) : examesFiltrados.map((ex: any) => (
-                    <button key={ex.id}
-                      type="button"
-                      onClick={() => addToCart({ id: ex.id, nome: ex.nome, valor: ex.valor || 0, origem: 'exame' })}
-                      className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-warning/10">
-                          <FlaskConical className="h-4 w-4 text-warning" />
-                        </div>
-                        <span className="font-medium text-sm">{ex.nome}</span>
-                      </div>
-                      <span className="font-bold text-sm text-primary tabular-nums">{fmt(ex.valor || 0)}</span>
-                    </button>
-                  ))}
-                </TabsContent>
-
-                <TabsContent value="produtos" className="flex-1 overflow-y-auto mt-2 space-y-1.5 max-h-[40vh]">
-                  {erroProdutos ? (
-                    <div className="flex flex-col items-center gap-2 py-8 text-center" role="alert">
-                      <p className="text-sm text-destructive">Não foi possível carregar o estoque para venda.</p>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void recarregarProdutos()}>Tentar novamente</Button>
-                    </div>
-                  ) : carregandoProdutos ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">Carregando produtos…</p>
-                  ) : produtosFiltrados.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      {temProdutoVencidoNaBusca ? (
-                        <>
-                          <p>Não há produtos válidos para venda neste filtro</p>
-                          <p className="text-xs">Itens vencidos não podem ser vendidos. Confira os demais produtos ou o estoque.</p>
-                        </>
-                      ) : (
-                        <>
-                          <p>Nenhum produto no estoque</p>
-                          <p className="text-xs">Cadastre em Estoque</p>
-                        </>
-                      )}
-                    </div>
-                  ) : produtosFiltrados.map((p: any) => (
-                    <button key={p.id}
-                      type="button"
-                      disabled={Number(p.quantidade) <= 0}
-                      onClick={() => addToCart({ id: p.id, nome: p.nome, valor: p.valor_venda || 0, origem: 'produto', quantidadeDisponivel: Number(p.quantidade) || 0 })}
-                      className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/40 hover:bg-primary/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-info/10">
-                          <ShoppingBag className="h-4 w-4 text-info" />
-                        </div>
-                        <div>
-                          <span className="font-medium text-sm">{p.nome}</span>
-                          <p className="text-[10px] text-muted-foreground">{p.categoria} · Estoque: {p.quantidade > 0 ? p.quantidade : 'sem unidades'}</p>
-                        </div>
-                      </div>
-                      <span className="font-bold text-sm text-primary tabular-nums">{fmt(p.valor_venda || 0)}</span>
-                    </button>
-                  ))}
-                </TabsContent>
-
-                <TabsContent value="manual" className="mt-2 space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="caixa-item-manual-nome" className="text-xs">Nome do item *</Label>
-                    <Input id="caixa-item-manual-nome" placeholder="Ex: Exame de sangue, Taxa extra..." value={manualNome}
-                      onChange={e => setManualNome(e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="caixa-item-manual-valor" className="text-xs">Valor (R$) *</Label>
-              <Input id="caixa-item-manual-valor" type="text" inputMode="decimal" placeholder="0,00" value={manualValor}
-                onChange={e => setManualValor(e.target.value)} />
-                  </div>
-                  {manualValor.trim() !== '' && valorManualInvalido && (
-                    <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero e com até duas casas decimais.</p>
-                  )}
-                  <Button variant="outline" className="w-full gap-2" disabled={!manualNome.trim() || valorManualInvalido}
-                    onClick={() => {
-                      if (valorManualInformado === null || valorManualInvalido) return;
-                      addToCart({ id: `manual-${Date.now()}`, nome: manualNome, valor: valorManualInformado, origem: 'manual' });
-                      setManualNome('');
-                      setManualValor('');
-                    }}>
-                    <Plus className="h-4 w-4" /> Adicionar ao Carrinho
-                  </Button>
-                </TabsContent>
-              </Tabs>
-            </div>
-
-            {/* ── Carrinho (direita) ── */}
-            <div className="w-full md:w-80 flex flex-col border-t md:border-t-0 md:border-l pt-3 md:pt-0 md:pl-4">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                <ShoppingCart className="h-4 w-4 text-primary" />
-                Carrinho ({carrinho.length})
-              </h3>
-
-              {carrinho.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-center text-muted-foreground py-8">
-                  <div>
-                    <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                    <p className="text-xs">Selecione itens do catálogo</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto space-y-1.5 max-h-[30vh]">
-                    {carrinho.map(item => (
-                      <div key={item.id}
-                        className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{item.nome}</p>
-                          <p className="text-[10px] text-muted-foreground capitalize">{item.origem}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Button variant="ghost" size="icon" aria-label="Diminuir quantidade" className="h-6 w-6"
-                            onClick={() => updateCartQty(item.id, item.quantidade - 1)}>
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="text-xs font-bold w-4 text-center">{item.quantidade}</span>
-                          <Button variant="ghost" size="icon" aria-label="Aumentar quantidade" className="h-6 w-6"
-                            disabled={item.origem === 'produto' && item.quantidade >= (item.quantidadeDisponivel ?? 0)}
-                            onClick={() => updateCartQty(item.id, item.quantidade + 1)}>
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                          <span className="font-bold tabular-nums w-20 text-right">{fmt(item.valor * item.quantidade)}</span>
-                          <Button variant="ghost" size="icon" aria-label="Remover item da venda" className="h-6 w-6 text-destructive"
-                            onClick={() => removeFromCart(item.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              <Separator className="my-3" />
-
-              {/* Paciente (opcional) — vincula ao prontuário */}
-              <div className="space-y-1.5 mb-3">
-                <Label id="caixa-paciente-label" className="text-xs flex items-center gap-1">
-                  <User className="h-3 w-3" /> Paciente
-                  <span className="text-muted-foreground font-normal">(opcional)</span>
-                </Label>
-                {pacienteId ? (
-                  <div className="flex items-center justify-between gap-2 p-2 rounded-md bg-primary/5 border border-primary/20">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <User className="h-3.5 w-3.5 text-primary shrink-0" />
-                      <span className="text-sm font-medium truncate">{pacienteNome}</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => { setPacienteId(null); setPacienteNome(''); }}
-                      title="Remover paciente"
-                      aria-label="Remover paciente selecionado"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Popover open={pacientePopoverOpen} onOpenChange={setPacientePopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        aria-labelledby="caixa-paciente-label"
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-xs h-8 text-muted-foreground"
-                      >
-                        <Search className="h-3 w-3 mr-2" />
-                        Vincular paciente...
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[280px] p-0" align="start">
-                      <Command shouldFilter={false}>
-                        <CommandInput
-                          placeholder="Nome, CPF ou telefone..."
-                          value={pacienteSearch}
-                          onValueChange={setPacienteSearch}
-                        />
-                        <CommandList>
-                          {pacienteBuscaQuery.isError ? (
-                            <div className="flex flex-col items-center gap-2 p-4 text-center text-sm text-muted-foreground">
-                              <p>Não foi possível buscar pacientes.</p>
-                              <Button type="button" size="sm" variant="outline" onClick={() => void pacienteBuscaQuery.refetch()}>
-                                Tentar novamente
-                              </Button>
-                            </div>
-                          ) : buscandoPacientes ? (
-                            <div role="status" className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                              <Loader2 className="h-4 w-4 animate-spin" /> Buscando pacientes…
-                            </div>
-                          ) : (
-                            <>
-                              {pacientesBusca.length === 0 ? <CommandEmpty>Nenhum paciente encontrado</CommandEmpty> : <CommandGroup>
-                                {pacientesBusca.map((p: any) => (
-                                  <CommandItem
-                                    key={p.id}
-                                    value={p.id}
-                                    onSelect={() => {
-                                      setPacienteId(p.id);
-                                      setPacienteNome(p.nome_social || p.nome);
-                                      setPacientePopoverOpen(false);
-                                      setPacienteSearch('');
-                                    }}
-                                  >
-                                    <div className="flex flex-col">
-                                      <span className="text-sm">{p.nome_social || p.nome}</span>
-                                      {p.cpf && (
-                                        <span className="text-[10px] text-muted-foreground">CPF: {p.cpf}</span>
-                                      )}
-                                    </div>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>}
-                              {pacienteBuscaQuery.data?.incompleta && (
-                                <p role="status" className="border-t px-3 py-2 text-xs text-muted-foreground">
-                                  Há mais pacientes. Digite mais caracteres para refinar a busca.
-                                </p>
-                              )}
-                            </>
-                          )}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                )}
-                {pacienteId && carrinho.some(i => i.origem === 'exame') && (
-                  <p className="text-[10px] text-muted-foreground">
-                    Exames serão registrados no prontuário do paciente.
-                  </p>
-                )}
-              </div>
-
-              {/* Desconto */}
-              <div className="space-y-1.5 mb-3">
-                <Label htmlFor="caixa-venda-desconto" className="text-xs">Desconto (R$)</Label>
-                <Input id="caixa-venda-desconto" type="text" inputMode="decimal" placeholder="0,00" value={lancDesconto}
-                  onChange={e => setLancDesconto(e.target.value)} step="0.01" min="0" max={carrinhoSubtotal} className="h-8 text-sm" />
-                {descontoInvalido && (
-                  <p className="text-xs text-destructive" role="alert">
-                    O desconto precisa ser válido e menor que o subtotal de {fmt(carrinhoSubtotal)} para manter um total acima de zero.
-                  </p>
-                )}
-              </div>
-
-              {/* Forma de Pagamento */}
-              <div role="group" aria-labelledby="caixa-forma-pagamento-label" className="space-y-1.5 mb-3">
-                <Label id="caixa-forma-pagamento-label" className="text-xs">Forma de Pagamento</Label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([
-                    { v: 'dinheiro', l: 'Dinheiro', i: Banknote },
-                    { v: 'pix', l: 'PIX', i: QrCode },
-                    { v: 'credito', l: 'Crédito', i: CreditCard },
-                    { v: 'debito', l: 'Débito', i: Wallet },
-                    { v: 'cheque', l: 'Cheque', i: FileText },
-                    { v: 'transferencia', l: 'Transf.', i: ArrowUpFromLine },
-                  ] as const).map(fp => (
-                    <Button key={fp.v} variant={lancFormaPagamento === fp.v ? 'default' : 'outline'}
-                      size="sm" className={cn('h-8 gap-1 rounded-full px-2 text-[10px]', lancFormaPagamento === fp.v && 'border-transparent bg-gradient-primary text-white hover:brightness-110')}
-                      aria-pressed={lancFormaPagamento === fp.v}
-                      onClick={() => setLancFormaPagamento(fp.v as FormaPagamento)}>
-                      <fp.i className="h-3 w-3" /> {fp.l}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Total */}
-              <div className="mb-3 rounded-xl bg-gradient-primary p-3 text-white">
-                <p className="text-xs text-white/60">Total a cobrar</p>
-                <p className="text-2xl font-bold tabular-nums text-white">{fmt(carrinhoTotal)}</p>
-              </div>
-
-              <Button onClick={() => adicionarLancamentoMutation.mutate()}
-                disabled={carrinho.length === 0 || descontoInvalido || adicionarLancamentoMutation.isPending}
-                className="w-full gap-2 rounded-full bg-gradient-primary text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)] hover:brightness-110" size="lg">
-                {adicionarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Finalizar Venda
-              </Button>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 

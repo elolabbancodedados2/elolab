@@ -40,6 +40,7 @@ const Financeiro = lazy(() => import("@/pages/Financeiro"));
 const AbrirCaixaPage = lazy(() => import("@/pages/AbrirCaixaPage"));
 const FecharCaixaPage = lazy(() => import("@/pages/FecharCaixaPage"));
 const CashOperationPage = lazy(() => import("@/pages/CashOperationPage").then(module => ({ default: module.CashOperationPage })));
+const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module => ({ default: module.CashierSalePage })));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
@@ -382,6 +383,7 @@ function AppRoutes() {
                           <Route path="/recepcao/caixa/sangria" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="sangria" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/suprimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="suprimento" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/despesa" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="despesa" /></SupabaseProtectedRoute>} />
+                          <Route path="/recepcao/caixa/venda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashierSalePage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/:caixaId/fechar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><FecharCaixaPage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/pagamentos/:lancamentoId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoOperacional task="payment" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
