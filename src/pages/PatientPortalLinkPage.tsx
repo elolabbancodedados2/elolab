@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, Copy, Link2, Loader2, ShieldCheck } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/PageHeader';
@@ -34,7 +35,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function safeReturnTo(value: unknown, patientId: string) {
-  if (typeof value !== 'string' || !value.startsWith('/pacientes') || value.includes('#')) return '';
+  if (typeof value !== 'string' || value.includes('#')) return '';
+  if (value === '/recepcao') return value;
+  if (!value.startsWith('/pacientes')) return '';
   const [pathname, query = ''] = value.split('?');
   if (pathname === `/pacientes/${patientId}`) return value;
   if (pathname === '/pacientes' && new URLSearchParams(query).get('paciente') === patientId) return value;
@@ -74,6 +77,8 @@ export default function PatientPortalLinkPage() {
   const [copyNotice, setCopyNotice] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState('');
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [qrCodeError, setQrCodeError] = useState(false);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const submissionLock = useRef(false);
   const completed = useRef(false);
@@ -81,6 +86,21 @@ export default function PatientPortalLinkPage() {
   useEffect(() => {
     document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'auto' });
   }, [location.pathname]);
+
+  useEffect(() => {
+    let active = true;
+    if (!generatedUrl) {
+      setQrCodeUrl('');
+      setQrCodeError(false);
+      return () => { active = false; };
+    }
+    setQrCodeUrl('');
+    setQrCodeError(false);
+    void QRCode.toDataURL(generatedUrl, { width: 224, margin: 2 })
+      .then(url => { if (active) setQrCodeUrl(url); })
+      .catch(() => { if (active) setQrCodeError(true); });
+    return () => { active = false; };
+  }, [generatedUrl]);
 
   const patientQuery = useQuery({
     queryKey: ['patient-portal-link-context', profile?.clinica_id ?? null, patientId],
@@ -194,6 +214,10 @@ export default function PatientPortalLinkPage() {
               <div className="space-y-4">
                 <Alert><ShieldCheck className="h-4 w-4" /><AlertTitle>Link ativo por até um ano</AlertTitle><AlertDescription>{copyNotice || 'O token é exibido apenas nesta tela e permanece somente em memória do navegador. Ao sair, você precisará gerar outro link para vê-lo novamente.'}</AlertDescription></Alert>
                 <div className="space-y-2">
+                  <div className="flex flex-col items-center gap-2 rounded-xl border bg-background p-4 text-center">
+                    {qrCodeUrl ? <img src={qrCodeUrl} alt="QR code para abrir o Portal do Paciente" className="h-56 w-56" /> : qrCodeError ? <p role="status" className="max-w-xs py-8 text-sm text-muted-foreground">Não foi possível gerar o QR code. Use o link abaixo para compartilhar com o paciente.</p> : <Loader2 aria-label="Gerando QR code" className="h-8 w-8 animate-spin text-muted-foreground" />}
+                    <p className="max-w-sm text-xs text-muted-foreground">Para o pré-atendimento, confirme a identidade da pessoa antes de mostrar o QR ou compartilhar o link. O acesso inclui todo o Portal do Paciente.</p>
+                  </div>
                   <label htmlFor="patient-portal-link" className="text-sm font-medium">Link para compartilhar</label>
                   <Input ref={linkInputRef} id="patient-portal-link" value={generatedUrl} readOnly onFocus={(event) => event.currentTarget.select()} onCopy={() => { setCopied(true); setCopyNotice('Link copiado. Os links anteriores foram invalidados pela rotação.'); }} aria-label="Link de acesso ao portal do paciente" />
                 </div>

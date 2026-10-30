@@ -297,7 +297,10 @@ export default function Pacientes() {
     && (isAdmin() || (hasRole('medico') && vinculoMedicoValido && activeProntuario.medico_id === medicoId));
   const [paginaPacientes, setPaginaPacientes] = useState<number>(() => location.state?.patientFilters?.page || 0);
   const patientFilters = { search: searchTerm, sexo: filterSexo, convenio: filterConvenio, idade: filterIdade, status: filterStatusPaciente, page: paginaPacientes };
-  const patientReturnTo = /^\/pacientes(?:\?|$)/.test(location.state?.returnTo || '') ? location.state.returnTo : '/pacientes';
+  const requestedReturnTo = location.state?.returnTo;
+  const patientReturnTo = requestedReturnTo === '/recepcao'
+    ? '/recepcao'
+    : /^\/pacientes(?:\?|$)/.test(requestedReturnTo || '') ? requestedReturnTo : '/pacientes';
   const leavePatientTask = () => navigate(patientReturnTo, { replace: true, state: { patientFilters } });
   const openPatientTask = (path: string) => {
     if (!patientTaskPage) navigate('/pacientes', { replace: true, state: { patientFilters } });

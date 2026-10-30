@@ -16,10 +16,10 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Inter', 'system-ui', 'sans-serif'],
-        greeting: ['Baloo 2', 'Inter', 'system-ui', 'sans-serif'],
-        inter: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        display: ['Manrope', 'DM Sans', 'system-ui', 'sans-serif'],
+        greeting: ['Manrope', 'DM Sans', 'system-ui', 'sans-serif'],
+        inter: ['DM Sans', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",

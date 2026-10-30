@@ -451,7 +451,7 @@ function AppRoutes() {
                           <Route path="/recepcao/caixa/venda" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashierSalePage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/:caixaId/fechar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><FecharCaixaPage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/pagamentos/:lancamentoId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoOperacional task="payment" /></SupabaseProtectedRoute>} />
-                          <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
+                          <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
                           <Route path="/caixa-diario" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CaixaDiario /></SupabaseProtectedRoute>} />
                           <Route path="/caixa" element={<Navigate to="/caixa-diario" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />

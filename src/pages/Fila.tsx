@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/formatters';
 import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
 import { generateFilaShiftHandoff } from '@/lib/filaShiftHandoff';
 import { filaRemovalReasonLabel } from '@/lib/filaRemoval';
-import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
+import { forwardRef, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -793,6 +793,31 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   // O vínculo médico é necessário para aplicar o escopo individual da fila.
   // Sem esperar essa consulta, o primeiro render podia mostrar a fila da
   // clínica inteira antes de o filtro "só meus" ser resolvido.
+  const handoffText = generateFilaShiftHandoff({
+    date: format(parseDateOnly(today)!, 'dd/MM/yyyy', { locale: ptBR }),
+    generatedAt: format(new Date(now), 'HH:mm'),
+    waiting: aguardandoJornada.length,
+    triage: filaAguardandoTriagem.length,
+    inConsultation: emAtendimentoJornada.length,
+    blockedByPayment: filaAguardandoPagamento.length,
+    outsideToday: filaParaRevisar.length,
+    urgent: stats.urgentes,
+    overdue: acimaDeTrinta([...aguardandoJornada, ...filaAguardandoTriagem], item => item.horario_chegada),
+  });
+  const receptionReturnTo = (location.state as { returnTo?: unknown } | null)?.returnTo === '/recepcao'
+    ? '/recepcao'
+    : `${location.pathname}${location.search}`;
+  const abrirPassagem = useCallback(() => navigate('/fila/passagem', {
+    state: { summary: handoffText, returnTo: receptionReturnTo },
+  }), [handoffText, navigate, receptionReturnTo]);
+  const handoffRequestHandled = useRef(false);
+  const handoffRequested = (location.state as { openHandoff?: unknown } | null)?.openHandoff === true;
+  useEffect(() => {
+    if (creationPage || !handoffRequested || handoffRequestHandled.current || loadingFila || loadingAgendamentos || filaQuery.isError || agendamentosQuery.isError) return;
+    handoffRequestHandled.current = true;
+    abrirPassagem();
+  }, [creationPage, handoffRequested, loadingFila, loadingAgendamentos, filaQuery.isError, agendamentosQuery.isError, abrirPassagem]);
+
   if (isMedicoOnly && loadingCurrentMedico) return <ListSkeleton items={4} />;
   if (isMedicoOnly && currentMedicoError) {
     return <ErrorState title="Não foi possível identificar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
@@ -837,15 +862,15 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
             </CardContent>
           </Card>
         ) : (
-          <form onSubmit={event => { event.preventDefault(); void handleAddToFila(); }} className="max-w-4xl space-y-5">
+          <form onSubmit={event => { event.preventDefault(); void handleAddToFila(); }} className="w-full space-y-5">
             <section aria-labelledby="fila-checkin-heading" className="space-y-5 rounded-xl border border-border bg-card p-4 sm:p-6">
               <div className="space-y-1">
                 <h2 id="fila-checkin-heading" className="text-base font-semibold text-foreground">Identificação do atendimento</h2>
                 <p className="text-sm text-muted-foreground">Selecione a consulta que corresponde à pessoa presente no balcão.</p>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.8fr)]">
+                <div className="space-y-2">
                   <Label htmlFor="fila-agendamento">Agendamento</Label>
                   <Select value={selectedAgendamento} onValueChange={setSelectedAgendamento}>
                     <SelectTrigger id="fila-agendamento" aria-label="Agendamento">
@@ -864,8 +889,20 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                   </Select>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="fila-prioridade">Prioridade</Label>
+                  <Select value={selectedPrioridade} onValueChange={setSelectedPrioridade}>
+                    <SelectTrigger id="fila-prioridade" aria-label="Prioridade"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="preferencial">Preferencial (idoso/gestante)</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {validacaoCheckin.length > 0 && (
-                  <ul aria-label="Validação do check-in" className="space-y-2 rounded-lg border border-border bg-muted/20 p-3 sm:col-span-2">
+                  <ul aria-label="Validação do check-in" className="space-y-2 rounded-lg border border-border bg-muted/20 p-3 sm:col-span-2 lg:col-span-2">
                     {validacaoCheckin.map(item => {
                       const Icone = item.ok ? CircleCheck : CircleAlert;
                       return (
@@ -877,18 +914,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                     })}
                   </ul>
                 )}
-
-                <div className="space-y-2 sm:max-w-sm">
-                  <Label htmlFor="fila-prioridade">Prioridade</Label>
-                  <Select value={selectedPrioridade} onValueChange={setSelectedPrioridade}>
-                    <SelectTrigger id="fila-prioridade" aria-label="Prioridade"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="preferencial">Preferencial (idoso/gestante)</SelectItem>
-                      <SelectItem value="urgente">Urgente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             </section>
 
@@ -904,23 +929,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
       </div>
     );
   }
-
-  const handoffText = generateFilaShiftHandoff({
-    date: format(parseDateOnly(today)!, 'dd/MM/yyyy', { locale: ptBR }),
-    generatedAt: format(new Date(now), 'HH:mm'),
-    waiting: aguardandoJornada.length,
-    triage: filaAguardandoTriagem.length,
-    inConsultation: emAtendimentoJornada.length,
-    blockedByPayment: filaAguardandoPagamento.length,
-    outsideToday: filaParaRevisar.length,
-    urgent: stats.urgentes,
-    overdue: acimaDeTrinta([...aguardandoJornada, ...filaAguardandoTriagem], item => item.horario_chegada),
-  });
-  const abrirPassagem = () => {
-    navigate('/fila/passagem', {
-      state: { summary: handoffText, returnTo: `${location.pathname}${location.search}` },
-    });
-  };
 
   return (
     <div className="space-y-6 pb-8">

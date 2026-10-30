@@ -151,8 +151,9 @@ export default function FilaSaidaPage() {
       ) : !statusRemovivel ? (
         <ErrorState title="Este atendimento não pode ser removido da fila" description="O estado atual já não permite esta ação. Volte à fila para revisar o registro atualizado." onRetry={returnToQueue} />
       ) : (
-        <form onSubmit={handleSubmit} className="max-w-3xl space-y-5">
-          <Card>
+        <form onSubmit={handleSubmit} className="w-full space-y-5">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)] lg:items-stretch">
+          <Card className="h-full overflow-hidden border-border/70 shadow-sm">
             <CardHeader>
               <CardTitle className="text-base">Atendimento selecionado</CardTitle>
             </CardHeader>
@@ -172,7 +173,7 @@ export default function FilaSaidaPage() {
             </CardContent>
           </Card>
 
-          <section aria-labelledby="fila-saida-heading" className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-6">
+          <section aria-labelledby="fila-saida-heading" className="flex h-full flex-col gap-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:p-6">
             <div className="space-y-1">
               <h2 id="fila-saida-heading" className="text-base font-semibold">Motivo da saída</h2>
               <p className="text-sm text-muted-foreground">O motivo ficará registrado no histórico operacional da clínica.</p>
@@ -195,6 +196,7 @@ export default function FilaSaidaPage() {
                 : 'O paciente sairá da fila. O agendamento será preservado.'}
             </p>
           </section>
+          </div>
 
           <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" className="rounded-full" disabled={saving} onClick={returnToQueue}>Cancelar</Button>

@@ -15,14 +15,14 @@ export function PageHeader({ title, description, icon, actions, className }: Pag
       <div className="flex min-w-0 items-start gap-3">
         {icon && (
           <span
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary [&_svg]:h-[18px] [&_svg]:w-[18px]"
+            className="relative mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-[1.1rem] bg-primary text-primary-foreground shadow-sm before:absolute before:-right-0.5 before:-top-0.5 before:size-3 before:rounded-full before:border-2 before:border-background before:bg-highlight before:content-[''] [&_svg]:size-[18px]"
             aria-hidden="true"
           >
             {icon}
           </span>
         )}
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
+          <h1 className="font-display text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-[30px]">
             {title}
           </h1>
           {description && <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">{description}</p>}

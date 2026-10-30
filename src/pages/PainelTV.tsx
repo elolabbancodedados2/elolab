@@ -35,6 +35,7 @@ import {
 import { toast } from 'sonner';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { chaveChamada, lerChamadasAnunciadas, salvarChamadasAnunciadas } from '@/lib/painelChamadas';
+import { receptionTicketCode } from '@/lib/receptionTicket';
 
 interface FilaItem {
   id: string;
@@ -58,10 +59,10 @@ interface MediaItem {
 }
 
 // ─── TTS Helper ────────────────────────────────────────────
-function chamarPacienteVoz(pacienteNome: string, salaNome: string, repetir = 2): Promise<void> {
+function chamarPacienteVoz(senha: string, salaNome: string, repetir = 2): Promise<void> {
   if (!('speechSynthesis' in window)) return Promise.resolve();
 
-  const texto = `Paciente ${pacienteNome}, por favor dirija-se ${salaNome === 'Recepção' ? 'à Recepção' : `à ${salaNome}`}.`;
+  const texto = `Senha ${senha}, por favor dirija-se ${salaNome === 'Recepção' ? 'à Recepção' : `à ${salaNome}`}.`;
   return new Promise(resolve => {
     let terminou = false;
     const finalizar = () => {
@@ -93,12 +94,12 @@ function chamarPacienteVoz(pacienteNome: string, salaNome: string, repetir = 2):
 
 function criarFilaDeChamadas() {
   let fila = Promise.resolve();
-  return (pacienteNome: string, salaNome: string) => {
+  return (senha: string, salaNome: string) => {
     fila = fila
       .catch(() => undefined)
       .then(async () => {
         await playNotificationChime();
-        await chamarPacienteVoz(pacienteNome, salaNome);
+        await chamarPacienteVoz(senha, salaNome);
       });
     return fila;
   };
@@ -140,7 +141,6 @@ export default function PainelTV() {
   const navigate = useNavigate();
   const isMediaManagementPage = location.pathname === '/painel-tv/midias';
   const [fila, setFila] = useState<FilaItem[]>([]);
-  const [pacientes, setPacientes] = useState<Record<string, string>>({});
   const [medicos, setMedicos] = useState<Record<string, string>>({});
   const [salas, setSalas] = useState<Record<string, string>>({});
   const [filaErro, setFilaErro] = useState<string | null>(null);
@@ -172,16 +172,6 @@ export default function PainelTV() {
   const loadFilaRef = useRef<() => Promise<void>>(async () => {});
   const loadMediaRef = useRef<() => Promise<void>>(async () => {});
 
-  // Nome reduzido: primeiro nome + inicial do último sobrenome para preservar
-  // a privacidade do paciente no telão da sala de espera.
-  const getPacienteNome = useCallback((agendamentoId: string) => {
-    const nome = pacientes[agendamentoId];
-    if (!nome) return 'Paciente';
-    const partes = nome.trim().split(/\s+/);
-    if (partes.length === 1) return partes[0];
-    return `${partes[0]} ${partes[partes.length - 1][0].toUpperCase()}.`;
-  }, [pacientes]);
-
   // Load data
   useEffect(() => {
     if (!profile?.clinica_id) {
@@ -189,7 +179,6 @@ export default function PainelTV() {
       filaCarregadaUmaVez.current = false;
       mediaLoadSequence.current += 1;
       setFila([]);
-      setPacientes({});
       setMedicos({});
       setSalas({});
       setAllMediaItems([]);
@@ -203,7 +192,6 @@ export default function PainelTV() {
     if (!isMediaManagementPage) {
       filaCarregadaUmaVez.current = false;
       setFila([]);
-      setPacientes({});
       setMedicos({});
       setSalas({});
       setFilaCarregando(true);
@@ -286,11 +274,10 @@ export default function PainelTV() {
         announcedCallsRef.current.add(chave);
         setChamadoAtual(chamado.id);
         
-        // Nome reduzido igual ao telão: o som alcança a sala inteira.
-        const nome = getPacienteNome(chamado.agendamento_id);
+        const senha = receptionTicketCode(chamado.id);
         const sala = chamado.sala_id ? (salas[chamado.sala_id] || 'Sala') : 'Recepção';
-        
-        void enfileirarChamadaRef.current?.(nome, sala);
+
+        void enfileirarChamadaRef.current?.(senha, sala);
       }
     }
     
@@ -300,7 +287,7 @@ export default function PainelTV() {
       if (!currentIds.has(id)) announcedCallsRef.current.delete(id);
     });
     salvarChamadasAnunciadas(clinicaId, announcedCallsRef.current);
-  }, [fila, getPacienteNome, isMediaManagementPage, salas, somAtivo, profile?.clinica_id]);
+  }, [fila, isMediaManagementPage, salas, somAtivo, profile?.clinica_id]);
 
   const loadFila = async () => {
     const clinicaId = profile?.clinica_id;
@@ -322,36 +309,21 @@ export default function PainelTV() {
 
       const linhasFila = (filaData ?? []) as FilaItem[];
       const agendamentoIds = linhasFila.map((f) => f.agendamento_id);
-      let agendamentos: Array<{ id: string; paciente_id: string; medico_id: string | null; sala_id: string | null }> = [];
+      let agendamentos: Array<{ id: string; medico_id: string | null; sala_id: string | null }> = [];
       if (agendamentoIds.length > 0) {
           const { data, error } = await supabase
             .from('agendamentos')
-            .select('id, paciente_id, medico_id, sala_id')
+            .select('id, medico_id, sala_id')
             .eq('clinica_id', clinicaId)
             .in('id', agendamentoIds);
           if (error) throw error;
           agendamentos = data ?? [];
       }
 
-      const pacienteIds = [...new Set(agendamentos.map((a) => a.paciente_id))];
       const medicoIds = [...new Set(agendamentos.map((a) => a.medico_id).filter(Boolean))] as string[];
       const filaSalaIds = linhasFila.map((f) => f.sala_id).filter(Boolean) as string[];
       const agSalaIds = agendamentos.map((a) => a.sala_id).filter(Boolean) as string[];
       const allSalaIds = [...new Set([...filaSalaIds, ...agSalaIds])];
-
-      const mapaPacientes: Record<string, string> = {};
-      if (pacienteIds.length > 0) {
-        const { data, error } = await supabase
-          .from('pacientes')
-          .select('id, nome')
-          .eq('clinica_id', clinicaId)
-          .in('id', pacienteIds);
-        if (error) throw error;
-        agendamentos.forEach((a) => {
-          const paciente = data?.find((p) => p.id === a.paciente_id);
-          if (paciente) mapaPacientes[a.id] = paciente.nome;
-        });
-      }
 
       const mapaMedicos: Record<string, string> = {};
       if (medicoIds.length > 0) {
@@ -380,7 +352,6 @@ export default function PainelTV() {
 
       if (requestSequence !== filaLoadSequence.current) return;
       setFila(linhasFila);
-      setPacientes(mapaPacientes);
       setMedicos(mapaMedicos);
       setSalas(mapaSalas);
       filaCarregadaUmaVez.current = true;
@@ -535,10 +506,10 @@ export default function PainelTV() {
 
   // Re-call patient manually (click on call banner)
   const rechamarPaciente = (chamado: FilaItem) => {
-    const nome = getPacienteNome(chamado.agendamento_id);
+    const senha = receptionTicketCode(chamado.id);
     const sala = chamado.sala_id ? (salas[chamado.sala_id] || 'Sala') : 'Recepção';
-    void enfileirarChamadaRef.current?.(nome, sala);
-    toast.info(`Chamando novamente: ${nome}`);
+    void enfileirarChamadaRef.current?.(senha, sala);
+    toast.info(`Chamando novamente: ${senha}`);
   };
 
   const getMedicoNome = (agendamentoId: string) => medicos[agendamentoId] || '';
@@ -797,7 +768,7 @@ export default function PainelTV() {
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                       <p className="text-4xl md:text-5xl font-bold font-display">
-                        {getPacienteNome(chamado.agendamento_id)}
+                        Senha {receptionTicketCode(chamado.id)}
                       </p>
                       <p className="text-xl md:text-2xl text-white/80 mt-1">
                         {getMedicoNome(chamado.agendamento_id)}
@@ -830,7 +801,7 @@ export default function PainelTV() {
                   {emAtendimento.map((item) => (
                     <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-[#1080CA]/20 rounded-xl border border-[#5BB4EE]/30">
                       <div>
-                        <p className="text-lg md:text-xl font-semibold">{getPacienteNome(item.agendamento_id)}</p>
+                        <p className="text-lg md:text-xl font-semibold">Senha {receptionTicketCode(item.id)}</p>
                         <p className="text-white/60">{getMedicoNome(item.agendamento_id)}</p>
                       </div>
                       <div className="text-right">
@@ -878,7 +849,7 @@ export default function PainelTV() {
                           {index + 1}
                         </span>
                         <div>
-                          <p className="text-base md:text-lg font-medium">{getPacienteNome(item.agendamento_id)}</p>
+                          <p className="text-base md:text-lg font-medium">Senha {receptionTicketCode(item.id)}</p>
                           <p className="text-sm text-white/50">{getMedicoNome(item.agendamento_id)}</p>
                         </div>
                       </div>
@@ -897,7 +868,7 @@ export default function PainelTV() {
         </div>
 
         <footer className="mt-8 text-center text-lg text-white/60">
-          <p>Por favor, aguarde seu nome ser chamado e dirija-se ao local indicado.</p>
+          <p>Por favor, aguarde sua senha ser chamada e dirija-se ao local indicado.</p>
         </footer>
       </div>
     </div>

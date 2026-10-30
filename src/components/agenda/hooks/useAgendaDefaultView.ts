@@ -8,7 +8,7 @@ const KEY = 'agenda_default_view';
 
 export function useAgendaDefaultView() {
   const { user, profile } = useSupabaseAuth();
-  const userId = user?.id ?? profile?.user_id ?? profile?.id;
+  const userId = user?.id ?? profile?.id;
   const [defaultView, setDefaultViewState] = useState<AgendaView | null>(null);
   const [loaded, setLoaded] = useState(false);
 

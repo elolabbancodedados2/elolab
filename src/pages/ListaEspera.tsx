@@ -458,10 +458,10 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                   className="h-10 gap-1.5 rounded-full"
                   onClick={() => handleUpdateStatus(proximoAChamar.id, proximoAChamar.status || 'aguardando', 'notificado')}
                   disabled={updatingId !== null}
-                  title="Altera o status; não envia mensagem ao paciente."
+                  title="Registra o contato manual; esta ação não envia mensagem."
                 >
                   <Phone aria-hidden="true" className="h-4 w-4" />
-                  {updatingId === proximoAChamar.id ? 'Salvando...' : 'Marcar notificado'}
+                  {updatingId === proximoAChamar.id ? 'Salvando...' : 'Registrar contato'}
                 </Button>
               </div>
             </CardContent>
@@ -580,6 +580,10 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                     const medicoPref = (item as any).medicos;
                     const eProximo = proximoAChamar?.id === item.id;
                     const encerrado = ['agendado', 'desistiu'].includes(item.status || '');
+                    const expiraEm = item.oferta_expira_em ? new Date(item.oferta_expira_em) : null;
+                    const ofertaAtiva = item.status === 'notificado'
+                      && Boolean(item.oferta_agendamento_id)
+                      && Boolean(expiraEm && !Number.isNaN(expiraEm.getTime()) && expiraEm.getTime() > Date.now());
                     return (
                       <TableRow key={item.id} className={cn(eProximo && 'bg-primary/5', encerrado && 'text-muted-foreground')}>
                         <TableCell>
@@ -625,9 +629,16 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={cn('rounded-full', STATUS_COLORS[item.status || 'aguardando'])}>
-                            {STATUS_LABELS[item.status || 'aguardando']}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant="outline" className={cn('rounded-full', STATUS_COLORS[item.status || 'aguardando'])}>
+                              {STATUS_LABELS[item.status || 'aguardando']}
+                            </Badge>
+                            {ofertaAtiva && expiraEm && (
+                              <span className="text-[11px] leading-tight text-primary">
+                                Portal até {format(expiraEm, "dd/MM 'às' HH:mm")}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -643,11 +654,11 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                                 variant="outline"
                                 size="sm"
                                 className="h-9 rounded-full text-xs"
-                                title="Altera o status; não envia mensagem ao paciente."
+                                title="Registra o contato manual; esta ação não envia mensagem."
                                 onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'notificado')}
                                 disabled={updatingId !== null}
                               >
-                                {updatingId === item.id ? 'Salvando...' : 'Marcar notificado'}
+                                {updatingId === item.id ? 'Salvando...' : 'Registrar contato'}
                               </Button>
                             )}
                             {item.status === 'notificado' && (
@@ -708,16 +719,17 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
       </Card>
 
       </>}
-      {creationPage && <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-3xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
-          <header className="space-y-2 border-b pb-5">
-            <p className="text-sm text-muted-foreground">Gestão do fluxo / Lista de espera</p>
-            <h1 className="text-2xl font-semibold">Adicionar à Lista de Espera</h1>
-            <p className="text-sm text-muted-foreground">Registre a especialidade e as preferências para procurar uma vaga adequada.</p>
+      {creationPage && <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="w-full overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+          <header className="border-b border-border/70 px-5 py-5 sm:px-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Fluxo de atendimento</p>
+            <h1 className="mt-1 font-display text-2xl font-semibold">Adicionar à lista de espera</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Registre quem aguarda uma vaga e as preferências que ajudam a equipe a encontrar o melhor horário.</p>
           </header>
-          {medicosQuery.isError && <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}
-          <fieldset disabled={isSubmitting} className="min-w-0">
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
+          <div className="px-5 sm:px-7">
+            {medicosQuery.isError && <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}
+          </div>
+          <fieldset disabled={isSubmitting} className="grid min-w-0 gap-x-5 gap-y-4 px-5 py-5 sm:grid-cols-2 sm:px-7">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="espera-paciente">Paciente *</Label>
               <PacienteCombobox
                 id="espera-paciente"
@@ -765,8 +777,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="space-y-2">
                 <Label htmlFor="espera-prioridade">Prioridade</Label>
                 <Select
                   value={formData.prioridade}
@@ -781,8 +792,8 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                     <SelectItem value="urgente">Urgente</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
+            </div>
+            <div className="space-y-2">
                 <Label htmlFor="espera-horario">Preferência de Horário</Label>
                 <Select
                   value={formData.preferencia_horario || '__any__'}
@@ -798,7 +809,6 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                     <SelectItem value="noite">Noite</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
             </div>
 
             <div className="space-y-2">
@@ -822,9 +832,8 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                 rows={2}
               />
             </div>
-          </div>
           </fieldset>
-          <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
+          <div className="flex flex-wrap justify-end gap-3 border-t border-border/70 bg-muted/30 px-5 py-4 sm:px-7">
             <Button type="button" variant="outline" onClick={leaveForm} disabled={isSubmitting}>
               Cancelar
             </Button>

@@ -355,71 +355,72 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
       {formPage && (editingExameId && recordQuery.isError ? <ErrorState title="Não foi possível abrir o preço do exame" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
         : editingExameId && recordQuery.isPending ? <p role="status">Carregando preço do exame…</p>
         : editingExameId && !recordQuery.data ? <p role="status">Exame não encontrado na tabela deste convênio.</p>
-        : <form onSubmit={event => { event.preventDefault(); void handleSaveExame(); }} className="max-w-3xl space-y-6">
-          <h2 className="text-xl font-semibold">{editingExameId ? 'Editar Exame' : 'Novo Exame na Tabela'}</h2>
+        : <form onSubmit={event => { event.preventDefault(); void handleSaveExame(); }} className="w-full space-y-5">
+          <header className="border-b border-border/70 pb-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Tabela do convênio</p>
+            <h2 className="mt-1 font-display text-2xl font-semibold">{editingExameId ? 'Editar exame' : 'Novo exame'}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Cadastre os valores e acompanhe a composição do preço enquanto preenche.</p>
+          </header>
           {erroExames && <ErrorState compact title="Atualize a tabela antes de salvar" error={erroExames} onRetry={() => void refetchExames()} />}
           <fieldset disabled={isSaving} className="min-w-0">
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="convenio-exame-tipo" className="text-xs">Tipo do Exame *</Label>
-              <Input id="convenio-exame-tipo" required value={exameForm.tipo_exame}
-                onChange={e => setExameForm({ ...exameForm, tipo_exame: e.target.value })}
-                placeholder="Ex: Hemograma, Raio-X Tórax..." />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.68fr)] lg:items-start">
+            <div className="grid content-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-1.5 sm:col-span-2 xl:col-span-3">
+                <Label htmlFor="convenio-exame-tipo">Tipo do exame *</Label>
+                <Input id="convenio-exame-tipo" required value={exameForm.tipo_exame}
+                  onChange={e => setExameForm({ ...exameForm, tipo_exame: e.target.value })}
+                  placeholder="Ex.: Hemograma, raio-X de tórax" className="h-11" />
+              </div>
               <div className="space-y-1.5">
-                <Label htmlFor="convenio-exame-tuss" className="text-xs">Código TUSS</Label>
+                <Label htmlFor="convenio-exame-tuss">Código TUSS</Label>
                 <Input id="convenio-exame-tuss" value={exameForm.codigo_tuss}
                   onChange={e => setExameForm({ ...exameForm, codigo_tuss: e.target.value })}
-                  placeholder="40301010" className="font-mono" />
+                  placeholder="40301010" className="h-11 font-mono" />
               </div>
               <div className="space-y-1.5">
-              <Label htmlFor="convenio-exame-valor" className="text-xs">Valor Tabela (R$) *</Label>
-              <Input id="convenio-exame-valor" type="number" step="0.01" value={exameForm.valor_tabela}
-                  onChange={e => setExameForm({ ...exameForm, valor_tabela: parseFloat(e.target.value) || 0 })} />
+                <Label htmlFor="convenio-exame-valor">Valor de tabela (R$) *</Label>
+                <Input id="convenio-exame-valor" type="number" step="0.01" value={exameForm.valor_tabela}
+                  onChange={e => setExameForm({ ...exameForm, valor_tabela: parseFloat(e.target.value) || 0 })} className="h-11" />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="convenio-exame-filme" className="text-xs">Valor Filme (R$)</Label>
-              <Input id="convenio-exame-filme" type="number" step="0.01" value={exameForm.valor_filme}
-                onChange={e => setExameForm({ ...exameForm, valor_filme: parseFloat(e.target.value) || 0 })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="convenio-exame-custo" className="text-xs">Valor Custo (R$)</Label>
+                <Label htmlFor="convenio-exame-filme">Valor de filme (R$)</Label>
+                <Input id="convenio-exame-filme" type="number" step="0.01" value={exameForm.valor_filme}
+                  onChange={e => setExameForm({ ...exameForm, valor_filme: parseFloat(e.target.value) || 0 })} className="h-11" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="convenio-exame-custo">Valor de custo (R$)</Label>
                 <Input id="convenio-exame-custo" type="number" step="0.01" value={exameForm.valor_custo}
-                  onChange={e => setExameForm({ ...exameForm, valor_custo: parseFloat(e.target.value) || 0 })} />
+                  onChange={e => setExameForm({ ...exameForm, valor_custo: parseFloat(e.target.value) || 0 })} className="h-11" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="convenio-exame-repasse" className="text-xs">Valor Repasse (R$)</Label>
+                <Label htmlFor="convenio-exame-repasse">Valor de repasse (R$)</Label>
                 <Input id="convenio-exame-repasse" type="number" step="0.01" value={exameForm.valor_repasse}
-                  onChange={e => setExameForm({ ...exameForm, valor_repasse: parseFloat(e.target.value) || 0 })} />
+                  onChange={e => setExameForm({ ...exameForm, valor_repasse: parseFloat(e.target.value) || 0 })} className="h-11" />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2 xl:col-span-3">
+                <Label htmlFor="convenio-exame-descricao">Descrição</Label>
+                <Input id="convenio-exame-descricao" value={exameForm.descricao}
+                  onChange={e => setExameForm({ ...exameForm, descricao: e.target.value })}
+                  placeholder="Descrição opcional do procedimento" className="h-11" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="convenio-exame-descricao" className="text-xs">Descrição</Label>
-              <Input id="convenio-exame-descricao" value={exameForm.descricao}
-                onChange={e => setExameForm({ ...exameForm, descricao: e.target.value })}
-                placeholder="Descrição opcional do procedimento" />
-            </div>
-            <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Valor Total (Tabela + Filme)</span>
-                <span className="font-bold text-primary">
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-                    .format(exameForm.valor_tabela + (exameForm.valor_filme || 0))}
-                </span>
+
+            <aside className="h-fit rounded-2xl border border-primary/15 bg-primary/[0.04] p-5 shadow-sm lg:sticky lg:top-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Composição do preço</p>
+              <p className="mt-5 text-sm text-muted-foreground">Total por exame</p>
+              <p className="mt-1 font-display text-3xl font-semibold tracking-tight text-foreground">
+                {formatCurrency(exameForm.valor_tabela + (exameForm.valor_filme || 0))}
+              </p>
+              <div className="mt-5 grid gap-3 border-t border-primary/10 pt-4 text-sm">
+                <div className="flex items-center justify-between gap-4"><span className="text-muted-foreground">Tabela</span><span className="font-medium tabular-nums">{formatCurrency(exameForm.valor_tabela || 0)}</span></div>
+                <div className="flex items-center justify-between gap-4"><span className="text-muted-foreground">Filme</span><span className="font-medium tabular-nums">{formatCurrency(exameForm.valor_filme || 0)}</span></div>
+                {(exameForm.valor_custo > 0 || exameForm.valor_repasse > 0) && (() => {
+                  const margem = exameForm.valor_tabela + (exameForm.valor_filme || 0) - (exameForm.valor_custo || 0) - (exameForm.valor_repasse || 0);
+                  return <div className="flex items-center justify-between gap-4 border-t border-primary/10 pt-3"><span className="text-muted-foreground">Margem estimada</span><span className={cn('font-semibold tabular-nums', margem < 0 ? 'text-destructive' : 'text-success')}>{formatCurrency(margem)}</span></div>;
+                })()}
               </div>
-              {(exameForm.valor_custo > 0 || exameForm.valor_repasse > 0) && (
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Margem (Total - Custo - Repasse)</span>
-                  <span className="font-semibold">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-                      .format((exameForm.valor_tabela + (exameForm.valor_filme || 0)) - (exameForm.valor_custo || 0) - (exameForm.valor_repasse || 0))}
-                  </span>
-                </div>
-              )}
-            </div>
+              <p className="mt-4 text-xs leading-relaxed text-muted-foreground">A margem considera custo e repasse informados acima.</p>
+            </aside>
           </div>
           </fieldset>
           <div className="flex flex-wrap justify-end gap-3 border-t pt-5">

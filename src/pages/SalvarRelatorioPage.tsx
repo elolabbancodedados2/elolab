@@ -185,7 +185,7 @@ export default function SalvarRelatorioPage() {
         nome: saveForm.nome.trim(),
         descricao: saveForm.descricao || null,
         dataset: draft.dataset,
-        config: draft.config,
+        config: { ...draft.config },
         formato: saveForm.formato,
         destinatarios: saveForm.frequencia === 'nenhuma' ? [] : dests,
         ativo: canUpdateSavedReport && savedReport ? savedReport.ativo : true,

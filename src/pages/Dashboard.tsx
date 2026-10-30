@@ -989,7 +989,7 @@ function AdminDashboard() {
             dataLabel={hojeFormatado}
             horarioLabel={new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(agora)}
             metricas={{ consultas: stats.totalHoje, fila: stats.filaAguardando, finalizadas: stats.consultasFinalizadas, receita: formatCurrency(stats.receitaDia) }}
-            atalhosAdmin={roleWorkspaces.admin.actions}
+            atalhosAdmin={[...roleWorkspaces.admin.actions]}
             filaAgora={filaAgoraResumo}
             filaAtualizando={filaQuery.isFetching}
             onAtualizarFila={() => filaQuery.refetch()}

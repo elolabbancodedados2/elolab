@@ -45,7 +45,7 @@ const KEY = 'agenda_color_scheme';
 
 export function useAgendaColorScheme() {
   const { user, profile } = useSupabaseAuth();
-  const userId = user?.id ?? profile?.user_id ?? profile?.id;
+  const userId = user?.id ?? profile?.id;
   const [scheme, setSchemeState] = useState<ColorScheme>(DEFAULT_SCHEME);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

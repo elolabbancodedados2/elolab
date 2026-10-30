@@ -73,6 +73,27 @@ interface TarefaForm {
 
 const formVazio: TarefaForm = { titulo: '', descricao: '', prioridade: 'media', responsavel_id: '', data_vencimento: '', categoria: '', paciente_id: '' };
 
+interface TarefaRouteState {
+  taskFilters?: unknown;
+  returnTo?: unknown;
+  returnState?: unknown;
+  taskPrefill?: Partial<TarefaForm>;
+  receptionPrefill?: Partial<TarefaForm>;
+}
+
+function tarefaInicial(state: TarefaRouteState | null): TarefaForm {
+  const prefill = state?.taskPrefill ?? state?.receptionPrefill;
+  if (!prefill) return formVazio;
+  return {
+    ...formVazio,
+    titulo: typeof prefill.titulo === 'string' ? prefill.titulo : '',
+    descricao: typeof prefill.descricao === 'string' ? prefill.descricao : '',
+    prioridade: typeof prefill.prioridade === 'string' && Object.keys(prioridadeConfig).includes(prefill.prioridade) ? prefill.prioridade : 'media',
+    data_vencimento: typeof prefill.data_vencimento === 'string' ? prefill.data_vencimento : '',
+    categoria: typeof prefill.categoria === 'string' && categorias.includes(prefill.categoria) ? prefill.categoria : '',
+  };
+}
+
 function formDaTarefa(t: any): TarefaForm {
   return {
     titulo: t.titulo ?? '', descricao: t.descricao ?? '', prioridade: t.prioridade ?? 'media',
@@ -313,12 +334,23 @@ export default function Tarefas({ task }: { task?: 'new' | 'edit' }) {
 function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const routeState = location.state as TarefaRouteState | null;
   const { taskId } = useParams<{ taskId: string }>();
   const completed = useRef(false);
   const saveLock = useRef(false);
   const initialized = useRef(false);
-  const baseline = useRef(JSON.stringify(formVazio));
-  const leave = () => navigate('/tarefas', { state: { taskFilters: location.state?.taskFilters } });
+  const initialForm = task === 'new' ? tarefaInicial(routeState) : formVazio;
+  const baseline = useRef(JSON.stringify(initialForm));
+  const returnTo = task === 'new' && (routeState?.returnTo === '/recepcao' || routeState?.returnTo === '/fila/passagem')
+    ? routeState.returnTo
+    : null;
+  const returnToReception = returnTo === '/recepcao';
+  const returnToHandoff = returnTo === '/fila/passagem';
+  const leave = () => {
+    if (returnToReception) return navigate('/recepcao');
+    if (returnToHandoff) return navigate('/fila/passagem', { state: routeState?.returnState });
+    return navigate('/tarefas', { state: { taskFilters: routeState?.taskFilters } });
+  };
   const finish = () => { completed.current = true; leave(); };
   const { user, profile, isAdmin, hasRole } = useSupabaseAuth();
   const podeVincularPaciente = isAdmin() || hasRole('recepcao') || hasRole('enfermagem') || hasRole('medico');
@@ -419,7 +451,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
   const pacientesVinculados = pacientesQuery.data || [];
   const profiles = profilesQuery.data;
 
-  const [form, setForm] = useState<TarefaForm>(formVazio);
+  const [form, setForm] = useState<TarefaForm>(initialForm);
   const draft = useRecoverableDraft({
     key: `elolab:draft:task:${profile?.clinica_id || 'unknown'}:${user?.id || 'unknown'}`,
     value: form,
@@ -609,7 +641,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
   return (
     <div className="space-y-5 pb-24 lg:pb-8">
       {task && <UnsavedChangesGuard dirty={JSON.stringify(form) !== baseline.current} busy={createTarefa.isPending || updateTarefa.isPending} completed={completed} />}
-      {task && <Button variant="outline" onClick={leave} disabled={createTarefa.isPending || updateTarefa.isPending}>Voltar às tarefas</Button>}
+      {task && <Button variant="outline" onClick={leave} disabled={createTarefa.isPending || updateTarefa.isPending}>{returnToReception ? 'Voltar à Recepção' : returnToHandoff ? 'Voltar à passagem de turno' : 'Voltar às tarefas'}</Button>}
       {!task && <>
       {/* Header */}
       <PageHeader
@@ -847,7 +879,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
 
       </>}
       {task && <section className="mx-auto max-w-4xl space-y-5">
-        <PageHeader title={task === 'edit' ? 'Editar tarefa' : 'Nova tarefa'} description="Defina o trabalho, o prazo e a pessoa responsável. Vincule um paciente apenas quando necessário para a operação." icon={<ListTodo />} />
+        <PageHeader title={task === 'edit' ? 'Editar tarefa' : 'Nova tarefa'} description={returnToReception ? 'Registre uma pendência da Recepção e atribua responsável e prazo.' : returnToHandoff ? 'Revise a pendência da passagem de turno, escolha quem vai cuidar dela e defina o prazo.' : 'Defina o trabalho, o prazo e a pessoa responsável. Vincule um paciente apenas quando necessário para a operação.'} icon={<ListTodo />} />
         {tarefasQuery.isError && <ErrorState title="Não foi possível carregar as tarefas" error={tarefasQuery.error} onRetry={() => void tarefasQuery.refetch()} />}
         {profilesQuery.isError && <ErrorState title="Não foi possível carregar os responsáveis" error={profilesQuery.error} onRetry={() => void profilesQuery.refetch()} />}
         {task === 'edit' && isLoading && <p role="status" className="py-6 text-sm text-muted-foreground">Carregando tarefa…</p>}

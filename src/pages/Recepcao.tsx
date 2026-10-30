@@ -16,6 +16,7 @@ import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
 import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { PainelDoDia } from '@/components/recepcao/PainelDoDia';
+import { ChecklistRecepcao } from '@/components/recepcao/ChecklistRecepcao';
 import { ErrorState } from '@/components/ErrorState';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
@@ -32,8 +33,8 @@ import {
   Landmark, Search, Bell, ChevronRight, Users, Stethoscope,
   DollarSign, ArrowRight, Loader2, CheckCircle2, AlertTriangle,
   Timer, Phone, XCircle, Receipt, Eye, CalendarPlus, FileText,
-  FlaskConical, RotateCcw, ClipboardList, Lock as LockIcon, LockOpen, Activity,
-  UserPlus, DoorOpen, MessageCircle, UserX, ArrowUpDown, Hourglass,
+  FlaskConical, RotateCcw, ClipboardCheck, ClipboardList, Lock as LockIcon, LockOpen, Activity,
+  UserPlus, DoorOpen, MessageCircle, UserX, ArrowUpDown, Hourglass, Link2, Printer,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +57,7 @@ import {
 import { canalUnico } from '@/lib/realtimeCanal';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { getReceptionReturnPath } from '@/lib/receptionReturnPath';
+import { printReceptionTicket, receptionTicketCode } from '@/lib/receptionTicket';
 
 // ─── Constants ──────────────────────────────────────────
 const FORMAS_PAGAMENTO = [
@@ -152,6 +154,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   const queryClient = useQueryClient();
   const { profile, hasAnyRole } = useSupabaseAuth();
   const podeRegistrarTriagem = hasAnyRole(['admin', 'medico', 'enfermagem']);
+  const podeGerenciarRecepcao = hasAnyRole(['admin', 'recepcao']);
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
     const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
@@ -165,6 +168,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   const searchRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingCheckinId, setProcessingCheckinId] = useState<string | null>(null);
+  const [savingPriorityId, setSavingPriorityId] = useState<string | null>(null);
    const [selectedLancamento, setSelectedLancamento] = useState<any>(null);
    const [selectedPacienteBalcao, setSelectedPacienteBalcao] = useState<any>(null);
    const [formaPagamento, setFormaPagamento] = useState('');
@@ -211,6 +215,52 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   const location = useLocation();
   const returnTo = getReceptionReturnPath(`${location.pathname}${location.search}`, location.state);
   const abrirEncaixe = () => navigate('/recepcao/encaixe', { state: { returnTo: `${location.pathname}${location.search}` } });
+  const abrirCadastroPaciente = () => navigate('/pacientes/novo', { state: { returnTo: '/recepcao' } });
+  const abrirPortalPaciente = (patientId: string) => navigate(`/pacientes/${encodeURIComponent(patientId)}/portal/link`, {
+    state: { patientId, returnTo: '/recepcao' },
+  });
+  const abrirPassagemDeTurno = () => navigate('/fila', { state: { openHandoff: true, returnTo: '/recepcao' } });
+  const registrarPendencia = () => navigate('/tarefas/nova', {
+    state: {
+      returnTo: '/recepcao',
+      receptionPrefill: {
+        titulo: 'Pendência da Recepção',
+        descricao: 'Descreva a pendência administrativa para o próximo responsável.',
+        prioridade: 'media',
+        data_vencimento: today,
+        categoria: 'Administrativo',
+      },
+    },
+  });
+
+  async function alterarPrioridade(filaId: string, prioridade: string) {
+    if (!podeGerenciarRecepcao || !profile?.clinica_id || !['normal', 'preferencial', 'urgente'].includes(prioridade)) return;
+    setSavingPriorityId(filaId);
+    try {
+      const { data, error } = await supabase.from('fila_atendimento').update({ prioridade })
+        .eq('id', filaId).eq('clinica_id', profile.clinica_id).in('status', ['aguardando', 'chamado'])
+        .select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Este paciente não está mais aguardando na fila. Atualize a Recepção.');
+      await queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+      toast.success('Prioridade atualizada.');
+    } catch (error) {
+      toast.error('Não foi possível atualizar a prioridade.', {
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+      });
+    } finally {
+      setSavingPriorityId(null);
+    }
+  }
+
+  async function imprimirSenha(filaId: string, horarioChegada: string | null | undefined) {
+    try {
+      const aberta = await printReceptionTicket(filaId, horarioChegada ? horaDaClinica(new Date(horarioChegada)) : horaDaClinica(new Date()));
+      if (!aberta) toast.error('O navegador bloqueou a janela de impressão. Permita pop-ups para imprimir a senha.');
+    } catch (error) {
+      toast.error('Não foi possível gerar a senha.', { description: mensagemDeErro(error) });
+    }
+  }
   const abrirFinalizacao = (
     agendamentoId: string,
     origem: 'recepcao' | 'atendimentos-abertos',
@@ -248,7 +298,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   // Data
   // Só o dia de hoje: a recepção não usa o histórico, e o realtime refaz esta
   // consulta a cada mudança na agenda — antes era a tabela inteira, com joins.
-  const agendaHojeQuery = useAgendamentosPeriodo(today, today, { resumoPaciente: true, suppressGlobalErrorToast: true });
+  const agendaHojeQuery = useAgendamentosPeriodo(today, today, { resumoRecepcao: true, suppressGlobalErrorToast: true });
   const { data: agendamentos = [], isLoading: loadingAg } = agendaHojeQuery;
   const {
     data: pacienteEncaixe,
@@ -1186,17 +1236,18 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         {medicosQuery.isError && <ErrorState compact title="Não foi possível carregar os médicos" description="A criação fica bloqueada até confirmar um profissional ativo." error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}
         {tiposConsultaQuery.isError && <ErrorState compact title="Não foi possível carregar os tipos de consulta" description="A criação fica bloqueada até confirmar o tipo e a duração do atendimento." error={tiposConsultaQuery.error} onRetry={() => void tiposConsultaQuery.refetch()} />}
 
-        <form onSubmit={event => { event.preventDefault(); void handleEncaixe(); }} className="max-w-4xl space-y-5">
+        <form onSubmit={event => { event.preventDefault(); void handleEncaixe(); }} className="w-full space-y-5">
           <section aria-labelledby="recepcao-walk-in-heading" className="space-y-5 rounded-xl border border-border bg-card p-4 sm:p-6">
             <div className="space-y-1">
               <h2 id="recepcao-walk-in-heading" className="text-base font-semibold text-foreground">Identificação e encaminhamento</h2>
               <p className="text-sm text-muted-foreground">Confirme a pessoa, o profissional e o tipo antes de criar o horário e iniciar o check-in.</p>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-2 sm:col-span-2 xl:col-span-1">
                 <Label htmlFor="recepcao-encaixe-paciente">Paciente</Label>
                 <PacienteCombobox id="recepcao-encaixe-paciente" value={encaixePacienteId} onChange={id => setEncaixePacienteId(id)} />
+                {!encaixePacienteId && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={abrirCadastroPaciente}><UserPlus className="h-3.5 w-3.5" />Cadastrar novo paciente</Button>}
                 {encaixePacienteId && carregandoPacienteEncaixe && <p role="status" className="text-xs text-muted-foreground">Carregando os dados do paciente…</p>}
                 {encaixePacienteId && erroPacienteEncaixe && (
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1330,6 +1381,16 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         title="Painel de Recepção"
         description={`${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} · Fluxo completo do paciente`}
         icon={<Users />}
+        actions={(
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" className="gap-2 rounded-full" onClick={registrarPendencia}>
+              <ClipboardCheck aria-hidden="true" className="h-4 w-4" />Registrar pendência
+            </Button>
+            <Button type="button" variant="outline" className="gap-2 rounded-full" onClick={abrirPassagemDeTurno}>
+              <ClipboardList aria-hidden="true" className="h-4 w-4" />Passagem de turno
+            </Button>
+          </div>
+        )}
       />
 
       {/* Stats */}
@@ -1509,6 +1570,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                   const linkACaminho = atrasado
                     ? linkWhatsApp((pac as any)?.telefone, `Olá, ${((pac as any)?.nome_social || pac?.nome || '').split(' ')[0]}! Sua consulta estava marcada para ${ag.hora_inicio?.slice(0, 5)}. Está a caminho?`)
                     : null;
+                  const linkReagendar = ag.status === 'faltou' && pac?.telefone
+                    ? linkWhatsApp(pac.telefone, `Olá, ${(pac.nome_social || pac.nome || '').split(' ')[0]}. Sentimos sua falta na consulta de hoje às ${ag.hora_inicio?.slice(0, 5)}. Gostaria de ajuda para reagendar?`)
+                    : null;
                   const ehProximo = ag.id === proximoAChamarId;
                   return (
                   <motion.div
@@ -1547,6 +1611,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                   <h3 className="font-semibold truncate">
                                     {(pac as any)?.nome_social || pac?.nome || 'Paciente'}
                                   </h3>
+                                  {fila && step >= 1 && <Badge variant="outline" className="font-mono text-[10px]">Senha {receptionTicketCode(fila.id)}</Badge>}
                                   {ehProximo && (
                                     <Badge className="border-transparent bg-primary text-[10px] text-primary-foreground hover:bg-primary">
                                       <Bell className="mr-0.5 h-2.5 w-2.5" /> Próximo a chamar
@@ -1854,7 +1919,47 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                     <CalendarPlus className="h-3.5 w-3.5" /> Reagendar
                                   </Button>
                                 )}
+                                {linkReagendar && (
+                                  <Button asChild size="sm" variant="outline" className="gap-1">
+                                    <a href={linkReagendar} target="_blank" rel="noopener noreferrer" aria-label={`Abrir WhatsApp para ajudar ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} a reagendar`}>
+                                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp para reagendar
+                                    </a>
+                                  </Button>
+                                )}
                               </div>
+                            </div>
+                            {step >= 0 && ag.status !== 'faltou' && (
+                              <ChecklistRecepcao
+                                appointment={ag}
+                                patient={pac}
+                                clinicId={profile?.clinica_id ?? ''}
+                                today={today}
+                                onEditPatient={() => navigate(`/pacientes/${encodeURIComponent(ag.paciente_id)}/editar`, { state: { returnTo: '/recepcao' } })}
+                              />
+                            )}
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {podeGerenciarRecepcao && ag.paciente_id && (
+                                <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-full" onClick={() => abrirPortalPaciente(ag.paciente_id)}>
+                                  <Link2 className="h-3.5 w-3.5" /> Preparar pré-check-in
+                                </Button>
+                              )}
+                              {fila && fila.status !== 'finalizado' && (
+                                <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-full" onClick={() => void imprimirSenha(fila.id, fila.horario_chegada)}>
+                                  <Printer className="h-3.5 w-3.5" /> Imprimir senha {receptionTicketCode(fila.id)}
+                                </Button>
+                              )}
+                              {podeGerenciarRecepcao && fila && ['aguardando', 'chamado'].includes(fila.status) && (
+                                <Select value={fila.prioridade || 'normal'} onValueChange={prioridade => void alterarPrioridade(fila.id, prioridade)}>
+                                  <SelectTrigger aria-label="Prioridade da fila" className="h-8 w-[160px] rounded-full text-xs" disabled={savingPriorityId === fila.id}>
+                                    {savingPriorityId === fila.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SelectValue />}
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="normal">Prioridade normal</SelectItem>
+                                    <SelectItem value="preferencial">Preferencial</SelectItem>
+                                    <SelectItem value="urgente">Urgente</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
                             </div>
                           </div>
                         </div>

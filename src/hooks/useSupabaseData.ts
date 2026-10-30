@@ -295,8 +295,10 @@ export function useAgendamentos(date?: string, options?: { enabled?: boolean }) 
  * Agendamentos entre duas datas (inclusive). Use no lugar de
  * `useAgendamentos()` sem data, que traz o histórico inteiro da clínica.
  */
-export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean; resumoPaciente?: boolean; suppressGlobalErrorToast?: boolean }) {
-  const camposPaciente = options?.resumoPaciente
+export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { enabled?: boolean; keepPrevious?: boolean; resumoPaciente?: boolean; resumoRecepcao?: boolean; suppressGlobalErrorToast?: boolean }) {
+  const camposPaciente = options?.resumoRecepcao
+    ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, numero_carteira, validade_carteira, ativo'
+    : options?.resumoPaciente
     ? 'id, nome, nome_social, cpf, telefone, email, data_nascimento, convenio_id, alergias, ativo'
     : '*';
   return useSupabaseQuery<any>('agendamentos', {
