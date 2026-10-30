@@ -49,6 +49,7 @@ test('cash reopening is an audited page, retains its reason on failure, and retr
   expect(actionBounds).not.toBeNull();
   expect(mobileNavigation).not.toBeNull();
   expect(actionBounds!.y + actionBounds!.height).toBeLessThan(mobileNavigation!.y);
+  await page.screenshot({ path: testInfo.outputPath('cash-reopen-mobile-action.png'), animations: 'disabled' });
 
   await action.click();
   await expect(page.getByText('Falha sintética ao reabrir o caixa')).toBeVisible();

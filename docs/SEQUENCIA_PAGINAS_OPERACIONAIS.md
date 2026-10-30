@@ -53,3 +53,5 @@ Atualização de 30/10/2026: criação de lote TISS (68782fe), retorno/concilia�
 
 
 Atualizacao TISS (2026-10-30): recurso de glosa, decisao da operadora e conferencia de guias foram movidos para paginas proprias e publicados. Registro detalhado: [evolucao do fluxo TISS](EVOLUCAO_FATURAMENTO_TISS_RECURSO_GUIAS.md). Outras jornadas do EloLab seguem pendentes; esta entrega nao encerra a auditoria integral.
+
+Atualização de 30/10/2026: o histórico e a reabertura do caixa diário agora têm páginas próprias (`df095a7`) e foram publicados. Próximos alvos financeiros: edição de lançamentos e auditoria de pagamentos/contas. Conciliação e demais fluxos das etapas 9, 10 e 12 continuam pendentes; o redesenho integral não está concluído.

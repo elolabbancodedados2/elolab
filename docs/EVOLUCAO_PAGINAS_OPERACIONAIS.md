@@ -786,3 +786,13 @@ Publicação: commit 84b4eac84a79f15059da7d926ba494a154188076, imagem easypanel/
 
 
 Atualizacao TISS (2026-10-30): recurso de glosa, decisao da operadora e conferencia de guias foram movidos para paginas proprias e publicados. Registro detalhado: [evolucao do fluxo TISS](EVOLUCAO_FATURAMENTO_TISS_RECURSO_GUIAS.md). Outras jornadas do EloLab seguem pendentes; esta entrega nao encerra a auditoria integral.
+
+## Financeiro — histórico e reabertura do caixa em páginas próprias (30/10/2026)
+
+Diagnóstico: a consulta de caixa anterior e a reabertura, que exige justificativa e auditoria, ainda interrompiam o caixa diário em diálogos extensos.
+
+Implementação: `/recepcao/caixa/historico/:caixaId` apresenta o resumo do caixa, movimentos, eventos, impressão, CSV e acesso à página existente de fechamento. `/recepcao/caixa/reabrir` reconfirma o caixa diário fechado, exige motivo de 10–500 caracteres e restringe a operação a admin/financeiro. Uma resposta incerta da RPC é reconhecida pela leitura do estado persistido antes de nova tentativa. A consulta de histórico é filtrada pela clínica ativa; a edição dos lançamentos e demais pendências financeiras continuam sob auditoria.
+
+Validação: Playwright 3/3 em fixture sintética; TypeScript, `npm run check:a11y` e `git diff --check` passaram. ESLint sem erros, com dois avisos `any` preexistentes no legado `CaixaDiario.tsx`. Inspecionei capturas renderizadas mobile/desktop e a ação após rolagem; a navegação inferior não cobre a confirmação. Não houve operação financeira real, teste de RLS em produção ou validação manual de leitor de tela.
+
+Publicação: código `df095a7f2dc89511de9080444fcee2f249535a46`, imagem `easypanel/elolab/app:deploy-20261030-df095a7`. Smoke do container e do domínio público confirmou `/healthz=ok`, `/version.json` com o SHA integral e Swarm 1/1. Rollback imediato: `deploy-20261030-ef6509b`. Nenhuma migration ou alteração de dados. Registro: [caixa — histórico e reabertura](EVOLUCAO_CAIXA_HISTORICO_REABERTURA.md).

@@ -36,6 +36,8 @@ test('cash history details are a clinic-scoped, read-only workspace on desktop a
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('cash-history-detail-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.getByText('Movimentações · 2').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('cash-history-detail-mobile-movements.png'), animations: 'disabled' });
 
   await page.setViewportSize({ width: 1440, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
