@@ -96,3 +96,6 @@ Atualização de 30/10/2026: a revisão de duplicidades de pacientes agora ocorr
 
 
 Atualização de 30/10/2026: a gestão de imagens e vídeos do Painel TV saiu do diálogo e foi para `/painel-tv/midias`, restrita ao perfil administrador. Validações unitárias, E2E sintético, acessibilidade, permissões, TypeScript, build e inspeção desktop/mobile passaram; publicado no commit `885bfe55`, imagem `deploy-20261030-885bfe55`; smoke, `/healthz`, SHA público e Swarm 1/1 confirmados, rollback `deploy-20261030-7cdbf758`. Outras pendências das etapas 9, 10, 11 e 12 e o redesign visual geral continuam abertos. Detalhes: [gestão de mídias do Painel TV](EVOLUCAO_PAINEL_TV_MIDIAS.md).
+
+
+Atualização de 30/10/2026: as etapas de treinamento saíram do diálogo e passaram a `/treinamento/:tutorialKey`, com retomada de etapa pela query e gravação de conclusão preservada. Vitest, Playwright sintético, acessibilidade, permissões, TypeScript, build e inspeção desktop/mobile passaram. Publicado no commit `ade77ff4`, imagem `deploy-20261030-ade77ff4`; smoke, `/healthz`, SHA público e Swarm 1/1 confirmados, rollback `deploy-20261030-885bfe55`. Permanecem outros fluxos das etapas 9, 10, 11 e 12 e o redesign visual geral. Detalhes: [etapas de treinamento em páginas próprias](EVOLUCAO_TREINAMENTO_ETAPAS_PAGINA.md).
