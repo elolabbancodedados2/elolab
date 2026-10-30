@@ -58,6 +58,7 @@ const RelatoriosSalvos = lazy(() => import("@/pages/RelatoriosSalvos"));
 const CobrancaInadimplentes = lazy(() => import("@/pages/CobrancaInadimplentes"));
 const Usuarios = lazy(() => import("@/pages/Usuarios"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
+const ConfiguracaoHistoricoPage = lazy(() => import("@/pages/ConfiguracaoHistoricoPage"));
 const ConfiguracoesAvancadas = lazy(() => import("@/pages/ConfiguracoesAvancadas"));
 const Prescricoes = lazy(() => import("@/pages/Prescricoes"));
 const Atestados = lazy(() => import("@/pages/Atestados"));
@@ -467,6 +468,7 @@ function AppRoutes() {
                           <Route path="/usuarios/:accountId/editar" element={<SupabaseProtectedRoute somentePlataforma><Usuarios editing /></SupabaseProtectedRoute>} />
                           <Route path="/usuarios" element={<SupabaseProtectedRoute somentePlataforma><Usuarios /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Configuracoes /></SupabaseProtectedRoute>} />
+                          <Route path="/configuracoes/historico-versoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoHistoricoPage /></SupabaseProtectedRoute>} />
                           <Route path="/onboarding" element={<SupabaseProtectedRoute allowedRoles={['admin']}><OnboardingClinica /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanFeatureGuard feature="automacoes" requiredPlan="EloLab Pro"><Automacoes /></PlanFeatureGuard></SupabaseProtectedRoute>} />

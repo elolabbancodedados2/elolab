@@ -51,17 +51,8 @@ import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinic
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
 import { AccountSessionsPanel } from '@/components/security/AccountSessionsPanel';
 import { CONFIG_SEGURANCA_ATUALIZADA_EVENT, chaveDaClinica, lerConfigsClinicaComVersoes } from '@/lib/configClinica';
-import { compararConfiguracoes, formatarValorConfiguracao } from '@/lib/configHistory';
 import { ReauthDialog } from '@/components/ReauthDialog';
 import { exigeReautenticacao } from '@/lib/reautenticacao';
-
-interface ConfiguracaoClinicaVersao {
-  id: string;
-  valor: Record<string, unknown>;
-  criado_em: string;
-  operacao: 'inicial' | 'salvar' | 'restaurar';
-  restaurada_de: string | null;
-}
 
 export function textoAcaoPlano(planSlug: string | null) {
   return planSlug === 'elolab-ultra' ? 'Gerenciar plano' : 'Fazer Upgrade';
@@ -432,13 +423,6 @@ export default function Configuracoes() {
   const [configVersions, setConfigVersions] = useState<Record<string, string | null>>({});
   // Ação recusada pelo banco por reduzir segurança sem prova recente; refeita após reautenticar.
   const [reauthAcao, setReauthAcao] = useState<(() => Promise<void>) | null>(null);
-  const [historyKey, setHistoryKey] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyRows, setHistoryRows] = useState<ConfiguracaoClinicaVersao[]>([]);
-  const [historyCurrent, setHistoryCurrent] = useState<Record<string, unknown> | null>(null);
-  const [selectedHistoryVersion, setSelectedHistoryVersion] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyRestoring, setHistoryRestoring] = useState(false);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const saveLocks = useRef(new Set<string>());
   const [loadingConfig, setLoadingConfig] = useState(true);
@@ -594,54 +578,6 @@ export default function Configuracoes() {
     }
   };
 
-  const openConfigHistory = async (chave: string) => {
-    if (!clinicId || !profile?.clinica_id || !chaveDaClinica(chave)) return;
-    setHistoryKey(chave);
-    setHistoryOpen(true);
-    setHistoryLoading(true);
-    setHistoryRows([]);
-    setHistoryCurrent(null);
-    setSelectedHistoryVersion(null);
-    try {
-      const [{ data: versions, error: versionsError }, { data: current, error: currentError }] = await Promise.all([
-        supabase.from('configuracoes_clinica_versoes').select('id, valor, criado_em, operacao, restaurada_de')
-          .eq('clinica_id', clinicId).eq('chave', chave).order('criado_em', { ascending: false }).limit(50),
-        supabase.from('configuracoes_clinica').select('valor, updated_at').eq('clinica_id', clinicId).eq('chave', chave).maybeSingle(),
-      ]);
-      if (versionsError) throw versionsError;
-      if (currentError) throw currentError;
-      const rows = (versions ?? []) as ConfiguracaoClinicaVersao[];
-      setHistoryRows(rows);
-      setHistoryCurrent((current?.valor as Record<string, unknown> | null) ?? null);
-      setSelectedHistoryVersion(rows.find((row) => JSON.stringify(row.valor) !== JSON.stringify(current?.valor))?.id ?? rows[0]?.id ?? null);
-    } catch (error: unknown) {
-      toast.error('Não foi possível carregar o histórico', { description: error instanceof Error ? error.message : 'Tente novamente.' });
-      setHistoryOpen(false);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  const restoreConfigHistory = async () => {
-    if (!historyKey || !selectedHistoryVersion || !configVersions[historyKey]) return;
-    setHistoryRestoring(true);
-    try {
-      const { error } = await supabase.rpc('restaurar_configuracao_clinica_versao', {
-        p_versao_id: selectedHistoryVersion,
-        p_versao_esperada: configVersions[historyKey],
-      });
-      if (error) throw error;
-      await loadConfigs();
-      setHistoryOpen(false);
-      toast.success('Versão restaurada e registrada no histórico.');
-    } catch (error: unknown) {
-      if (exigeReautenticacao(error)) { setReauthAcao(() => restoreConfigHistory); return; }
-      toast.error('Não foi possível restaurar esta versão', { description: error instanceof Error ? error.message : 'Recarregue e compare novamente.' });
-    } finally {
-      setHistoryRestoring(false);
-    }
-  };
-
   const diasSemana = [
     { value: 'seg', label: 'Seg' }, { value: 'ter', label: 'Ter' },
     { value: 'qua', label: 'Qua' }, { value: 'qui', label: 'Qui' },
@@ -672,17 +608,12 @@ export default function Configuracoes() {
         {saving[configKey] ? 'Salvando…' : 'Salvar na nuvem'}
       </Button>
       {profile?.clinica_id && chaveDaClinica(configKey) && (
-        <Button type="button" variant="outline" onClick={() => void openConfigHistory(configKey)} className="gap-2 rounded-full">
+        <Button type="button" variant="outline" onClick={() => navigate(`/configuracoes/historico-versoes?chave=${encodeURIComponent(configKey)}&origem=${initialSettingsTab}`)} className="gap-2 rounded-full">
           <History className="h-4 w-4" /> Histórico e versões
         </Button>
       )}
     </div>
   );
-
-  const selectedVersion = historyRows.find((row) => row.id === selectedHistoryVersion) ?? null;
-  const historyDiff = historyCurrent && selectedVersion
-    ? compararConfiguracoes(historyCurrent, selectedVersion.valor)
-    : [];
 
   const tabItems = [
     { value: 'clinica', icon: Building, label: 'Clínica' },
@@ -1308,86 +1239,6 @@ export default function Configuracoes() {
         description="Esta mudança reduz os controles de segurança da clínica (por exemplo, aumenta o tempo de sessão). Confirme sua identidade para continuar."
         onConfirmed={async () => { await reauthAcao?.(); }}
       />
-      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Histórico de versões da configuração</DialogTitle>
-            <DialogDescription>
-              Compare uma versão salva com os dados atuais antes de restaurá-la. A restauração cria uma nova entrada no histórico.
-            </DialogDescription>
-          </DialogHeader>
-          {historyLoading ? (
-            <div role="status" className="py-10 text-center text-sm text-muted-foreground">Carregando versões…</div>
-          ) : historyRows.length === 0 ? (
-            <div className="rounded-lg border p-5 text-sm text-muted-foreground">
-              Ainda não há versões disponíveis para esta configuração. As próximas gravações serão registradas automaticamente.
-            </div>
-          ) : (
-            <div className="grid gap-5 md:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.5fr)]">
-              <section aria-label="Versões salvas" className="space-y-2">
-                <h3 className="text-sm font-semibold">Versões salvas</h3>
-                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                  {historyRows.map((row) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      aria-pressed={row.id === selectedHistoryVersion}
-                      onClick={() => setSelectedHistoryVersion(row.id)}
-                      className={cn(
-                        'w-full rounded-xl border border-border/60 p-3 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        row.id === selectedHistoryVersion && 'border-[#1080CA]/40 bg-[#1080CA]/5',
-                      )}
-                    >
-                      <span className="block font-medium">
-                        {row.operacao === 'inicial' ? 'Versão inicial' : row.operacao === 'restaurar' ? 'Restauração' : 'Alteração salva'}
-                      </span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(row.criado_em))}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-              <section aria-label="Comparação da versão" className="min-w-0 space-y-2">
-                <h3 className="text-sm font-semibold">Diferenças antes de restaurar</h3>
-                {!historyCurrent ? (
-                  <p role="status" className="rounded-lg border p-4 text-sm text-muted-foreground">Não há configuração atual salva para comparar.</p>
-                ) : historyDiff.length === 0 ? (
-                  <p role="status" className="rounded-lg border p-4 text-sm text-muted-foreground">A versão selecionada é igual à configuração atual.</p>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Campo</TableHead><TableHead>Atual</TableHead><TableHead>Versão escolhida</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {historyDiff.map((item) => (
-                          <TableRow key={item.campo}>
-                            <TableCell className="font-medium">{item.campo}</TableCell>
-                            <TableCell className="max-w-48 break-all text-muted-foreground">{formatarValorConfiguracao(item.atual)}</TableCell>
-                            <TableCell className="max-w-48 break-all">{formatarValorConfiguracao(item.versao)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-                {selectedVersion?.restaurada_de && <p className="text-xs text-muted-foreground">Esta versão foi criada ao restaurar outra configuração.</p>}
-              </section>
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" className="rounded-full" onClick={() => setHistoryOpen(false)}>Fechar</Button>
-            <Button
-              type="button"
-              className="rounded-full bg-gradient-primary text-white hover:brightness-110"
-              onClick={() => void restoreConfigHistory()}
-              disabled={historyLoading || historyRestoring || !historyKey || !selectedVersion || historyDiff.length === 0 || !configVersions[historyKey]}
-            >
-              {historyRestoring ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-              Restaurar versão comparada
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

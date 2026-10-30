@@ -97,6 +97,7 @@ const labelsByPath: Record<string, string> = {
   '/cobranca-inadimplentes': 'Cobrança de inadimplentes',
   '/usuarios': 'Usuários',
   '/configuracoes': 'Configurações',
+  '/configuracoes/historico-versoes': 'Histórico de versões',
   '/onboarding': 'Configuração inicial',
   '/configuracoes-avancadas': 'Configurações avançadas',
   '/automacoes': 'Automações',
