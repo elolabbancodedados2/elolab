@@ -15,11 +15,11 @@ O layout já mostrava no topo um aviso sobre a atualização anunciada para 10/1
 
 - Playwright: 1/1; sem diálogo e sem chave de “anúncio visto”.
 - Capturas renderizadas em 390 px e 1440 px inspecionadas; aviso permanece legível no topo, não há overflow horizontal e o restante do dashboard continua acessível.
-- TypeScript, `check:a11y`, ESLint focal e `git diff --check` passaram; build de produção será registrado após o commit.
+- TypeScript, `check:a11y`, ESLint focal, build de produção e `git diff --check` passaram.
 
 ## Publicação
 
-Registrar o commit, a imagem, o rollback e os resultados de saúde após o deploy.
+Publicado no commit `3158637e5c22f6b46e1c88c81d2529b72fd4279c`, imagem `easypanel/elolab/app:deploy-20261030-3158637`; rollback `deploy-20261030-53237b4`. Smoke isolado e os domínios `app.elolab.com.br` e `elolab.com.br` confirmaram `/healthz=ok` e o SHA publicado; o Swarm ficou 1/1. A fonte anterior está em `code.before-20261030-3158637`. O `.env` foi comparado por hash, sem alteração.
 
 ## Limites
 
