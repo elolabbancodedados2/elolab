@@ -42,6 +42,7 @@ const FecharCaixaPage = lazy(() => import("@/pages/FecharCaixaPage"));
 const CaixaHistoricoDetalhePage = lazy(() => import("@/pages/CaixaHistoricoDetalhePage"));
 const ReabrirCaixaPage = lazy(() => import("@/pages/ReabrirCaixaPage"));
 const EditarLancamentoCaixaPage = lazy(() => import("@/pages/EditarLancamentoCaixaPage"));
+const ContaPagarPagamentoPage = lazy(() => import("@/pages/ContaPagarPagamentoPage"));
 const CashOperationPage = lazy(() => import("@/pages/CashOperationPage").then(module => ({ default: module.CashOperationPage })));
 const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module => ({ default: module.CashierSalePage })));
 const Medicos = lazy(() => import("@/pages/Medicos"));
@@ -415,6 +416,7 @@ function AppRoutes() {
                           <Route path="/contas/receber/:lancamentoId/recebimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/pagar/:lancamentoId/pagamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarPagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas-receber" element={<Navigate to="/contas?tab=receber" replace />} />
                           <Route path="/contas-pagar" element={<Navigate to="/contas?tab=pagar" replace />} />

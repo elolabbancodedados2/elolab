@@ -96,6 +96,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(repasseId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(repasseId))).toBe(false);
   });
+  it('omite o identificador da conta no registro do pagamento', () => {
+    const accountId = '00000000-0000-4000-9000-000000000043';
+    render(<MemoryRouter initialEntries={[`/contas/pagar/${accountId}/pagamento`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Registrar pagamento da conta')).toBeInTheDocument();
+    expect(screen.queryByText(accountId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(accountId))).toBe(false);
+  });
   it('omite o identificador do prontuário no breadcrumb do novo adendo', () => {
     const recordId = '00000000-0000-4000-9000-000000000013';
     render(<MemoryRouter initialEntries={[`/prontuarios/${recordId}/adendos/novo`]}><Breadcrumbs /></MemoryRouter>);

@@ -12,7 +12,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -128,13 +127,8 @@ export default function ContasPagar() {
   const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
   const selectedMonthParam = searchParams.get('mes');
   const selectedMonth = parseFinanceMonth(selectedMonthParam);
-  const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>(novoFormDataDespesa);
   const [formDirty, setFormDirty] = useState(false);
-  const [pagamentoData, setPagamentoData] = useState({ forma_pagamento: 'pix', observacoes: '', valor: '' });
-  const [chavesPagamento, setChavesPagamento] = useState<Record<string, string>>({});
-  const [pagamentoIncerto, setPagamentoIncerto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLock = useRef(false);
   const navigationAllowedRef = useRef(false);
@@ -196,9 +190,6 @@ export default function ContasPagar() {
   });
   const contas = contasQuery.data ?? [];
   const contasAtingiramLimite = contas.length >= LIMITE_BUSCA_EM_BLOCOS;
-  const contaPagamentoSelecionada = contas.find(conta => conta.id === selectedId);
-  const saldoPagamentoSelecionado = contaPagamentoSelecionada ? saldoEmAberto(contaPagamentoSelecionada) : 0;
-
   const monthFilteredContas = useMemo(() => selectedMonthParam
     ? contas.filter(c => String(c.data_vencimento || '').startsWith(selectedMonthParam))
     : contas, [contas, selectedMonthParam]);
@@ -243,7 +234,6 @@ export default function ContasPagar() {
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   const handleNew = () => {
-    setSelectedId(null);
     navigate('/contas/pagar/nova', { state: { returnTo: `${location.pathname}${location.search}`, restoreSearchTerm: searchTerm } });
   };
 
@@ -302,111 +292,15 @@ export default function ContasPagar() {
   };
 
   const handlePagamento = (id: string) => {
-    setPagamentoIncerto(false);
-    setSelectedId(id);
     const conta = contas.find(item => item.id === id);
-    setPagamentoData({
-      forma_pagamento: conta?.forma_pagamento || 'pix',
-      observacoes: '',
-      valor: conta ? saldoEmAberto(conta).toFixed(2) : '',
+    if (!conta) return;
+    navigate(`/contas/pagar/${id}/pagamento`, {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+        restoreSearchTerm: searchTerm,
+        idempotencyKey: crypto.randomUUID(),
+      },
     });
-    setChavesPagamento(keys => ({ ...keys, [id]: keys[id] || crypto.randomUUID() }));
-    setIsPagamentoOpen(true);
-  };
-
-  const handleConfirmarPagamento = async () => {
-    if (submissionLock.current) return;
-    if (!selectedId) return;
-    submissionLock.current = true;
-    setIsSubmitting(true);
-    let chamadaRpcIniciada = false;
-    let respostaServidorRecebida = false;
-    try {
-      const contaSelecionada = contas.find(c => c.id === selectedId);
-      if (!contaSelecionada) throw new Error('Esta conta não está mais na lista. Atualize a tela antes de registrar o pagamento.');
-      const saldo = Number(saldoEmAberto(contaSelecionada).toFixed(2));
-      if (!Number.isFinite(saldo) || saldo <= 0) throw new Error('Esta conta não tem saldo pendente. Atualize a lista antes de continuar.');
-      const valorPagamento = Number(pagamentoData.valor);
-      if (!Number.isFinite(valorPagamento) || valorPagamento <= 0) throw new Error('Informe um valor de pagamento maior que zero.');
-      if (Math.abs(valorPagamento * 100 - Math.round(valorPagamento * 100)) > 1e-7) throw new Error('Informe o pagamento com no máximo duas casas decimais.');
-      if (valorPagamento > saldo) throw new Error('O valor do pagamento não pode ser maior que o saldo em aberto.');
-      const formaPagamento = pagamentoData.forma_pagamento === 'cartao_credito' ? 'credito'
-        : pagamentoData.forma_pagamento === 'cartao_debito' ? 'debito'
-          : pagamentoData.forma_pagamento;
-      chamadaRpcIniciada = true;
-      const { data: resultado, error } = await supabase.rpc('registrar_pagamento', {
-        p_lancamento_id: selectedId,
-        p_pagamentos: [{ forma_pagamento: formaPagamento, valor: valorPagamento, parcelas: 1 }],
-        p_desconto: Number(contaSelecionada.desconto || 0),
-        p_acrescimo: Number(contaSelecionada.acrescimo || 0),
-        p_chave_idempotencia: chavesPagamento[selectedId] || null,
-        p_observacoes: pagamentoData.observacoes.trim() || null,
-      });
-      if (error) {
-        const erroRpc = error as { status?: number; code?: string };
-        const statusHttp = Number(erroRpc.status);
-        respostaServidorRecebida = (statusHttp >= 400 && statusHttp < 500)
-          || /^[0-9A-Z]{5}$/i.test(String(erroRpc.code || ''));
-        throw error;
-      }
-      respostaServidorRecebida = true;
-      if ((resultado as any)?.success === false) throw new Error((resultado as any)?.error || 'O pagamento não foi registrado.');
-      if ((resultado as any)?.repetido) toast.info('Este pagamento já havia sido registrado. Nada foi pago novamente.');
-      else if (contaSelecionada.recorrente && (resultado as any)?.status === 'pago') {
-        toast.success('Pagamento registrado e próxima despesa programada.');
-      } else toast.success('Pagamento registrado no caixa!');
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-      setIsPagamentoOpen(false);
-      setPagamentoIncerto(false);
-      setChavesPagamento(keys => {
-        const next = { ...keys };
-        delete next[selectedId];
-        return next;
-      });
-    } catch (error: any) {
-      const message = error.message || 'Erro ao confirmar pagamento';
-      if (!chamadaRpcIniciada || respostaServidorRecebida) {
-        setPagamentoIncerto(false);
-        queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-        toast.error(message, message.toLowerCase().includes('caixa fechado')
-          ? { description: 'Abra o caixa do dia e tente novamente.' }
-          : undefined);
-      } else {
-        const chave = chavesPagamento[selectedId];
-        const verificacao = chave && profile?.clinica_id
-          ? await supabase.from('pagamentos').select('id')
-              .eq('clinica_id', profile.clinica_id)
-              .eq('lancamento_id', selectedId)
-              .eq('chave_idempotencia', chave)
-              .maybeSingle()
-          : { data: null, error: new Error('Não foi possível confirmar a clínica ou a chave desta tentativa.') };
-
-        if (!verificacao.error && verificacao.data) {
-          setPagamentoIncerto(false);
-          toast.info('O pagamento foi registrado antes da falha de conexão. Nenhum pagamento adicional foi criado.');
-          queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-          queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-          queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-          setIsPagamentoOpen(false);
-          setChavesPagamento(keys => {
-            const next = { ...keys };
-            delete next[selectedId];
-            return next;
-          });
-        } else {
-          setPagamentoIncerto(true);
-          toast.warning('Não foi possível confirmar se o pagamento foi registrado.', {
-            description: 'Os dados foram bloqueados. Clique em “Confirmar novamente” sem alterá-los; a mesma chave impede um pagamento duplicado.',
-            duration: 10000,
-          });
-        }
-      }
-    } finally {
-      submissionLock.current = false;
-      setIsSubmitting(false);
-    }
   };
 
   if (!isCreationPage && contasQuery.isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
@@ -870,61 +764,6 @@ export default function ContasPagar() {
         </main>
       )}
 
-      {/* Payment Dialog */}
-      <Dialog open={isPagamentoOpen} onOpenChange={open => { if (open || (!isSubmitting && !pagamentoIncerto)) setIsPagamentoOpen(open); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirmar Pagamento</DialogTitle>
-            <DialogDescription>Registre o pagamento desta conta.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="rounded-lg border bg-muted/30 p-3">
-              <div className="flex items-center justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">Saldo a pagar</span>
-                <strong className="tabular-nums">{formatCurrency(saldoPagamentoSelecionado)}</strong>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Você pode quitar o saldo ou registrar um pagamento parcial no caixa aberto de hoje.</p>
-              {saldoPagamentoSelecionado <= 0 && (
-                <p role="alert" className="mt-2 text-xs text-destructive">O saldo está zerado. Atualize as contas antes de continuar.</p>
-              )}
-            </div>
-            {pagamentoIncerto && (
-              <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning-foreground">
-                O resultado ainda não foi confirmado. Os dados estão bloqueados; confirme novamente esta mesma tentativa para verificar sem duplicar o pagamento.
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="valor-pagamento-conta">Valor deste pagamento (R$)</Label>
-              <Input id="valor-pagamento-conta" type="number" min="0.01" step="0.01" max={saldoPagamentoSelecionado}
-                value={pagamentoData.valor}
-                onChange={e => setPagamentoData({ ...pagamentoData, valor: e.target.value })}
-                disabled={isSubmitting || pagamentoIncerto || saldoPagamentoSelecionado <= 0} />
-            </div>
-            <div className="space-y-2">
-              <Label>Forma de Pagamento</Label>
-              <Select value={pagamentoData.forma_pagamento}
-                onValueChange={v => setPagamentoData({ ...pagamentoData, forma_pagamento: v })} disabled={isSubmitting || pagamentoIncerto}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Observações</Label>
-              <Textarea value={pagamentoData.observacoes}
-                onChange={e => setPagamentoData({ ...pagamentoData, observacoes: e.target.value })}
-                placeholder="Anotações sobre o pagamento..." rows={2} disabled={isSubmitting || pagamentoIncerto} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPagamentoOpen(false)} disabled={isSubmitting || pagamentoIncerto}>Cancelar</Button>
-            <Button onClick={handleConfirmarPagamento} disabled={isSubmitting || saldoPagamentoSelecionado <= 0}>
-              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirmando...</> : pagamentoIncerto ? 'Confirmar novamente' : 'Confirmar Pagamento'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

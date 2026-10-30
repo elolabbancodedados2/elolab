@@ -36,7 +36,7 @@ test('payables show due urgency in mobile rows and keep the active summary filte
   await page.screenshot({ path: testInfo.outputPath('payables-mobile-urgency.png'), fullPage: true, animations: 'disabled' });
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/contas?tab=pagar');
+  await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
   await expect(main.getByRole('heading', { level: 2, name: 'Resumo de vencimentos' })).toBeVisible();
   await expect(main.getByRole('button', { name: /Vencidas \/ em atraso/ })).toHaveAttribute('aria-pressed', 'false');
   await expect(main.getByRole('button', { name: /Vencidas \/ em atraso/ }).locator('span').nth(1)).toHaveClass(/text-destructive/);
@@ -44,12 +44,16 @@ test('payables show due urgency in mobile rows and keep the active summary filte
   await page.screenshot({ path: testInfo.outputPath('payables-desktop-summary.png'), fullPage: true, animations: 'disabled' });
 
   const payableRow = main.getByRole('row').filter({ hasText: 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal' });
+  await main.getByRole('textbox', { name: 'Buscar contas a pagar' }).fill('Manutenção preventiva');
   await payableRow.getByRole('button', { name: 'Pagar saldo' }).click();
-  const paymentDialog = page.getByRole('dialog');
-  await expect(paymentDialog).toContainText('Saldo a pagar');
-  await expect(paymentDialog).toContainText(/1\.600,00/);
-  await page.keyboard.press('Escape');
-  await expect(paymentDialog).toBeHidden();
+  await expect(page).toHaveURL('/contas/pagar/00000000-0000-4000-9000-000000000043/pagamento');
+  await expect(page.getByRole('heading', { name: 'Registrar pagamento da conta' })).toBeVisible();
+  await expect(page.getByText('Saldo em aberto', { exact: true }).locator('..')).toContainText(/1\.600,00/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).not.toContainText('00000000-0000-4000-9000-000000000043');
+  await page.getByRole('button', { name: 'Voltar às contas a pagar' }).click();
+  await expect(page).toHaveURL('/contas?tab=pagar&status=aberto&mes=2026-10');
+  await expect(page.getByRole('textbox', { name: 'Buscar contas a pagar' })).toHaveValue('Manutenção preventiva');
 
   expect(synthetic.writes.filter(write => !write.includes('/rpc/') && !write.includes('/functions/v1/mercadopago-point'))).toEqual([]);
 });
@@ -64,6 +68,83 @@ test('payables empty state explains how to add the first account', async ({ page
   await expect(main.getByText('Cadastre uma despesa para acompanhar seus vencimentos.')).toBeVisible();
   await expect(main.getByRole('button', { name: 'Nova Conta' }).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('payable payment keeps the audited payload after an uncertain response and retries with the same idempotency key', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  const accountId = '00000000-0000-4000-9000-000000000043';
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const account = {
+    id: accountId, clinica_id: synthetic.clinicId, tipo: 'despesa', categoria: 'fornecedores',
+    descricao: 'Manutenção preventiva QA', valor: 2400, valor_pago: 800, desconto: 0, acrescimo: 0,
+    status: 'parcial', data_vencimento: today, fornecedor: 'Fornecedor QA', numero_documento: 'NF-QA-001',
+    competencia: today.slice(0, 7), forma_pagamento: 'pix', recorrente: true, frequencia_recorrencia: 'mensal',
+  };
+  const payloads: Record<string, unknown>[] = [];
+  await page.route('http://127.0.0.1:54321/rest/v1/lancamentos**', async route => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === 'GET' && url.searchParams.get('id') === `eq.${accountId}`) {
+      expect(url.searchParams.get('clinica_id')).toBe(`eq.${synthetic.clinicId}`);
+      return route.fulfill({ status: 200, json: account });
+    }
+    return route.fallback();
+  });
+  await page.route('http://127.0.0.1:54321/rest/v1/pagamentos**', async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ status: 200, json: [] });
+    return route.fallback();
+  });
+  await page.route('**/rest/v1/rpc/registrar_pagamento', async route => {
+    payloads.push(route.request().postDataJSON() as Record<string, unknown>);
+    if (payloads.length === 1) return route.fulfill({ status: 503, json: { code: 'SYNTHETIC_NETWORK', message: 'Falha sintética ao confirmar pagamento' } });
+    return route.fulfill({ status: 200, json: { repetido: false, status: 'pago', valor: 2400, valor_pago: 2400, saldo: 0 } });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
+  const main = page.locator('#main-content');
+  const payableRow = main.getByRole('row').filter({ hasText: 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal' });
+  await payableRow.getByRole('button', { name: 'Pagar saldo' }).click();
+  await expect(page).toHaveURL(`/contas/pagar/${accountId}/pagamento`);
+  await expect(page.getByRole('heading', { name: 'Registrar pagamento da conta' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Despesa recorrente.', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.locator('#main-content').evaluate(element => element.scrollTo(0, 0));
+  await page.screenshot({ path: testInfo.outputPath('payable-payment-mobile-top.png'), animations: 'disabled' });
+  await page.getByLabel('Valor deste pagamento (R$)').fill('500,25');
+  await page.getByLabel('Forma de pagamento').click();
+  await page.getByRole('option', { name: 'Cartão de crédito' }).click();
+  await page.getByLabel('Observações (opcional)').fill('Comprovante QA 204');
+  const confirm = page.getByRole('button', { name: 'Confirmar pagamento' });
+  await expect(confirm).toBeEnabled();
+  await confirm.scrollIntoViewIfNeeded();
+  const actionBounds = await confirm.boundingBox();
+  const navBounds = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(actionBounds).not.toBeNull();
+  expect(navBounds).not.toBeNull();
+  expect(actionBounds!.y + actionBounds!.height).toBeLessThan(navBounds!.y);
+  await page.screenshot({ path: testInfo.outputPath('payable-payment-mobile-action.png'), animations: 'disabled' });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('#main-content').evaluate(element => element.scrollTo(0, 0));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('payable-payment-desktop.png'), animations: 'disabled' });
+  await confirm.click();
+  await expect(page.getByRole('alert')).toContainText('Falha sintética ao confirmar pagamento');
+  await expect(page.getByLabel('Valor deste pagamento (R$)')).toHaveValue('500,25');
+  await expect(page.getByLabel('Observações (opcional)')).toHaveValue('Comprovante QA 204');
+  await expect(page.getByRole('button', { name: 'Confirmar novamente' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Confirmar novamente' }).click();
+  await expect(page).toHaveURL('/contas?tab=pagar&status=aberto&mes=2026-10');
+  expect(payloads).toHaveLength(2);
+  expect(payloads[0]).toMatchObject({
+    p_lancamento_id: accountId,
+    p_pagamentos: [{ forma_pagamento: 'credito', valor: 500.25, parcelas: 1 }],
+    p_observacoes: 'Comprovante QA 204',
+  });
+  expect(payloads[1]).toMatchObject(payloads[0]);
+  expect(payloads[0].p_chave_idempotencia).toMatch(/^[0-9a-f-]{36}$/i);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

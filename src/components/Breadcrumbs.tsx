@@ -34,6 +34,7 @@ export function Breadcrumbs() {
         if (!isLast && /^\/prontuarios\/[^/]+\/adendos$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/retornos$/.test(path)) return null;
         if (!isLast && /^\/contas\/receber\/[^/]+$/.test(path) && /^\/contas\/receber\/[^/]+\/(?:recebimento|estorno)$/.test(location.pathname)) return null;
+        if (!isLast && /^\/contas\/pagar\/[^/]+$/.test(path) && /^\/contas\/pagar\/[^/]+\/pagamento$/.test(location.pathname)) return null;
         if (!isLast && /^\/recepcao\/caixa\/[^/]+$/.test(path) && /^\/recepcao\/caixa\/[^/]+\/fechar$/.test(location.pathname)) return null;
         if (!isLast && /^\/recepcao\/caixa\/lancamentos\/[^/]+$/.test(path) && /^\/recepcao\/caixa\/lancamentos\/[^/]+\/editar$/.test(location.pathname)) return null;
         if (!isLast && location.pathname.includes('/consentimentos/') && /^\/pacientes\/[^/]+(?:\/consentimentos(?:\/[^/]+)?)?$/.test(path)) return null;
