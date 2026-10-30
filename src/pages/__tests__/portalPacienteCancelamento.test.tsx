@@ -31,7 +31,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
-  return { ...actual, useSearchParams: () => [new URLSearchParams('token=token-teste')] };
+  const React = await import('react');
+  return {
+    ...actual,
+    useSearchParams: () => {
+      const [params, setParams] = React.useState(new URLSearchParams('token=token-teste'));
+      return [params, setParams] as const;
+    },
+  };
 });
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -264,14 +271,14 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     await screen.findByText('Seus retornos');
     const botoesRemarcar = screen.getAllByRole('button', { name: 'Remarcar' });
     fireEvent.click(botoesRemarcar[botoesRemarcar.length - 1]);
-    expect(await screen.findByRole('dialog', { name: 'Remarcar retorno' })).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Nova data'), { target: { value: '2099-11-20' } });
+    expect(await screen.findByRole('region', { name: 'Remarcar retorno' })).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar nova data' }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('patient-portal', expect.objectContaining({
       body: expect.objectContaining({ action: 'reschedule_retorno', retorno_id: 'retorno-1', nova_data: '2099-11-20' }),
     })));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remarcar retorno' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Remarcar retorno' })).not.toBeInTheDocument());
     expect(screen.getByText('20/11/2099')).toBeInTheDocument();
   });
 
@@ -281,12 +288,12 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     await screen.findByText('Seus retornos');
     const botoesRemarcar = screen.getAllByRole('button', { name: 'Remarcar' });
     fireEvent.click(botoesRemarcar[botoesRemarcar.length - 1]);
-    fireEvent.change(screen.getByLabelText('Nova data'), { target: { value: '2099-11-20' } });
+    fireEvent.change(screen.getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar nova data' }));
 
-    const dialog = await screen.findByRole('dialog', { name: 'Remarcar retorno' });
+    const dialog = await screen.findByRole('region', { name: 'Remarcar retorno' });
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Falha ao remarcar');
-    expect(within(dialog).getByLabelText('Nova data')).toHaveValue('2099-11-20');
+    expect(within(dialog).getByLabelText('Nova data *')).toHaveValue('2099-11-20');
   });
 
   it('confirma retorno, bloqueia cliques repetidos e atualiza o estado', async () => {
@@ -334,11 +341,11 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     render(<PortalPaciente />);
     await screen.findAllByText('Consulta de rotina');
     fireEvent.click(screen.getAllByRole('button', { name: 'Remarcar' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
     fireEvent.change(within(dialog).getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     await within(dialog).findByRole('option', { name: '09:00' });
     fireEvent.change(within(dialog).getByLabelText('Horário disponível *'), { target: { value: '09:00' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar novo horário' }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('patient-portal', expect.objectContaining({
       body: expect.objectContaining({
@@ -360,13 +367,13 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     render(<PortalPaciente />);
     await screen.findAllByText('Consulta de rotina');
     fireEvent.click(screen.getAllByRole('button', { name: 'Remarcar' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
     fireEvent.change(within(dialog).getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     await within(dialog).findByRole('option', { name: '09:00' });
     fireEvent.change(within(dialog).getByLabelText('Horário disponível *'), { target: { value: '09:00' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar novo horário' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: /remarcar consulta/i })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('region', { name: /remarcar consulta/i })).not.toBeInTheDocument());
 
     // Sucesso continua claro, na região de status, sem o aviso misturado.
     const status = screen.getByRole('status');
@@ -386,7 +393,7 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     render(<PortalPaciente />);
     await screen.findAllByText('Consulta de rotina');
     fireEvent.click(screen.getAllByRole('button', { name: 'Remarcar' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
 
     expect(within(dialog).getByTestId('reschedule-current')).toHaveTextContent('Consulta atual: 15/10/2099 às 10:30');
     const campoData = within(dialog).getByLabelText('Nova data *');
@@ -403,7 +410,7 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     render(<PortalPaciente />);
     await screen.findAllByText('Consulta de rotina');
     fireEvent.click(screen.getAllByRole('button', { name: 'Remarcar' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('patient-portal', expect.objectContaining({
       body: expect.objectContaining({ action: 'get_remarcacao_limite' }),
@@ -425,16 +432,17 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     expect(within(card).getByText('Confirmado')).toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: 'Remarcar' }));
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
     fireEvent.change(within(dialog).getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     await within(dialog).findByRole('option', { name: '09:00' });
     fireEvent.change(within(dialog).getByLabelText('Horário disponível *'), { target: { value: '09:00' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar novo horário' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Consulta remarcada, mas não foi possível atualizar a lista.');
-    expect(within(card).getByText('Agendado')).toBeInTheDocument();
-    expect(within(card).queryByText('Confirmado')).not.toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: 'Confirmar' })).toBeInTheDocument();
+    const updatedCard = screen.getAllByText('Consulta de rotina').at(-1)?.closest('[tabindex="-1"]') as HTMLElement;
+    expect(within(updatedCard).getByText('Agendado')).toBeInTheDocument();
+    expect(within(updatedCard).queryByText('Confirmado')).not.toBeInTheDocument();
+    expect(within(updatedCard).getByRole('button', { name: 'Confirmar' })).toBeInTheDocument();
   });
 
   it('confirma consulta e anuncia o resultado', async () => {
@@ -513,11 +521,11 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     render(<PortalPaciente />);
     await screen.findAllByText('Consulta de rotina');
     fireEvent.click(screen.getAllByRole('button', { name: 'Remarcar' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
     fireEvent.change(within(dialog).getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
 
     expect(await within(dialog).findByRole('status')).toHaveTextContent('Nenhum horário disponível nesta data. Escolha outra data.');
-    expect(within(dialog).getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Confirmar novo horário' })).toBeDisabled();
   });
 
   it('devolve o foco ao botão que abriu a remarcação', async () => {
@@ -525,10 +533,10 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     await screen.findAllByText('Consulta de rotina');
     const trigger = screen.getAllByRole('button', { name: 'Remarcar' })[0];
     fireEvent.click(trigger);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar' }));
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Voltar ao portal' })[0]);
 
-    await waitFor(() => expect(trigger).toHaveFocus());
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Remarcar' })[0]).toHaveFocus());
   });
 
   it('atualiza a consulta se o estado mudar antes da remarcação', async () => {
@@ -538,18 +546,19 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     const trigger = screen.getAllByRole('button', { name: 'Remarcar' })[0];
     const card = trigger.closest('[tabindex="-1"]');
     fireEvent.click(trigger);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
     fireEvent.change(within(dialog).getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     await within(dialog).findByRole('option', { name: '09:00' });
     fireEvent.change(within(dialog).getByLabelText('Horário disponível *'), { target: { value: '09:00' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar novo horário' }));
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Feche esta janela para ver a situação atual.');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Volte ao portal para ver a situação atual.');
     expect(within(dialog).getByLabelText('Nova data *')).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Confirmar' })).toBeDisabled();
-    await waitFor(() => expect(screen.getByText(/em_atendimento/i)).toBeInTheDocument());
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar' }));
-    await waitFor(() => expect(card).toHaveFocus());
+    expect(within(dialog).getByRole('button', { name: 'Confirmar novo horário' })).toBeDisabled();
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Voltar ao portal' })[0]);
+    await screen.findByText(/em_atendimento/i);
+    const updatedCard = screen.getAllByText('Consulta de rotina').at(-1)?.closest('[tabindex="-1"]');
+    await waitFor(() => expect(updatedCard).toHaveFocus());
   });
 
   it('limpa o horário escolhido e carrega opções novas quando a vaga é ocupada', async () => {
@@ -557,11 +566,11 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     render(<PortalPaciente />);
     await screen.findAllByText('Consulta de rotina');
     fireEvent.click(screen.getAllByRole('button', { name: 'Remarcar' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: /remarcar consulta/i });
+    const dialog = await screen.findByRole('region', { name: /remarcar consulta/i });
     fireEvent.change(within(dialog).getByLabelText('Nova data *'), { target: { value: '2099-11-20' } });
     await within(dialog).findByRole('option', { name: '09:00' });
     fireEvent.change(within(dialog).getByLabelText('Horário disponível *'), { target: { value: '09:00' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar novo horário' }));
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Horário acabou de ser ocupado');
     expect(within(dialog).getByLabelText('Horário disponível *')).toHaveValue('');

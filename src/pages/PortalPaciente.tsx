@@ -13,16 +13,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import {
   Calendar, FlaskConical, CreditCard, User, ExternalLink, Lock,
   Star, MessageSquare, CheckCircle2, HeartHandshake, Clock,
   FileText, Phone, Shield,
   Heart, Pill, AlertTriangle, Download, RefreshCw, ClipboardCheck,
-  LogOut,
+  LogOut, ArrowLeft,
 } from 'lucide-react';
 import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -321,7 +318,7 @@ function NPSSurvey({ token }: { token: string }) {
 
 // ─── Main Portal ───────────────────────────────────────────
 export default function PortalPaciente() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const autoLoginAttempted = useRef(false);
   const portalSessionRef = useRef(0);
   const [token, setToken] = useState(searchParams.get('token') || '');
@@ -410,11 +407,28 @@ export default function PortalPaciente() {
   const [ofertaAceitandoId, setOfertaAceitandoId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const closeRescheduleDialog = () => {
-    if (actionLoading) return;
+  const isReschedulePage = searchParams.get('tela') === 'reagendar';
+  const rescheduleWorkflow = rescheduleModal ? 'consulta' : retornoRemarcar ? 'retorno' : null;
+  const updateRescheduleRoute = (open: boolean) => {
+    // Read the live URL: the portal removes access tokens with history.replaceState
+    // before authentication, so a stale router snapshot must never restore one.
+    const params = new URLSearchParams(window.location.search);
+    params.delete('token');
+    if (open) params.set('tela', 'reagendar');
+    else params.delete('tela');
+    setSearchParams(params, { replace: true });
+  };
+  const returnTriggersRef = useRef(new Map<string, HTMLButtonElement>());
+  const lastReturnTriggerIdRef = useRef<string | null>(null);
+
+  const leaveReschedulePage = () => {
     rescheduleLookupRef.current += 1;
     setRescheduleSlotsLoading(false);
     setRescheduleModal(null);
+    setRetornoRemarcar(null);
+    setRescheduleForm({ data: '', hora_inicio: '' });
+    setNovaDataRetorno('');
+    updateRescheduleRoute(false);
   };
 
   const fetchData = async (accessToken: string, action: string, bodyData?: any) => {
@@ -453,6 +467,14 @@ export default function PortalPaciente() {
     if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     else rescheduleCardsRef.current.get(triggerId)?.focus({ preventScroll: true });
   }, [rescheduleModal]);
+
+  useEffect(() => {
+    if (retornoRemarcar || !lastReturnTriggerIdRef.current) return;
+    const triggerId = lastReturnTriggerIdRef.current;
+    lastReturnTriggerIdRef.current = null;
+    const trigger = returnTriggersRef.current.get(triggerId);
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  }, [retornoRemarcar]);
 
   useEffect(() => {
     if (agendamentoParaCancelar || !lastCancelTriggerIdRef.current) return;
@@ -608,13 +630,13 @@ export default function PortalPaciente() {
 
   const handleRescheduleStateChanged = async (message: string) => {
     setRescheduleStateStale(true);
-    setRescheduleSubmitError(`${message} Feche esta janela para ver a situação atual.`);
+    setRescheduleSubmitError(`${message} Volte ao portal para ver a situação atual.`);
     setRescheduleSlots([]);
     setRescheduleForm((form) => ({ ...form, hora_inicio: '' }));
     try {
       setAgendamentos(await fetchData(token, 'get_agendamentos'));
     } catch {
-      setRescheduleSubmitError(`${message} A lista não foi atualizada; feche a janela e tente recarregar os dados.`);
+      setRescheduleSubmitError(`${message} A lista não foi atualizada; volte ao portal e tente atualizar os dados.`);
     }
   };
 
@@ -766,13 +788,26 @@ export default function PortalPaciente() {
 
     setActionLoading(true);
     setErroRemarcarRetorno('');
+    setActionNotice('');
+    setActionError('');
+    const returnId = retornoRemarcar.id;
+    const selectedDate = novaDataRetorno;
     try {
       await fetchData(token, 'reschedule_retorno', {
-        retorno_id: retornoRemarcar.id,
-        nova_data: novaDataRetorno,
+        retorno_id: returnId,
+        nova_data: selectedDate,
       });
-      setRetornos(await fetchData(token, 'get_retornos'));
-      setRetornoRemarcar(null);
+      setRetornos((current) => current.map((retorno) =>
+        retorno.id === returnId ? { ...retorno, data_retorno_prevista: selectedDate } : retorno,
+      ));
+      leaveReschedulePage();
+      const [year, month, day] = selectedDate.split('-');
+      setActionNotice(`Retorno remarcado para ${day}/${month}/${year}.`);
+      try {
+        setRetornos((await fetchData(token, 'get_retornos')) || []);
+      } catch {
+        setActionError('Retorno remarcado, mas não foi possível atualizar a lista. Atualize a página para ver a situação atual.');
+      }
     } catch (err: any) {
       setErroRemarcarRetorno(err.message || 'Não foi possível remarcar o retorno. Tente novamente.');
     } finally {
@@ -893,6 +928,9 @@ export default function PortalPaciente() {
       return;
     }
 
+    const selectedDate = rescheduleForm.data;
+    const selectedTime = rescheduleForm.hora_inicio;
+    const appointmentId = rescheduleModal.id;
     try {
       setActionLoading(true);
       setActionNotice('');
@@ -901,21 +939,20 @@ export default function PortalPaciente() {
       setRescheduleError('');
       setRescheduleSubmitError('');
       const resposta = await fetchData(token, 'reschedule_agendamento', {
-        agendamento_id: rescheduleModal.id,
-        nova_data: rescheduleForm.data,
-        novo_horario: rescheduleForm.hora_inicio,
+        agendamento_id: appointmentId,
+        nova_data: selectedDate,
+        novo_horario: selectedTime,
       });
       setAgendamentos((current) => current.map((appointment: any) =>
-        appointment.id === rescheduleModal.id
+        appointment.id === appointmentId
           // O servidor volta a consulta para "agendado" ao remarcar: a
           // confirmação anterior não vale para o novo horário.
-          ? { ...appointment, data: rescheduleForm.data, hora_inicio: rescheduleForm.hora_inicio, status: 'agendado' }
+          ? { ...appointment, data: selectedDate, hora_inicio: selectedTime, status: 'agendado' }
           : appointment,
       ));
-      setRescheduleModal(null);
-      setRescheduleForm({ data: '', hora_inicio: '' });
-      const [year, month, day] = rescheduleForm.data.split('-');
-      setActionNotice(`Consulta remarcada para ${day}/${month}/${year} às ${rescheduleForm.hora_inicio}.`);
+      leaveReschedulePage();
+      const [year, month, day] = selectedDate.split('-');
+      setActionNotice(`Consulta remarcada para ${day}/${month}/${year} às ${selectedTime}.`);
       // A remarcação valeu; `aviso` só diz que a clínica não recebeu o e-mail automático.
       if (typeof resposta?.aviso === 'string' && resposta.aviso) setActionWarning(resposta.aviso);
       try {
@@ -1024,39 +1061,6 @@ export default function PortalPaciente() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Dialog
-        open={retornoRemarcar !== null}
-        onOpenChange={(open) => {
-          if (!open && !actionLoading) setRetornoRemarcar(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remarcar retorno</DialogTitle>
-            <DialogDescription>Escolha uma nova data para seu retorno. A clínica poderá confirmar o horário.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <label htmlFor="nova-data-retorno" className="text-sm font-medium">Nova data</label>
-            <Input
-              id="nova-data-retorno"
-              type="date"
-              min={todayDateOnly()}
-              value={novaDataRetorno}
-              onChange={(event) => setNovaDataRetorno(event.target.value)}
-              disabled={actionLoading}
-              aria-invalid={Boolean(erroRemarcarRetorno)}
-              aria-describedby={erroRemarcarRetorno ? 'erro-remarcar-retorno' : undefined}
-            />
-            {erroRemarcarRetorno && <p id="erro-remarcar-retorno" role="alert" className="text-sm text-destructive">{erroRemarcarRetorno}</p>}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRetornoRemarcar(null)} disabled={actionLoading}>Voltar</Button>
-            <Button type="button" onClick={handleRescheduleReturn} disabled={actionLoading || !novaDataRetorno}>
-              {actionLoading ? 'Remarcando…' : 'Confirmar nova data'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {/* ─── Header ─── */}
       <header className="sticky top-0 z-50 border-b border-border bg-card px-4 py-3">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
@@ -1090,6 +1094,142 @@ export default function PortalPaciente() {
 
       {/* ─── Main Content ─── */}
       <main aria-label="Portal do paciente" className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10">
+        {isReschedulePage ? (
+          <section aria-labelledby="portal-reschedule-title" className="mx-auto max-w-3xl space-y-6">
+            <Button type="button" variant="ghost" onClick={leaveReschedulePage} disabled={actionLoading} className="-ml-3 gap-2">
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Voltar ao portal
+            </Button>
+
+            <header className="space-y-2">
+              <p className="text-sm font-medium text-primary">
+                {rescheduleWorkflow === 'retorno' ? 'Portal do paciente · Retornos' : 'Portal do paciente · Consultas'}
+              </p>
+              <h2 id="portal-reschedule-title" className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
+                {rescheduleWorkflow === 'retorno' ? 'Remarcar retorno' : 'Remarcar consulta'}
+              </h2>
+              <p className="text-sm text-muted-foreground sm:text-base">
+                {rescheduleWorkflow === 'retorno'
+                  ? 'Informe a nova data. A clínica poderá confirmar o horário.'
+                  : 'Escolha uma nova data e um horário livre com o mesmo médico.'}
+              </p>
+            </header>
+
+            {!rescheduleWorkflow ? (
+              <div role="status" className="space-y-4 border-y border-border py-6">
+                <p className="font-medium">Não foi possível recuperar esta consulta ou retorno.</p>
+                <p className="text-sm text-muted-foreground">Por segurança, a seleção não fica salva no endereço nem após sair do portal. Abra a opção novamente na lista.</p>
+                <Button type="button" variant="outline" onClick={leaveReschedulePage}>Voltar para consultas</Button>
+              </div>
+            ) : (
+              <div className="space-y-6 border-y border-border py-6">
+                <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
+                  {rescheduleWorkflow === 'consulta' ? (
+                    <>
+                      <p className="font-semibold">{rescheduleModal.tipo || 'Consulta'}</p>
+                      <p className="mt-1 text-muted-foreground" data-testid="reschedule-current">
+                        Consulta atual: {formatarDataIso(rescheduleModal.data)}
+                        {rescheduleModal.hora_inicio ? ` às ${String(rescheduleModal.hora_inicio).slice(0, 5)}` : ''}
+                      </p>
+                      <p className="text-muted-foreground">{nomeMedico(rescheduleModal.medicos?.nome || 'seu médico')}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold">Retorno atual: {formatarDataIso(retornoRemarcar.data_retorno_prevista)}</p>
+                      <p className="mt-1 text-muted-foreground">{retornoRemarcar.motivo || 'Retorno de acompanhamento'}</p>
+                    </>
+                  )}
+                </div>
+
+                {rescheduleWorkflow === 'consulta' && (
+                  <p className="text-sm text-muted-foreground">Ao remarcar, a consulta volta ao estado “Agendado”; a confirmação anterior deixa de valer.</p>
+                )}
+
+                <div className={rescheduleWorkflow === 'consulta' ? 'grid gap-5 sm:grid-cols-2' : 'max-w-md'}>
+                  <div className="space-y-2">
+                    <label htmlFor={rescheduleWorkflow === 'consulta' ? 'reschedule-date' : 'return-reschedule-date'} className="text-sm font-medium">
+                      Nova data *
+                    </label>
+                    {rescheduleWorkflow === 'consulta' ? (
+                      <input
+                        id="reschedule-date"
+                        type="date"
+                        value={rescheduleForm.data}
+                        onChange={(event) => {
+                          setRescheduleSubmitError('');
+                          void loadRescheduleSlots(event.target.value);
+                        }}
+                        min={todayDateOnly()}
+                        max={limiteRemarcacao}
+                        aria-describedby={limiteRemarcacao ? 'reschedule-date-limit' : undefined}
+                        disabled={actionLoading || rescheduleStateStale}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground disabled:opacity-60"
+                      />
+                    ) : (
+                      <Input
+                        id="return-reschedule-date"
+                        type="date"
+                        min={todayDateOnly()}
+                        value={novaDataRetorno}
+                        onChange={(event) => setNovaDataRetorno(event.target.value)}
+                        disabled={actionLoading}
+                        aria-invalid={Boolean(erroRemarcarRetorno)}
+                        aria-describedby={erroRemarcarRetorno ? 'erro-remarcar-retorno' : undefined}
+                      />
+                    )}
+                    {limiteRemarcacao && rescheduleWorkflow === 'consulta' && (
+                      <p id="reschedule-date-limit" className="text-xs text-muted-foreground">
+                        É possível remarcar pelo portal até {formatarDataIso(limiteRemarcacao)}.
+                      </p>
+                    )}
+                    {erroRemarcarRetorno && rescheduleWorkflow === 'retorno' && (
+                      <p id="erro-remarcar-retorno" role="alert" className="text-sm text-destructive">{erroRemarcarRetorno}</p>
+                    )}
+                  </div>
+
+                  {rescheduleWorkflow === 'consulta' && (
+                    <div className="space-y-2">
+                      <label htmlFor="reschedule-time" className="text-sm font-medium">Horário disponível *</label>
+                      <select
+                        id="reschedule-time"
+                        value={rescheduleForm.hora_inicio}
+                        onChange={(event) => setRescheduleForm((form) => ({ ...form, hora_inicio: event.target.value }))}
+                        disabled={actionLoading || rescheduleStateStale || rescheduleSlotsLoading || rescheduleSlots.length === 0}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <option value="">{rescheduleSlotsLoading ? 'Buscando horários…' : 'Selecione um horário'}</option>
+                        {rescheduleSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                      </select>
+                      {rescheduleError && <p role="alert" className="text-sm text-destructive">{rescheduleError}</p>}
+                      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+                        {rescheduleSlotsLoading ? 'Buscando horários livres…' : !rescheduleStateStale && !rescheduleError && rescheduleForm.data && rescheduleSlots.length === 0 ? 'Nenhum horário disponível nesta data. Escolha outra data.' : ''}
+                      </p>
+                      {rescheduleError && rescheduleForm.data && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => void loadRescheduleSlots(rescheduleForm.data)} disabled={rescheduleSlotsLoading}>
+                          Tentar carregar novamente
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {rescheduleSubmitError && <p role="alert" className="text-sm text-destructive">{rescheduleSubmitError}</p>}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button type="button" variant="outline" onClick={leaveReschedulePage} disabled={actionLoading}>Voltar ao portal</Button>
+                  <Button
+                    type="button"
+                    onClick={rescheduleWorkflow === 'consulta' ? handleRescheduleAppointment : handleRescheduleReturn}
+                    disabled={actionLoading || (rescheduleWorkflow === 'consulta'
+                      ? rescheduleStateStale || !rescheduleForm.data || !rescheduleForm.hora_inicio || rescheduleSlotsLoading
+                      : !novaDataRetorno)}
+                  >
+                    {actionLoading ? 'Salvando…' : rescheduleWorkflow === 'consulta' ? 'Confirmar novo horário' : 'Confirmar nova data'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        ) : (
         <div className="space-y-7 sm:space-y-8 animate-in fade-in duration-500">
           {/* ─── Welcome Hero ─── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1425,6 +1565,7 @@ export default function PortalPaciente() {
                                       setRescheduleForm({ data: '', hora_inicio: '' });
                                       setRescheduleLimite(null);
                                       setRescheduleModal(a);
+                                      updateRescheduleRoute(true);
                                       void loadRescheduleLimite(a.id);
                                     }}
                                     disabled={actionLoading}
@@ -1775,90 +1916,6 @@ export default function PortalPaciente() {
             </Tabs>
           </div>
 
-          <Dialog
-            open={Boolean(rescheduleModal)}
-            onOpenChange={(open) => {
-              if (!open) closeRescheduleDialog();
-            }}
-          >
-            <DialogContent className="max-w-sm">
-              <DialogHeader>
-                <DialogTitle>Remarcar consulta</DialogTitle>
-                <DialogDescription>
-                  Médico: {nomeMedico(rescheduleModal?.medicos?.nome || 'seu médico')}. Escolha uma data e um horário livre.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {rescheduleModal?.data && (
-                  <p className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="reschedule-current">
-                    <span className="text-muted-foreground">Consulta atual: </span>
-                    <span className="font-medium">
-                      {formatarDataIso(rescheduleModal.data)}
-                      {rescheduleModal.hora_inicio ? ` às ${String(rescheduleModal.hora_inicio).slice(0, 5)}` : ''}
-                    </span>
-                  </p>
-                )}
-                <div className="space-y-2">
-                  <label htmlFor="reschedule-date" className="text-sm font-medium">Nova data *</label>
-                  <input
-                    id="reschedule-date"
-                    type="date"
-                    value={rescheduleForm.data}
-                    onChange={(event) => {
-                      setRescheduleSubmitError('');
-                      void loadRescheduleSlots(event.target.value);
-                    }}
-                    min={todayDateOnly()}
-                    max={limiteRemarcacao}
-                    aria-describedby={limiteRemarcacao ? 'reschedule-date-limit' : undefined}
-                    disabled={actionLoading || rescheduleStateStale}
-                    className="w-full px-3 py-2 border rounded-lg bg-background text-foreground disabled:opacity-60"
-                  />
-                  {limiteRemarcacao && (
-                    <p id="reschedule-date-limit" className="text-xs text-muted-foreground">
-                      É possível remarcar pelo portal até {formatarDataIso(limiteRemarcacao)}.
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="reschedule-time" className="text-sm font-medium">Horário disponível *</label>
-                  <select
-                    id="reschedule-time"
-                    value={rescheduleForm.hora_inicio}
-                    onChange={(event) => setRescheduleForm((form) => ({ ...form, hora_inicio: event.target.value }))}
-                    disabled={actionLoading || rescheduleStateStale || rescheduleSlotsLoading || rescheduleSlots.length === 0}
-                    className="w-full px-3 py-2 border rounded-lg bg-background text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="">{rescheduleSlotsLoading ? 'Buscando horários…' : 'Selecione um horário'}</option>
-                    {rescheduleSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-                  </select>
-                  {rescheduleError && <p role="alert" className="text-sm text-destructive">{rescheduleError}</p>}
-                  <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-                        {rescheduleSlotsLoading ? 'Buscando horários livres…' : !rescheduleStateStale && !rescheduleError && rescheduleForm.data && rescheduleSlots.length === 0 ? 'Nenhum horário disponível nesta data. Escolha outra data.' : ''}
-                  </p>
-                  {rescheduleError && rescheduleForm.data && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => void loadRescheduleSlots(rescheduleForm.data)} disabled={rescheduleSlotsLoading}>
-                      Tentar carregar novamente
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {rescheduleSubmitError && <p role="alert" className="text-sm text-destructive">{rescheduleSubmitError}</p>}
-              <DialogFooter>
-                <Button variant="outline" onClick={closeRescheduleDialog} disabled={actionLoading}>Voltar</Button>
-                <Button
-                  onClick={handleRescheduleAppointment}
-                  disabled={rescheduleStateStale || !rescheduleForm.data || !rescheduleForm.hora_inicio || actionLoading || rescheduleSlotsLoading}
-                >
-                  {actionLoading ? 'Remarcando…' : 'Confirmar'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
           {/* ─── NPS Survey ─── */}
           {ofertasEspera.length > 0 && (
             <div>
@@ -1898,10 +1955,20 @@ export default function PortalPaciente() {
                           <Button size="sm" disabled={actionLoading} onClick={() => void handleConfirmReturn(retorno.id)}>
                             {retornoConfirmandoId === retorno.id ? 'Confirmando…' : 'Confirmar'}
                           </Button>
-                          <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => {
+                          <Button
+                            ref={(element) => {
+                              if (element) returnTriggersRef.current.set(retorno.id, element);
+                              else returnTriggersRef.current.delete(retorno.id);
+                            }}
+                            size="sm"
+                            variant="outline"
+                            disabled={actionLoading}
+                            onClick={() => {
+                            lastReturnTriggerIdRef.current = retorno.id;
                             setErroRemarcarRetorno('');
                             setNovaDataRetorno(retorno.data_retorno_prevista);
                             setRetornoRemarcar(retorno);
+                            updateRescheduleRoute(true);
                           }}>Remarcar</Button>
                         </div>
                       )}
@@ -1925,6 +1992,7 @@ export default function PortalPaciente() {
             </p>
           </div>
         </div>
+        )}
       </main>
     </div>
   );

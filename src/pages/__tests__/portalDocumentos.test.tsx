@@ -6,7 +6,14 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn(), falharDocumentos: false }));
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
-  return { ...actual, useSearchParams: () => [new URLSearchParams('token=token-teste')] };
+  const React = await import('react');
+  return {
+    ...actual,
+    useSearchParams: () => {
+      const [params, setParams] = React.useState(new URLSearchParams('token=token-teste'));
+      return [params, setParams] as const;
+    },
+  };
 });
 
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { functions: { invoke: mocks.invoke } } }));
