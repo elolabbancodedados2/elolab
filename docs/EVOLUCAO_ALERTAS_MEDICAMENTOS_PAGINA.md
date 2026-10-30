@@ -34,3 +34,13 @@
 ## Limitação restante
 
 As regras e recomendações locais precisam de validação clínica e fonte de dados farmacológica mantida antes de serem tratadas como cobertura de segurança. Esta entrega melhora apresentação, contexto e transparência, sem certificar a lógica farmacológica.
+
+## Publicação
+
+- Commit: `66c584927551dac6cba4573bf66376b86ba29bc8`.
+- Imagem: `easypanel/elolab/app:deploy-20261030-66c5849`.
+- O smoke isolado respondeu `ok`; `/version.json` confirmou o SHA integral; o serviço Swarm concluiu com 1/1 réplica.
+- `/healthz` público respondeu `ok` e a versão pública confirmou o mesmo `build_id`.
+- Rollback: `deploy-20261030-db8b582`.
+- Fonte anterior preservada em `/etc/easypanel/projects/elolab/app/code.before-20261030-66c5849`. O `.env` foi copiado e comparado sem leitura ou exposição.
+- Houve contenção transitória de porta em modo host, resolvida durante a atualização sem rollback. Nenhuma migration ou gravação real foi executada.
