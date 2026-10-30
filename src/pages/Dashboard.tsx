@@ -21,7 +21,7 @@ import {
   Sparkles, CheckCircle2, AlertTriangle, Wallet, Plus, BarChart3,
   ClipboardList, HeartPulse, Bell,
   ShieldCheck, Target, Timer, Megaphone, Pill, Eye, ListChecks,
-} from 'lucide-react';
+} from '@/components/icons/elolabIcons';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { Link, Navigate } from 'react-router-dom';

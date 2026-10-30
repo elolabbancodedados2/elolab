@@ -1,4 +1,4 @@
-import { Info } from 'lucide-react';
+import { Info } from '@/components/icons/elolabIcons';
 
 /** Aviso temporário da atualização anunciada para 10/11/2026. */
 export function UpgradeNotice() {

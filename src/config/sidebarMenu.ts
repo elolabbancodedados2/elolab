@@ -25,7 +25,6 @@ import {
   Inbox,
   TestTubes,
   BookMarked,
-  LucideIcon,
   MonitorSmartphone,
   MapPinned,
   BadgeDollarSign,
@@ -40,12 +39,13 @@ import {
   Bell,
   MessageSquarePlus,
   Wrench,
-} from 'lucide-react';
+} from '@/components/icons/elolabIcons';
+import type { EloLabIcon } from '@/components/icons/elolabIcons';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
 
 export interface MenuItem {
   label: string;
-  icon: LucideIcon;
+  icon: EloLabIcon;
   href: string;
   /** Contador (número) ou etiqueta curta (ex.: "Em breve"). */
   badge?: number | string;
@@ -59,7 +59,7 @@ export interface MenuItem {
 
 export interface MenuGroup {
   label: string;
-  icon: LucideIcon;
+  icon: EloLabIcon;
   items: MenuItem[];
   roles?: AppRole[];
   superAdminOnly?: boolean;

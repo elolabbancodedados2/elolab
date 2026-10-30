@@ -9,7 +9,7 @@ import {
   ArrowRight, Activity, Target,
   Sun, Sunset, Moon, CheckCircle2, AlertTriangle, Eye, UserCheck,
   TestTube, Send, BadgeCheck, Phone, Timer, Zap, ListChecks,
-} from 'lucide-react';
+} from '@/components/icons/elolabIcons';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

@@ -2,7 +2,7 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { ChevronLeft, ChevronDown, PanelLeftOpen, Search } from 'lucide-react';
+import { ChevronLeft, ChevronDown, PanelLeftOpen, Search } from '@/components/icons/elolabIcons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';

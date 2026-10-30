@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { formatDate, primeiroNome } from '@/lib/formatters';
-import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, MessageSquarePlus, LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { Bell, Menu, LogOut, User, Settings, Plus, CalendarPlus, UserPlus, FileText, FlaskConical, Mail, MessageSquare, Shield, History, Activity, MessageSquarePlus, LayoutDashboard, ShieldCheck } from '@/components/icons/elolabIcons';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -186,7 +186,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header className="sticky top-0 z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-background/15 bg-foreground px-2 pt-[env(safe-area-inset-top)] text-background shadow-sm sm:gap-3 sm:px-4 md:px-5">
+    <header data-elo-font-preview="shell" className="sticky top-0 z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-background/15 bg-foreground px-2 pt-[env(safe-area-inset-top)] text-background shadow-sm sm:gap-3 sm:px-4 md:px-5">
       {/* Left: Hamburger */}
       <Button
         variant="ghost"
@@ -283,7 +283,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">Ação rápida</TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="end" className="w-56 rounded-xl p-1.5">
+          <DropdownMenuContent data-elo-font-preview="shell" align="end" className="w-56 rounded-xl p-1.5">
             <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-[0.1em] px-2">
               Ações Rápidas
             </DropdownMenuLabel>
@@ -340,7 +340,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
               {totalUnread > 0 ? `${totalUnread} notificações` : 'Notificações'}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1rem))] rounded-2xl p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DropdownMenuContent data-elo-font-preview="shell" align="end" className="w-[min(24rem,calc(100vw-1rem))] rounded-2xl p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
             <Tabs defaultValue="alertas" className="w-full">
               <div className="px-3 pt-3 pb-0">
                 <TabsList className="w-full grid grid-cols-2 h-9">
@@ -467,7 +467,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 rounded-2xl p-2">
+          <DropdownMenuContent data-elo-font-preview="shell" align="end" className="w-64 rounded-2xl p-2">
             <div className="flex items-center gap-3 px-2 py-3 mb-1 rounded-xl bg-accent/30">
               <Avatar className="h-10 w-10 ring-2 ring-primary/20">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">

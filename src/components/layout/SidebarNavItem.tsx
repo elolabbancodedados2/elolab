@@ -54,7 +54,7 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
             tabIndex={-1}
             className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150', isActive && !item.external && 'text-sidebar-primary')}
           >
-            <Icon className="h-[17px] w-[17px] shrink-0 transition-colors duration-200" />
+            <Icon weight={isActive ? 'fill' : 'regular'} className="h-[18px] w-[18px] shrink-0 transition-colors duration-200" />
           </div>
 
           {/* Label */}

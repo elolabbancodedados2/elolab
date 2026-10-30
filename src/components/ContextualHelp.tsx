@@ -1,4 +1,4 @@
-import { CircleHelp, ExternalLink, Lightbulb } from 'lucide-react';
+import { CircleHelp, ExternalLink, Lightbulb } from '@/components/icons/elolabIcons';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -23,7 +23,7 @@ export function FieldHelp({ term }: { term: HelpTermKey }) {
           <CircleHelp className="h-4 w-4" aria-hidden="true" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 text-sm font-normal normal-case tracking-normal">
+      <PopoverContent data-elo-font-preview="shell" className="w-72 text-sm font-normal normal-case tracking-normal">
         <p className="font-semibold text-foreground">{entry.title}</p>
         <p className="mt-1 leading-6 text-muted-foreground">{entry.summary}</p>
         {entry.items && (
@@ -63,7 +63,7 @@ export function ContextualHelp({ className }: { className?: string }) {
         <TooltipContent side="bottom" className="text-xs">Ajuda desta tela</TooltipContent>
       </Tooltip>
 
-      <SheetContent side="right" className="flex w-full flex-col p-0 sm:max-w-md" aria-describedby="contextual-help-description">
+      <SheetContent data-elo-font-preview="shell" side="right" className="flex w-full flex-col p-0 sm:max-w-md" aria-describedby="contextual-help-description">
         <SheetHeader className="border-b px-5 pb-5 pt-6 text-left sm:px-6">
           <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
             <CircleHelp className="h-5 w-5" />

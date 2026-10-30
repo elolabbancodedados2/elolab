@@ -36,7 +36,7 @@ export function MainLayout() {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
-        <nav className="hidden h-full shrink-0 border-r border-border bg-sidebar lg:block" aria-label="Menu principal">
+        <nav data-elo-font-preview="shell" className="hidden h-full shrink-0 border-r border-border bg-sidebar lg:block" aria-label="Menu principal">
           <Sidebar />
         </nav>
 
@@ -47,7 +47,7 @@ export function MainLayout() {
             <SheetDescription className="sr-only">
               Navegue entre os módulos da clínica.
             </SheetDescription>
-            <nav aria-label="Menu principal mobile" className="h-full">
+            <nav data-elo-font-preview="shell" aria-label="Menu principal mobile" className="h-full">
               <Sidebar forceExpanded onNavigate={() => setMobileMenuOpen(false)} />
             </nav>
           </SheetContent>
@@ -65,7 +65,7 @@ export function MainLayout() {
           >
             <div className="mx-auto w-full max-w-[1600px] px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:px-5 md:px-6 md:pt-5 lg:pb-[calc(2rem+env(safe-area-inset-bottom))] xl:px-8 xl:pt-6">
               <Breadcrumbs />
-              <div className="animate-fade-in">
+              <div className="animate-fade-in" data-elo-font-preview={location.pathname === '/dashboard' ? 'dashboard' : undefined}>
                 {/* Barreira POR TELA. Havia só um ErrorBoundary no topo do App,
                   envolvendo tudo: um registro com campo inesperado em Analytics
                   derrubava também a agenda, a fila e o caixa, e o usuário via a

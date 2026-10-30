@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Keyboard } from 'lucide-react';
+import { Keyboard } from '@/components/icons/elolabIcons';
 import { useShortcutsList, getShortcutsByCategory, formatShortcut } from '@/hooks/useKeyboardShortcuts';
 
 export function KeyboardShortcutsDialog() {

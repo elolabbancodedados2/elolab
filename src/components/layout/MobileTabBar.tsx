@@ -1,4 +1,4 @@
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from '@/components/icons/elolabIcons';
 import { Link, useLocation } from 'react-router-dom';
 import { getFilteredMenuGroups, getNavigationMode } from '@/config/sidebarMenu';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';

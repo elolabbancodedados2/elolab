@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap');
 
 .brand-loader {
   min-height: 100vh;
@@ -101,6 +101,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+[data-elo-font-preview] {
+  font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+}
+
+[data-elo-font-preview="dashboard"] :is(h1, h2, h3, h4, .font-display) {
+  font-family: 'Manrope', 'DM Sans', 'Inter', system-ui, sans-serif;
+}
 
 /* EloLab — superfícies claras, hierarquia editorial e cor funcional. */
 

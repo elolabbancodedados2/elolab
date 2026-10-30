@@ -1,7 +1,7 @@
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Cake, Check, CheckCircle2, ClipboardList,
   FileText, FlaskConical, ListChecks, MessageCircle, Plus, UserRoundPlus, Users,
-} from 'lucide-react';
+} from '@/components/icons/elolabIcons';
 import { Link } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,

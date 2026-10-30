@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Calendar, ClipboardList, FileText, FlaskConical, LayoutGrid, Search, Users, Wallet } from 'lucide-react';
+import { AlertCircle, Calendar, ClipboardList, FileText, FlaskConical, LayoutGrid, Search, Users, Wallet } from '@/components/icons/elolabIcons';
 import { getFilteredMenuGroups } from '@/config/sidebarMenu';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 import { Badge } from '@/components/ui/badge';
