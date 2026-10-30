@@ -52,6 +52,7 @@ import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 // ─── Helpers ───────────────────────────────────────────────
 function formatarHorarioClinica(horarioChegada: string | null): string {
@@ -236,11 +237,11 @@ const FilaCard = forwardRef<HTMLDivElement, {
 });
 
 // ─── Main Page ─────────────────────────────────────────────
-export default function Fila() {
-  const [isAddOpen, setIsAddOpen] = useState(false);
+export default function Fila({ creationPage = false }: { creationPage?: boolean }) {
   const [selectedAgendamento, setSelectedAgendamento] = useState('');
   const [selectedPrioridade, setSelectedPrioridade] = useState('normal');
   const [isSaving, setIsSaving] = useState(false);
+  const formCompleted = useRef(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [isHandoffOpen, setIsHandoffOpen] = useState(false);
   const [motivoSaida, setMotivoSaida] = useState('');
@@ -602,7 +603,7 @@ export default function Fila() {
       }, prioridade, { deferBilling: isMedicoOnly });
       if (!result.success) throw new Error(result.message);
       refresh();
-      setIsAddOpen(false);
+      formCompleted.current = true;
       setSelectedAgendamento('');
       setSelectedPrioridade('normal');
       if (result.actions.length === 0) {
@@ -616,6 +617,7 @@ export default function Fila() {
           description: prioridade === 'normal' ? undefined : `Prioridade ${prioridade} aplicada.`,
         });
       }
+      navigate('/fila', { replace: true });
     } catch (e: any) {
       toast.error('Erro: ' + e.message);
     } finally {
@@ -992,6 +994,105 @@ export default function Fila() {
     );
   }
 
+  if (creationPage) {
+    const formDirty = Boolean(selectedAgendamento || selectedPrioridade !== 'normal');
+    return (
+      <div className="space-y-6 pb-8">
+        <UnsavedChangesGuard dirty={formDirty} busy={isSaving} completed={formCompleted} />
+        <PageHeader
+          title="Adicionar à fila"
+          description="Registre a chegada de um paciente com agendamento confirmado."
+          icon={<UserPlus />}
+          actions={<Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/fila')}>Voltar para a fila</Button>}
+        />
+
+        {filaQuery.isError ? (
+          <ErrorState title="Não foi possível conferir a fila" description="Atualize a lista antes de registrar outra chegada, para evitar duplicidade." error={filaQuery.error} onRetry={() => void filaQuery.refetch()} />
+        ) : agendamentosQuery.isError ? (
+          <ErrorState title="Não foi possível carregar os agendamentos de hoje" description="O check-in foi pausado porque não é possível validar o atendimento." error={agendamentosQuery.error} onRetry={() => void agendamentosQuery.refetch()} />
+        ) : loadingFila || loadingAgendamentos ? (
+          <ListSkeleton items={2} />
+        ) : agendamentosDisponiveis.length === 0 ? (
+          <Card>
+            <CardContent className="py-8">
+              <ActionableEmptyState
+                title="Nenhum agendamento elegível para check-in"
+                description="Os atendimentos de hoje já estão na fila ou ainda não estão confirmados. Confira a agenda antes de continuar."
+                actionLabel="Voltar para a fila"
+                onAction={() => navigate('/fila')}
+                className="py-4"
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <form onSubmit={event => { event.preventDefault(); void handleAddToFila(); }} className="max-w-4xl space-y-5">
+            <section aria-labelledby="fila-checkin-heading" className="space-y-5 rounded-xl border border-border bg-card p-4 sm:p-6">
+              <div className="space-y-1">
+                <h2 id="fila-checkin-heading" className="text-base font-semibold text-foreground">Identificação do atendimento</h2>
+                <p className="text-sm text-muted-foreground">Selecione a consulta que corresponde à pessoa presente no balcão.</p>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="fila-agendamento">Agendamento</Label>
+                  <Select value={selectedAgendamento} onValueChange={setSelectedAgendamento}>
+                    <SelectTrigger id="fila-agendamento" aria-label="Agendamento">
+                      <SelectValue placeholder="Selecionar agendamento de hoje..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agendamentosDisponiveis.map(ag => {
+                        const paciente = (ag as any).pacientes;
+                        return (
+                          <SelectItem key={ag.id} value={ag.id}>
+                            {paciente?.nome_social || paciente?.nome || 'Paciente'} — {ag.hora_inicio?.slice(0, 5)}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {validacaoCheckin.length > 0 && (
+                  <ul aria-label="Validação do check-in" className="space-y-2 rounded-lg border border-border bg-muted/20 p-3 sm:col-span-2">
+                    {validacaoCheckin.map(item => {
+                      const Icone = item.ok ? CircleCheck : CircleAlert;
+                      return (
+                        <li key={item.id} className="flex items-start gap-2 text-sm">
+                          <Icone aria-hidden="true" className={cn('mt-0.5 h-4 w-4 shrink-0', item.ok ? 'text-success' : 'text-destructive')} />
+                          <span><span className="font-medium">{item.rotulo}: {item.ok ? 'ok' : 'pendente'}</span><span className="text-muted-foreground"> — {item.detalhe}</span></span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                <div className="space-y-2 sm:max-w-sm">
+                  <Label htmlFor="fila-prioridade">Prioridade</Label>
+                  <Select value={selectedPrioridade} onValueChange={setSelectedPrioridade}>
+                    <SelectTrigger id="fila-prioridade" aria-label="Prioridade"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="preferencial">Preferencial (idoso/gestante)</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" className="rounded-full" disabled={isSaving} onClick={() => navigate('/fila')}>Cancelar</Button>
+              <Button type="submit" disabled={isSaving || !selectedAgendamento || primeiraFalhaCheckin(validacaoCheckin) !== null} className="gap-2 rounded-full">
+                {isSaving && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
+                Adicionar paciente à fila
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+    );
+  }
+
   const handoffText = generateFilaShiftHandoff({
     date: format(parseDateOnly(today)!, 'dd/MM/yyyy', { locale: ptBR }),
     generatedAt: format(new Date(now), 'HH:mm'),
@@ -1077,7 +1178,7 @@ export default function Fila() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar fila" title="Atualizar fila">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button className="h-10 shrink-0 gap-2 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90 sm:px-4" onClick={() => setIsAddOpen(true)} disabled={filaQuery.isError || agendamentosQuery.isError}>
+            <Button className="h-10 shrink-0 gap-2 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90 sm:px-4" onClick={() => navigate('/fila/adicionar')} disabled={filaQuery.isError || agendamentosQuery.isError}>
               <UserPlus aria-hidden="true" className="h-4 w-4" /> Adicionar<span className="hidden sm:inline"> à fila</span>
             </Button>
           </>
@@ -1183,7 +1284,7 @@ export default function Fila() {
                   ? 'Confira as pendências e os itens para revisão abaixo. Ações de chamada ficam disponíveis após a liberação.'
                   : 'Não há pacientes aguardando agora. Adicione alguém que já chegou à clínica ou aguarde a recepção encaminhar o próximo atendimento.'}
                 actionLabel="Adicionar à fila"
-                onAction={() => setIsAddOpen(true)}
+                onAction={() => navigate('/fila/adicionar')}
                 actionIcon={UserPlus}
                 className="py-12"
               />
@@ -1458,73 +1559,6 @@ export default function Fila() {
           </Card>
         </section>
       )}
-
-      {/* Add to Queue Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" /> Adicionar à Fila
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="fila-agendamento">Agendamento</Label>
-              <Select value={selectedAgendamento} onValueChange={setSelectedAgendamento}>
-                <SelectTrigger id="fila-agendamento">
-                  <SelectValue placeholder="Selecionar agendamento..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {agendamentosDisponiveis.length === 0 ? (
-                    <SelectItem value="none" disabled>Nenhum agendamento disponível</SelectItem>
-                  ) : agendamentosDisponiveis.map(ag => {
-                    const pac = (ag as any).pacientes;
-                    return (
-                      <SelectItem key={ag.id} value={ag.id}>
-                        {pac?.nome_social || pac?.nome || 'Paciente'} — {ag.hora_inicio?.slice(0, 5)}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            {validacaoCheckin.length > 0 && (
-              <ul aria-label="Validação do check-in" className="space-y-1.5 rounded-xl border border-border bg-muted/30 p-3">
-                {validacaoCheckin.map((item) => {
-                  const Icone = item.ok ? CircleCheck : CircleAlert;
-                  return (
-                    <li key={item.id} className="flex items-start gap-2 text-xs">
-                      <Icone aria-hidden="true" className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', item.ok ? 'text-success' : 'text-destructive')} />
-                      <span>
-                        <span className="font-semibold">{item.rotulo}: {item.ok ? 'ok' : 'pendente'}</span>
-                        <span className="text-muted-foreground"> — {item.detalhe}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="fila-prioridade">Prioridade</Label>
-              <Select value={selectedPrioridade} onValueChange={setSelectedPrioridade}>
-                <SelectTrigger id="fila-prioridade"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="preferencial">Preferencial (idoso/gestante)</SelectItem>
-                  <SelectItem value="urgente">Urgente</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAddToFila} disabled={isSaving || !selectedAgendamento || primeiraFalhaCheckin(validacaoCheckin) !== null} className="gap-2">
-              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Adicionar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Confirm removal dialog */}
       <AlertDialog open={!!removeId} onOpenChange={(open) => {

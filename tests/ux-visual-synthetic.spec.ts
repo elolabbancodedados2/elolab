@@ -3478,6 +3478,65 @@ test('triage role can open the dedicated clinical form page', async ({ page }, t
   expect(synthetic.writes.every(write => write.includes(' POST /rest/v1/rpc/'))).toBe(true);
 });
 
+test('queue check-in opens its own page and keeps the check-in validation visible', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'recepcao', queuePopulated: true });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/fila');
+
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+  await main.getByRole('button', { name: 'Adicionar à fila' }).click();
+
+  await expect(page).toHaveURL('/fila/adicionar');
+  await expect(main.getByRole('heading', { name: 'Adicionar à fila' })).toBeVisible();
+  await expect(main.getByLabel('Agendamento')).toBeVisible();
+  await expect(main.getByLabel('Prioridade')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('fila-checkin-page-desktop.png'), fullPage: true, animations: 'disabled' });
+  await expect(main.getByRole('button', { name: 'Adicionar paciente à fila' })).toBeDisabled();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await main.getByLabel('Agendamento').click();
+  await page.getByRole('option', { name: /Diego Santos.*09:30/ }).click();
+  await expect(main.getByRole('list', { name: 'Validação do check-in' })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Adicionar paciente à fila' })).toBeEnabled();
+
+  await main.getByRole('button', { name: 'Voltar para a fila' }).click();
+  const discardGuard = page.getByRole('alertdialog');
+  await expect(discardGuard.getByRole('heading', { name: 'Sair sem salvar?' })).toBeVisible();
+  await discardGuard.getByRole('button', { name: 'Descartar e sair' }).click();
+  await expect(page).toHaveURL('/fila');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('doctor can complete check-in from the dedicated queue page', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'medico', queuePopulated: true });
+  let checkinPayload: Record<string, unknown> | undefined;
+  await page.route('**/rest/v1/rpc/realizar_checkin*', async route => {
+    checkinPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fila_id: 'synthetic-checkin', status_anterior: 'confirmado' }) });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/fila/adicionar');
+
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Adicionar à fila' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('fila-checkin-page-mobile.png'), fullPage: true, animations: 'disabled' });
+  await main.getByLabel('Agendamento').click();
+  await page.getByRole('option', { name: /Diego Santos.*09:30/ }).click();
+  await main.getByLabel('Prioridade').click();
+  await page.getByRole('option', { name: 'Urgente' }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await main.evaluate(element => { element.scrollTop = 0; });
+  await page.screenshot({ path: testInfo.outputPath('fila-checkin-page-mobile-selected.png'), fullPage: true, animations: 'disabled' });
+  await main.getByRole('button', { name: 'Adicionar paciente à fila' }).click();
+
+  await expect(page).toHaveURL('/fila');
+  await expect(page.getByText('Paciente adicionado à fila!')).toBeVisible();
+  expect(checkinPayload).toMatchObject({ p_agendamento_id: '00000000-0000-4000-9000-000000000013', p_prioridade: 'urgente' });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
 test('Manchester risk choices keep readable contrast when selected', async ({ page }, testInfo) => {
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'enfermagem' });
