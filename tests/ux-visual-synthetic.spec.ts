@@ -1727,18 +1727,19 @@ test('authorized reception shortcut carries patient and appointment into the tri
   await expect(triageButton).toBeVisible();
   await triageButton.click();
 
-  await expect(page).toHaveURL(/\/fila\?tab=triagem$/);
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Registrar Triagem' })).toBeVisible();
+  await expect(page).toHaveURL('/triagem/nova?origem=recepcao');
+  const form = page.locator('#main-content');
+  await expect(form.getByRole('heading', { name: 'Nova triagem' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('Paciente encaminhado para triagem!')).toHaveCount(0);
   await expect.poll(() => patientLookupUrls.length).toBeGreaterThan(0);
   expect(patientLookupUrls[0]).toContain(patientId);
-  await expect(dialog.locator('#triagem-paciente'), `consulta de paciente: ${patientLookupUrls.join(' | ')}`).toContainText(patientName);
-  await expect(dialog.locator('#triagem-agendamento')).toContainText(patientName);
+  await expect(form.locator('#triagem-paciente'), `consulta de paciente: ${patientLookupUrls.join(' | ')}`).toContainText(patientName);
+  await expect(form.locator('#triagem-agendamento')).toContainText(patientName);
   await page.screenshot({ path: testInfo.outputPath('recepcao-triagem-contexto-1280.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(dialog.locator('#triagem-paciente')).toContainText(patientName);
-  await expect(dialog.locator('#triagem-agendamento')).toContainText(patientName);
+  await expect(form.locator('#triagem-paciente')).toContainText(patientName);
+  await expect(form.locator('#triagem-agendamento')).toContainText(patientName);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('recepcao-triagem-contexto-375.png'), animations: 'disabled' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
@@ -1782,27 +1783,30 @@ test('triage saves clinical data and advances the checked-in appointment into th
   });
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/fila?tab=triagem&paciente=${patientId}&agendamento=${appointmentId}`);
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Registrar Triagem' })).toBeVisible();
-  await expect(dialog.locator('#triagem-paciente')).toContainText('Ana Souza');
-  await expect(dialog.locator('#triagem-agendamento')).toContainText('Ana Souza');
-  await dialog.getByLabel('Pressão Arterial *').fill('120/80');
-  const riscoUrgente = dialog.getByRole('button', { name: /Urgente.*30 min/ });
+  await page.goto(`/triagem/nova?origem=recepcao&paciente=${patientId}&agendamento=${appointmentId}`);
+  const form = page.locator('#main-content');
+  await expect(page).toHaveURL('/triagem/nova?origem=recepcao');
+  await expect(form.getByRole('heading', { name: 'Nova triagem' })).toBeVisible();
+  await expect(form.locator('#triagem-paciente')).toContainText('Ana Souza');
+  await expect(form.locator('#triagem-agendamento')).toContainText('Ana Souza');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await form.getByLabel('Pressão Arterial *').fill('120/80');
+  const riscoUrgente = form.getByRole('button', { name: /Urgente.*30 min/ });
   await riscoUrgente.focus();
   await riscoUrgente.press('Space');
   await expect(riscoUrgente).toHaveAttribute('aria-pressed', 'true');
-  await dialog.locator('#triagem-queixa').fill('Dor de cabeça há dois dias — dado sintético de QA');
+  await form.locator('#triagem-queixa').fill('Dor de cabeça há dois dias — dado sintético de QA');
   await page.screenshot({ path: testInfo.outputPath('triagem-formulario-contexto-1280.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(dialog.locator('#triagem-paciente')).toContainText('Ana Souza');
+  await expect(form.locator('#triagem-paciente')).toContainText('Ana Souza');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('triagem-formulario-contexto-375.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await dialog.getByRole('button', { name: 'Registrar Triagem' }).click();
+  await form.getByRole('button', { name: 'Registrar triagem' }).click();
 
   await expect(page.getByText('Triagem registrada!')).toBeVisible();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL('/recepcao');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(savedTriage).toMatchObject({
     paciente_id: patientId,
     agendamento_id: appointmentId,
@@ -1850,17 +1854,18 @@ test('triage remains saved and shows a recovery warning if queue transition fail
   }));
 
   await page.goto(`/fila?tab=triagem&paciente=${patientId}&agendamento=${appointmentId}`);
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Registrar Triagem' })).toBeVisible();
-  await dialog.getByLabel('Pressão Arterial *').fill('120/80');
-  await dialog.getByRole('button', { name: /Urgente \(30 min\)/ }).click();
-  await expect(dialog.getByRole('button', { name: /Urgente \(30 min\)/ })).toHaveAttribute('aria-pressed', 'true');
-  await dialog.locator('#triagem-queixa').fill('Queixa sintética para validar recuperação');
-  await dialog.getByRole('button', { name: 'Registrar Triagem' }).click();
+  const form = page.locator('#main-content');
+  await expect(form.getByRole('heading', { name: 'Nova triagem' })).toBeVisible();
+  await form.getByLabel('Pressão Arterial *').fill('120/80');
+  await form.getByRole('button', { name: /Urgente \(30 min\)/ }).click();
+  await expect(form.getByRole('button', { name: /Urgente \(30 min\)/ })).toHaveAttribute('aria-pressed', 'true');
+  await form.locator('#triagem-queixa').fill('Queixa sintética para validar recuperação');
+  await form.getByRole('button', { name: 'Registrar triagem' }).click();
 
   await expect(page.getByText('Triagem registrada!')).toBeVisible();
   await expect(page.getByText(/A fila não foi atualizada/)).toBeVisible();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL('/fila?tab=triagem');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(triageInsertCount).toBe(1);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
@@ -2108,27 +2113,29 @@ test('reception check-in keeps context through queue triage and applies the clin
   const pendingTriage = page.getByRole('region', { name: 'Pacientes aguardando triagem' });
   await expect(pendingTriage.getByText('Ana Souza')).toBeVisible();
   await pendingTriage.getByRole('button', { name: 'Triar Ana Souza' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Registrar Triagem' })).toBeVisible();
-  await expect(dialog.locator('#triagem-paciente')).toContainText('Ana Souza');
-  await expect(dialog.locator('#triagem-agendamento')).toContainText('Ana Souza');
-  await dialog.getByLabel('Pressão Arterial *').fill('120/80');
-  await dialog.getByRole('button', { name: /Urgente \(30 min\)/ }).click();
-  await expect(dialog.getByRole('button', { name: /Urgente \(30 min\)/ })).toHaveAttribute('aria-pressed', 'true');
-  await dialog.locator('#triagem-queixa').fill('Dor de cabeça há dois dias — dado sintético de QA');
+  const form = page.locator('#main-content');
+  await expect(form.getByRole('heading', { name: 'Nova triagem' })).toBeVisible();
+  await expect(form.locator('#triagem-paciente')).toContainText('Ana Souza');
+  await expect(form.locator('#triagem-agendamento')).toContainText('Ana Souza');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await form.getByLabel('Pressão Arterial *').fill('120/80');
+  await form.getByRole('button', { name: /Urgente \(30 min\)/ }).click();
+  await expect(form.getByRole('button', { name: /Urgente \(30 min\)/ })).toHaveAttribute('aria-pressed', 'true');
+  await form.locator('#triagem-queixa').fill('Dor de cabeça há dois dias — dado sintético de QA');
   await page.screenshot({ path: testInfo.outputPath('reception-queue-triage-context-1280.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect(dialog.getByRole('button', { name: /Urgente \(30 min\)/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(form.getByRole('button', { name: /Urgente \(30 min\)/ })).toHaveAttribute('aria-pressed', 'true');
   await page.screenshot({ path: testInfo.outputPath('reception-queue-triage-context-390.png'), fullPage: true, animations: 'disabled' });
-  const saveTriageButton = page.getByRole('button', { name: 'Registrar Triagem' });
+  const saveTriageButton = form.getByRole('button', { name: 'Registrar triagem' });
   await saveTriageButton.scrollIntoViewIfNeeded();
   await expect(saveTriageButton).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-queue-triage-submit-390.png'), animations: 'disabled' });
   await saveTriageButton.click();
 
   await expect(page.getByText('Triagem registrada!')).toBeVisible();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL('/fila?tab=triagem');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(savedTriage).toMatchObject({
     paciente_id: patientId, agendamento_id: appointmentId, clinica_id: clinicId,
     pressao_arterial: '120/80', classificacao_risco: 'amarelo',
@@ -3440,8 +3447,9 @@ test('médico vê primeiro seus próprios retornos e pode ampliar o escopo', asy
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('triage role can open the clinical form with its key vital fields', async ({ page }) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'enfermagem' });
+test('triage role can open the dedicated clinical form page', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'enfermagem' });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/triagem');
 
@@ -3451,28 +3459,35 @@ test('triage role can open the clinical form with its key vital fields', async (
   await expect(newTriage).toBeVisible();
   await newTriage.click();
 
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Registrar Triagem' })).toBeVisible();
-  await expect(dialog.getByText('Classifique o risco e registre os sinais vitais do paciente.')).toBeVisible();
-  await expect(dialog.locator('#triagem-paciente')).toBeVisible();
-  await expect(dialog.locator('#triagem-agendamento')).toBeVisible();
-  await expect(dialog.locator('#triagem-queixa')).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Registrar Triagem' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(dialog).not.toBeVisible();
+  await expect(page).toHaveURL('/triagem/nova?origem=triagem');
+  await expect(main.getByRole('heading', { name: 'Nova triagem' })).toBeVisible();
+  await expect(main.getByText('Classifique o risco e registre os sinais vitais do paciente.')).toBeVisible();
+  await expect(main.locator('#triagem-paciente')).toBeVisible();
+  await expect(main.locator('#triagem-agendamento')).toBeVisible();
+  await expect(main.locator('#triagem-queixa')).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Registrar triagem' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await main.locator('#triagem-queixa').fill('Rascunho clínico sintético.');
+  await main.getByRole('link', { name: 'Voltar à fila' }).click();
+  const leaveGuard = page.getByRole('alertdialog');
+  await expect(leaveGuard.getByRole('heading', { name: 'Sair sem salvar?' })).toBeVisible();
+  await leaveGuard.getByRole('button', { name: 'Continuar nesta página' }).click();
+  await expect(main.locator('#triagem-queixa')).toHaveValue('Rascunho clínico sintético.');
 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
   expect(synthetic.writes.every(write => write.includes(' POST /rest/v1/rpc/'))).toBe(true);
 });
 
 test('Manchester risk choices keep readable contrast when selected', async ({ page }, testInfo) => {
-  await installSyntheticClinic(page, { platformAdmin: false, role: 'enfermagem' });
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'enfermagem' });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/fila?tab=triagem');
   await page.getByRole('button', { name: 'Nova Triagem' }).click();
 
-  const dialog = page.getByRole('dialog');
-  const riskGroup = dialog.getByRole('group', { name: /Classificação de Risco/ });
+  const main = page.locator('#main-content');
+  await expect(page).toHaveURL('/triagem/nova?origem=triagem');
+  const riskGroup = main.getByRole('group', { name: /Classificação de risco/ });
   const choices = [
     /Emergência.*Imediato/,
     /Muito Urgente.*10 min/,
@@ -3511,7 +3526,9 @@ test('Manchester risk choices keep readable contrast when selected', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('triage-risk-selected-mobile.png'), animations: 'disabled' });
-  await page.keyboard.press('Escape');
+  await main.getByRole('link', { name: 'Voltar à fila' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar e sair' }).click();
+  await expect(page).toHaveURL('/fila?tab=triagem');
 });
 
 test('triage workspace keeps the checked-in queue actionable at mobile widths', async ({ page }, testInfo) => {
@@ -3539,13 +3556,13 @@ test('triage workspace keeps the checked-in queue actionable at mobile widths', 
     await expect(action).toBeVisible();
     const bounds = await action.boundingBox();
     expect(bounds && bounds.x + bounds.width <= viewport.width, `ação fora da tela em ${viewport.width}px: ${JSON.stringify(bounds)}`).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`triage-queue-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
     if (viewport.width <= 390) {
       const firstAction = pendingQueue.getByRole('button', { name: /^Triar / }).first();
       const navigation = page.getByRole('navigation', { name: 'Navegação principal' });
       const [firstActionBounds, navigationBounds] = await Promise.all([firstAction.boundingBox(), navigation.boundingBox()]);
       expect(firstActionBounds && navigationBounds && firstActionBounds.y + firstActionBounds.height <= navigationBounds.y).toBe(true);
     }
-    await page.screenshot({ path: testInfo.outputPath(`triage-queue-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
   }
 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

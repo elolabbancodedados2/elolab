@@ -1036,7 +1036,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         navigate(`/triagem?${new URLSearchParams({ buscarPaciente: pacienteId }).toString()}`);
         return;
       }
-      navigate(`/triagem?${new URLSearchParams({ paciente: pacienteId, agendamento: agId }).toString()}`);
+      navigate(`/triagem/nova?${new URLSearchParams({ origem: 'recepcao', paciente: pacienteId, agendamento: agId }).toString()}`);
     } catch (e) {
       toast.error('Erro ao encaminhar', { description: mensagemDeErro(e) });
     } finally {

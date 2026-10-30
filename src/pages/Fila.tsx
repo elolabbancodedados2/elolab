@@ -1151,7 +1151,7 @@ export default function Fila() {
                         variant="link"
                         size="sm"
                         className="mt-1 h-auto min-h-8 px-0 text-xs"
-                        onClick={() => navigate(`/fila?tab=triagem&paciente=${encodeURIComponent(agendamentoPendenteTriagem.paciente_id)}&agendamento=${encodeURIComponent(agendamentoPendenteTriagem.id)}`)}
+                        onClick={() => navigate(`/triagem/nova?origem=fila&paciente=${encodeURIComponent(agendamentoPendenteTriagem.paciente_id)}&agendamento=${encodeURIComponent(agendamentoPendenteTriagem.id)}`)}
                       >
                         Registrar próxima triagem
                       </Button>

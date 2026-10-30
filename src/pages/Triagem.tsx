@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useId, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Activity, Heart, Scale, Loader2, Search, Thermometer,
   Wind, Droplets, AlertTriangle, CheckCircle2, Clock, RefreshCw,
@@ -11,9 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -39,6 +36,7 @@ import { PendentesTriagem } from '@/components/triagem/PendentesTriagem';
 import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { buildTriagensFilters, filtrarAgendamentosAguardandoTriagem, temCheckinAtivo } from '@/lib/triageQueue';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 const FUSO_CLINICA = 'America/Sao_Paulo';
 
@@ -207,14 +205,17 @@ function RiscoBadge({ risco, size = 'sm' }: { risco: Risco; size?: 'sm' | 'lg' }
 }
 
 // ─── Main Page ─────────────────────────────────────────────
-export default function TriagemPage() {
+export default function TriagemPage({ creationPage = false }: { creationPage?: boolean }) {
   const { hasAnyRole } = useSupabaseAuth();
   const podeRegistrarTriagem = hasAnyRole(['admin', 'medico', 'enfermagem']);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const navigate = useNavigate();
   const [formData, setFormData] = useState<TriagemForm>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const saveLock = useRef(false);
+  const completed = useRef(false);
+  const formBaseline = useRef<TriagemForm>(emptyForm);
+  const formSeeded = useRef(false);
   const [search, setSearch] = useState('');
   const [filterRisco, setFilterRisco] = useState<'todos' | Risco>('todos');
 
@@ -306,22 +307,51 @@ export default function TriagemPage() {
   const setField = (field: keyof TriagemForm) => (value: string) =>
     setFormData(prev => ({ ...prev, [field]: value }));
 
-  const handleOpenDialog = useCallback((pacienteId?: string, agendamentoId?: string) => {
-    setFormData({ ...emptyForm, paciente_id: pacienteId || '', agendamento_id: agendamentoId || '' });
-    setIsDialogOpen(true);
-  }, []);
+  const origem = searchParams.get('origem');
+  const returnPath = origem === 'fila' ? '/fila' : origem === 'recepcao' ? '/recepcao' : '/fila?tab=triagem';
+  const formDirty = JSON.stringify(formData) !== JSON.stringify(formBaseline.current);
+
+  const handleOpenTriagePage = useCallback((pacienteId?: string, agendamentoId?: string, origem: 'fila' | 'recepcao' | 'triagem' = 'triagem') => {
+    const params = new URLSearchParams({ origem });
+    if (pacienteId) params.set('paciente', pacienteId);
+    if (agendamentoId) params.set('agendamento', agendamentoId);
+    navigate(`/triagem/nova?${params.toString()}`);
+  }, [navigate]);
 
   React.useEffect(() => {
+    if (creationPage) return;
     const pacienteId = searchParams.get('paciente');
     const agendamentoId = searchParams.get('agendamento');
     if (!pacienteId || !agendamentoId) return;
 
-    handleOpenDialog(pacienteId, agendamentoId);
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('paciente');
-    nextParams.delete('agendamento');
-    setSearchParams(nextParams, { replace: true });
-  }, [searchParams, setSearchParams, handleOpenDialog]);
+    handleOpenTriagePage(pacienteId, agendamentoId);
+  }, [creationPage, searchParams, handleOpenTriagePage]);
+
+  React.useEffect(() => {
+    if (!creationPage || formSeeded.current) return;
+    const pacienteId = searchParams.get('paciente') || '';
+    const agendamentoId = searchParams.get('agendamento') || '';
+    if (agendamentoId && agendamentosQuery.isLoading) return;
+
+    const agendamento = agendamentoId
+      ? agendamentos.find((item: any) => item.id === agendamentoId)
+      : null;
+    const initial = {
+      ...emptyForm,
+      paciente_id: pacienteId || agendamento?.paciente_id || '',
+      agendamento_id: agendamentoId,
+    };
+    setFormData(initial);
+    formBaseline.current = initial;
+    formSeeded.current = true;
+
+    if (pacienteId || agendamentoId) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('paciente');
+      nextParams.delete('agendamento');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [creationPage, searchParams, setSearchParams, agendamentos, agendamentosQuery.isLoading]);
 
   React.useEffect(() => {
     if (!pacienteBuscaId || (!pacienteBuscaQuery.isSuccess && !pacienteBuscaQuery.isError)) return;
@@ -508,7 +538,8 @@ export default function TriagemPage() {
       queryClient.invalidateQueries({ queryKey: ['triagens'] });
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      setIsDialogOpen(false);
+      completed.current = true;
+      if (creationPage) navigate(returnPath, { replace: true });
     } catch (e: any) {
       if (e?.code === '23505' && (
         e?.constraint === 'triagem_agendamento_unico' ||
@@ -563,12 +594,196 @@ export default function TriagemPage() {
   // IMC live preview
   const imcLive = formData.peso && formData.altura ? calcularIMC(formData.peso, formData.altura) : null;
   const imcInfo = imcLive ? imcClassification(imcLive) : null;
+  const triageFields = (
+    <div className="space-y-7">
+      <section aria-labelledby="triagem-identificacao" className="space-y-3 border-b border-border pb-6">
+        <header>
+          <h2 id="triagem-identificacao" className="text-sm font-semibold text-foreground">Paciente e consulta</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Vincule o atendimento quando o paciente já fez check-in.</p>
+        </header>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="triagem-paciente">Paciente *</Label>
+            <PacienteCombobox
+              id="triagem-paciente"
+              value={formData.paciente_id}
+              disabled={isSaving}
+              placeholder="Buscar por nome, CPF ou telefone..."
+              onChange={(pacienteId) => setFormData(prev => {
+                const agendamentoAtual = agendamentos.find((ag: any) => ag.id === prev.agendamento_id);
+                return {
+                  ...prev,
+                  paciente_id: pacienteId,
+                  agendamento_id: agendamentoAtual && agendamentoAtual.paciente_id !== pacienteId
+                    ? ''
+                    : prev.agendamento_id,
+                };
+              })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="triagem-agendamento">Agendamento</Label>
+            <Select value={formData.agendamento_id || '__none__'} onValueChange={v => setFormData(prev => {
+              const agendamento = v === '__none__' ? null : agendamentos.find((ag: any) => ag.id === v);
+              return {
+                ...prev,
+                agendamento_id: agendamento?.id || '',
+                paciente_id: agendamento?.paciente_id || prev.paciente_id,
+              };
+            })}>
+              <SelectTrigger id="triagem-agendamento" disabled={isSaving || agendamentosQuery.isLoading || agendamentosQuery.isError}>
+                <SelectValue placeholder="Opcional..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Nenhum</SelectItem>
+                {aguardandoTriagem.map(ag => {
+                  const pacienteAgendamento = (ag as any).pacientes;
+                  const medicoAgendamento = (ag as any).medicos;
+                  return <SelectItem key={ag.id} value={ag.id}>
+                    {ag.hora_inicio?.slice(0, 5)} — {pacienteAgendamento?.nome_social || pacienteAgendamento?.nome || 'Paciente'}
+                    {' · '}{ag.tipo || 'consulta'}
+                    {medicoAgendamento && ` · ${medicoAgendamento.nome || medicoAgendamento.crm}`}
+                  </SelectItem>;
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {formData.agendamento_id && agendamentosQuery.isSuccess && !agendamentos.some((ag: any) => ag.id === formData.agendamento_id) && (
+          <p role="alert" className="text-sm text-destructive">Este agendamento não está mais disponível na agenda de hoje. Atualize ou remova o vínculo antes de continuar.</p>
+        )}
+      </section>
+
+      <section aria-labelledby="triagem-sinais-vitais" className="space-y-3 border-b border-border pb-6">
+        <header>
+          <h2 id="triagem-sinais-vitais" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Activity aria-hidden="true" className="h-4 w-4 text-primary" /> Sinais vitais
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">Pressão arterial e queixa principal são obrigatórias.</p>
+        </header>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <VitalInput icon={Heart} label="Pressão Arterial *" value={formData.pressao_arterial} onChange={setField('pressao_arterial')} placeholder="120/80" unit="mmHg" color="text-destructive" inputMode="text" />
+          <VitalInput icon={Activity} label="Freq. Cardíaca" value={formData.frequencia_cardiaca} onChange={setField('frequencia_cardiaca')} placeholder="80" unit="bpm" color="text-primary" />
+          <VitalInput icon={Wind} label="Freq. Respiratória" value={formData.frequencia_respiratoria} onChange={setField('frequencia_respiratoria')} placeholder="16" unit="irpm" />
+          <VitalInput icon={Thermometer} label="Temperatura" value={formData.temperatura} onChange={setField('temperatura')} placeholder="36,5" unit="°C" color={parseValorClinico(formData.temperatura) >= 37.5 ? 'text-destructive' : 'text-muted-foreground'} />
+          <VitalInput icon={Droplets} label="Saturação O₂" value={formData.saturacao} onChange={setField('saturacao')} placeholder="98" unit="%" color={parseValorClinico(formData.saturacao) < 94 ? 'text-destructive' : 'text-success'} inputMode="numeric" />
+          <VitalInput icon={Activity} label="Glicemia" value={formData.glicemia} onChange={setField('glicemia')} placeholder="100" unit="mg/dL" />
+        </div>
+      </section>
+
+      <section aria-labelledby="triagem-antropometria" className="space-y-3 border-b border-border pb-6">
+        <header>
+          <h2 id="triagem-antropometria" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Scale aria-hidden="true" className="h-4 w-4 text-primary" /> Antropometria
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">O IMC é calculado automaticamente a partir do peso e da altura.</p>
+        </header>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <VitalInput icon={Scale} label="Peso" value={formData.peso} onChange={setField('peso')} placeholder="70" unit="kg" />
+          <VitalInput icon={ArrowUpRight} label="Altura" value={formData.altura} onChange={setField('altura')} placeholder="170" unit="cm" />
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">IMC calculado</Label>
+            <div className="flex h-9 items-center rounded-md border bg-muted/30 px-3" aria-live="polite">
+              {imcLive ? <span className="text-sm font-semibold">{imcLive} <span className={cn('ml-1 text-xs font-normal', imcInfo?.color)}>{imcInfo?.label}</span></span> : <span className="text-sm text-muted-foreground">—</span>}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="triagem-risco" className="space-y-3 border-b border-border pb-6">
+        <header>
+          <h2 id="triagem-risco" className="text-sm font-semibold text-foreground">Classificação de risco (Manchester) *</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Selecione a prioridade clínica definida pelo profissional.</p>
+        </header>
+        <div role="group" aria-labelledby="triagem-risco" className="flex flex-wrap gap-2">
+          {Object.entries(RISCO).map(([key, cfg]) => (
+            <button
+              type="button"
+              key={key}
+              aria-pressed={formData.classificacao_risco === key}
+              onClick={() => setField('classificacao_risco')(key)}
+              className={cn(
+                'flex min-h-11 items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                formData.classificacao_risco === key
+                  ? cn(cfg.bg, 'border-current ring-2 ring-current ring-offset-1')
+                  : cn(cfg.light, cfg.border, 'hover:border-current'),
+              )}
+            >
+              <span aria-hidden="true" className={cn('h-2.5 w-2.5 rounded-full', cfg.dot)} />
+              {cfg.label}
+              <span className="text-[11px] font-normal opacity-80">({cfg.sublabel})</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="triagem-queixa-heading" className="space-y-3">
+        <header>
+          <h2 id="triagem-queixa-heading" className="text-sm font-semibold text-foreground">Queixa e observações</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Registre o relato informado e as observações necessárias para o atendimento.</p>
+        </header>
+        <div className="grid grid-cols-1 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="triagem-queixa">Queixa principal *</Label>
+            <Input id="triagem-queixa" value={formData.queixa_principal} onChange={e => setField('queixa_principal')(e.target.value)} placeholder="Descreva a queixa principal..." />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="triagem-dor">Dor (0–10)</Label>
+            <Input id="triagem-dor" type="number" min="0" max="10" value={formData.dor_escala} onChange={e => setField('dor_escala')(e.target.value)} placeholder="0 = sem dor, 10 = pior dor" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="triagem-observacoes">Observações</Label>
+            <Textarea id="triagem-observacoes" value={formData.observacoes} onChange={e => setField('observacoes')(e.target.value)} placeholder="Informações adicionais..." rows={3} />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+
+  if (creationPage) {
+    return (
+      <div className="space-y-6 pb-8">
+        <UnsavedChangesGuard dirty={formDirty} busy={isSaving} completed={completed} />
+        <PageHeader
+          title="Nova triagem"
+          description="Classifique o risco e registre os sinais vitais do paciente."
+          icon={<Activity />}
+          actions={<Button asChild variant="outline" className="gap-2 rounded-full"><Link to={returnPath}><Stethoscope aria-hidden="true" className="h-4 w-4" /> Voltar à fila</Link></Button>}
+        />
+        {agendamentosQuery.isError && <ErrorState compact title="Não foi possível carregar os agendamentos de hoje" description="A seleção de uma triagem vinculada está pausada até a agenda ser atualizada." error={agendamentosQuery.error} onRetry={() => void agendamentosQuery.refetch()} />}
+        {filaQuery.isError && <ErrorState compact title="Não foi possível confirmar o check-in" description="Atualize a fila antes de registrar uma triagem vinculada a um agendamento." error={filaQuery.error} onRetry={() => void filaQuery.refetch()} />}
+        {erroTriagens && <ErrorState compact title="Não foi possível conferir duplicidade de triagem" description="A gravação fica bloqueada até que os registros existentes possam ser consultados." error={triagensQuery.error || triagensAvulsasQuery.error} onRetry={() => { void triagensQuery.refetch(); void triagensAvulsasQuery.refetch(); }} />}
+        <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-6">
+          <div className="max-w-5xl rounded-xl border border-border bg-card px-4 py-5 sm:px-6">
+            {triageFields}
+          </div>
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" className="rounded-full" disabled={isSaving} onClick={() => navigate(returnPath)}>Cancelar</Button>
+            <Button type="submit" disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError || filaQuery.isLoading || filaQuery.isError))} className="gap-2 rounded-full bg-primary text-primary-foreground shadow-none hover:bg-primary/90">
+              {isSaving && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
+              Registrar triagem
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
         title="Triagem"
-        description={descricao}
+        description={(
+          <>
+            <span className="hidden min-[400px]:inline">{descricao}</span>
+            <span className="min-[400px]:hidden">
+              {format(parseDateOnly(today)!, 'dd/MM', { locale: ptBR })}
+              {listaAgendaDisponivel && !carregandoAgenda ? ` · ${pendingTriagemCount} aguardando` : ''}
+              {!erroTriagens && !isLoading ? ` · ${triagemHoje.length} triados` : ''}
+              {' · Manchester'}
+            </span>
+          </>
+        )}
         icon={<Activity />}
         className="sm:items-center"
         actions={(
@@ -590,7 +805,7 @@ export default function TriagemPage() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
-            {podeRegistrarTriagem && <Button className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={() => handleOpenDialog()}>
+            {podeRegistrarTriagem && <Button className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={() => handleOpenTriagePage()}>
               <Plus className="h-4 w-4" /> Nova Triagem
             </Button>}
           </>
@@ -620,7 +835,7 @@ export default function TriagemPage() {
         <PendentesTriagem
           loading={carregandoAgenda}
           appointments={aguardandoTriagem}
-          onTriage={handleOpenDialog}
+          onTriage={(pacienteId, agendamentoId) => handleOpenTriagePage(pacienteId, agendamentoId, 'triagem')}
         />
       )}
 
@@ -829,164 +1044,6 @@ export default function TriagemPage() {
         </CardContent>
       </Card>
 
-      {/* New Triage Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={open => {
-        if (open || !isSaving) setIsDialogOpen(open);
-      }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              Registrar Triagem
-            </DialogTitle>
-            <DialogDescription>Classifique o risco e registre os sinais vitais do paciente.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-5 py-2">
-            {/* Patient & Appointment */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="triagem-paciente">Paciente *</Label>
-                <PacienteCombobox
-                  id="triagem-paciente"
-                  value={formData.paciente_id}
-                  disabled={isSaving}
-                  placeholder="Buscar por nome, CPF ou telefone..."
-                  onChange={(pacienteId) => setFormData(prev => {
-                    const agendamentoAtual = agendamentos.find((ag: any) => ag.id === prev.agendamento_id);
-                    return {
-                      ...prev,
-                      paciente_id: pacienteId,
-                      agendamento_id: agendamentoAtual && agendamentoAtual.paciente_id !== pacienteId
-                        ? ''
-                        : prev.agendamento_id,
-                    };
-                  })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="triagem-agendamento">Agendamento</Label>
-                <Select value={formData.agendamento_id || '__none__'} onValueChange={v => setFormData(prev => {
-                  const agendamento = v === '__none__'
-                    ? null
-                    : agendamentos.find((ag: any) => ag.id === v);
-                  return {
-                    ...prev,
-                    agendamento_id: agendamento?.id || '',
-                    paciente_id: agendamento?.paciente_id || prev.paciente_id,
-                  };
-                })}>
-                  <SelectTrigger id="triagem-agendamento" disabled={isSaving || agendamentosQuery.isLoading || agendamentosQuery.isError}><SelectValue placeholder="Opcional..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Nenhum</SelectItem>
-                    {aguardandoTriagem.map(ag => {
-                      const pacienteAgendamento = (ag as any).pacientes;
-                      const medicoAgendamento = (ag as any).medicos;
-                      return <SelectItem key={ag.id} value={ag.id}>
-                        {ag.hora_inicio?.slice(0, 5)} — {pacienteAgendamento?.nome_social || pacienteAgendamento?.nome || 'Paciente'}
-                        {' · '}{ag.tipo || 'consulta'}
-                        {medicoAgendamento && ` · ${medicoAgendamento.nome || medicoAgendamento.crm}`}
-                      </SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Vital Signs */}
-            <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Activity className="h-3.5 w-3.5" /> Sinais Vitais
-              </p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <VitalInput icon={Heart} label="Pressão Arterial *" value={formData.pressao_arterial} onChange={setField('pressao_arterial')} placeholder="120/80" unit="mmHg" color="text-destructive" inputMode="text" />
-                <VitalInput icon={Activity} label="Freq. Cardíaca" value={formData.frequencia_cardiaca} onChange={setField('frequencia_cardiaca')} placeholder="80" unit="bpm" color="text-primary" />
-                <VitalInput icon={Wind} label="Freq. Respiratória" value={formData.frequencia_respiratoria} onChange={setField('frequencia_respiratoria')} placeholder="16" unit="irpm" />
-                <VitalInput icon={Thermometer} label="Temperatura" value={formData.temperatura} onChange={setField('temperatura')} placeholder="36,5" unit="°C" color={parseValorClinico(formData.temperatura) >= 37.5 ? 'text-destructive' : 'text-muted-foreground'} />
-                <VitalInput icon={Droplets} label="Saturação O₂" value={formData.saturacao} onChange={setField('saturacao')} placeholder="98" unit="%" color={parseValorClinico(formData.saturacao) < 94 ? 'text-destructive' : 'text-success'} inputMode="numeric" />
-                <VitalInput icon={Activity} label="Glicemia" value={formData.glicemia} onChange={setField('glicemia')} placeholder="100" unit="mg/dL" />
-              </div>
-            </div>
-
-            {/* Anthropometry */}
-            <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Scale className="h-3.5 w-3.5" /> Antropometria
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <VitalInput icon={Scale} label="Peso" value={formData.peso} onChange={setField('peso')} placeholder="70" unit="kg" />
-                <VitalInput icon={ArrowUpRight} label="Altura" value={formData.altura} onChange={setField('altura')} placeholder="170" unit="cm" />
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">IMC Calculado</Label>
-                  <div className="h-9 rounded-md border bg-background px-3 flex items-center">
-                    {imcLive ? (
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm">{imcLive}</span>
-                        <span className={cn('text-xs', imcInfo?.color)}>{imcInfo?.label}</span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">—</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Risk Classification */}
-            <div className="space-y-2">
-              <Label id="triagem-classificacao-label">Classificação de Risco (Manchester) *</Label>
-              <div role="group" aria-labelledby="triagem-classificacao-label" className="flex flex-wrap gap-2">
-                {Object.entries(RISCO).map(([key, cfg]) => (
-                  <button
-                    type="button"
-                    key={key}
-                    aria-pressed={formData.classificacao_risco === key}
-                    onClick={() => setField('classificacao_risco')(key)}
-                    className={cn(
-                      'flex items-center gap-2 rounded-xl border-2 px-3 py-2 transition-all text-sm font-semibold',
-                      formData.classificacao_risco === key
-                        ? cn(cfg.bg, 'border-current ring-2 ring-current ring-offset-1 scale-[1.02]')
-                        : cn(cfg.light, cfg.border, 'hover:scale-102'),
-                    )}
-                  >
-                    <span className={cn('h-2.5 w-2.5 rounded-full', cfg.dot)} />
-                    {cfg.label}
-                    {/* Prazo-alvo do protocolo: o enfermeiro classifica com o
-                        relógio na mão, não decorado. */}
-                    <span className="text-[11px] font-normal opacity-80">
-                      ({cfg.sublabel})
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Chief Complaint & Notes */}
-            <div className="grid grid-cols-1 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="triagem-queixa">Queixa Principal *</Label>
-                <Input id="triagem-queixa" value={formData.queixa_principal} onChange={e => setField('queixa_principal')(e.target.value)} placeholder="Descreva a queixa principal..." />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="triagem-dor">Dor (0-10)</Label>
-                <Input id="triagem-dor" type="number" min="0" max="10" value={formData.dor_escala} onChange={e => setField('dor_escala')(e.target.value)} placeholder="0 = sem dor, 10 = pior dor" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="triagem-observacoes">Observações</Label>
-                <Textarea id="triagem-observacoes" value={formData.observacoes} onChange={e => setField('observacoes')(e.target.value)} placeholder="Informações adicionais..." rows={2} />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" disabled={isSaving} onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError))} className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90">
-              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Registrar Triagem
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
