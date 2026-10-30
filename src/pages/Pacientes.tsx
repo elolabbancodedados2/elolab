@@ -59,6 +59,7 @@ import { logAudit } from '@/lib/auditTrail';
 import { cpfValido } from '@/lib/importacao/campos';
 import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import { isPatientTimelineSummaryNavigation } from '@/lib/patientTimelineSummaryNavigation';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
 import { PATIENT_STATUS_REASON_LABELS, PATIENT_STATUS_REASONS, isValidPatientStatusReason, setPatientActiveStatus, type PatientStatusReason } from '@/lib/patientStatus';
 import {
@@ -337,7 +338,9 @@ export default function Pacientes() {
   });
   const deepLinkPacienteId = patientId || searchParams.get('paciente');
   const { data: pacienteDeepLink, isLoading: carregandoDeepLink, error: erroDeepLink, refetch: refazerDeepLink } = useQuery({
-    queryKey: ['paciente-deep-link', authProfile?.clinica_id, deepLinkPacienteId, patientId ? location.key : 'legacy'],
+    // Search-param task steps (for example, the clinical summary) must not
+    // invalidate the patient context and unmount sensitive in-memory work.
+    queryKey: ['paciente-deep-link', authProfile?.clinica_id, deepLinkPacienteId, patientId ? 'route' : 'legacy'],
     enabled: !!authProfile?.clinica_id && !!deepLinkPacienteId,
     queryFn: async () => {
       const { data, error } = await (supabase as any).from('pacientes').select('*').eq('clinica_id', authProfile!.clinica_id).eq('id', deepLinkPacienteId).maybeSingle();
@@ -1308,7 +1311,7 @@ export default function Pacientes() {
       if (podeVerTimelinePaciente) allowedTabs.push('historico');
       if (podeVerExtratoFinanceiroPaciente) allowedTabs.push('financeiro');
       if (podeVerProntuario) allowedTabs.push('prontuario');
-      const requestedTab = searchParams.get('tab') || 'dados';
+      const requestedTab = searchParams.get('timeline') === 'summary' ? 'historico' : searchParams.get('tab') || 'dados';
       setViewTab(allowedTabs.includes(requestedTab) ? requestedTab : 'dados');
       setTaskReadyFor(path);
     }
@@ -1359,7 +1362,8 @@ export default function Pacientes() {
     <div className="space-y-5 sm:space-y-6">
       {patientTaskPage && <UnsavedChangesGuard key={location.pathname} completed={completedTask}
         dirty={patientFormPage ? JSON.stringify(formData) !== initialFormSnapshot : isEditingProntuario || showAgendamentoForm || showExameForm}
-        busy={isSubmitting || savingProntuario || savingAgendamento || savingExame} />}
+        busy={isSubmitting || savingProntuario || savingAgendamento || savingExame}
+        allowNavigation={isPatientTimelineSummaryNavigation} />}
       {conveniosError && <ErrorState compact error={conveniosError} title="Convênios indisponíveis" description="A lista de convênios não carregou. Você pode continuar consultando pacientes, mas não deve alterar o convênio até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
       {medicosError && <ErrorState compact error={medicosError} title="Médicos indisponíveis" description="A lista de médicos não carregou. Atualize os dados antes de agendar consultas ou solicitar exames nesta ficha." onRetry={() => { void refetchMedicos(); }} />}
       {!patientTaskPage && <>

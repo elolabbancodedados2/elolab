@@ -827,6 +827,10 @@ export default function Prontuarios() {
   };
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const [patientWorkspaceTab, setPatientWorkspaceTab] = useState(() => searchParams.get('timeline') === 'summary' ? 'timeline' : 'evolucoes');
+  useEffect(() => {
+    if (searchParams.get('timeline') === 'summary') setPatientWorkspaceTab('timeline');
+  }, [searchParams]);
   const location = useLocation();
   const isEvolucaoWorkspace = location.pathname === '/prontuarios/atendimento';
   const routePacienteId = searchParams.get('paciente');
@@ -2182,7 +2186,7 @@ export default function Prontuarios() {
 
               {/* Content tabs */}
               <Card className="border-border/50 overflow-hidden">
-                <Tabs defaultValue="evolucoes" className="w-full">
+                <Tabs value={patientWorkspaceTab} onValueChange={setPatientWorkspaceTab} className="w-full">
                   <div className="border-b border-border/40 px-4 pt-3">
                     <TabsList
                       aria-label="Abas da ficha do paciente"

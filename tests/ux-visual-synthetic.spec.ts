@@ -100,6 +100,15 @@ test('patient registry puts lookup and the patient list ahead of secondary actio
 test('patient timeline keeps clinical context and filters usable on desktop and mobile', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, prontuarioPopulated: true });
   const historyAudits: string[] = [];
+  let summaryInvocations = 0;
+  await page.route('**/functions/v1/patient-clinical-summary*', route => {
+    summaryInvocations += 1;
+    return route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ summary: 'Síntese clínica sintética para validação visual.\nRevisar os registros originais.' }),
+    });
+  });
   await page.route('**/rest/v1/rpc/registrar_visualizacao_historico_paciente*', async route => {
     historyAudits.push('patient-history');
     await route.fulfill({ status: 200, contentType: 'application/json', body: '1' });
@@ -135,6 +144,54 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
   await expect(patientDialog.getByText('Cefaleia recorrente', { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('patient-timeline-1280.png'), animations: 'disabled' });
 
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await search.fill('Cefaleia');
+  await expect(patientDialog.getByText('Cefaleia recorrente', { exact: false }).first()).toBeVisible();
+  await patientDialog.getByRole('button', { name: 'Resumo clínico IA' }).click();
+  await expect(page).toHaveURL(/timeline=summary/);
+  await expect.poll(() => summaryInvocations).toBe(1);
+  await expect(patientDialog.getByRole('heading', { name: 'Resumo clínico inteligente' })).toBeFocused();
+  await expect(patientDialog.getByText('Síntese clínica sintética para validação visual.')).toBeVisible();
+  await expect(patientDialog.getByRole('note')).toContainText('não substitui o prontuário');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('patient-summary-1440.png'), fullPage: true, animations: 'disabled' });
+
+  await patientDialog.getByRole('button', { name: 'Voltar ao histórico' }).click();
+  await expect(page).not.toHaveURL(/timeline=summary/);
+  await expect(patientDialog.getByRole('textbox', { name: 'Buscar no histórico do paciente' })).toHaveValue('Cefaleia');
+  await expect(patientDialog.getByRole('button', { name: 'Ver resumo clínico' })).toBeFocused();
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await patientDialog.getByRole('button', { name: 'Ver resumo clínico' }).click();
+  await expect(page).toHaveURL(/timeline=summary/);
+  await expect(patientDialog.getByRole('heading', { name: 'Resumo clínico inteligente' })).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const patientMobileNavigation = page.getByRole('navigation', { name: 'Navegação principal' });
+  if (await patientMobileNavigation.isVisible()) {
+    const [headingBounds, navBounds] = await Promise.all([
+      patientDialog.getByRole('heading', { name: 'Resumo clínico inteligente' }).boundingBox(),
+      patientMobileNavigation.boundingBox(),
+    ]);
+    expect(!!headingBounds && !!navBounds && headingBounds.y + headingBounds.height <= navBounds.y).toBe(true);
+  }
+  await page.screenshot({ path: testInfo.outputPath('patient-summary-375.png'), fullPage: true, animations: 'disabled' });
+  await patientDialog.getByRole('note').evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  if (await patientMobileNavigation.isVisible()) {
+    const [noteBounds, navBounds] = await Promise.all([
+      patientDialog.getByRole('note').boundingBox(),
+      patientMobileNavigation.boundingBox(),
+    ]);
+    expect(!!noteBounds && !!navBounds && noteBounds.y + noteBounds.height <= navBounds.y).toBe(true);
+  }
+  await page.screenshot({ path: testInfo.outputPath('patient-summary-375-note.png'), animations: 'disabled' });
+  await patientDialog.getByRole('button', { name: 'Voltar ao histórico' }).click();
+  await expect(page).not.toHaveURL(/timeline=summary/);
+  await expect(patientDialog.getByRole('textbox', { name: 'Buscar no histórico do paciente' })).toHaveValue('Cefaleia');
+  await expect(patientDialog.getByRole('button', { name: 'Ver resumo clínico' })).toBeFocused();
+  await expect(patientDialog.getByText('Cefaleia recorrente', { exact: false }).first()).toBeVisible();
+  await search.fill('');
+
   await page.setViewportSize({ width: 375, height: 812 });
   const patientTabs = patientDialog.getByRole('tablist');
   expect(await patientTabs.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
@@ -162,6 +219,13 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
     return bounds.left >= container.left - 1 && bounds.right <= container.right + 1;
   }))).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('patient-timeline-768.png'), animations: 'disabled' });
+
+  const directSummaryUrl = new URL(page.url());
+  directSummaryUrl.searchParams.set('timeline', 'summary');
+  await page.goto(`${directSummaryUrl.pathname}${directSummaryUrl.search}`);
+  await expect(page.locator('#main-content').getByRole('heading', { name: 'Resumo clínico inteligente' })).toBeVisible();
+  await expect(page.locator('#main-content').getByText(/Este resumo não está carregado nesta sessão/)).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   expect(historyAudits.length).toBeGreaterThan(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

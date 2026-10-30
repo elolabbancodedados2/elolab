@@ -1,11 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { refetch, useQuery, navigate, auth } = vi.hoisted(() => ({
+const { refetch, useQuery, navigate, auth, router, setSearchParams } = vi.hoisted(() => ({
   refetch: vi.fn(),
   useQuery: vi.fn(),
   navigate: vi.fn(),
   auth: { profile: { clinica_id: 'clinic-1', roles: [] as string[] } },
+  router: { search: '' },
+  setSearchParams: vi.fn((next: URLSearchParams | ((current: URLSearchParams) => URLSearchParams)) => {
+    const current = new URLSearchParams(router.search);
+    router.search = (typeof next === 'function' ? next(current) : next).toString();
+  }),
 }));
 
 vi.mock('@tanstack/react-query', () => ({ useQuery }));
@@ -13,7 +18,10 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ user: { id: 'user-1' }, profile: auth.profile }),
 }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigate,
+  useSearchParams: () => [new URLSearchParams(router.search), setSearchParams],
+}));
 
 import { PatientTimeline } from '../PatientTimeline';
 
@@ -21,6 +29,7 @@ describe('PatientTimeline', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     auth.profile.roles = [];
+    router.search = '';
     useQuery.mockReturnValue({ data: undefined, isLoading: false, error: new Error('offline'), refetch });
   });
 
@@ -37,6 +46,21 @@ describe('PatientTimeline', () => {
     render(<PatientTimeline pacienteId="patient-1" />);
     expect(screen.getByText('Histórico Completo do Paciente')).toBeInTheDocument();
     expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+  });
+
+  it('recovers safely when the summary URL is opened without an in-memory summary', () => {
+    router.search = '?tab=historico&timeline=summary';
+    useQuery.mockReturnValue({ data: [], isLoading: false, error: null, refetch });
+    const { rerender } = render(<PatientTimeline pacienteId="patient-1" />);
+
+    expect(screen.getByRole('heading', { name: 'Resumo clínico inteligente' })).toBeInTheDocument();
+    expect(screen.getByText(/Este resumo não está carregado nesta sessão/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar ao histórico' }));
+    expect(router.search).toBe('tab=historico');
+    rerender(<PatientTimeline pacienteId="patient-1" />);
+    expect(screen.getByRole('heading', { name: /Histórico Completo do Paciente/ })).toBeInTheDocument();
   });
 
   it('shows only role-authorized next actions for timeline events', () => {

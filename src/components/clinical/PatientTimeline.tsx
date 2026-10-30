@@ -1,12 +1,12 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDateTimePreference, nomeMedico } from '@/lib/formatters';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ptBR } from 'date-fns/locale';
 import {
-  FileText, Pill, TestTube, FileCheck, ArrowRight, Calendar, Clock,
+  FileText, Pill, TestTube, FileCheck, ArrowLeft, ArrowRight, Calendar, Clock,
   DollarSign, CalendarCheck, Paperclip, Activity, RefreshCw, AlertCircle, Search,
   Download, Sparkles, Loader2,
 } from 'lucide-react';
@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type jsPDF from 'jspdf';
 
 import { parseDateOnly } from '@/lib/dateOnly';
@@ -67,12 +66,34 @@ function validTimelineDate(date: Date | null | undefined): Date | null {
 export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
   const { user, profile } = useSupabaseAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<EventType | 'todos'>('todos');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiError, setAiError] = useState(false);
+  const aiOpen = searchParams.get('timeline') === 'summary';
+  const summaryHeading = useRef<HTMLHeadingElement>(null);
+  const summaryTrigger = useRef<HTMLButtonElement>(null);
+  const wasSummaryOpen = useRef(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const setAiOpen = (open: boolean) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (open) next.set('timeline', 'summary');
+    else next.delete('timeline');
+    return next;
+  }, { replace: !open });
+
+  useEffect(() => {
+    if (aiOpen) {
+      summaryHeading.current?.focus({ preventScroll: true });
+      summaryHeading.current?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+      wasSummaryOpen.current = true;
+    } else if (wasSummaryOpen.current) {
+      summaryTrigger.current?.focus();
+      wasSummaryOpen.current = false;
+    }
+  }, [aiOpen]);
 
   const { data: events, isLoading, error, refetch } = useQuery({
     queryKey: ['patient-timeline', user?.id ?? null, profile?.clinica_id ?? null, pacienteId, maxItems],
@@ -410,8 +431,9 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
 
   const handleAISummary = async () => {
     setAiLoading(true);
-    setAiOpen(true);
     setAiSummary(null);
+    setAiError(false);
+    setAiOpen(true);
     try {
       const { data, error } = await supabase.functions.invoke('patient-clinical-summary', {
         body: { paciente_id: pacienteId },
@@ -421,13 +443,16 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       setAiSummary(data?.summary || 'Sem resumo gerado.');
     } catch (err: any) {
       toast.error('Falha ao gerar resumo: ' + err.message);
-      setAiSummary('Erro ao gerar resumo clínico.');
+      setAiSummary(null);
+      setAiError(true);
     } finally {
       setAiLoading(false);
     }
   };
 
-  if (isLoading) {
+  const openAISummary = () => setAiOpen(true);
+
+  if (isLoading && !aiOpen) {
     return (
       <Card className={className}>
         <CardHeader>
@@ -453,7 +478,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
     );
   }
 
-  if (error) {
+  if (error && !aiOpen) {
     return (
       <Card className={className}>
         <CardHeader>
@@ -476,6 +501,65 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
     );
   }
 
+  if (aiOpen) {
+    return (
+      <section className={`mx-auto w-full max-w-4xl space-y-5 pb-28 sm:pb-8 ${className || ''}`} aria-labelledby="patient-summary-heading">
+        <header className="space-y-3 border-b border-border pb-5">
+          <Button type="button" variant="ghost" className="-ml-3 min-h-11 gap-2" onClick={() => setAiOpen(false)}>
+            <ArrowLeft className="h-4 w-4" />
+            Voltar ao histórico
+          </Button>
+          <div>
+            <p className="text-sm font-medium text-primary">Apoio à revisão profissional</p>
+            <h1
+              id="patient-summary-heading"
+              ref={summaryHeading}
+              tabIndex={-1}
+              className="mt-1 scroll-mt-4 scroll-mb-24 text-2xl font-semibold tracking-tight text-foreground focus-visible:outline-none sm:text-3xl"
+            >
+              Resumo clínico inteligente
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Síntese gerada a partir do histórico autorizado deste paciente. Revise as informações nos registros originais antes de qualquer decisão clínica.
+            </p>
+          </div>
+        </header>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="default" onClick={() => void handleAISummary()} disabled={aiLoading}>
+            {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            {aiSummary ? 'Gerar novamente' : 'Gerar resumo'}
+          </Button>
+          {aiSummary && <span className="text-xs text-muted-foreground">A geração mais recente está nesta sessão.</span>}
+        </div>
+
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-sm text-warning-foreground" role="note">
+          O resumo pode omitir ou interpretar incorretamente informações. Ele não substitui o prontuário nem a avaliação do profissional responsável.
+        </div>
+
+        {aiLoading ? (
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-8 text-sm text-muted-foreground" role="status" aria-live="polite">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            Analisando o histórico autorizado do paciente…
+          </div>
+        ) : aiError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm" role="alert">
+            <p className="font-medium text-foreground">Não foi possível gerar o resumo clínico.</p>
+            <p className="mt-1 text-muted-foreground">Tente novamente. Os registros do paciente continuam disponíveis no histórico.</p>
+          </div>
+        ) : aiSummary ? (
+          <article className="rounded-lg border border-border bg-card p-4 text-sm leading-7 text-foreground sm:p-6">
+            <div className="whitespace-pre-wrap">{aiSummary}</div>
+          </article>
+        ) : (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+            Este resumo não está carregado nesta sessão. Gere uma nova síntese para continuar. O conteúdo não é salvo na URL nem no navegador.
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <>
     <Card className={className}>
@@ -494,9 +578,9 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
               {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
               Exportar PDF
             </Button>
-            <Button size="sm" variant="default" onClick={handleAISummary} disabled={aiLoading}>
+            <Button ref={summaryTrigger} size="sm" variant="default" onClick={aiSummary ? openAISummary : handleAISummary} disabled={aiLoading}>
               {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              Resumo clínico IA
+              {aiSummary ? 'Ver resumo clínico' : 'Resumo clínico IA'}
             </Button>
           </div>
           <div className="relative">
@@ -602,26 +686,6 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       </CardContent>
     </Card>
 
-    <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            Resumo Clínico Inteligente
-          </DialogTitle>
-        </DialogHeader>
-        {aiLoading ? (
-          <div className="flex items-center gap-3 py-8 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Analisando histórico do paciente...
-          </div>
-        ) : (
-          <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm">
-            {aiSummary}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
     </>
   );
 }
