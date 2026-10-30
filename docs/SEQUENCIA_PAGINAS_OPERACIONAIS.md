@@ -60,4 +60,4 @@ Atualização de 30/10/2026: edição de saídas do caixa tem página própria e
 
 Atualização de 30/10/2026: o pagamento de contas a pagar tem página própria e está publicado (`66a7606`); a RPC idempotente foi preservada. Próximo alvo: auditar detalhes e ações financeiras ainda em overlays, depois conciliação e jornadas das etapas 9, 10 e 12. A conclusão integral do EloLab permanece pendente.
 
-Atualização de 30/10/2026: o detalhe/histórico de contas a receber foi migrado para uma página própria e validado; deploy pendente. Próximas tarefas financeiras serão priorizadas após nova auditoria dos overlays operacionais; as etapas 9, 10 e 12 continuam abertas, e o EloLab ainda não está integralmente concluído.
+Atualização de 30/10/2026: o detalhe/histórico de contas a receber foi migrado para página própria e publicado (`ccc8ee8`). A sequência financeira continua com auditoria da conciliação e demais operações pendentes; as etapas 9, 10 e 12 ainda exigem auditoria, e o EloLab não está integralmente concluído.

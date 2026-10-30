@@ -22,6 +22,6 @@ Os botões de recebimento e estorno encaminham às páginas existentes e mantêm
 
 ## Publicação
 
-Preencher após o deploy: commit, imagem, confirmação pública de saúde/versão e referência de rollback.
+Commit `ccc8ee894d442f6bd73cbd4141a03e25ea8b76b9`; imagem `easypanel/elolab/app:deploy-20261030-ccc8ee8`; rollback `deploy-20261030-66a7606`. O smoke isolado e o domínio público confirmaram `/healthz=ok` e o SHA integral em `/version.json`; o Swarm está com 1/1 réplica ativa. Durante a troca houve uma disputa transitória de porta host-mode, resolvida quando o Swarm convergiu. Nenhuma migration ou alteração de dados de produção.
 
 Sem migration, alteração de dados, exercício real de recebimento/estorno, validação autenticada de RLS em produção ou ensaio manual com leitor de tela.
