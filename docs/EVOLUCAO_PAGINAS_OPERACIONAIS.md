@@ -648,3 +648,15 @@ Validação: suíte Playwright de contas a pagar passou 6/6, cobrindo lista/resu
 Limites: o retorno usa o estado de navegação para manter a busca local; links diretos sem origem voltam à aba de contas a pagar. Não foi feita inspeção autenticada da página em produção, leitura de tela manual, nem revalidação real das policies/RLS; produção foi conferida por SHA, saúde e estado do Swarm. O escopo não completa caixa, conciliação, pagamento/estorno, repasses, faturamento ou glosas.
 
 Publicação: commit `d9a12f6c25d72b6a80e12f321fd46678aedea39e`, imagem `easypanel/elolab/app:deploy-20261030-d9a12f6c`. Swarm concluiu com 1/1 réplica; `/version.json` confirmou o SHA integral e `/healthz` respondeu `ok`. Fonte anterior preservada em `/etc/easypanel/projects/elolab/app/code.before-d9a12f6c`; `.env` copiado e comparado sem leitura/exposição. Rollback imediato: `deploy-20261030-2208fb50`. Nenhuma migration ou alteração de dados de produção.
+
+## Financeiro — criação de receita em página própria (30/10/2026)
+
+Diagnóstico: o cadastro de receita ocupava um diálogo comprido sobre a lista. O bloqueio da tela escondia contexto e o formulário ficava apertado em dispositivos menores.
+
+Implementação: `/contas/receber/nova` agora é uma página protegida para admin/financeiro. Preserva campos, validações e payload de `lancamentos`, incluindo associação opcional ao paciente. A volta mantém aba, filtros e busca; falhas mantêm o rascunho, e alterações não salvas pedem confirmação. Permanecem os diálogos curtos de recebimento e estorno, que confirmam operações transacionais existentes. Sem alteração de contrato, RLS, migration ou dado financeiro real.
+
+Validação: Playwright passou 6/6 na suíte de recebíveis: lista, estados vazio/carregando/erro, nova rota, restauração dos filtros, seleção de paciente, erro e nova tentativa com payload preservado, descarte protegido e ausência de gravações fora dos mocks. TypeScript, `npm run check:a11y`, build e `git diff --check` passaram. ESLint: zero erros e 27 avisos (`any` e dependências de hooks) no arquivo. Inspecionei capturas renderizadas mobile (390 px), tablet (768 px) e desktop (1440 px); sem modal e sem transbordamento horizontal, com ação de salvar acima da navegação móvel.
+
+Limites: operações de banco foram simuladas; não houve gravação financeira real, validação autenticada do fluxo em produção ou leitura manual com leitor de tela.
+
+Publicação: commit `f7000e16890e9aca743eeed56445686fea1e13e7`, imagem `easypanel/elolab/app:deploy-20261030-f7000e1`. Swarm confirmou 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o SHA integral. Fonte anterior preservada em `code.before-f7000e1`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-d9a12f6c`. Nenhuma migration ou alteração de dados de produção.
