@@ -660,3 +660,14 @@ Validação: Playwright passou 6/6 na suíte de recebíveis: lista, estados vazi
 Limites: operações de banco foram simuladas; não houve gravação financeira real, validação autenticada do fluxo em produção ou leitura manual com leitor de tela.
 
 Publicação: commit `f7000e16890e9aca743eeed56445686fea1e13e7`, imagem `easypanel/elolab/app:deploy-20261030-f7000e1`. Swarm confirmou 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o SHA integral. Fonte anterior preservada em `code.before-f7000e1`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-d9a12f6c`. Nenhuma migration ou alteração de dados de produção.
+## Financeiro — recebimento em página própria (30/10/2026)
+
+Diagnóstico: recebimentos parciais eram registrados em um modal sobre a listagem, apesar de exigirem conferência do saldo anterior, ajustes, forma de pagamento, integração opcional com Mercado Pago Point e tratamento de resposta incerta.
+
+Implementação: `/contas/receber/:lancamentoId/recebimento` abre uma tela protegida para admin/financeiro, valida saldo/estado da conta e mostra valor original, pagamentos anteriores e vencimento. Mantém pagamento parcial, desconto, acréscimo, observações, integração Point e a RPC `registrar_pagamento` com a mesma chave de idempotência. Falha explícita permite correção sem perder os dados; resposta incerta bloqueia edição/saída e exige repetir a mesma tentativa. Retornar restaura busca e filtros; o breadcrumb não expõe o ID. O modal foi removido. Nenhuma regra, RPC, contrato, migration, permissão ou operação real foi alterada.
+
+Validação: suíte Playwright de recebíveis passou 8/8, incluindo navegação, retorno com filtro, ausência de modal, valores/payload, falha e repetição com a mesma chave, guarda contra descarte, estados vazio/carregando/erro. TypeScript, acessibilidade, build e `git diff --check` passaram. ESLint: zero erros e 28 avisos no arquivo (`any` e dependências de hooks). Inspecionei capturas mobile (390 px) e desktop (1440 px); o botão de confirmação fica acima da navegação móvel e não há transbordamento horizontal. Banco e terminal foram simulados; sem gravação de pagamento real.
+
+Limites: não houve teste manual com leitor de tela, validação de RLS nem uso autenticado da página em produção. As capturas da tela inicial e das ações foram geradas com conta sintética.
+
+Publicação: commit `6280cc336c9d921fd8da1c9a6598cb2b147712ca`, imagem `easypanel/elolab/app:deploy-20261030-6280cc33`. Swarm confirmou 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o SHA integral. Fonte anterior preservada em `code.before-6280cc33`; `.env` copiado e comparado sem leitura ou exposição. Rollback imediato: `deploy-20261030-f7000e1`. Nenhuma migration ou alteração de dados de produção.
