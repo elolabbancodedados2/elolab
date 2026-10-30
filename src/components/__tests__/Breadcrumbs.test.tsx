@@ -163,6 +163,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(versionId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(versionId))).toBe(false);
   });
+  it('omite o identificador da conta no histórico do lançamento', () => {
+    const accountId = '00000000-0000-4000-9000-000000000092';
+    render(<MemoryRouter initialEntries={[`/contas/pagar/${accountId}/historico`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Histórico do lançamento')).toBeInTheDocument();
+    expect(screen.queryByText(accountId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(accountId))).toBe(false);
+  });
   it('exibe o nome correto da Central de Notificações', () => {
     render(
       <MemoryRouter initialEntries={['/notificacoes']}>

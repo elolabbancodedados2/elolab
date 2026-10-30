@@ -570,7 +570,7 @@ export default function ContasPagar() {
                         </Badge>
                       </TableCell>
                       <TableCell className="space-x-1 whitespace-nowrap text-right">
-                        <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} />
+                        <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} restoreSearchTerm={searchTerm} />
                         {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
                           <Button size="sm" onClick={() => handlePagamento(conta.id)}
                             className="h-9 gap-1 text-xs">

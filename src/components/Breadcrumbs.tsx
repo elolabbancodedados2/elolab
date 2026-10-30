@@ -20,6 +20,7 @@ export function Breadcrumbs() {
         const label = getRouteLabel(path);
         const emailModels = path === '/todos-templates' && location.pathname.startsWith('/todos-templates/email/');
         const isLast = index === segments.length - 1;
+        if (!isLast && /^\/contas\/pagar\/[^/]+$/.test(path)) return null;
         if (!isLast && path === '/admin/ia/versoes') return null;
         if (!isLast && path === '/configuracoes/integracoes/conectar') return null;
         if (!isLast && /^\/pacientes\/[^/]+\/portal(?:\/link)?$/.test(path) && location.pathname.endsWith('/portal/link')) return null;

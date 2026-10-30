@@ -968,3 +968,9 @@ Publicado no commit `53237b4f284ca78037c6c5c8486fdea10cf5258e`, imagem `easypane
 O modal global de anúncio “EloLab 2.0” foi removido porque duplicava a faixa de atualização já exibida no topo e bloqueava a primeira navegação de algumas contas. A faixa permanece antes do menu e das páginas, sem precisar de um estado de “já visto”. Playwright 1/1, TypeScript, acessibilidade, ESLint focal, build e inspeção visual mobile/desktop passaram; o restante do dashboard continua acessível. Registro: [aviso de atualização sem modal](EVOLUCAO_AVISO_ATUALIZACAO_FAIXA.md).
 
 Publicado no commit `3158637e5c22f6b46e1c88c81d2529b72fd4279c`, imagem `easypanel/elolab/app:deploy-20261030-3158637`; rollback `deploy-20261030-53237b4`. Smoke isolado, `/healthz`, SHA nos dois domínios e Swarm 1/1 confirmados; hash do `.env` permaneceu igual.
+
+## Financeiro — histórico de contas a pagar em página própria
+
+O histórico de alterações saiu do diálogo da lista e passou a `/contas/pagar/:lancamentoId/historico`, com resumo do registro, tabela de auditoria e estados de carregamento, erro com nova tentativa e ausência de alterações. A página só chama a RPC existente após confirmar que a conta é uma despesa da clínica ativa. Perfis autorizados, escopo financeiro e dados não foram alterados. O retorno preserva a URL, busca e filtros. Playwright sintético 3/3, Vitest relacionado 38/38, TypeScript, acessibilidade, permissões, falhas silenciosas, colunas e build passaram; capturas desktop/mobile foram inspecionadas. Nenhuma gravação real foi feita. Detalhes: [histórico de contas a pagar](EVOLUCAO_HISTORICO_LANCAMENTO_PAGINA.md).
+
+Publicação pendente de smoke, verificação dos dois domínios, SHA, Swarm e hash do `.env`.

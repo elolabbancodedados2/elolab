@@ -80,6 +80,7 @@ const labelsByPath: Record<string, string> = {
   '/recepcao/encaixe': 'Encaixe sem agendamento',
   '/financeiro': 'Financeiro',
   '/contas': 'Contas a receber e a pagar',
+  '/contas/pagar': 'Contas a pagar',
   '/contas/receber/nova': 'Nova receita',
   '/contas/pagar/nova': 'Nova conta a pagar',
   '/fluxo-caixa': 'Fluxo de caixa',
@@ -158,6 +159,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/contas\/pagar\/[^/]+\/historico$/.test(pathname)) return 'Histórico do lançamento';
   if (/^\/admin\/ia\/versoes\/[^/]+$/.test(pathname)) return 'Versão do prompt';
   if (/^\/configuracoes\/integracoes\/conectar\/[^/]+$/.test(pathname)) return 'Conectar integração';
   if (pathname === '/admin/cobrancas/reconciliar') return 'Cobrança divergente';
