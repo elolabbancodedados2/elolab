@@ -37,4 +37,4 @@ No workspace de evolução, a busca/aplicação de protocolos e a prévia do rel
 
 ## Publicação
 
-Pendente do commit de release e smoke test de produção.
+Commit `8245ac704f156228786d8ae11b39f64640515e5c`; imagem `easypanel/elolab/app:deploy-20261030-8245ac7`. O arquivo versionado foi transferido e comparado por SHA-256 local/remoto; build Docker e smoke isolado passaram. O Swarm convergiu para 1/1 réplica e `/healthz` público respondeu `ok`; `/version.json` confirmou o SHA integral. O rollout registrou uma contenção transitória de porta host-mode antes de convergir, sem rollback. Imagem de rollback preservada: `easypanel/elolab/app:deploy-20261030-53dc694`. Nenhuma migration, alteração de configuração do Supabase ou gravação em dados de produção.
