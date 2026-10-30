@@ -141,6 +141,7 @@ export function getRouteLabel(pathname: string): string {
   if (pathname === '/fluxo-caixa/extrato') return 'Importar extrato bancário';
   if (pathname === '/faturamento-convenios/lotes/novo') return 'Novo lote TISS';
   if (/^\/faturamento-convenios\/lotes\/[^/]+\/retorno$/.test(pathname)) return 'Registrar retorno do lote';
+  if (pathname === '/faturamento-convenios/glosas/nova') return 'Registrar glosa';
   if (/^\/repasses-medicos\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento de repasse';
   if (/^\/pacientes\/[^/]+\/consentimentos\/novo$/.test(pathname)) return 'Novo consentimento';
   if (/^\/pacientes\/[^/]+\/consentimentos\/[^/]+\/revogar$/.test(pathname)) return 'Revogar consentimento';

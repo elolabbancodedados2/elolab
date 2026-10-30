@@ -21,6 +21,11 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(lotId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(lotId))).toBe(false);
   });
+  it('labels the dedicated TISS glosa form', () => {
+    render(<MemoryRouter initialEntries={['/faturamento-convenios/glosas/nova']}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Registrar glosa')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Faturamento de convênios' })).toHaveAttribute('href', '/faturamento-convenios');
+  });
   it.each([
     '/exames/laboratorios/record-qa/editar',
     '/gestao-fluxo/salas/record-qa/editar',

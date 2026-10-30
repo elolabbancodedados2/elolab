@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
@@ -71,13 +70,11 @@ export default function FaturamentoConvenios() {
   const { profile } = useSupabaseAuth();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const [glosaOpen, setGlosaOpen] = useState(false);
   const [glosaParaRecurso, setGlosaParaRecurso] = useState<any | null>(null);
   const [glosaParaRetorno, setGlosaParaRetorno] = useState<any | null>(null);
   const [decisaoOperadora, setDecisaoOperadora] = useState<'aceita' | 'mantida'>('aceita');
   const [valorRecuperado, setValorRecuperado] = useState('');
   const [loteParaConfirmarEnvio, setLoteParaConfirmarEnvio] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
   const [loteEnviandoId, setLoteEnviandoId] = useState<string | null>(null);
   const [glosaAtualizandoId, setGlosaAtualizandoId] = useState<string | null>(null);
   const glosaAtualizacaoLock = useRef(false);
@@ -87,8 +84,6 @@ export default function FaturamentoConvenios() {
   const [statusLote, setStatusLote] = useState(filtrosRestaurados?.statusLote ?? 'todos');
   const [buscaGlosa, setBuscaGlosa] = useState(filtrosRestaurados?.buscaGlosa ?? '');
   const [statusGlosa, setStatusGlosa] = useState(filtrosRestaurados?.statusGlosa ?? 'todos');
-  const [glosaForm, setGlosaForm] = useState({ lote_id: '', codigo_glosa: '', motivo: '', guia_referencia: '', valor_glosado: 0 });
-  const [chaveGlosa, setChaveGlosa] = useState<string | null>(null);
 
   const conveniosQuery = useQuery({ queryKey: ['convenios-faturamento', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
     const { data, error } = await supabase.from('convenios').select('id,nome,versao_tiss').eq('clinica_id', profile?.clinica_id ?? '').eq('ativo', true).order('nome');
@@ -149,13 +144,6 @@ export default function FaturamentoConvenios() {
   // Lote antigo, sem guias, segue o fluxo agregado: o banco também só bloqueia lotes com guias.
   const envioBloqueado = (loteId: string) => (guiasPorLote.get(loteId)?.length ?? 0) > 0 && bloqueiaEnvio(pendenciasPorLote.get(loteId) ?? []);
   const [loteGuias, setLoteGuias] = useState<any | null>(null);
-  const loteGlosaSelecionado = lotes.find((lote: any) => lote.id === glosaForm.lote_id);
-  const totalGlosadoNoLote = glosas
-    .filter((glosa: any) => glosa.lote_id === glosaForm.lote_id && glosa.status !== 'cancelada')
-    .reduce((total: number, glosa: any) => total + Number(glosa.valor_glosado || 0), 0);
-  const saldoGlosaDisponivel = loteGlosaSelecionado
-    ? Math.max(0, Number((Number(loteGlosaSelecionado.valor_apresentado || 0) - totalGlosadoNoLote).toFixed(2)))
-    : null;
   const consultasAtingiramLimite = lotes.length >= LIMITE_BUSCA_EM_BLOCOS
     || glosas.length >= LIMITE_BUSCA_EM_BLOCOS;
   const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading || guiasQuery.isLoading || autorizacoesQuery.isLoading;
@@ -194,49 +182,6 @@ export default function FaturamentoConvenios() {
   const filtroGlosaAtivo = !!buscaGlosa.trim() || statusGlosa !== 'todos';
   const atualizando = conveniosQuery.isFetching || lotesQuery.isFetching || glosasQuery.isFetching;
   const atualizarTudo = () => { void conveniosQuery.refetch(); void lotesQuery.refetch(); void glosasQuery.refetch(); };
-
-  async function saveGlosa() {
-    if (!profile?.clinica_id) return toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
-    if (!glosaForm.lote_id || !glosaForm.codigo_glosa.trim() || !glosaForm.motivo.trim() || glosaForm.valor_glosado <= 0) return toast.error('Preencha lote, código, motivo e valor da glosa.');
-    if (![glosaForm.codigo_glosa, glosaForm.motivo].every(value => value.trim())) return toast.error('Informe o código e o motivo da glosa.');
-    if (!Number.isFinite(glosaForm.valor_glosado) || glosaForm.valor_glosado <= 0) return toast.error('Informe um valor de glosa maior que zero.');
-    if (!temNoMaximoDuasCasas(glosaForm.valor_glosado)) return toast.error('O valor da glosa deve ter no máximo duas casas decimais.');
-    const loteSelecionado: any = lotes.find((lote: any) => lote.id === glosaForm.lote_id);
-    if (!loteSelecionado) return toast.error('O lote selecionado não está mais disponível. Atualize a tela e tente novamente.');
-    if (!['enviado', 'processando', 'pago_parcial', 'pago'].includes(loteSelecionado.status)) {
-      return toast.error('A glosa só pode ser registrada depois que o lote for enviado à operadora.');
-    }
-    const totalJaGlosado = glosas
-      .filter((glosa: any) => glosa.lote_id === loteSelecionado.id && glosa.status !== 'cancelada')
-      .reduce((total: number, glosa: any) => total + Number(glosa.valor_glosado || 0), 0);
-    const saldoDisponivel = Math.max(0, Number((Number(loteSelecionado.valor_apresentado || 0) - totalJaGlosado).toFixed(2)));
-    if (glosaForm.valor_glosado > saldoDisponivel) {
-      return toast.error('O valor ultrapassa o saldo disponível para glosas neste lote.', {
-        description: `Saldo disponível: ${brl(saldoDisponivel)}. Atualize os dados do lote e tente novamente.`,
-      });
-    }
-    setSaving(true);
-    try {
-      const { data, error } = await (supabase as any).rpc('registrar_glosa_convenio', {
-        p_lote_id: glosaForm.lote_id,
-        p_codigo_glosa: glosaForm.codigo_glosa.trim(),
-        p_motivo: glosaForm.motivo.trim(),
-        p_guia_referencia: glosaForm.guia_referencia.trim() || null,
-        p_valor_glosado: Number(glosaForm.valor_glosado.toFixed(2)),
-        p_chave_idempotencia: chaveGlosa,
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error('O banco não confirmou o registro da glosa.');
-      setGlosaOpen(false);
-      setGlosaForm({ lote_id: '', codigo_glosa: '', motivo: '', guia_referencia: '', valor_glosado: 0 });
-      setChaveGlosa(null);
-      await queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] });
-      if (data.repetido) toast.info('Esta glosa já havia sido registrada. Nenhuma duplicata foi criada.');
-      else toast.success('Glosa registrada.');
-    } catch (error: any) {
-      toast.error('Não foi possível registrar a glosa.', { description: error?.message });
-    } finally { setSaving(false); }
-  }
 
   async function updateLot(id: string): Promise<boolean> {
     if (loteEnviandoId) return false;
@@ -317,12 +262,6 @@ export default function FaturamentoConvenios() {
     const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' })); const a = document.createElement('a'); a.href = url; a.download = `resumo-operacional-lote-${lote.numero_lote}.xml`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function abrirRegistroGlosa() {
-    setGlosaForm({ lote_id: '', codigo_glosa: '', motivo: '', guia_referencia: '', valor_glosado: 0 });
-    setChaveGlosa(crypto.randomUUID());
-    setGlosaOpen(true);
-  }
-
   if (conveniosQuery.isError) return <ErrorState title="Não foi possível carregar os convênios" error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />;
   if (lotesQuery.isError) return <ErrorState title="Não foi possível carregar os lotes TISS" error={lotesQuery.error} onRetry={() => void lotesQuery.refetch()} />;
   if (guiasQuery.isError) return <ErrorState title="Não foi possível carregar as guias dos lotes" error={guiasQuery.error} onRetry={() => void guiasQuery.refetch()} />;
@@ -342,7 +281,9 @@ export default function FaturamentoConvenios() {
           <Button aria-label="Atualizar faturamento" variant="outline" size="icon" className="rounded-full" onClick={atualizarTudo} disabled={atualizando}>
             <RefreshCw className={cn('h-4 w-4', atualizando && 'animate-spin')} />
           </Button>
-          <Button variant="outline" onClick={abrirRegistroGlosa} disabled={lotesParaRegistrarGlosa.length === 0} className="gap-2 rounded-full disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" title={lotesParaRegistrarGlosa.length === 0 ? 'Envie um lote antes de registrar uma glosa' : undefined}><AlertTriangle className="h-4 w-4" />Registrar glosa</Button>
+          {lotesParaRegistrarGlosa.length > 0
+            ? <Button asChild variant="outline" className="gap-2 rounded-full"><Link to="/faturamento-convenios/glosas/nova" state={{ filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } }}><AlertTriangle className="h-4 w-4" />Registrar glosa</Link></Button>
+            : <Button variant="outline" disabled className="gap-2 rounded-full disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" title="Envie um lote antes de registrar uma glosa"><AlertTriangle className="h-4 w-4" />Registrar glosa</Button>}
           {convenios.length > 0
             ? <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Link to="/faturamento-convenios/lotes/novo" state={{ filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } }}><Plus className="h-4 w-4" />Novo lote</Link></Button>
             : <Button disabled className="gap-2 rounded-full bg-gradient-primary text-white shadow-md disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"><Plus className="h-4 w-4" />Novo lote</Button>}
@@ -452,41 +393,6 @@ export default function FaturamentoConvenios() {
       </AlertDialogContent>
     </AlertDialog>
 
-    <Dialog open={glosaOpen} onOpenChange={open => { if (!saving) setGlosaOpen(open); }}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Registrar glosa</DialogTitle></DialogHeader>
-        <fieldset disabled={saving} className="contents">
-          <div className="space-y-3">
-            <Field label="Lote">
-              <Select value={glosaForm.lote_id} onValueChange={v => setGlosaForm(f => ({ ...f, lote_id: v, valor_glosado: 0 }))}>
-              <SelectTrigger aria-label="Lote"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{lotesParaRegistrarGlosa.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.numero_lote} · {l.convenios?.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-            {saldoGlosaDisponivel !== null && (
-              <p className="text-xs text-muted-foreground" role="status">
-                Saldo disponível para novas glosas: <span className="font-medium">{brl(saldoGlosaDisponivel)}</span>
-                {saldoGlosaDisponivel === 0 && ' · O valor apresentado deste lote já foi totalmente glosado.'}
-              </p>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Código da glosa"><Input value={glosaForm.codigo_glosa} onChange={e => setGlosaForm(f => ({ ...f, codigo_glosa: e.target.value }))} /></Field>
-              <Field label="Guia de referência"><Input value={glosaForm.guia_referencia} onChange={e => setGlosaForm(f => ({ ...f, guia_referencia: e.target.value }))} /></Field>
-            </div>
-            <Field label="Valor glosado">
-              <Input type="number" min="0.01" max={saldoGlosaDisponivel ?? undefined} step="0.01" value={glosaForm.valor_glosado || ''} onChange={e => setGlosaForm(f => ({ ...f, valor_glosado: Number(e.target.value) || 0 }))} />
-            </Field>
-            <Field label="Motivo"><Textarea value={glosaForm.motivo} onChange={e => setGlosaForm(f => ({ ...f, motivo: e.target.value }))} /></Field>
-          </div>
-        </fieldset>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setGlosaOpen(false)} disabled={saving}>Cancelar</Button>
-          <Button onClick={saveGlosa} disabled={saving || lotesParaRegistrarGlosa.length === 0 || saldoGlosaDisponivel === 0}>
-            {saving && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Registrar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
     {profile?.clinica_id && <RecursoGlosaDialog glosa={glosaParaRecurso} clinicaId={profile.clinica_id} responsaveis={responsaveisQuery.data ?? []} documentos={glosaParaRecurso ? documentosPorGlosa.get(glosaParaRecurso.id) ?? [] : []} salvarJustificativa={(id, justificativa) => updateGlosa(id, 'recurso_preparacao', { recurso_justificativa: justificativa })} onClose={() => setGlosaParaRecurso(null)} onChanged={() => Promise.all([queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] }), queryClient.invalidateQueries({ queryKey: ['glosa-recurso-documentos'] })])} />}
     <Dialog open={!!glosaParaRetorno} onOpenChange={open => { if (!open && glosaAtualizandoId === null) setGlosaParaRetorno(null); }}><DialogContent><DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRetorno?.codigo_glosa} · valor original {brl(Number(glosaParaRetorno?.valor_glosado || 0))}</p><Field label="Decisão"><Select value={decisaoOperadora} disabled={glosaAtualizandoId !== null} onValueChange={value=>setDecisaoOperadora(value as 'aceita' | 'mantida')}><SelectTrigger aria-label="Decisão"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aceita">Recurso aceito</SelectItem><SelectItem value="mantida">Glosa mantida</SelectItem></SelectContent></Select></Field>{decisaoOperadora === 'aceita' && <Field label="Valor recuperado"><Input type="number" min="0" max={glosaParaRetorno?.valor_glosado || 0} step="0.01" disabled={glosaAtualizandoId !== null} value={valorRecuperado} onChange={e=>setValorRecuperado(e.target.value)} /></Field>}<DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRetorno(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarRetornoOperadora} disabled={glosaAtualizandoId !== null}>{glosaAtualizandoId === glosaParaRetorno?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Registrar decisão</Button></DialogFooter></DialogContent></Dialog>
   </div>;
