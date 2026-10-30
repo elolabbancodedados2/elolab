@@ -4,6 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 
 describe('Breadcrumbs', () => {
+  it('keeps the cash flow as the parent of bank statement import', () => {
+    render(<MemoryRouter initialEntries={['/fluxo-caixa/extrato?mes=2026-10']}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Importar extrato bancário')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Fluxo de caixa' })).toHaveAttribute('href', '/fluxo-caixa');
+  });
   it.each([
     '/exames/laboratorios/record-qa/editar',
     '/gestao-fluxo/salas/record-qa/editar',

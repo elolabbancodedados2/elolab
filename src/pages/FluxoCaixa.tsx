@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  FileUp,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -46,7 +47,6 @@ import {
   parseFinanceMonth,
 } from '@/lib/financeRouteState';
 import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
-import { ImportarExtratoDialog } from '@/components/financeiro/ImportarExtratoDialog';
 import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
@@ -320,7 +320,7 @@ export default function FluxoCaixa() {
             <Button variant="outline" asChild className="shrink-0 rounded-full">
               <Link to={`/financeiro?mes=${formatFinanceMonth(currentDate)}&tab=resumo`}>Visão financeira</Link>
             </Button>
-            {profile?.clinica_id && <ImportarExtratoDialog clinicaId={profile.clinica_id} lancamentos={lancamentos} />}
+            {profile?.clinica_id && <Button variant="outline" asChild className="shrink-0 rounded-full"><Link to={`/fluxo-caixa/extrato?mes=${formatFinanceMonth(currentDate)}`}><FileUp className="mr-2 h-4 w-4" />Importar extrato</Link></Button>}
             <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
               <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-primary hover:bg-primary/10" onClick={handlePrevMonth}>
                 <ChevronLeft className="h-4 w-4" />

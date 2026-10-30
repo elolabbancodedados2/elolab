@@ -148,6 +148,7 @@ const VerificarAssinatura = lazy(() => import("@/pages/VerificarAssinatura"));
 const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const RepassePagamentoPage = lazy(() => import("@/pages/RepassePagamentoPage"));
+const BankStatementImportPage = lazy(() => import("@/pages/BankStatementImportPage"));
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
 const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
@@ -399,6 +400,7 @@ function AppRoutes() {
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas-receber" element={<Navigate to="/contas?tab=receber" replace />} />
                           <Route path="/contas-pagar" element={<Navigate to="/contas?tab=pagar" replace />} />
+                          <Route path="/fluxo-caixa/extrato" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><BankStatementImportPage /></SupabaseProtectedRoute>} />
                           <Route path="/fluxo-caixa" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FluxoCaixa /></SupabaseProtectedRoute>} />
                           {/* A tela legada usava pagamentos_mercadopago (checkout online),
                               enquanto o financeiro da clínica usa Contas + pagamentos.

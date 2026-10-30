@@ -138,6 +138,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (pathname === '/fluxo-caixa/extrato') return 'Importar extrato bancário';
   if (/^\/repasses-medicos\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento de repasse';
   if (/^\/pacientes\/[^/]+\/consentimentos\/novo$/.test(pathname)) return 'Novo consentimento';
   if (/^\/pacientes\/[^/]+\/consentimentos\/[^/]+\/revogar$/.test(pathname)) return 'Revogar consentimento';
