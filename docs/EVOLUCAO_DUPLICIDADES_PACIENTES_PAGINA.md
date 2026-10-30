@@ -34,3 +34,7 @@ A revisão de pares duplicados ocorria em um diálogo de até 90% da janela. A m
 ## Validação
 
 Vitest 3/3 e Playwright 3/3 passaram. Os cenários cobriram entrada pela lista e retorno, comparação de campos, confirmação explícita antes da RPC e tamanhos 1440 px/390 px. `npx tsc --noEmit --pretty false`, build de produção, `npm run check:a11y`, `npm run check:permissoes`, `npm run check:falhas`, `npm run check:colunas` e `git diff --check` passaram. ESLint sem erros ou avisos novos; os 54 avisos `any` existentes em `Pacientes.tsx` permanecem. Inspecionei capturas renderizadas desktop e mobile, incluindo os estados de comparação e confirmação. No celular, a ação final continua acima da navegação inferior e não há transbordamento horizontal. Nenhuma mesclagem ou descarte real foi feito.
+
+## Publicação
+
+Commit `4947716876a1cd8c5e48f991014c62d962653009`, imagem `easypanel/elolab/app:deploy-20261030-4947716`, rollback `deploy-20261030-9f987a7`. Container isolado, `/healthz` público, SHA integral em `/version.json` e Swarm 1/1 confirmados. A troca teve contenção transitória de porta host-mode, resolvida sem rollback. O código-fonte anterior foi preservado em `code.before-20261030-4947716`; `.env` foi comparado por hash sem leitura ou exposição. Nenhuma migration, mesclagem ou descarte em produção.
