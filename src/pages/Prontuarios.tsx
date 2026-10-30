@@ -838,12 +838,44 @@ export default function Prontuarios() {
   const routeAgendamentoId = searchParams.get('agendamento');
   const routeProntuarioId = searchParams.get('prontuario');
   const routeNovaEvolucao = searchParams.get('nova') === '1';
+  const exportWorkflow = searchParams.get('workflow') === 'proteger-exportacao';
+  const exportTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const exportWorkflowWasOpenRef = useRef(false);
   const secaoProntuarioParam = searchParams.get('secao');
   const secaoProntuario = ['anamnese', 'exame', 'diagnostico', 'conduta', 'prescricao', 'anexos', 'historico', 'adendos', 'auditoria'].includes(secaoProntuarioParam || '')
     ? secaoProntuarioParam!
     : 'anamnese';
   const telaProntuario = searchParams.get('tela');
   const routeAnexoId = searchParams.get('anexo');
+  useEffect(() => {
+    if (exportWorkflow) {
+      exportWorkflowWasOpenRef.current = true;
+      return;
+    }
+    if (!exportWorkflowWasOpenRef.current) return;
+    exportWorkflowWasOpenRef.current = false;
+    setExportacaoPendente(null);
+    window.requestAnimationFrame(() => {
+      const trigger = exportTriggerRef.current;
+      if (trigger) trigger.focus();
+      else document.getElementById('main-content')?.focus({ preventScroll: true });
+    });
+  }, [exportWorkflow]);
+  const abrirExportacaoProtegida = (
+    arquivo: { conteudo: string; nomeArquivo: string; tipo: 'application/json' | 'application/xml'; formato: 'FHIR R4 JSON' | 'XML clínico simplificado'; ids: string[] },
+    trigger: HTMLButtonElement,
+  ) => {
+    exportTriggerRef.current = trigger;
+    setExportacaoPendente(arquivo);
+    const params = new URLSearchParams(searchParams);
+    params.set('workflow', 'proteger-exportacao');
+    setSearchParams(params);
+  };
+  const fecharExportacaoProtegida = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('workflow');
+    setSearchParams(params, { replace: true });
+  };
   const changeProntuarioSection = (section: string) => {
     const params = new URLSearchParams(searchParams);
     if (section === 'anamnese') params.delete('secao');
@@ -1931,6 +1963,30 @@ export default function Prontuarios() {
     prescricoes: prescricoes.filter(p => p.medicamento.trim()),
   });
 
+  if (exportWorkflow) {
+    if (!exportacaoPendente) {
+      return (
+        <section className="mx-auto w-full max-w-3xl space-y-4" data-testid="protected-export-expired">
+          <PageHeader title="Exportação não está mais disponível" description="O conteúdo clínico não é salvo no navegador nem colocado na URL." icon={<ShieldCheck />} actions={<Button variant="outline" onClick={fecharExportacaoProtegida}>Voltar ao prontuário</Button>} />
+          <p role="alert" className="rounded-md border border-warning/30 bg-warning/10 p-4 text-sm text-muted-foreground">Gere a exportação novamente para protegê-la e baixar o arquivo.</p>
+        </section>
+      );
+    }
+
+    return (
+      <ExportacaoClinicaProtegida
+        onCancel={fecharExportacaoProtegida}
+        conteudo={exportacaoPendente.conteudo}
+        nomeArquivo={exportacaoPendente.nomeArquivo}
+        tipo={exportacaoPendente.tipo}
+        onBeforeDownload={async () => {
+          try { await registrarExportacaoProntuarios(exportacaoPendente.ids, exportacaoPendente.formato); }
+          catch (error) { throw new Error(`Exportação bloqueada porque a auditoria não pôde ser registrada: ${mensagemDeErro(error)}`); }
+        }}
+      />
+    );
+  }
+
   // ─── Loading state ───────────────────────────────────────
   if (loadingMedicos || loadingProntuarios) {
     return (
@@ -2438,7 +2494,8 @@ export default function Prontuarios() {
                               <span className="text-xs font-bold">HL7 FHIR R4</span>
                             </div>
                             <p className="text-xs text-muted-foreground">Padrão internacional para interoperabilidade em saúde.</p>
-                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async () => {
+                            <Button ref={exportTriggerRef} variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async (event) => {
+                              const trigger = event.currentTarget;
                               const ids = historicoEvolucoes.map((p: any) => p.id);
                               let complementosExportacao: Awaited<ReturnType<typeof carregarDadosCompletosExportacao>>;
                               try { complementosExportacao = await carregarDadosCompletosExportacao(selectedPaciente.id, ids); }
@@ -2467,7 +2524,7 @@ export default function Prontuarios() {
                                 })),
                                 ...complementosExportacao,
                               };
-                              setExportacaoPendente({ conteudo: exportToFHIR(exportData), nomeArquivo: `prontuario-${selectedPaciente.id}`, tipo: 'application/json', formato: exportFormat, ids });
+                              abrirExportacaoProtegida({ conteudo: exportToFHIR(exportData), nomeArquivo: `prontuario-${selectedPaciente.id}`, tipo: 'application/json', formato: exportFormat, ids }, trigger);
                             }}>
                               <FileDown className="h-3.5 w-3.5" />Exportar FHIR
                             </Button>
@@ -2478,7 +2535,8 @@ export default function Prontuarios() {
                               <span className="text-xs font-bold">XML clínico simplificado</span>
                             </div>
                           <p className="text-xs text-muted-foreground">Documento XML com seções clínicas e anexos embutidos.</p>
-                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async () => {
+                            <Button ref={exportTriggerRef} variant="outline" size="sm" className="w-full gap-1.5 text-xs" disabled={loadingHistorico || !!erroHistorico} onClick={async (event) => {
+                              const trigger = event.currentTarget;
                               const ids = historicoEvolucoes.map((p: any) => p.id);
                               let complementosExportacao: Awaited<ReturnType<typeof carregarDadosCompletosExportacao>>;
                               try { complementosExportacao = await carregarDadosCompletosExportacao(selectedPaciente.id, ids); }
@@ -2506,7 +2564,7 @@ export default function Prontuarios() {
                                 })),
                                 ...complementosExportacao,
                               };
-                              setExportacaoPendente({ conteudo: exportToXML(exportData), nomeArquivo: `prontuario-${selectedPaciente.id}`, tipo: 'application/xml', formato: exportFormat, ids });
+                              abrirExportacaoProtegida({ conteudo: exportToXML(exportData), nomeArquivo: `prontuario-${selectedPaciente.id}`, tipo: 'application/xml', formato: exportFormat, ids }, trigger);
                             }}>
                               <FileDown className="h-3.5 w-3.5" />Exportar XML
                             </Button>
@@ -2531,17 +2589,6 @@ export default function Prontuarios() {
       {/* ═══════════════════════════════════════════════════════ */}
       {/* ─── Workspace do prontuário ───────────────────────── */}
       {/* ═══════════════════════════════════════════════════════ */}
-      {exportacaoPendente && <ExportacaoClinicaProtegida
-        open={Boolean(exportacaoPendente)}
-        onOpenChange={aberto => { if (!aberto) setExportacaoPendente(null); }}
-        conteudo={exportacaoPendente.conteudo}
-        nomeArquivo={exportacaoPendente.nomeArquivo}
-        tipo={exportacaoPendente.tipo}
-        onBeforeDownload={async () => {
-          try { await registrarExportacaoProntuarios(exportacaoPendente.ids, exportacaoPendente.formato); }
-          catch (error) { throw new Error(`Exportação bloqueada porque a auditoria não pôde ser registrada: ${mensagemDeErro(error)}`); }
-        }}
-      />}
       {isProntuarioOpen && <section
         data-testid="prontuario-workspace"
         aria-labelledby="prontuario-workspace-title"

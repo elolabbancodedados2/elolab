@@ -1,5 +1,5 @@
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Download, FileJson, ShieldCheck, LockKeyhole, UnlockKeyhole } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -10,14 +10,47 @@ import { Label } from '@/components/ui/label';
 import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
 import { descriptografarExportClinico } from '@/lib/clinicalExportEncryption';
 import { PageHeader } from '@/components/PageHeader';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Interoperabilidade() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pacienteId, setPacienteId] = useState('');
   const [exporting, setExporting] = useState(false);
   const [arquivoPendente, setArquivoPendente] = useState<{ conteudo: string; nomeArquivo: string; tipo: 'application/json' | 'application/xml' } | null>(null);
   const [arquivoProtegido, setArquivoProtegido] = useState<File | null>(null);
   const [senhaArquivo, setSenhaArquivo] = useState('');
   const [abrindoArquivo, setAbrindoArquivo] = useState(false);
+  const exportScreen = searchParams.get('workflow') === 'proteger-exportacao';
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasOnExportScreen = useRef(false);
+
+  useEffect(() => {
+    if (!exportScreen && wasOnExportScreen.current) {
+      wasOnExportScreen.current = false;
+      setArquivoPendente(null);
+      window.requestAnimationFrame(() => {
+        const trigger = exportTriggerRef.current;
+        if (trigger) trigger.focus();
+        else document.getElementById('main-content')?.focus({ preventScroll: true });
+      });
+    } else if (exportScreen) {
+      wasOnExportScreen.current = true;
+    }
+  }, [exportScreen]);
+
+  const abrirProtecao = (arquivo: { conteudo: string; nomeArquivo: string; tipo: 'application/json' | 'application/xml' }) => {
+    setArquivoPendente(arquivo);
+    const params = new URLSearchParams(searchParams);
+    params.set('workflow', 'proteger-exportacao');
+    setSearchParams(params);
+  };
+
+  const fecharProtecao = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('workflow');
+    setSearchParams(params, { replace: true });
+  };
+
   async function exportar() {
     if (!pacienteId) return toast.error('Selecione o paciente.');
     setExporting(true);
@@ -29,8 +62,7 @@ export default function Interoperabilidade() {
         throw new Error(bundle?.error || 'A resposta recebida não é um Bundle FHIR válido.');
       }
 
-      setArquivoPendente({ conteudo: JSON.stringify(bundle, null, 2), nomeArquivo: `fhir-${pacienteId}`, tipo: 'application/json' });
-      toast.success(`${bundle.entry.length} recurso(s) FHIR pronto(s) para criptografia.`);
+      abrirProtecao({ conteudo: JSON.stringify(bundle, null, 2), nomeArquivo: `fhir-${pacienteId}`, tipo: 'application/json' });
     } catch (error) {
       console.error('Falha ao exportar Bundle FHIR', error);
       toast.error(error instanceof Error ? error.message : 'Não foi possível exportar os dados. Tente novamente.');
@@ -62,12 +94,30 @@ export default function Interoperabilidade() {
       setAbrindoArquivo(false);
     }
   }
+
+  if (exportScreen) {
+    return <div className="space-y-5">
+      {arquivoPendente ? (
+        <ExportacaoClinicaProtegida
+          onCancel={fecharProtecao}
+          conteudo={arquivoPendente.conteudo}
+          nomeArquivo={arquivoPendente.nomeArquivo}
+          tipo={arquivoPendente.tipo}
+        />
+      ) : (
+        <section className="mx-auto w-full max-w-3xl space-y-4" data-testid="protected-export-expired">
+          <PageHeader title="Exportação não está mais disponível" description="O conteúdo clínico é mantido apenas nesta sessão e não foi incluído na URL nem salvo no navegador." icon={<ShieldCheck />} actions={<Button variant="outline" onClick={fecharProtecao}>Voltar à interoperabilidade</Button>} />
+          <p role="alert" className="rounded-md border border-warning/30 bg-warning/10 p-4 text-sm text-muted-foreground">Gere a exportação novamente para protegê-la e baixar o arquivo.</p>
+        </section>
+      )}
+    </div>;
+  }
+
   return <div className="space-y-6">
     <PageHeader title="Interoperabilidade clínica" description="Exportação segura e auditada no padrão HL7 FHIR R4." icon={<ShieldCheck />} />
-    <Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileJson className="h-4 w-4"/></span>Bundle clínico FHIR R4</CardTitle></CardHeader><CardContent className="space-y-4"><div className="max-w-xl"><label htmlFor="fhir-paciente" className="mb-1.5 block text-sm font-medium">Paciente</label><PacienteCombobox id="fhir-paciente" value={pacienteId} onChange={setPacienteId} disabled={exporting} /></div><Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={exportar} disabled={exporting || !pacienteId} aria-busy={exporting}><Download className="mr-2 h-4 w-4"/>{exporting?'Gerando…':'Exportar JSON FHIR'}</Button></CardContent></Card>
+    <Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileJson className="h-4 w-4"/></span>Bundle clínico FHIR R4</CardTitle></CardHeader><CardContent className="space-y-4"><div className="max-w-xl"><label htmlFor="fhir-paciente" className="mb-1.5 block text-sm font-medium">Paciente</label><PacienteCombobox id="fhir-paciente" value={pacienteId} onChange={setPacienteId} disabled={exporting} /></div><Button ref={exportTriggerRef} className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={exportar} disabled={exporting || !pacienteId} aria-busy={exporting}><Download className="mr-2 h-4 w-4"/>{exporting?'Gerando…':'Exportar JSON FHIR'}</Button></CardContent></Card>
     <Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><UnlockKeyhole className="h-4 w-4"/></span>Abrir arquivo clínico protegido</CardTitle></CardHeader><CardContent className="space-y-4"><p className="text-sm text-muted-foreground">Abra um arquivo .elolab recebido e salve o conteúdo original neste dispositivo. A senha é validada localmente.</p><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="arquivo-clinico-protegido">Arquivo .elolab</Label><Input id="arquivo-clinico-protegido" type="file" accept=".elolab,application/vnd.elolab.clinical-export+json" onChange={event => setArquivoProtegido(event.target.files?.[0] || null)} /></div><div className="space-y-1.5"><Label htmlFor="senha-arquivo-clinico">Senha</Label><Input id="senha-arquivo-clinico" type="password" autoComplete="off" value={senhaArquivo} onChange={event => setSenhaArquivo(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void abrirArquivoProtegido(); }} /></div></div><Button className="rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => void abrirArquivoProtegido()} disabled={!arquivoProtegido || !senhaArquivo || abrindoArquivo} aria-busy={abrindoArquivo}><LockKeyhole className="mr-2 h-4 w-4"/>{abrindoArquivo ? 'Abrindo…' : 'Descriptografar e baixar'}</Button></CardContent></Card>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[['Patient / AllergyIntolerance','Identificação, contatos e alergias'],['Encounter / Composition','Atendimentos e evoluções clínicas'],['ServiceRequest / DiagnosticReport','Solicitações de exames e laudos liberados'],['Observation / Condition / MedicationRequest','Sinais vitais, diagnósticos e prescrições']].map(([title,text])=><Card key={title} className="rounded-2xl border-border/60 shadow-xs"><CardContent className="p-4"><p className="font-medium">{title}</p><p className="text-xs text-muted-foreground">{text}</p></CardContent></Card>)}</div>
     <div role="note" className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-3 text-xs text-warning-foreground"><ShieldCheck className="h-4 w-4 shrink-0"/><span>O arquivo inclui dados pessoais (contato e endereço) e conteúdo clínico. Guarde e compartilhe somente em ambiente autorizado. Laudos anexados são incluídos por links privados temporários, válidos por 1 hora; transfira o Bundle ao destino dentro desse prazo. O CPF é omitido; a auditoria registra apenas metadados da exportação. Integrações DICOM devem usar QIDO-RS, WADO-RS e STOW-RS com um PACS configurado.</span></div>
-    {arquivoPendente && <ExportacaoClinicaProtegida open onOpenChange={open => { if (!open) setArquivoPendente(null); }} conteudo={arquivoPendente.conteudo} nomeArquivo={arquivoPendente.nomeArquivo} tipo={arquivoPendente.tipo} />}
   </div>;
 }
