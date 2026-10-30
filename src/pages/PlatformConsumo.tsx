@@ -1,12 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Building2, CheckCircle2, Gauge, Loader2, Pencil, RefreshCw, Save, Search, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, Gauge, Loader2, Pencil, RefreshCw, Save, Search, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { PageHeader } from '@/components/PageHeader';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -14,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 type Clinic = {
   clinica_id: string;
@@ -29,6 +31,7 @@ type UsageOverview = { generated_at: string; clinics: Clinic[] };
 
 type LimitForm = { clinic: Clinic; max_users: string; max_ai_tokens: string; max_notifications: string };
 type Limits = Pick<Clinic, 'max_users' | 'max_ai_tokens' | 'max_notifications'>;
+type UsageListState = { busca?: string; filtro?: UsageStatus | 'todas' };
 
 function percentage(used: number, limit: number) {
   if (limit === 0) return used > 0 ? 100 : 0;
@@ -37,6 +40,11 @@ function percentage(used: number, limit: number) {
 
 function numberLabel(value: number) {
   return Number(value || 0).toLocaleString('pt-BR');
+}
+
+function isValidLimit(value: string, minimum: number) {
+  const number = Number(value);
+  return value.trim() !== '' && Number.isSafeInteger(number) && number >= minimum && number <= 2_147_483_647;
 }
 
 type UsageStatus = 'acima' | 'perto' | 'ok';
@@ -58,10 +66,21 @@ function dateTimeLabel(value?: string) {
 
 export default function PlatformConsumo() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { clinicId } = useParams();
+  const listState = location.state as UsageListState | null;
   const [form, setForm] = useState<LimitForm | null>(null);
-  const [busca, setBusca] = useState('');
-  const [filtro, setFiltro] = useState<UsageStatus | 'todas'>('todas');
+  const [busca, setBusca] = useState(listState?.busca ?? '');
+  const [filtro, setFiltro] = useState<UsageStatus | 'todas'>(listState?.filtro ?? 'todas');
+  const [formClinicId, setFormClinicId] = useState<string | null>(null);
   const saveLock = useRef(false);
+  const completed = useRef(false);
+  const initializedClinic = useRef<string | null>(null);
+  const baseline = useRef('');
+
+  const currentListState = () => ({ busca, filtro });
+  const returnToList = () => navigate('/admin/consumo', { state: currentListState() });
 
   const usage = useQuery({
     queryKey: ['platform-usage'],
@@ -72,6 +91,43 @@ export default function PlatformConsumo() {
     },
     refetchInterval: 60_000,
   });
+
+  const clinics = usage.data?.clinics ?? [];
+  const selectedClinic = clinicId ? clinics.find(clinic => clinic.clinica_id === clinicId) ?? null : null;
+
+  useEffect(() => {
+    if (!clinicId) {
+      initializedClinic.current = null;
+      baseline.current = '';
+      completed.current = false;
+      setForm(null);
+      setFormClinicId(null);
+      return;
+    }
+    if (!usage.data || initializedClinic.current === clinicId) return;
+    initializedClinic.current = clinicId;
+    const clinic = usage.data.clinics.find(item => item.clinica_id === clinicId);
+    if (!clinic) {
+      setForm(null);
+      return;
+    }
+    const initialForm = {
+      clinic,
+      max_users: String(clinic.max_users),
+      max_ai_tokens: String(clinic.max_ai_tokens),
+      max_notifications: String(clinic.max_notifications),
+    };
+    baseline.current = JSON.stringify({ max_users: initialForm.max_users, max_ai_tokens: initialForm.max_ai_tokens, max_notifications: initialForm.max_notifications });
+    completed.current = false;
+    setForm(initialForm);
+    setFormClinicId(clinicId);
+  }, [clinicId, usage.data]);
+
+  const currentForm = JSON.stringify(form ? { max_users: form.max_users, max_ai_tokens: form.max_ai_tokens, max_notifications: form.max_notifications } : null);
+  const dirty = Boolean(clinicId && formClinicId === clinicId && baseline.current !== currentForm);
+  const openEditor = (clinic: Clinic) => {
+    navigate(`/admin/consumo/${encodeURIComponent(clinic.clinica_id)}/limites`, { state: currentListState() });
+  };
 
   const saveLimits = useMutation({
     mutationFn: async (values: Limits & { clinica_id: string }) => {
@@ -84,9 +140,10 @@ export default function PlatformConsumo() {
       if (error) throw error;
     },
     onSuccess: () => {
-      setForm(null);
+      completed.current = true;
       toast.success('Limites atualizados.');
       void queryClient.invalidateQueries({ queryKey: ['platform-usage'] });
+      returnToList();
     },
     onError: (error) => toast.error('Não foi possível salvar os limites.', { description: mensagemDeErro(error) }),
     onSettled: () => { saveLock.current = false; },
@@ -97,23 +154,13 @@ export default function PlatformConsumo() {
     max_ai_tokens: Number(form.max_ai_tokens),
     max_notifications: Number(form.max_notifications),
   } : null;
-  const formValid = !!parsed && !!form?.max_users.trim() && !!form.max_ai_tokens.trim() && !!form.max_notifications.trim() &&
-    Number.isSafeInteger(parsed.max_users) && parsed.max_users >= 1 &&
-    Number.isSafeInteger(parsed.max_ai_tokens) && parsed.max_ai_tokens >= 0 &&
-    Number.isSafeInteger(parsed.max_notifications) && parsed.max_notifications >= 0 &&
-    Object.values(parsed).every((value) => value <= 2_147_483_647);
-  const limitsBelowUsage = form && parsed ? [
-    parsed.max_users < form.clinic.users_used ? 'assentos de usuários' : null,
-    parsed.max_ai_tokens < form.clinic.ai_tokens_used ? 'tokens de IA do mês' : null,
-    parsed.max_notifications < form.clinic.notifications_used ? 'notificações do mês' : null,
+  const formValid = !!form && !!parsed && isValidLimit(form.max_users, 1) && isValidLimit(form.max_ai_tokens, 0) && isValidLimit(form.max_notifications, 0);
+  const usageForForm = clinicId && selectedClinic ? selectedClinic : form?.clinic;
+  const limitsBelowUsage = form && parsed && usageForForm ? [
+    parsed.max_users < usageForForm.users_used ? 'assentos de usuários' : null,
+    parsed.max_ai_tokens < usageForForm.ai_tokens_used ? 'tokens de IA do mês' : null,
+    parsed.max_notifications < usageForForm.notifications_used ? 'notificações do mês' : null,
   ].filter((item): item is string => item !== null) : [];
-
-  const openEditor = (clinic: Clinic) => setForm({
-    clinic,
-    max_users: String(clinic.max_users),
-    max_ai_tokens: String(clinic.max_ai_tokens),
-    max_notifications: String(clinic.max_notifications),
-  });
 
   const editField = (field: keyof Limits, value: string) => setForm((current) => current ? { ...current, [field]: value } : current);
   const save = () => {
@@ -121,7 +168,6 @@ export default function PlatformConsumo() {
     saveLock.current = true;
     saveLimits.mutate({ clinica_id: form.clinic.clinica_id, ...parsed });
   };
-  const clinics = usage.data?.clinics ?? [];
   const counts = clinics.reduce((acc, clinic) => ({ ...acc, [usageStatus(clinic)]: acc[usageStatus(clinic)] + 1 }), { acima: 0, perto: 0, ok: 0 } as Record<UsageStatus, number>);
   const termo = busca.trim().toLocaleLowerCase('pt-BR');
   const visibleClinics = clinics.filter((clinic) =>
@@ -152,6 +198,82 @@ export default function PlatformConsumo() {
       </div>
     );
   };
+
+  if (clinicId) {
+    if (usage.isLoading || (selectedClinic && formClinicId !== clinicId)) {
+      return <main className="mx-auto w-full max-w-4xl space-y-5 pb-36"><PageHeader title="Limites da clínica" description="Carregando consumo e cotas atuais." icon={<Gauge />} /><Skeleton className="h-80 w-full rounded-xl" /></main>;
+    }
+    if (usage.isError) {
+      return (
+        <main className="mx-auto w-full max-w-4xl space-y-5 pb-24">
+          <PageHeader title="Limites indisponíveis" description="Não foi possível carregar os dados de consumo." icon={<Gauge />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} />
+          <Alert variant="destructive"><AlertTitle>Dados indisponíveis</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{mensagemDeErro(usage.error)}</span><Button variant="outline" size="sm" onClick={() => void usage.refetch()} disabled={usage.isFetching}>Tentar novamente</Button></AlertDescription></Alert>
+        </main>
+      );
+    }
+    if (!selectedClinic || !form) {
+      return <main className="mx-auto w-full max-w-4xl space-y-5 pb-24"><PageHeader title="Clínica não encontrada" description="Esta clínica não aparece no resumo de consumo da plataforma." icon={<Gauge />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} /></main>;
+    }
+
+    return (
+      <main className="mx-auto w-full max-w-4xl space-y-6 pb-36 sm:pb-10">
+        <UnsavedChangesGuard dirty={dirty} busy={saveLimits.isPending} completed={completed} />
+        <PageHeader
+          title="Editar limites"
+          description={`${selectedClinic.clinica_nome} · Revise o consumo atual antes de alterar as cotas.`}
+          icon={<Gauge />}
+          actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>}
+        />
+
+        <section aria-label="Consumo atual da clínica" className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div><h2 className="font-semibold">Consumo deste mês</h2><p className="mt-1 text-xs text-muted-foreground">Atualizado em {dateTimeLabel(usage.data?.generated_at)}.</p></div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void usage.refetch()} disabled={usage.isFetching} aria-label="Atualizar consumo"><RefreshCw className={cn('mr-2 h-4 w-4', usage.isFetching && 'animate-spin')} />Atualizar</Button>
+          </div>
+          <div className="grid gap-5 md:grid-cols-3">
+            <Metric label="Assentos contabilizados" used={selectedClinic.users_used} limit={selectedClinic.max_users} />
+            <Metric label="Tokens de IA" used={selectedClinic.ai_tokens_used} limit={selectedClinic.max_ai_tokens} />
+            <Metric label="Notificações" used={selectedClinic.notifications_used} limit={selectedClinic.max_notifications} />
+          </div>
+        </section>
+
+        <section aria-label="Alterar cotas da clínica" className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+          <div className="mb-5">
+            <h2 className="font-semibold">Novos limites</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Use números inteiros. O limite de usuários precisa ser pelo menos 1; tokens e notificações podem ser zerados.</p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="limit-users">Assentos de usuários</Label>
+              <Input id="limit-users" type="number" inputMode="numeric" min={1} max={2_147_483_647} step={1} value={form.max_users} onChange={(event) => editField('max_users', event.target.value)} disabled={saveLimits.isPending} aria-invalid={!isValidLimit(form.max_users, 1)} />
+              {!isValidLimit(form.max_users, 1) && <p role="alert" className="text-xs text-destructive">Informe um número inteiro entre 1 e 2.147.483.647.</p>}
+              <p className="text-xs text-muted-foreground">Contas contabilizadas: {numberLabel(selectedClinic.users_used)}. Bloquear o login não libera um assento automaticamente.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="limit-ai">Tokens de IA por mês</Label>
+              <Input id="limit-ai" type="number" inputMode="numeric" min={0} max={2_147_483_647} step={1} value={form.max_ai_tokens} onChange={(event) => editField('max_ai_tokens', event.target.value)} disabled={saveLimits.isPending} aria-invalid={!isValidLimit(form.max_ai_tokens, 0)} />
+              {!isValidLimit(form.max_ai_tokens, 0) && <p role="alert" className="text-xs text-destructive">Informe um número inteiro entre 0 e 2.147.483.647.</p>}
+              <p className="text-xs text-muted-foreground">Atualmente em uso: {numberLabel(selectedClinic.ai_tokens_used)}</p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="limit-notifications">Notificações por mês</Label>
+              <Input id="limit-notifications" type="number" inputMode="numeric" min={0} max={2_147_483_647} step={1} value={form.max_notifications} onChange={(event) => editField('max_notifications', event.target.value)} disabled={saveLimits.isPending} aria-invalid={!isValidLimit(form.max_notifications, 0)} />
+              {!isValidLimit(form.max_notifications, 0) && <p role="alert" className="text-xs text-destructive">Informe um número inteiro entre 0 e 2.147.483.647.</p>}
+              <p className="text-xs text-muted-foreground">Atualmente em uso: {numberLabel(selectedClinic.notifications_used)}</p>
+            </div>
+          </div>
+          {limitsBelowUsage.length > 0 && <Alert className="mt-5 border-warning/40 bg-warning/10 text-foreground"><AlertTriangle className="h-4 w-4 text-warning" /><AlertTitle>O limite ficará abaixo do consumo atual</AlertTitle><AlertDescription className="space-y-1"><p>Afetará: {limitsBelowUsage.join(', ')}.</p>{limitsBelowUsage.includes('assentos de usuários') && <p>A cota de assentos não é mensal. Peça ao suporte para revisar as contas contabilizadas ou o limite.</p>}{(limitsBelowUsage.includes('tokens de IA do mês') || limitsBelowUsage.includes('notificações do mês')) && <p>Cotas de IA e notificações podem bloquear novos usos até o próximo mês ou até que o limite seja ampliado.</p>}</AlertDescription></Alert>}
+          <footer className="mt-6 flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={returnToList} disabled={saveLimits.isPending}>Cancelar</Button>
+            <Button onClick={save} disabled={!formValid || saveLimits.isPending || formClinicId !== clinicId}>
+              {saveLimits.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Salvar limites
+            </Button>
+          </footer>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
@@ -259,43 +381,6 @@ export default function PlatformConsumo() {
         </CardContent></Card>
       )}
 
-      <Dialog open={!!form} onOpenChange={(open) => !open && !saveLimits.isPending && setForm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar limites</DialogTitle>
-            <DialogDescription>{form?.clinic.clinica_nome}. Valores inteiros; o limite de usuários deve ser pelo menos 1. Os outros limites podem ser zerados.</DialogDescription>
-          </DialogHeader>
-          {form && <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="limit-users">Assentos de usuários</Label>
-              <Input id="limit-users" type="number" inputMode="numeric" min={1} max={2_147_483_647} step={1} value={form.max_users} onChange={(event) => editField('max_users', event.target.value)} disabled={saveLimits.isPending} />
-              <p className="text-xs text-muted-foreground">Contas contabilizadas: {numberLabel(form.clinic.users_used)}. Bloquear o login não libera um assento automaticamente.</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="limit-ai">Tokens de IA por mês</Label>
-              <Input id="limit-ai" type="number" inputMode="numeric" min={0} max={2_147_483_647} step={1} value={form.max_ai_tokens} onChange={(event) => editField('max_ai_tokens', event.target.value)} disabled={saveLimits.isPending} />
-              <p className="text-xs text-muted-foreground">Atualmente em uso: {numberLabel(form.clinic.ai_tokens_used)}</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="limit-notifications">Notificações por mês</Label>
-              <Input id="limit-notifications" type="number" inputMode="numeric" min={0} max={2_147_483_647} step={1} value={form.max_notifications} onChange={(event) => editField('max_notifications', event.target.value)} disabled={saveLimits.isPending} />
-              <p className="text-xs text-muted-foreground">Atualmente em uso: {numberLabel(form.clinic.notifications_used)}</p>
-            </div>
-            {limitsBelowUsage.length > 0 && <div role="status" className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
-              <p>Estes limites ficam abaixo do consumo atual: {limitsBelowUsage.join(', ')}.</p>
-              {limitsBelowUsage.includes('assentos de usuários') && <p>A cota de assentos não é mensal. Bloquear o login não reduz a contagem; peça ao suporte para revisar as contas contabilizadas ou o limite.</p>}
-              {(limitsBelowUsage.includes('tokens de IA do mês') || limitsBelowUsage.includes('notificações do mês')) && <p>As cotas de IA e notificações podem bloquear novos usos até o próximo mês ou até que o limite seja ampliado.</p>}
-            </div>}
-          </div>}
-          <DialogFooter>
-            <Button variant="outline" className="min-h-11 rounded-full" onClick={() => setForm(null)} disabled={saveLimits.isPending}>Cancelar</Button>
-            <Button className="min-h-11 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={save} disabled={!formValid || saveLimits.isPending}>
-              {saveLimits.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Salvar limites
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

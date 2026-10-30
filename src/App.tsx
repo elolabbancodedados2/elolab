@@ -509,6 +509,7 @@ function AppRoutes() {
                           <Route path="/admin/incidentes" element={<SupabaseProtectedRoute somentePlataforma><PlatformIncidentes /></SupabaseProtectedRoute>} />
                           <Route path="/admin/seguranca" element={<SupabaseProtectedRoute somentePlataforma><PlatformSeguranca /></SupabaseProtectedRoute>} />
                           <Route path="/admin/consumo" element={<SupabaseProtectedRoute somentePlataforma><PlatformConsumo /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/consumo/:clinicId/limites" element={<SupabaseProtectedRoute somentePlataforma><PlatformConsumo /></SupabaseProtectedRoute>} />
                           <Route path="/admin/onboarding" element={<SupabaseProtectedRoute somentePlataforma><PlatformOnboarding /></SupabaseProtectedRoute>} />
                           <Route path="/admin/onboarding/:clinicId" element={<SupabaseProtectedRoute somentePlataforma><PlatformOnboarding /></SupabaseProtectedRoute>} />
                           <Route path="/admin/dominios" element={<SupabaseProtectedRoute somentePlataforma><PlatformDominios /></SupabaseProtectedRoute>} />

@@ -152,6 +152,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 export function getRouteLabel(pathname: string): string {
   if (/^\/treinamento\/[^/]+$/.test(pathname)) return 'Etapa do treinamento';
   if (/^\/admin\/onboarding\/[^/]+$/.test(pathname)) return 'Plano de ativação';
+  if (/^\/admin\/consumo\/[^/]+\/limites$/.test(pathname)) return 'Editar limites da clínica';
   if (pathname === '/fluxo-caixa/extrato') return 'Importar extrato bancário';
   if (pathname === '/faturamento-convenios/lotes/novo') return 'Novo lote TISS';
   if (/^\/faturamento-convenios\/lotes\/[^/]+\/retorno$/.test(pathname)) return 'Registrar retorno do lote';
