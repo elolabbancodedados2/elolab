@@ -43,11 +43,12 @@ test('receivables prioritize collection, show remaining balance and due urgency'
   await conta.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('receivables-mobile-urgency.png'), fullPage: true, animations: 'disabled' });
   await conta.getByRole('button', { name: 'Receber saldo' }).click();
-  const receiveDialog = page.getByRole('dialog');
-  await expect(receiveDialog.getByRole('heading', { name: 'Confirmar Recebimento' })).toBeVisible();
-  await expect(receiveDialog.locator('#contas-receber-valor-parcial')).toHaveValue('550,00');
-  await page.keyboard.press('Escape');
-  await expect(receiveDialog).toBeHidden();
+  await expect(page).toHaveURL(/\/contas\/receber\/[^/]+\/recebimento$/);
+  await expect(page.getByRole('heading', { name: 'Confirmar Recebimento' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('#contas-receber-valor-parcial')).toHaveValue('550,00');
+  await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+  await expect(page).toHaveURL('/contas?tab=receber&status=atrasado');
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/contas?tab=receber');
@@ -114,6 +115,80 @@ test('receivables explain a read error and recover on retry', async ({ page }, t
   await expect(main.getByText('Nenhuma receita cadastrada', { exact: true })).toBeVisible();
   expect(leituras).toBeGreaterThan(1);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('receiving partial amount lives on its own page and keeps idempotent retry data', async ({ page }, info) => {
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  const payloads: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/rpc/registrar_pagamento', async route => {
+    payloads.push(route.request().postDataJSON());
+    if (payloads.length === 1) return route.fulfill({ status: 400, json: { code: 'P0001', message: 'Falha sintética ao registrar recebimento' } });
+    return route.fulfill({ status: 200, json: { success: true } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/contas?tab=receber');
+  const conta = page.getByRole('row').filter({ hasText: 'Procedimento ambulatorial' });
+  await conta.getByRole('button', { name: 'Receber saldo' }).click();
+
+  await expect(page).toHaveURL('/contas/receber/00000000-0000-4000-9000-000000000041/recebimento');
+  await expect(page.getByRole('heading', { name: 'Confirmar Recebimento' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).not.toContainText('00000000-0000-4000-9000-000000000041');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('receivable-payment-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Confirmar recebimento' }).scrollIntoViewIfNeeded();
+  const paymentActionBox = await page.getByRole('button', { name: 'Confirmar recebimento' }).boundingBox();
+  const mobileNavigationBox = await page.getByRole('navigation', { name: 'Navegação principal' }).boundingBox();
+  expect(paymentActionBox).not.toBeNull();
+  expect(mobileNavigationBox).not.toBeNull();
+  expect(paymentActionBox!.y + paymentActionBox!.height).toBeLessThan(mobileNavigationBox!.y);
+  await page.screenshot({ path: info.outputPath('receivable-payment-mobile-actions.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('#main-content').evaluate(element => element.scrollTo(0, 0));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('receivable-payment-desktop.png'), fullPage: true });
+
+  await page.getByLabel('Valor recebido (R$)').fill('275,00');
+  await page.getByLabel('Desconto (R$)').fill('10,25');
+  await page.getByLabel('Acréscimo (R$)').fill('1,75');
+  await page.getByLabel('Observações').fill('Conferência sintética do caixa');
+  await page.getByRole('button', { name: 'Confirmar recebimento' }).click();
+  await expect(page.getByText('Falha sintética ao registrar recebimento')).toBeVisible();
+  await expect(page.getByLabel('Valor recebido (R$)')).toHaveValue('275,00');
+  await expect(page).toHaveURL(/\/contas\/receber\/[^/]+\/recebimento$/);
+
+  await page.getByRole('button', { name: 'Confirmar recebimento' }).click();
+  await expect(page).toHaveURL('/contas?tab=receber');
+  expect(payloads).toHaveLength(2);
+  expect(payloads[0]).toMatchObject({
+    p_lancamento_id: '00000000-0000-4000-9000-000000000041',
+    p_pagamentos: [{ valor: 275, parcelas: 1 }],
+    p_desconto: 10.25,
+    p_acrescimo: 1.75,
+    p_observacoes: 'Conferência sintética do caixa',
+  });
+  expect(payloads[1]).toMatchObject(payloads[0]);
+  expect((payloads[0].p_chave_idempotencia as string).length).toBeGreaterThan(0);
+  expect(payloads[1].p_chave_idempotencia).toBe(payloads[0].p_chave_idempotencia);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('receivable payment protects a modified draft when returning to the list', async ({ page }) => {
+  await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  await page.goto('/contas?tab=receber&status=atrasado');
+  await page.getByRole('button', { name: 'Receber saldo' }).first().click();
+  await page.getByLabel('Observações').fill('Conferir depois');
+
+  await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+  const discard = page.getByRole('alertdialog');
+  await expect(discard).toContainText('Alterações não salvas');
+  await discard.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(page).toHaveURL(/\/contas\/receber\/[^/]+\/recebimento$/);
+  await expect(page.getByLabel('Observações')).toHaveValue('Conferir depois');
+
+  await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();
+  await expect(page).toHaveURL('/contas?tab=receber&status=atrasado');
 });
 
 test('new receivable opens as a page, survives reload, and restores list context', async ({ page }, info) => {

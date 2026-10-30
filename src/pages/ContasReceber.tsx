@@ -174,6 +174,9 @@ export default function ContasReceber() {
   const location = useLocation();
   const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown; restoreFilterCategoria?: unknown } | null;
   const isCreationPage = location.pathname === '/contas/receber/nova';
+  const paymentRouteId = location.pathname.match(/^\/contas\/receber\/([^/]+)\/recebimento$/)?.[1] ?? null;
+  const isPaymentPage = paymentRouteId !== null;
+  const isWorkflowPage = isCreationPage || isPaymentPage;
   const returnToListPath = typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo)
     ? routeState.returnTo
     : '/contas?tab=receber';
@@ -185,7 +188,6 @@ export default function ContasReceber() {
   const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
   const selectedMonth = parseFinanceMonth(searchParams.get('mes'));
   const filterPeriodo = selectedMonth ? 'mes_selecionado' : searchParams.get('periodo') || 'mes_atual';
-  const [isPagamentoOpen, setIsPagamentoOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEstornoOpen, setIsEstornoOpen] = useState(false);
   const [carregandoPagamentosEstorno, setCarregandoPagamentosEstorno] = useState(false);
@@ -199,6 +201,8 @@ export default function ContasReceber() {
   const [selectedConta, setSelectedConta] = useState<any>(null);
   const [formData, setFormData] = useState<FormData>(novoFormDataReceita);
   const [formDirty, setFormDirty] = useState(false);
+  const [baixaDirty, setBaixaDirty] = useState(false);
+  const [paymentPageInvalid, setPaymentPageInvalid] = useState(false);
   const valorReceitaDigitado = parseMoneyInput(formData.valor);
   const valorReceitaInvalido = valorReceitaDigitado === null || valorReceitaDigitado <= 0;
   const [baixaData, setBaixaData] = useState<BaixaData>({
@@ -213,21 +217,29 @@ export default function ContasReceber() {
   const cancelamentoSubmissionLock = useRef(false);
   const [chavesBaixa, setChavesBaixa] = useState<Record<string, string>>({});
   const navigationAllowedRef = useRef(false);
+  const paymentInitializedRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
+  const hasUnsavedChanges = (isCreationPage && formDirty) || (isPaymentPage && baixaDirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    !navigationAllowedRef.current && isCreationPage && formDirty && !isSubmitting
+    !navigationAllowedRef.current && isWorkflowPage && (hasUnsavedChanges || (isPaymentPage && baixaIncerta)) && !isSubmitting
       && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
   useEffect(() => { navigationAllowedRef.current = false; }, [location.pathname, location.search]);
   useEffect(() => {
-    if (!isCreationPage || !formDirty) return;
+    if (!isWorkflowPage || (!hasUnsavedChanges && !(isPaymentPage && baixaIncerta))) return;
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warnBeforeUnload);
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-  }, [formDirty, isCreationPage]);
+  }, [hasUnsavedChanges, isPaymentPage, baixaIncerta, isWorkflowPage]);
+  useEffect(() => {
+    if (isPaymentPage && baixaIncerta && blocker.state === 'blocked') {
+      toast.warning('O recebimento ainda não foi confirmado. Permaneça nesta tela e confirme novamente a mesma tentativa.');
+      blocker.reset();
+    }
+  }, [isPaymentPage, baixaIncerta, blocker]);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
@@ -237,6 +249,10 @@ export default function ContasReceber() {
   const updateFormData = (patch: Partial<FormData>) => {
     setFormData(current => ({ ...current, ...patch }));
     setFormDirty(true);
+  };
+  const updateBaixaData = (patch: Partial<BaixaData>) => {
+    setBaixaData(current => ({ ...current, ...patch }));
+    setBaixaDirty(true);
   };
 
   const contasQuery = useQuery({
@@ -302,6 +318,34 @@ export default function ContasReceber() {
     0,
     Number(conta.valor || 0) - Number(conta.desconto || 0) + Number(conta.acrescimo || 0) - valorRecebidoConta(conta),
   );
+
+  useEffect(() => {
+    if (!paymentRouteId) {
+      paymentInitializedRef.current = null;
+      setPaymentPageInvalid(false);
+      return;
+    }
+    if (paymentInitializedRef.current === paymentRouteId) return;
+    const conta = contas.find(item => String(item.id) === decodeURIComponent(paymentRouteId));
+    if (!conta) return;
+
+    paymentInitializedRef.current = paymentRouteId;
+    setSelectedConta(conta);
+    const saldo = saldoDevedorConta(conta);
+    const elegivel = ['pendente', 'parcial', 'atrasado'].includes(conta.status) && saldo > 0;
+    setPaymentPageInvalid(!elegivel);
+    setBaixaIncerta(false);
+    setPointBlocksManual(false);
+    setBaixaDirty(false);
+    setChavesBaixa(keys => ({ ...keys, [conta.id]: keys[conta.id] || crypto.randomUUID() }));
+    setBaixaData({
+      forma_pagamento: conta.forma_pagamento || 'pix',
+      desconto: formatMoneyInput(Number(conta.desconto || 0)),
+      acrescimo: formatMoneyInput(Number(conta.acrescimo || 0)),
+      valorReceber: null,
+      observacoes: '',
+    });
+  }, [paymentRouteId, contas]);
 
   const isLoading = contasQuery.isLoading || pagamentosQuery.isLoading;
   const hojeClinica = parseDateOnly(todaySaoPauloDateOnly())!;
@@ -509,15 +553,14 @@ export default function ContasReceber() {
   const handleDarBaixa = (conta: any) => {
     setBaixaIncerta(false);
     setPointBlocksManual(false);
-    setSelectedConta(conta);
-    setChavesBaixa(keys => ({ ...keys, [conta.id]: keys[conta.id] || crypto.randomUUID() }));
-    setBaixaData({
-      forma_pagamento: conta.forma_pagamento || 'pix',
-      desconto: formatMoneyInput(Number(conta.desconto || 0)),
-      acrescimo: formatMoneyInput(Number(conta.acrescimo || 0)),
-      valorReceber: null, observacoes: '',
+    setBaixaDirty(false);
+    navigate(`/contas/receber/${encodeURIComponent(conta.id)}/recebimento`, {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+        restoreSearchTerm: searchTerm,
+        restoreFilterCategoria: filterCategoria,
+      },
     });
-    setIsPagamentoOpen(true);
   };
 
   const handleViewDetail = (conta: any) => {
@@ -536,6 +579,13 @@ export default function ContasReceber() {
   const saldoAposRecebimento = valorDoPagamento === null ? Number.NaN : valorFinal - valorDoPagamento;
   const pagamentoBaixaInvalido = !Number.isFinite(valorFinal) || valorFinal <= 0
     || valorDoPagamento === null || valorDoPagamento <= 0 || valorDoPagamento > valorFinal;
+
+  const completePayment = () => {
+    setBaixaDirty(false);
+    setFormDirty(false);
+    navigationAllowedRef.current = true;
+    returnToList();
+  };
 
   const handleConfirmarBaixa = async () => {
     if (submissionLock.current) return;
@@ -593,13 +643,13 @@ export default function ContasReceber() {
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
       queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
       queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
-      setIsPagamentoOpen(false);
       setBaixaIncerta(false);
       setChavesBaixa(keys => {
         const next = { ...keys };
         delete next[selectedConta.id];
         return next;
       });
+      completePayment();
     } catch (e: any) {
       const message = e.message || 'Erro ao confirmar';
       if (!chamadaRpcIniciada || respostaServidorRecebida) {
@@ -631,12 +681,12 @@ export default function ContasReceber() {
           queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
           queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
           queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
-          setIsPagamentoOpen(false);
           setChavesBaixa(keys => {
             const next = { ...keys };
             delete next[selectedConta.id];
             return next;
           });
+          completePayment();
         } else {
           setBaixaIncerta(true);
           toast.warning('Não foi possível confirmar se o recebimento foi registrado.', {
@@ -781,19 +831,33 @@ export default function ContasReceber() {
     toast.success('Exportado com sucesso!');
   };
 
-  if (!isCreationPage && isLoading) return (
+  if (isPaymentPage && isLoading) return (
+    <div className="space-y-5" aria-busy="true">
+      <Skeleton className="h-10 w-72" />
+      <Skeleton className="h-80 rounded-2xl" />
+    </div>
+  );
+  if (isPaymentPage && (contasQuery.isError || pagamentosQuery.isError)) return (
+    <div className="space-y-5">
+      <PageHeader title="Recebimento" description="Confira a conta antes de registrar um pagamento."
+        actions={<Button type="button" variant="outline" onClick={returnToList}><ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />Voltar às contas a receber</Button>} />
+      <ErrorState title="Não foi possível carregar o recebimento" error={contasQuery.error || pagamentosQuery.error}
+        onRetry={() => { void contasQuery.refetch(); void pagamentosQuery.refetch(); }} />
+    </div>
+  );
+  if (!isWorkflowPage && isLoading) return (
     <div className="space-y-6">
       <Skeleton className="h-10 w-64" />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
       <Skeleton className="h-96 rounded-xl" />
     </div>
   );
-  if (!isCreationPage && contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a receber" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
-  if (!isCreationPage && pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
+  if (!isWorkflowPage && contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a receber" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
+  if (!isWorkflowPage && pagamentosQuery.isError) return <ErrorState title="Não foi possível carregar os pagamentos" error={pagamentosQuery.error} onRetry={() => void pagamentosQuery.refetch()} />;
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {!isCreationPage && <>
+      {!isWorkflowPage && <>
       <PageHeader
         title="Contas a Receber"
         description={stats.countTotal === 0
@@ -1347,138 +1411,124 @@ export default function ContasReceber() {
         </main>
       )}
 
-      {/* Dar Baixa Dialog */}
-      <Dialog open={isPagamentoOpen} onOpenChange={open => {
-        if (open || (!isSubmitting && !baixaIncerta)) setIsPagamentoOpen(open);
-      }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-success">
-              <Receipt className="h-5 w-5" /> Confirmar Recebimento
-            </DialogTitle>
-            <DialogDescription>Registre o recebimento com o caixa do dia aberto.</DialogDescription>
-          </DialogHeader>
-          {selectedConta && (
-            <div className="space-y-4">
-              <div className="rounded-xl bg-muted/50 p-4 space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-5 w-5 text-primary" />
-                  </div>
+      {isPaymentPage && (
+        <main data-testid="receivable-payment-page" className="space-y-5">
+          <PageHeader
+            title="Confirmar Recebimento"
+            description="Confira o saldo e registre o pagamento no caixa aberto."
+            icon={<Receipt />}
+            actions={(
+              <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting || baixaIncerta}>
+                <ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />Voltar às contas a receber
+              </Button>
+            )}
+          />
+
+          {(!selectedConta || paymentPageInvalid) ? (
+            <section role="alert" className="rounded-2xl border border-warning/40 bg-warning/5 p-5 text-sm text-warning-foreground">
+              <p className="font-semibold">{selectedConta ? 'Esta conta não possui saldo disponível para recebimento.' : 'Conta não encontrada.'}</p>
+              <p className="mt-1">Atualize as contas ou retorne à lista para escolher outro lançamento.</p>
+              <Button type="button" variant="outline" className="mt-4" onClick={returnToList}>Voltar às contas a receber</Button>
+            </section>
+          ) : (
+            <>
+              <section className="rounded-2xl border border-border bg-card p-4 sm:p-6" aria-label="Resumo da conta">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="font-bold text-sm truncate">{getPacienteNome(selectedConta)}</p>
-                    <p className="text-xs text-muted-foreground truncate">{selectedConta.descricao}</p>
-                    <Badge variant="outline" className="text-[9px] mt-0.5">
-                      {CATEGORIAS_MAP[selectedConta.categoria]?.label || selectedConta.categoria}
-                    </Badge>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{getPacienteNome(selectedConta)}</p>
+                    <h2 className="mt-1 break-words text-lg font-semibold text-foreground">{selectedConta.descricao}</h2>
+                    <Badge variant="outline" className="mt-2">{CATEGORIAS_MAP[selectedConta.categoria]?.label || selectedConta.categoria}</Badge>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Saldo em aberto</p>
+                    <p className="text-2xl font-bold tabular-nums">{fmt(saldoDevedorConta(selectedConta))}</p>
                   </div>
                 </div>
-                <Separator />
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Valor original</span>
-                  <span className="text-lg font-black tabular-nums">{fmt(selectedConta.valor)}</span>
-                </div>
-                {valorRecebidoConta(selectedConta) > 0 && <div className="flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground">Já recebido</span>
-                  <span className="font-semibold tabular-nums">{fmt(valorRecebidoConta(selectedConta))}</span>
-                </div>}
-              </div>
+                <Separator className="my-4" />
+                <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                  <div><dt className="text-xs text-muted-foreground">Valor original</dt><dd className="mt-1 font-semibold tabular-nums">{fmt(Number(selectedConta.valor))}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Já recebido</dt><dd className="mt-1 font-semibold tabular-nums">{fmt(valorRecebidoConta(selectedConta))}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Vencimento</dt><dd className="mt-1 font-semibold">{selectedConta.data_vencimento ? format(parseDateOnly(selectedConta.data_vencimento)!, 'dd/MM/yyyy') : '—'}</dd></div>
+                </dl>
+              </section>
 
-              <MercadoPagoPointPayment
-                clinicId={profile?.clinica_id}
-                lancamentoId={selectedConta.id}
-                open={isPagamentoOpen}
-                disabled={isSubmitting || baixaIncerta
-                  || parseMoneyInput(baixaData.desconto) === null
-                  || parseMoneyInput(baixaData.acrescimo) === null
-                  || Number(parseMoneyInput(baixaData.desconto) ?? 0) !== Number(selectedConta.desconto ?? 0)
-                  || Number(parseMoneyInput(baixaData.acrescimo) ?? 0) !== Number(selectedConta.acrescimo ?? 0)}
-                saldo={Math.max(0, saldoDevedorConta(selectedConta))}
-                onPendingChange={setPointBlocksManual}
-              />
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider">Forma de Pagamento *</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {FORMAS_PAGAMENTO.slice(0, 4).map(fp => {
-                    const FPIcon = fp.icon;
-                    const isSelected = baixaData.forma_pagamento === fp.value;
-                    return (
-                      <button key={fp.value} type="button"
-                        onClick={() => setBaixaData({ ...baixaData, forma_pagamento: fp.value })}
-                        disabled={isSubmitting || baixaIncerta}
-                        aria-pressed={isSelected}
-                        className={cn(
-                          'flex flex-col items-center gap-1 p-2 rounded-lg border text-[10px] transition-all disabled:cursor-wait disabled:opacity-50',
-                          isSelected ? 'border-success bg-success/10 text-success font-bold' : 'border-border hover:border-success/30'
-                        )}>
-                        <FPIcon className="h-4 w-4" />
-                        {fp.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <Select value={baixaData.forma_pagamento} onValueChange={v => setBaixaData({ ...baixaData, forma_pagamento: v })} disabled={isSubmitting || baixaIncerta}>
-                  <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-[10px]">Desconto (R$)</Label>
-                  <Input aria-label="Desconto em reais" type="text" inputMode="decimal" placeholder="0,00" value={baixaData.desconto} onChange={e => setBaixaData({ ...baixaData, desconto: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
-                  {baixaData.desconto.trim() && parseMoneyInput(baixaData.desconto) === null && <p className="text-[10px] text-destructive" role="alert">Valor inválido.</p>}
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px]">Acréscimo (R$)</Label>
-                  <Input aria-label="Acrescimo em reais" type="text" inputMode="decimal" placeholder="0,00" value={baixaData.acrescimo} onChange={e => setBaixaData({ ...baixaData, acrescimo: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
-                  {baixaData.acrescimo.trim() && parseMoneyInput(baixaData.acrescimo) === null && <p className="text-[10px] text-destructive" role="alert">Valor inválido.</p>}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="contas-receber-valor-parcial" className="text-[10px]">Valor recebido (R$)</Label>
-                  {baixaData.valorReceber !== null && (
-                    <Button type="button" variant="link" size="sm" className="h-auto p-0 text-[10px]" onClick={() => setBaixaData({ ...baixaData, valorReceber: null })} disabled={isSubmitting || baixaIncerta}>
-                      Receber saldo total
+              <section className="rounded-2xl border border-border bg-card p-4 sm:p-6">
+                <MercadoPagoPointPayment
+                  clinicId={profile?.clinica_id}
+                  lancamentoId={selectedConta.id}
+                  open={isPaymentPage}
+                  disabled={isSubmitting || baixaIncerta
+                    || parseMoneyInput(baixaData.desconto) === null
+                    || parseMoneyInput(baixaData.acrescimo) === null
+                    || Number(parseMoneyInput(baixaData.desconto) ?? 0) !== Number(selectedConta.desconto ?? 0)
+                    || Number(parseMoneyInput(baixaData.acrescimo) ?? 0) !== Number(selectedConta.acrescimo ?? 0)}
+                  saldo={Math.max(0, saldoDevedorConta(selectedConta))}
+                  onPendingChange={setPointBlocksManual}
+                />
+                <form onSubmit={event => { event.preventDefault(); void handleConfirmarBaixa(); }} className="space-y-5">
+                  <fieldset disabled={isSubmitting || baixaIncerta} className="space-y-5 border-0 p-0" aria-busy={isSubmitting}>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold uppercase tracking-wide">Forma de pagamento *</Label>
+                      <Select value={baixaData.forma_pagamento} onValueChange={value => updateBaixaData({ forma_pagamento: value })}>
+                        <SelectTrigger aria-label="Forma de pagamento"><SelectValue /></SelectTrigger>
+                        <SelectContent>{FORMAS_PAGAMENTO.map(forma => <SelectItem key={forma.value} value={forma.value}>{forma.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="contas-receber-desconto" className="text-xs">Desconto (R$)</Label>
+                        <Input id="contas-receber-desconto" type="text" inputMode="decimal" value={baixaData.desconto} onChange={event => updateBaixaData({ desconto: event.target.value })} />
+                        {baixaData.desconto.trim() && parseMoneyInput(baixaData.desconto) === null && <p className="text-xs text-destructive" role="alert">Valor inválido.</p>}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="contas-receber-acrescimo" className="text-xs">Acréscimo (R$)</Label>
+                        <Input id="contas-receber-acrescimo" type="text" inputMode="decimal" value={baixaData.acrescimo} onChange={event => updateBaixaData({ acrescimo: event.target.value })} />
+                        {baixaData.acrescimo.trim() && parseMoneyInput(baixaData.acrescimo) === null && <p className="text-xs text-destructive" role="alert">Valor inválido.</p>}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Label htmlFor="contas-receber-valor-parcial" className="text-xs">Valor recebido (R$)</Label>
+                        {baixaData.valorReceber !== null && <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => updateBaixaData({ valorReceber: null })}>Receber saldo total</Button>}
+                      </div>
+                      <Input id="contas-receber-valor-parcial" type="text" inputMode="decimal" value={baixaData.valorReceber ?? formatMoneyInput(valorFinal)} onChange={event => updateBaixaData({ valorReceber: event.target.value })} />
+                      {baixaData.valorReceber !== null && pagamentoBaixaInvalido && <p className="text-xs text-destructive" role="alert">O valor deve ser maior que zero e não pode ultrapassar o saldo disponível.</p>}
+                      <p className="text-xs text-muted-foreground">Saldo após este recebimento: {Number.isFinite(saldoAposRecebimento) ? fmt(Math.max(0, saldoAposRecebimento)) : '—'}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contas-receber-observacoes" className="text-xs">Observações</Label>
+                      <Textarea id="contas-receber-observacoes" value={baixaData.observacoes} onChange={event => updateBaixaData({ observacoes: event.target.value })} placeholder="Opcional" rows={3} />
+                    </div>
+                  </fieldset>
+                  {baixaIncerta && <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">O resultado ainda não foi confirmado. Confirme novamente esta mesma tentativa; a chave de idempotência impede duplicar o pagamento.</div>}
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/20 bg-success/5 p-4">
+                    <span className="text-sm font-semibold text-success">Valor deste recebimento</span>
+                    <span className="text-2xl font-bold tabular-nums text-success">{valorDoPagamento !== null && Number.isFinite(valorDoPagamento) ? fmt(valorDoPagamento) : '—'}</span>
+                  </div>
+                  <footer className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting || baixaIncerta}>Cancelar</Button>
+                    <Button type="submit" disabled={isSubmitting || pointBlocksManual || pagamentoBaixaInvalido || descontoBaixa === null || acrescimoBaixa === null} className="gap-2 bg-success text-success-foreground hover:bg-success/90">
+                      {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      {baixaIncerta ? 'Confirmar novamente' : 'Confirmar recebimento'}
                     </Button>
-                  )}
-                </div>
-                <Input id="contas-receber-valor-parcial" type="text" inputMode="decimal" placeholder="0,00" value={baixaData.valorReceber ?? formatMoneyInput(valorFinal)} onChange={e => setBaixaData({ ...baixaData, valorReceber: e.target.value })} className="h-8 text-xs" disabled={isSubmitting || baixaIncerta} />
-                {baixaData.valorReceber !== null && pagamentoBaixaInvalido && <p className="text-[10px] text-destructive" role="alert">O valor deve ser maior que zero e não pode ultrapassar o saldo disponível.</p>}
-                <p className="text-[10px] text-muted-foreground">
-                  Saldo após este recebimento: {Number.isFinite(saldoAposRecebimento) ? fmt(Math.max(0, saldoAposRecebimento)) : '—'}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-[10px]">Observações</Label>
-                <Textarea aria-label="Observacoes do recebimento" value={baixaData.observacoes} onChange={e => setBaixaData({ ...baixaData, observacoes: e.target.value })} placeholder="Opcional..." rows={2} className="resize-none text-xs" disabled={isSubmitting || baixaIncerta} />
-              </div>
-
-              {baixaIncerta && (
-                <div role="status" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning-foreground">
-                  O resultado do registro ainda não foi confirmado. Confirme novamente esta mesma tentativa sem criar outro pagamento.
-                </div>
-              )}
-
-              <div className="rounded-xl bg-success/5 border border-success/20 p-4 flex justify-between items-center">
-                <span className="text-sm font-bold uppercase tracking-wider text-success">Valor do recebimento</span>
-                <span className="text-2xl font-black text-success tabular-nums">{valorDoPagamento !== null && Number.isFinite(valorDoPagamento) ? fmt(valorDoPagamento) : '—'}</span>
-              </div>
-            </div>
+                  </footer>
+                </form>
+              </section>
+            </>
           )}
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsPagamentoOpen(false)} disabled={isSubmitting || baixaIncerta}>Cancelar</Button>
-            <Button onClick={handleConfirmarBaixa} disabled={isSubmitting || pointBlocksManual || pagamentoBaixaInvalido || descontoBaixa === null || acrescimoBaixa === null}
-              className="gap-2 bg-success hover:bg-success/90 text-success-foreground font-bold shadow-lg shadow-success/25">
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-5 w-5" />} {baixaIncerta ? 'Confirmar novamente' : 'Confirmar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <UnsavedChangesDialog
+            open={blocker.state === 'blocked' && isPaymentPage && !baixaIncerta}
+            onOpenChange={open => { if (!open && blocker.state === 'blocked') blocker.reset(); }}
+            onConfirm={() => {
+              if (blocker.state === 'blocked' && !baixaIncerta) {
+                navigationAllowedRef.current = true;
+                setBaixaDirty(false);
+                blocker.proceed();
+              }
+            }}
+          />
+        </main>
+      )}
 
       {/* Estorno individual com motivo auditável no banco */}
       <Dialog
