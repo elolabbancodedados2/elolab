@@ -27,4 +27,4 @@ Playwright 1/1, TypeScript, build, acessibilidade, permissões, falhas silencios
 
 ## Publicação
 
-Commit e imagem serão registrados após o rollout e a confirmação pública da versão.
+Commit `57a7425df9fd13ac8b7b9973c7a03bf46fa316aa`; imagem `easypanel/elolab/app:deploy-20261030-57a7425`; rollback `deploy-20261030-8f8cdd0`. O smoke isolado e o domínio público responderam `/healthz=ok` e `/version.json` confirmou o SHA integral. O Swarm ficou em 1/1. A fonte anterior foi preservada em `code.before-20261030-57a7425`; o hash do `.env` permaneceu `f2bcf73f6d860dec143ae363f755d3d18e41dc2f3ea3919944af62899c2f3b65`, sem ler ou exibir seu conteúdo. Nenhuma migration ou escrita de dados foi realizada. Durante a atualização houve contenção temporária da porta host-mode; o Swarm estabilizou e a nova versão foi confirmada publicamente.
