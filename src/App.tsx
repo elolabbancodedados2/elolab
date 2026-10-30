@@ -31,6 +31,7 @@ const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const ConsentimentoLGPDTaskPage = lazy(() => import("@/pages/ConsentimentoLGPDTaskPage"));
 const AutorizacoesConvenioPage = lazy(() => import("@/pages/AutorizacoesConvenioPage"));
 const PatientStatusPage = lazy(() => import("@/pages/PatientStatusPage"));
+const PatientContactVerificationPage = lazy(() => import("@/pages/PatientContactVerificationPage"));
 const RevisaoDuplicidadesPacientesPage = lazy(() => import("@/pages/RevisaoDuplicidadesPacientesPage"));
 const AtendimentoFila = lazy(() => import("@/pages/AtendimentoFila"));
 const FilaOperacional = lazy(() => import("@/pages/Fila"));
@@ -356,6 +357,7 @@ function AppRoutes() {
                           <Route path="/pacientes/:patientId/consentimentos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><ConsentimentoLGPDTaskPage task="novo" /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/consentimentos/:consentType/revogar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><ConsentimentoLGPDTaskPage task="revogar" /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/status" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><PatientStatusPage /></SupabaseProtectedRoute>} />
+                          <Route path="/pacientes/:patientId/contatos/:channel/confirmar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><PatientContactVerificationPage /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/cobrancas/:lancamentoId/estorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><ContaReceberEstorno /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/:patientId/autorizacoes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AutorizacoesConvenioPage /></SupabaseProtectedRoute>} />
                           <Route path="/pacientes/duplicidades" element={<SupabaseProtectedRoute allowedRoles={['admin']}><RevisaoDuplicidadesPacientesPage /></SupabaseProtectedRoute>} />

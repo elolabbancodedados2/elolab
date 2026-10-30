@@ -60,10 +60,7 @@ import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { isPatientTimelineSummaryNavigation } from '@/lib/patientTimelineSummaryNavigation';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
 import {
-  contactConfirmationSourceLabel,
   describeContactVerification,
-  recordPatientContactVerification,
-  type ContactConfirmationSource,
   type PatientContactChannel,
 } from '@/lib/patientContactVerification';
 
@@ -231,9 +228,6 @@ export default function Pacientes() {
   const [linkPortalGerado, setLinkPortalGerado] = useState<{ nome: string; url: string } | null>(null);
   const [portalRevokeTarget, setPortalRevokeTarget] = useState<{ id: string; nome: string } | null>(null);
   const [isRevokingPortal, setIsRevokingPortal] = useState(false);
-  const [confirmingContact, setConfirmingContact] = useState<{ patientId: string; channel: PatientContactChannel } | null>(null);
-  const [contactConfirmSource, setContactConfirmSource] = useState<ContactConfirmationSource>('paciente');
-  const [isSavingContactConfirmation, setIsSavingContactConfirmation] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState('');
   const cepLookupRef = useRef(0);
@@ -788,6 +782,22 @@ export default function Pacientes() {
       state: { patientReturnTo: returnTo, patientReturnState: location.state },
     });
   };
+  const navigateToContactVerification = (channel: PatientContactChannel) => {
+    if (!selectedPaciente) return;
+    const params = new URLSearchParams(location.search);
+    params.set('tab', 'dados');
+    if (location.pathname === '/pacientes') params.set('paciente', selectedPaciente.id);
+    const query = params.toString();
+    const returnTo = `${location.pathname}${query ? `?${query}` : ''}`;
+    navigate(`/pacientes/${encodeURIComponent(selectedPaciente.id)}/contatos/${channel}/confirmar`, {
+      state: {
+        patientId: selectedPaciente.id,
+        returnTo,
+        returnState: location.state,
+        returnScrollTop: document.getElementById('main-content')?.scrollTop ?? 0,
+      },
+    });
+  };
   const consentimentosPacienteQuery = useQuery({
     queryKey: ['consentimentos-paciente', authProfile?.clinica_id, selectedPaciente?.id],
     enabled: Boolean(authProfile?.clinica_id && selectedPaciente?.id),
@@ -1236,30 +1246,6 @@ export default function Pacientes() {
       toast.error('Não foi possível revogar os links do portal.', { description: mensagemDeErro(error) });
     } finally {
       setIsRevokingPortal(false);
-    }
-  };
-
-  const handleConfirmPatientContact = async () => {
-    if (!confirmingContact || isSavingContactConfirmation) return;
-    setIsSavingContactConfirmation(true);
-    try {
-      await recordPatientContactVerification(
-        confirmingContact.patientId,
-        confirmingContact.channel,
-        contactConfirmSource,
-      );
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['paciente-lista-selecionado', authProfile?.clinica_id, confirmingContact.patientId],
-        }),
-        queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes', authProfile?.clinica_id] }),
-      ]);
-      setConfirmingContact(null);
-      toast.success(`${confirmingContact.channel === 'telefone' ? 'Telefone' : 'E-mail'} confirmado.`);
-    } catch (error) {
-      toast.error('Não foi possível confirmar o contato.', { description: mensagemDeErro(error) });
-    } finally {
-      setIsSavingContactConfirmation(false);
     }
   };
 
@@ -2084,7 +2070,7 @@ export default function Pacientes() {
                         </p>
                         {podeGerarLinkPortal && (
                           <Button size="sm" variant="outline" className="min-h-9 text-xs" disabled={!selectedPaciente.telefone}
-                            onClick={() => { setContactConfirmSource('paciente'); setConfirmingContact({ patientId: selectedPaciente.id, channel: 'telefone' }); }}>
+                            onClick={() => navigateToContactVerification('telefone')}>
                             Confirmar telefone
                           </Button>
                         )}
@@ -2096,7 +2082,7 @@ export default function Pacientes() {
                         </p>
                         {podeGerarLinkPortal && (
                           <Button size="sm" variant="outline" className="min-h-9 text-xs" disabled={!selectedPaciente.email}
-                            onClick={() => { setContactConfirmSource('paciente'); setConfirmingContact({ patientId: selectedPaciente.id, channel: 'email' }); }}>
+                            onClick={() => navigateToContactVerification('email')}>
                             Confirmar e-mail
                           </Button>
                         )}
@@ -2892,35 +2878,6 @@ export default function Pacientes() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <Dialog open={!!confirmingContact} onOpenChange={(open) => {
-        if (!open && !isSavingContactConfirmation) setConfirmingContact(null);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar {confirmingContact?.channel === 'telefone' ? 'telefone' : 'e-mail'}</DialogTitle>
-            <DialogDescription>
-              Registre com quem a equipe confirmou este contato. Se o valor for alterado depois, a confirmação será removida automaticamente.
-            </DialogDescription>
-          </DialogHeader>
-          <Label htmlFor="origem-confirmacao-contato">Confirmado com</Label>
-          <Select value={contactConfirmSource} onValueChange={(value) => setContactConfirmSource(value as ContactConfirmationSource)}>
-            <SelectTrigger id="origem-confirmacao-contato"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="paciente">Paciente</SelectItem>
-              <SelectItem value="responsavel">Responsável</SelectItem>
-              <SelectItem value="equipe">Equipe consultou o cadastro</SelectItem>
-            </SelectContent>
-          </Select>
-          <DialogFooter>
-            <Button variant="outline" disabled={isSavingContactConfirmation} onClick={() => setConfirmingContact(null)}>Cancelar</Button>
-            <Button disabled={isSavingContactConfirmation} onClick={() => void handleConfirmPatientContact()}>
-              {isSavingContactConfirmation ? 'Salvando…' : 'Registrar confirmação'}
-            </Button>
-          </DialogFooter>
-          <span className="sr-only">Origem: {contactConfirmationSourceLabel(contactConfirmSource)}</span>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );
