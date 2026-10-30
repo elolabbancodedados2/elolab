@@ -12,7 +12,7 @@ export const PROTECTED_ROUTES = [
   '/faturamento-convenios', '/repasses-medicos',
   '/equipe', '/medicos', '/funcionarios', '/estoque', '/todos-templates',
   '/templates', '/tarefas', '/analytics', '/analise-preditiva', '/agente-ia',
-  '/automacoes', '/configuracoes', '/onboarding', '/configuracoes-avancadas',
+  '/automacoes', '/configuracoes', '/configuracoes/integracoes/conectar/lab-1', '/onboarding', '/configuracoes-avancadas',
   '/templates-email', '/acesso-assistido', '/suporte', '/seguranca',
   '/lgpd-pacientes', '/usuarios', '/documentacao', '/painel-admin',
   '/admin/clinicas', '/admin/clinicas/acesso', '/admin/crm', '/admin/saude', '/admin/suporte',

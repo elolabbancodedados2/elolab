@@ -476,6 +476,7 @@ function AppRoutes() {
                           <Route path="/usuarios/:accountId/editar" element={<SupabaseProtectedRoute somentePlataforma><Usuarios editing /></SupabaseProtectedRoute>} />
                           <Route path="/usuarios" element={<SupabaseProtectedRoute somentePlataforma><Usuarios /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Configuracoes /></SupabaseProtectedRoute>} />
+                          <Route path="/configuracoes/integracoes/conectar/:integrationId" element={<SupabaseProtectedRoute allowedRoles={['admin']}><Configuracoes /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes/historico-versoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoHistoricoPage /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes/plano/faturas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoFaturasPage /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes/backup" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracaoBackupPage /></SupabaseProtectedRoute>} />

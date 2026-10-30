@@ -40,7 +40,7 @@ import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
 import { UsoDoPlano } from '@/components/UsoDoPlano';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
@@ -177,6 +177,7 @@ function validarHorarioClinica(config: ConfiguracaoClinica): string | null {
 export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
   const { user, profile } = useSupabaseAuth();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { plan: assinaturaAtual, planName, planSlug, hasActivePlan, isExempt: isPlanExempt, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
@@ -434,6 +435,10 @@ export default function Configuracoes() {
       <Skeleton className="h-64 w-full" />
     </div>
   );
+
+  if (location.pathname.startsWith('/configuracoes/integracoes/conectar/')) {
+    return <div className="p-4 md:p-6"><IntegracoesClinica /></div>;
+  }
 
   if (loadingConfig || (!configLoadError && loadedConfigScope !== currentConfigScope)) {
     return (

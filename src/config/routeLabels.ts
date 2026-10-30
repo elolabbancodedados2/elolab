@@ -99,6 +99,8 @@ const labelsByPath: Record<string, string> = {
   '/cobranca-inadimplentes': 'Cobrança de inadimplentes',
   '/usuarios': 'Usuários',
   '/configuracoes': 'Configurações',
+  '/configuracoes/integracoes': 'Integrações',
+  '/configuracoes/integracoes/conectar': 'Conectar integração',
   '/configuracoes/historico-versoes': 'Histórico de versões',
   '/configuracoes/plano/faturas': 'Histórico de faturas',
   '/configuracoes/backup': 'Backup e recuperação',
@@ -152,6 +154,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/configuracoes\/integracoes\/conectar\/[^/]+$/.test(pathname)) return 'Conectar integração';
   if (pathname === '/admin/cobrancas/reconciliar') return 'Cobrança divergente';
   if (/^\/admin\/cobrancas\/reconciliar\/[^/]+\/[^/]+$/.test(pathname)) return 'Reconciliar cobrança';
   if (/^\/treinamento\/[^/]+$/.test(pathname)) return 'Etapa do treinamento';
