@@ -102,7 +102,7 @@ export default function CaixaHistoricoDetalhePage() {
   const navigate = useNavigate();
   const { profile } = useSupabaseAuth();
   const clinicId = profile?.clinica_id ?? null;
-  const returnTo = () => navigate('/recepcao?tab=caixa', { state: { cashTab: 'historico' } });
+  const returnTo = () => navigate('/caixa-diario', { state: { cashTab: 'historico' } });
 
   const cashQuery = useQuery({
     queryKey: ['cash-history-record', clinicId, caixaId],
@@ -187,7 +187,7 @@ export default function CaixaHistoricoDetalhePage() {
             <Button variant="ghost" onClick={() => exportMovementsCsv(movements, cash.data)} disabled={movements.length === 0}><Download className="mr-2 h-4 w-4" />Exportar CSV</Button>
             {cash.aberto && (
               <Button className="ml-auto" variant="destructive" disabled={movementsQuery.isLoading || movementsQuery.isError || exceeded}
-                onClick={() => navigate(`/recepcao/caixa/${cash.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } })}>
+                onClick={() => navigate(`/recepcao/caixa/${cash.id}/fechar`, { state: { returnTo: '/caixa-diario', cashTab: 'historico' } })}>
                 <Lock className="mr-2 h-4 w-4" />{cash.data < new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()) ? 'Regularizar fechamento' : 'Fechar caixa'}
               </Button>
             )}

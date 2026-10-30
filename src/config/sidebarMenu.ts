@@ -96,7 +96,8 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin', 'recepcao', 'enfermagem', 'medico', 'financeiro'],
     items: [
       { label: 'Agenda', icon: CalendarRange, href: '/agenda', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
-      { label: 'Recepção e caixa', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao', 'financeiro'] },
+      { label: 'Recepção', icon: MonitorSmartphone, href: '/recepcao', roles: ['admin', 'recepcao'] },
+      { label: 'Caixa Diário', icon: HandCoins, href: '/caixa-diario', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Fila e triagem', icon: ClipboardCheck, href: '/fila', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Salas e lista de espera', icon: DoorOpen, href: '/gestao-fluxo', roles: ['admin', 'recepcao'] },
       { label: 'Retornos', icon: CalendarCheck, href: '/retornos', roles: ['admin', 'medico', 'recepcao'] },

@@ -18,6 +18,7 @@ const shortLabels: Record<string, string> = {
   '/fila': 'Fila',
   '/financeiro': 'Finanças',
   '/recepcao': 'Recepção',
+  '/caixa-diario': 'Caixa',
   '/indicadores': 'Dados',
   '/admin/crm': 'Clientes',
   '/usuarios': 'Acessos',
@@ -50,7 +51,7 @@ export function MobileTabBar({ menuOpen, onOpenMenu }: MobileTabBarProps) {
     ? ['/painel-admin', '/admin/crm', '/usuarios', '/admin/saude']
     : clinicalRole
       ? ['/dashboard', '/agenda', '/pacientes', '/fila']
-      : ['/dashboard', '/financeiro', '/recepcao', '/indicadores'];
+      : ['/dashboard', '/financeiro', '/caixa-diario', '/indicadores'];
   const preferredItems = preferredPaths.flatMap(path => {
     const item = itemsByPath.get(path);
     return item ? [{ ...item, shortLabel: shortLabels[path] ?? item.label }] : [];

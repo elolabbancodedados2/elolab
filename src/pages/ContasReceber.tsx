@@ -795,7 +795,7 @@ export default function ContasReceber() {
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=pagar')}>
             <ArrowUpRight className="h-4 w-4" /> Contas a Pagar
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/recepcao?tab=caixa')}>
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/caixa-diario')}>
             <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
           </Button>
           <Button variant="outline" size="icon" className="rounded-full shrink-0" onClick={exportarExcel}

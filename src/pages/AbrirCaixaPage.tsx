@@ -54,9 +54,9 @@ export default function AbrirCaixaPage() {
   const { profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const routeState = location.state as { returnTo?: unknown } | null;
-  const returnTo = typeof routeState?.returnTo === 'string' && /^\/recepcao(?:\?tab=caixa)?$/.test(routeState.returnTo)
+  const returnTo = typeof routeState?.returnTo === 'string' && /^\/(?:recepcao\?tab=caixa|caixa-diario)$/.test(routeState.returnTo)
     ? routeState.returnTo
-    : '/recepcao?tab=caixa';
+    : '/caixa-diario';
   const today = todaySaoPauloDateOnly();
   const [amount, setAmount] = useState('');
   const [submitError, setSubmitError] = useState('');

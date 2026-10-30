@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useMemo, lazy, Suspense, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -16,16 +16,9 @@ import {
   Lock, Unlock, Plus, Minus, Loader2, Trash2, Search, Clock, Printer, Download, Pencil,
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
-  BarChart3, Eye, Stethoscope, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
-  ArrowUpRight, ArrowDownRight, ClipboardList, Tag, User, X, FileSpreadsheet, Scale, RefreshCw,
+  BarChart3, Eye, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
+  User, X, FileSpreadsheet, Scale, RefreshCw,
 } from 'lucide-react';
-
-const LazyContasReceber = lazy(() => import('./ContasReceber'));
-const LazyContasPagar = lazy(() => import('./ContasPagar'));
-const LazyFluxoCaixa = lazy(() => import('./FluxoCaixa'));
-const LazyPrecosExames = lazy(() => import('./PrecosExames'));
-const LazyTiposConsulta = lazy(() => import('./TiposConsulta'));
-const LazyRelatorios = lazy(() => import('./Relatorios'));
 import { printReceiptPdf, downloadReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -39,7 +32,6 @@ import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { canAccessCashTab, canAccessRestrictedCashTabs } from '@/lib/cashierAccess';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -153,7 +145,6 @@ function baixarArquivo(nome: string, conteudo: string, tipo: string) {
 export default function CaixaDiario() {
   const { profile } = useSupabaseAuth();
   const roles = [...new Set([...(profile?.roles ?? []), ...(profile?.role ? [profile.role] : [])])];
-  const podeAcessarModulosFinanceiros = canAccessRestrictedCashTabs(roles);
   const queryClient = useQueryClient();
   const [today, setToday] = useState(() => todaySaoPauloDateOnly());
   useEffect(() => {
@@ -164,10 +155,8 @@ export default function CaixaDiario() {
   const location = useLocation();
   const navigate = useNavigate();
   const routeState = location.state as { cashTab?: unknown; cashSearchTerm?: unknown; cashTipoFiltro?: unknown } | null;
-  const requestedCashTab = typeof routeState?.cashTab === 'string' && ['hoje', 'historico', 'receber', 'pagar', 'fluxo', 'precos', 'tipos', 'relatorios'].includes(routeState.cashTab)
-    ? routeState.cashTab : 'hoje';
+  const requestedCashTab = routeState?.cashTab === 'historico' ? 'historico' : 'hoje';
   const [activeTab, setActiveTab] = useState(requestedCashTab);
-  const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState(typeof routeState?.cashSearchTerm === 'string' ? routeState.cashSearchTerm : '');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -437,31 +426,13 @@ export default function CaixaDiario() {
     <div className="space-y-6 p-4 md:p-6">
       {/* ─── Header ─── */}
       <PageHeader
-        title="Caixa e fluxo de caixa"
+        title="Caixa Diário"
         description={caixaHoje
           ? `Saldo ${fmt(totais.final)} · Entradas ${fmt(totais.receita)} · Saídas ${fmt(totais.despesa + totais.sangria)}`
           : new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
         icon={<DollarSign />}
         actions={(
           <>
-            {podeAcessarModulosFinanceiros && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('receber')}
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-[#9CC7EC] hover:text-foreground"
-              >
-                <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /> A Receber
-              </button>
-            )}
-            {podeAcessarModulosFinanceiros && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('pagar')}
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-[#9CC7EC] hover:text-foreground"
-              >
-                <ArrowDownRight aria-hidden="true" className="h-3.5 w-3.5" /> A Pagar
-              </button>
-            )}
             <Button
               variant="outline"
               size="icon"
@@ -481,7 +452,7 @@ export default function CaixaDiario() {
               </Button>
             ) : isOpen ? (
               <Button
-                onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })}
+                onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })}
                 className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
               >
                 <ShoppingCart className="h-4 w-4" /> Nova Venda
@@ -491,20 +462,12 @@ export default function CaixaDiario() {
         )}
       />
 
-      <Tabs value={activeTabPermitida} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="inline-flex h-auto w-auto min-w-full gap-0.5 rounded-xl border border-border bg-muted/60 p-1 md:w-full md:min-w-0 md:flex-wrap md:justify-center">
             {[
               { v: 'hoje', l: 'Caixa Hoje', i: Receipt },
               { v: 'historico', l: 'Histórico', i: History },
-              ...(podeAcessarModulosFinanceiros ? [
-                { v: 'receber', l: 'Contas a Receber', i: ArrowUpRight },
-                { v: 'pagar', l: 'Contas a Pagar', i: ArrowDownRight },
-                { v: 'fluxo', l: 'Fluxo de Caixa', i: TrendingUp },
-                { v: 'precos', l: 'Tabela de Preços', i: Tag },
-                { v: 'tipos', l: 'Tipos de Consulta', i: Stethoscope },
-                { v: 'relatorios', l: 'Relatórios', i: ClipboardList },
-              ] : []),
             ].map(tab => (
               <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-full px-3 text-xs">
                 <tab.i className="h-3.5 w-3.5" /> {tab.l}
@@ -530,7 +493,7 @@ export default function CaixaDiario() {
               {caixasAbertosAntigos.map(caixa => (
                 <div key={caixa.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-2">
                   <span className="text-sm">{fmtDate(caixa.data)} · Abertura {fmt(caixa.valor_abertura)}</span>
-                  <Button size="sm" variant="outline" onClick={() => navigate(`/recepcao/caixa/${caixa.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })}>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/recepcao/caixa/${caixa.id}/fechar`, { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })}>
                     Revisar e regularizar
                   </Button>
                 </div>
@@ -545,22 +508,22 @@ export default function CaixaDiario() {
               </Button>
             ) : isOpen ? (
               <>
-                <Button onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
+                <Button onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda
                 </Button>
-                <Button onClick={() => navigate('/recepcao/caixa/despesa', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
+                <Button onClick={() => navigate('/recepcao/caixa/despesa', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
                   <TrendingDown className="h-4 w-4" /> Despesa
                 </Button>
-                <Button onClick={() => navigate('/recepcao/caixa/sangria', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-warning/30 text-warning-foreground hover:bg-warning/10">
+                <Button onClick={() => navigate('/recepcao/caixa/sangria', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-warning/30 text-warning-foreground hover:bg-warning/10">
                   <ArrowDownToLine className="h-4 w-4" /> Sangria
                 </Button>
-                <Button onClick={() => navigate('/recepcao/caixa/suprimento', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                <Button onClick={() => navigate('/recepcao/caixa/suprimento', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
                   <ArrowUpFromLine className="h-4 w-4" /> Suprimento
                 </Button>
                 <Button onClick={() => imprimirRelatorioFechamento(caixaHoje, lancamentos)} variant="ghost" className="h-11 gap-2 rounded-full text-muted-foreground" title="Relatório parcial do caixa">
                   <Printer className="h-4 w-4" /> Relatório parcial
                 </Button>
-                <Button onClick={() => navigate(`/recepcao/caixa/${caixaHoje.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })} disabled={loadingLanc || erroLancamentos || lancamentosExcederamLimite} variant="destructive" className="ml-auto h-11 gap-2 rounded-full px-5">
+                <Button onClick={() => navigate(`/recepcao/caixa/${caixaHoje.id}/fechar`, { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} disabled={loadingLanc || erroLancamentos || lancamentosExcederamLimite} variant="destructive" className="ml-auto h-11 gap-2 rounded-full px-5">
                   <Lock className="h-4 w-4" /> Fechar Caixa
                 </Button>
               </>
@@ -574,7 +537,7 @@ export default function CaixaDiario() {
                   <FileSpreadsheet className="h-4 w-4" /> CSV
                 </Button>
                 {podeReabrir ? (
-                  <Button variant="outline" className="ml-auto h-10 gap-2 rounded-full" onClick={() => navigate('/recepcao/caixa/reabrir', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })}>
+                  <Button variant="outline" className="ml-auto h-10 gap-2 rounded-full" onClick={() => navigate('/recepcao/caixa/reabrir', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })}>
                     <Unlock className="h-4 w-4" /> Reabrir caixa
                   </Button>
                 ) : (
@@ -829,7 +792,7 @@ export default function CaixaDiario() {
                                           onClick={() => {
                                             navigate(`/recepcao/caixa/lancamentos/${l.id}/editar`, {
                                               state: {
-                                                returnTo: '/recepcao?tab=caixa',
+                                                returnTo: '/caixa-diario',
                                                 cashTab: 'hoje',
                                                 cashSearchTerm: searchTerm,
                                                 cashTipoFiltro: tipoFiltro,
@@ -973,11 +936,11 @@ export default function CaixaDiario() {
                     <div key={cx.id}
                       role="button" tabIndex={0}
                       className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer group"
-                      onClick={() => navigate(`/recepcao/caixa/historico/${cx.id}`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } })}
+                      onClick={() => navigate(`/recepcao/caixa/historico/${cx.id}`, { state: { returnTo: '/caixa-diario', cashTab: 'historico' } })}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
-                          navigate(`/recepcao/caixa/historico/${cx.id}`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } });
+                          navigate(`/recepcao/caixa/historico/${cx.id}`, { state: { returnTo: '/caixa-diario', cashTab: 'historico' } });
                         }
                       }}
                     >
@@ -1015,42 +978,6 @@ export default function CaixaDiario() {
           </Card>
         </TabsContent>
 
-        {/* ═══ FERRAMENTAS FINANCEIRAS ═══ */}
-        {podeAcessarModulosFinanceiros && <TabsContent value="receber" className="mt-4">
-          <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
-            <LazyContasReceber />
-          </Suspense>
-        </TabsContent>}
-
-        {podeAcessarModulosFinanceiros && <TabsContent value="pagar" className="mt-4">
-          <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
-            <LazyContasPagar />
-          </Suspense>
-        </TabsContent>}
-
-        {podeAcessarModulosFinanceiros && <TabsContent value="fluxo" className="mt-4">
-          <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
-            <LazyFluxoCaixa />
-          </Suspense>
-        </TabsContent>}
-
-        {podeAcessarModulosFinanceiros && <TabsContent value="precos" className="mt-4">
-          <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
-            <LazyPrecosExames />
-          </Suspense>
-        </TabsContent>}
-
-        {podeAcessarModulosFinanceiros && <TabsContent value="tipos" className="mt-4">
-          <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
-            <LazyTiposConsulta />
-          </Suspense>
-        </TabsContent>}
-
-        {podeAcessarModulosFinanceiros && <TabsContent value="relatorios" className="mt-4">
-          <Suspense fallback={<div className="space-y-4"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /></div>}>
-            <LazyRelatorios />
-          </Suspense>
-        </TabsContent>}
       </Tabs>
 
       {/* ═══ DIALOGS ═══ */}

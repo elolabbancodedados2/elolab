@@ -393,7 +393,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
         action: {
           label: 'Abrir Caixa',
-          onClick: () => onOpenCaixa ? onOpenCaixa() : navigate('/recepcao'),
+          onClick: () => onOpenCaixa ? onOpenCaixa() : navigate('/caixa-diario'),
         },
         duration: 6000,
       });

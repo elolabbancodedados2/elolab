@@ -64,8 +64,8 @@ export default function EditarLancamentoCaixaPage() {
   const clinicId = profile?.clinica_id ?? null;
   const today = todaySaoPauloDateOnly();
   const routeState = location.state as ReturnState | null;
-  const returnTo = typeof routeState?.returnTo === 'string' && /^\/recepcao(?:\?tab=caixa)?$/.test(routeState.returnTo)
-    ? routeState.returnTo : '/recepcao?tab=caixa';
+  const returnTo = typeof routeState?.returnTo === 'string' && /^\/(?:recepcao\?tab=caixa|caixa-diario)$/.test(routeState.returnTo)
+    ? routeState.returnTo : '/caixa-diario';
   const returnTab = routeState?.cashTab === 'historico' ? 'historico' : 'hoje';
   const cashSearchTerm = typeof routeState?.cashSearchTerm === 'string' ? routeState.cashSearchTerm : '';
   const cashTipoFiltro = ['todos', 'receita', 'despesa', 'sangria', 'suprimento'].includes(String(routeState?.cashTipoFiltro))

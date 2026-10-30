@@ -110,7 +110,8 @@ describe('busca e preferências do menu lateral', () => {
 
     await user.type(search, 'atendimento');
     expect(screen.getByRole('link', { name: 'Agenda' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Recepção e caixa' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Recepção' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Caixa Diário' })).toBeInTheDocument();
 
     await user.clear(search);
     await user.type(search, 'clinica');

@@ -45,8 +45,8 @@ export default function ReabrirCaixaPage() {
   const queryClient = useQueryClient();
   const today = todaySaoPauloDateOnly();
   const routeState = location.state as { returnTo?: unknown; cashTab?: unknown } | null;
-  const returnTo = typeof routeState?.returnTo === 'string' && /^\/recepcao(?:\?tab=caixa)?$/.test(routeState.returnTo)
-    ? routeState.returnTo : '/recepcao?tab=caixa';
+  const returnTo = typeof routeState?.returnTo === 'string' && /^\/(?:recepcao\?tab=caixa|caixa-diario)$/.test(routeState.returnTo)
+    ? routeState.returnTo : '/caixa-diario';
   const returnTab = routeState?.cashTab === 'historico' ? 'historico' : 'hoje';
   const roles = new Set([...(profile?.roles ?? []), ...(profile?.role ? [profile.role] : [])]);
   const canReopen = roles.has('admin') || roles.has('financeiro');

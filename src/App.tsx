@@ -148,6 +148,7 @@ const PlatformDominios = lazy(() => import("@/pages/PlatformDominios"));
 const PlatformRelatoriosAgendados = lazy(() => import("@/pages/PlatformRelatoriosAgendados"));
 const TiposConsulta = lazy(() => import("@/pages/TiposConsulta"));
 const RecepcaoCaixa = lazy(() => import("@/pages/RecepcaoCaixa"));
+const CaixaDiario = lazy(() => import("@/pages/CaixaDiario"));
 const ChatInterno = lazy(() => import("@/pages/ChatInterno"));
 const CentralNotificacoes = lazy(() => import("@/pages/CentralNotificacoes"));
 const MeuHistorico = lazy(() => import("@/pages/MeuHistorico"));
@@ -451,8 +452,8 @@ function AppRoutes() {
                           <Route path="/recepcao/caixa/:caixaId/fechar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><FecharCaixaPage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/pagamentos/:lancamentoId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoOperacional task="payment" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
-                          <Route path="/caixa" element={<Navigate to="/recepcao?tab=caixa" replace />} />
-                          <Route path="/caixa-diario" element={<Navigate to="/recepcao?tab=caixa" replace />} />
+                          <Route path="/caixa-diario" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CaixaDiario /></SupabaseProtectedRoute>} />
+                          <Route path="/caixa" element={<Navigate to="/caixa-diario" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/estorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberEstorno /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/detalhes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberDetalhesPage /></SupabaseProtectedRoute>} />

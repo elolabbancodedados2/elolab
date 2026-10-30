@@ -320,7 +320,7 @@ export default function ContasPagar() {
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=receber')}>
             <ArrowUpRight className="h-4 w-4" /> Contas a Receber
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/recepcao?tab=caixa')}>
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/caixa-diario')}>
             <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
           </Button>
           <Button onClick={handleNew} className="gap-2 shrink-0">

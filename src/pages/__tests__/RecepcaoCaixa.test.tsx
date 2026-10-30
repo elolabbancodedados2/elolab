@@ -12,24 +12,26 @@ vi.mock('../CaixaDiario', () => ({ default: () => <div>Caixa da clínica</div> }
 
 import RecepcaoCaixa from '../RecepcaoCaixa';
 
-describe('abas de Recepção e caixa por perfil', () => {
+describe('destinos separados de Recepção e Caixa Diário', () => {
   beforeEach(() => {
     mocks.roles = ['financeiro'];
   });
 
-  it('mantém o perfil financeiro na aba de caixa mesmo se pedir recepção pela URL', () => {
+  it('redireciona o atalho legado do caixa para o destino próprio', () => {
     render(
-      <MemoryRouter initialEntries={['/recepcao?tab=recepcao']}>
-        <Routes><Route path="/recepcao" element={<RecepcaoCaixa />} /></Routes>
+      <MemoryRouter initialEntries={['/recepcao?tab=caixa']}>
+        <Routes>
+          <Route path="/recepcao" element={<RecepcaoCaixa />} />
+          <Route path="/caixa-diario" element={<div>Caixa da clínica</div>} />
+        </Routes>
       </MemoryRouter>,
     );
 
     expect(screen.getByText('Caixa da clínica')).toBeInTheDocument();
     expect(screen.queryByText('Recepção da equipe')).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Recepção' })).not.toBeInTheDocument();
   });
 
-  it('oferece as duas abas para administração e abre recepção por padrão', () => {
+  it('abre a Recepção sem exibir caixa na mesma tela', () => {
     mocks.roles = ['admin'];
     render(
       <MemoryRouter initialEntries={['/recepcao']}>
@@ -37,8 +39,7 @@ describe('abas de Recepção e caixa por perfil', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('tab', { name: /Recepção/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Caixa Diário/ })).toBeInTheDocument();
     expect(screen.getByText('Recepção da equipe')).toBeInTheDocument();
+    expect(screen.queryByText('Caixa da clínica')).not.toBeInTheDocument();
   });
 });

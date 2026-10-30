@@ -104,9 +104,9 @@ export function CashierSalePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const routeState = location.state as { returnTo?: unknown; cashTab?: unknown } | null;
-  const returnTo = typeof routeState?.returnTo === 'string' && /^\/recepcao(?:\?tab=caixa)?$/.test(routeState.returnTo)
+  const returnTo = typeof routeState?.returnTo === 'string' && /^\/(?:recepcao\?tab=caixa|caixa-diario)$/.test(routeState.returnTo)
     ? routeState.returnTo
-    : '/recepcao?tab=caixa';
+    : '/caixa-diario';
   const returnTab = routeState?.cashTab === 'historico' ? 'historico' : 'hoje';
   const today = todaySaoPauloDateOnly();
   const [cart, setCart] = useState<ProdutoCarrinho[]>([]);
