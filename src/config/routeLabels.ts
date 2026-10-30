@@ -106,6 +106,7 @@ const labelsByPath: Record<string, string> = {
   '/documentacao': 'Documentação',
   '/painel-admin': 'Visão geral da plataforma',
   '/suporte': 'Suporte',
+  '/suporte/novo': 'Abrir chamado',
   '/acesso-assistido': 'Acesso assistido',
   '/seguranca': 'Segurança da conta',
   '/lgpd-pacientes': 'Privacidade de pacientes',

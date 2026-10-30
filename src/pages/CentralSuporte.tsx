@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Clock, Loader2, MessageSquare, Plus, Send, Building2, UserRound, Search, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogClose, DialogContent, DialogDescription as DialogText, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -66,27 +66,46 @@ function sanitizarTermoBusca(value: string) {
     .slice(0, 120);
 }
 
+type SupportFilters = {
+  busca?: string;
+  buscaAplicada?: string;
+  status?: string;
+  prioridade?: string;
+  pagina?: number;
+};
+
+function filtrosDeRetorno(value: unknown): Required<SupportFilters> {
+  const saved = (value as { supportFilters?: SupportFilters } | null)?.supportFilters;
+  const status = STATUS.includes(saved?.status ?? '') || saved?.status === 'all' ? saved.status! : 'all';
+  const prioridade = PRIORIDADES.includes(saved?.prioridade ?? '') || saved?.prioridade === 'all' ? saved.prioridade! : 'all';
+  const pagina = Number.isSafeInteger(saved?.pagina) && (saved?.pagina ?? -1) >= 0 ? saved!.pagina! : 0;
+  return {
+    busca: typeof saved?.busca === 'string' ? saved.busca : '',
+    buscaAplicada: typeof saved?.buscaAplicada === 'string' ? sanitizarTermoBusca(saved.buscaAplicada) : '',
+    status,
+    prioridade,
+    pagina,
+  };
+}
+
 export default function CentralSuporte() {
   const { profile, isPlatformAdmin, user } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const [titulo, setTitulo] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [novaAberta, setNovaAberta] = useState(false);
-  const [prioridade, setPrioridade] = useState('normal');
-  const [categoria, setCategoria] = useState('duvida');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const filtrosRestaurados = filtrosDeRetorno(location.state);
   const [selecionado, setSelecionado] = useState<Ticket | null>(null);
   const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
   const [notaInterna, setNotaInterna] = useState(false);
-  const [busca, setBusca] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState('all');
-  const [filtroPrioridade, setFiltroPrioridade] = useState('all');
-  const [pagina, setPagina] = useState(0);
-  const [buscaAplicada, setBuscaAplicada] = useState('');
-  const [criando, setCriando] = useState(false);
+  const [busca, setBusca] = useState(filtrosRestaurados.busca);
+  const [filtroStatus, setFiltroStatus] = useState(filtrosRestaurados.status);
+  const [filtroPrioridade, setFiltroPrioridade] = useState(filtrosRestaurados.prioridade);
+  const [pagina, setPagina] = useState(filtrosRestaurados.pagina);
+  const [buscaAplicada, setBuscaAplicada] = useState(filtrosRestaurados.buscaAplicada);
+  const filtrosAplicados = useRef({ busca: filtrosRestaurados.buscaAplicada, status: filtrosRestaurados.status, prioridade: filtrosRestaurados.prioridade });
   const [respondendo, setRespondendo] = useState(false);
   const [statusAtualizando, setStatusAtualizando] = useState<string | null>(null);
   const statusFocusPending = useRef<string | null>(null);
-  const createLock = useRef(false);
   const replyLock = useRef(false);
   const statusLocks = useRef(new Set<string>());
   const statusTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -112,12 +131,13 @@ export default function CentralSuporte() {
     setSelecionado(null);
     setRascunhos({});
     setNotaInterna(false);
-    setTitulo('');
-    setDescricao('');
-    setNovaAberta(false);
   }, [user?.id, profile?.clinica_id, isPlatformAdmin]);
 
   useEffect(() => {
+    if (filtrosAplicados.current.busca === buscaAplicada
+      && filtrosAplicados.current.status === filtroStatus
+      && filtrosAplicados.current.prioridade === filtroPrioridade) return;
+    filtrosAplicados.current = { busca: buscaAplicada, status: filtroStatus, prioridade: filtroPrioridade };
     setPagina(0);
   }, [buscaAplicada, filtroPrioridade, filtroStatus]);
 
@@ -210,39 +230,6 @@ export default function CentralSuporte() {
       window.cancelAnimationFrame(secondFrame);
     };
   }, [selecionado?.id, ultimaMensagemId]);
-
-  const criar = async () => {
-    if (createLock.current || !user || !profile?.clinica_id || titulo.trim().length < 5 || descricao.trim().length < 10) return;
-    const operationScope = supportScope.current;
-    createLock.current = true;
-    setCriando(true);
-    try {
-      const { error } = await (supabase as any).from('support_tickets').insert({
-        titulo: titulo.trim(),
-        descricao: descricao.trim(),
-        prioridade,
-        categoria,
-        clinica_id: profile.clinica_id,
-        solicitante_id: user.id,
-      });
-      if (error) throw error;
-      if (supportScope.current === operationScope) {
-        setTitulo('');
-        setDescricao('');
-        setPrioridade('normal');
-        setCategoria('duvida');
-        setPagina(0);
-        setNovaAberta(false);
-      }
-      await queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      toast.success('Chamado aberto.');
-    } catch (error) {
-      toast.error('Não foi possível abrir o chamado.', { description: mensagemDeErro(error) });
-    } finally {
-      createLock.current = false;
-      setCriando(false);
-    }
-  };
 
   const responder = async () => {
     const texto = mensagem.trim();
@@ -341,52 +328,16 @@ export default function CentralSuporte() {
         description="Chamados, prioridade, SLA e histórico em um só lugar."
         icon={<MessageSquare />}
         actions={!isPlatformAdmin && (
-          <Dialog open={novaAberta} onOpenChange={setNovaAberta}>
-            <DialogTrigger asChild>
-              <Button disabled={!profile?.clinica_id} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Plus aria-hidden="true" className="h-4 w-4" />Abrir chamado</Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto rounded-2xl">
-              <DialogHeader>
-                <DialogTitle>Abrir chamado</DialogTitle>
-                <DialogText>Conte o que aconteceu e como podemos reproduzir o problema.</DialogText>
-              </DialogHeader>
-              <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void criar(); }}>
-                <div className="space-y-1.5">
-                  <Label htmlFor="support-title">Resumo do problema</Label>
-                  <Input id="support-title" autoFocus value={titulo} onChange={(event) => setTitulo(event.target.value)} maxLength={120} />
-                  <p className="text-xs text-muted-foreground">Mínimo de 5 caracteres · {titulo.length}/120</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="support-description">Descrição</Label>
-                  <Textarea id="support-description" value={descricao} onChange={(event) => setDescricao(event.target.value)} maxLength={4000} />
-                  <p className="text-xs text-muted-foreground">Mínimo de 10 caracteres · {descricao.length}/4000</p>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="support-priority">Prioridade</Label>
-                    <Select value={prioridade} onValueChange={setPrioridade}>
-                      <SelectTrigger id="support-priority"><SelectValue /></SelectTrigger>
-                      <SelectContent>{PRIORIDADES.map((item) => <SelectItem key={item} value={item}>{prioridadeLabel[item]}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="support-category">Categoria</Label>
-                    <Select value={categoria} onValueChange={setCategoria}>
-                      <SelectTrigger id="support-category"><SelectValue /></SelectTrigger>
-                      <SelectContent>{CATEGORIAS.map((item) => <SelectItem key={item} value={item}>{categoriaLabel[item]}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
-                  <Button type="submit" disabled={criando || !profile?.clinica_id || titulo.trim().length < 5 || descricao.trim().length < 10}>
-                    {criando ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <Plus aria-hidden="true" className="mr-2 h-4 w-4" />}
-                    {criando ? 'Abrindo chamado…' : 'Enviar chamado'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button disabled={!profile?.clinica_id} onClick={() => navigate('/suporte/novo', { state: {
+            supportReturnTo: '/suporte',
+            supportReturnState: { supportFilters: {
+              busca,
+              buscaAplicada,
+              status: filtroStatus,
+              prioridade: filtroPrioridade,
+              pagina,
+            } },
+          } })} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Plus aria-hidden="true" className="h-4 w-4" />Abrir chamado</Button>
         )}
       />
 

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
@@ -21,6 +22,15 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: mocks.from 
 vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }));
 
 import CentralSuporte from '@/pages/CentralSuporte';
+
+function LocationStateProbe() {
+  const location = useLocation();
+  return <output data-testid="support-route-state">{JSON.stringify({ pathname: location.pathname, state: location.state })}</output>;
+}
+
+function renderCentral(state?: unknown) {
+  return render(<MemoryRouter initialEntries={[{ pathname: '/suporte', state }]}><CentralSuporte /><LocationStateProbe /></MemoryRouter>);
+}
 
 describe('CentralSuporte', () => {
   beforeEach(() => {
@@ -44,7 +54,7 @@ describe('CentralSuporte', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('diferencia uma fila vazia de um carregamento ou erro', () => {
-    render(<CentralSuporte />);
+    renderCentral();
     expect(screen.getByText('Nenhum chamado por aqui')).toBeVisible();
     expect(screen.getByText(/Exibindo 0–0 de 0 chamados/)).toBeVisible();
   });
@@ -59,7 +69,7 @@ describe('CentralSuporte', () => {
     };
     const relatedBuilder: any = { select: vi.fn(() => relatedBuilder), in: vi.fn().mockResolvedValue({ data: [], error: null }) };
     mocks.from.mockImplementation((table: string) => table === 'support_tickets' ? ticketBuilder : relatedBuilder);
-    render(<CentralSuporte />);
+    renderCentral();
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Buscar no título ou na descrição de todos os chamados' }), {
       target: { value: 'falha (scanner), %' },
@@ -75,20 +85,26 @@ describe('CentralSuporte', () => {
 
   });
 
-  it('abre um chamado com os dados validados e a clínica atual', async () => {
-    render(<CentralSuporte />);
+  it('navega para a página própria e preserva os filtros e a página da fila', async () => {
+    const filters = { busca: 'Impressora', buscaAplicada: 'Impressora', status: 'aberto', prioridade: 'alta', pagina: 2 };
+    mocks.useQuery.mockImplementation((config: any) => {
+      mocks.queryConfigs.set(String(config.queryKey[0]), config);
+      return { data: config.queryKey[0] === 'support-tickets' ? { items: [], total: 301 } : undefined, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+    renderCentral({ supportFilters: filters });
+    await waitFor(() => expect(mocks.queryConfigs.get('support-tickets').queryKey).toEqual(expect.arrayContaining(['Impressora', 'aberto', 'alta', 2])));
+    expect(screen.getByText('Página 3 de 4')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir chamado' }));
-    fireEvent.change(screen.getByLabelText('Resumo do problema'), { target: { value: 'Erro ao salvar paciente' } });
-    fireEvent.change(screen.getByLabelText('Descrição'), { target: { value: 'O botão salvar não conclui o cadastro.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar chamado' }));
+    const routeState = JSON.parse(screen.getByTestId('support-route-state').textContent || '{}');
+    expect(routeState).toEqual({
+      pathname: '/suporte/novo',
+      state: { supportReturnTo: '/suporte', supportReturnState: { supportFilters: filters } },
+    });
+  });
 
-    await waitFor(() => expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({
-      titulo: 'Erro ao salvar paciente',
-      descricao: 'O botão salvar não conclui o cadastro.',
-      clinica_id: 'clinica-1',
-      solicitante_id: 'user-1',
-    })));
-    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['support-tickets'] });
+  it('mantém a ação de criação disponível para a clínica atual', async () => {
+    renderCentral();
+    expect(screen.getByRole('button', { name: 'Abrir chamado' })).toBeVisible();
   });
 
   it('mostra uma ação de retry quando a fila falha', () => {
@@ -100,7 +116,7 @@ describe('CentralSuporte', () => {
       isError: queryKey[0] === 'support-tickets',
       refetch,
     }));
-    render(<CentralSuporte />);
+    renderCentral();
 
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(refetch).toHaveBeenCalledOnce();
@@ -117,7 +133,7 @@ describe('CentralSuporte', () => {
       isError: false,
       refetch: vi.fn(),
     }));
-    render(<CentralSuporte />);
+    renderCentral();
 
     fireEvent.click(screen.getByRole('button', { name: /Erro na agenda/ }));
     fireEvent.change(screen.getByLabelText('Responder'), { target: { value: 'Resposta para a agenda' } });
@@ -148,7 +164,7 @@ describe('CentralSuporte', () => {
       };
     });
     mocks.from.mockImplementation((table: string) => table === 'support_ticket_messages' ? messagesBuilder : { select: vi.fn() });
-    render(<CentralSuporte />);
+    renderCentral();
 
     fireEvent.click(screen.getByRole('button', { name: /Ajuda/ }));
     const messagesQuery = mocks.queryConfigs.get('support-messages');
@@ -177,7 +193,7 @@ describe('CentralSuporte', () => {
       };
     });
     mocks.from.mockImplementation((table: string) => table === 'support_ticket_messages' ? messagesBuilder : { select: vi.fn() });
-    render(<CentralSuporte />);
+    renderCentral();
 
     fireEvent.click(screen.getByRole('button', { name: /Ajuda/ }));
     const messagesQuery = mocks.queryConfigs.get('support-messages');
@@ -197,7 +213,7 @@ describe('CentralSuporte', () => {
     const clinicBuilder: any = { select: vi.fn(() => clinicBuilder), in: vi.fn().mockResolvedValue({ data: [{ id: 'clinica-1', nome: 'Clínica' }], error: null }) };
     const profileBuilder: any = { select: vi.fn(() => profileBuilder), in: vi.fn().mockResolvedValue({ data: [{ id: 'user-2', nome: 'Solicitante' }], error: null }) };
     mocks.from.mockImplementation((table: string) => table === 'support_tickets' ? ticketBuilder : table === 'clinicas' ? clinicBuilder : profileBuilder);
-    render(<CentralSuporte />);
+    renderCentral();
 
     await mocks.queryConfigs.get('support-tickets').queryFn();
 
@@ -213,7 +229,7 @@ describe('CentralSuporte', () => {
     const clinicBuilder: any = { select: vi.fn(() => clinicBuilder), in: vi.fn().mockResolvedValue({ data: [{ id: 'clinica-1', nome: 'Clínica' }], error: null }) };
     const profileBuilder: any = { select: vi.fn(() => profileBuilder), in: vi.fn().mockResolvedValue({ data: [{ id: 'user-2', nome: 'Solicitante', email: 'solicitante@example.com' }], error: null }) };
     mocks.from.mockImplementation((table: string) => table === 'support_tickets' ? ticketBuilder : table === 'clinicas' ? clinicBuilder : profileBuilder);
-    render(<CentralSuporte />);
+    renderCentral();
 
     await mocks.queryConfigs.get('support-tickets').queryFn();
 

@@ -852,3 +852,9 @@ A lista de possíveis pares e a comparação de cadastros deixaram o diálogo de
 Vitest 3/3, Playwright 3/3, TypeScript, build, acessibilidade, permissões, falhas silenciosas, colunas do banco e inspeção visual desktop/mobile passaram. Os testes interceptaram gravações e cobriram a confirmação, preservação de rascunho e retorno contextual. Nenhuma mesclagem ou descarte real ocorreu.
 
 Publicação: commit `4947716876a1cd8c5e48f991014c62d962653009`, imagem `easypanel/elolab/app:deploy-20261030-4947716`, rollback `deploy-20261030-9f987a7`. Container isolado, `/healthz` público, SHA integral em `/version.json` e Swarm 1/1 confirmados. Houve contenção transitória de porta host-mode, resolvida sem rollback. A fonte anterior foi preservada em `code.before-20261030-4947716`; `.env` comparado por hash sem leitura ou exposição. Nenhuma migration ou escrita de produção. A auditoria geral e as pendências das demais etapas continuam abertas.
+
+## Suporte — abertura de chamado em página própria (30/10/2026)
+
+A criação de chamado saiu do modal da Central de Suporte e foi para `/suporte/novo`. A rota mantém os mesmos papéis, validações, payload de `support_tickets`, prioridade e categoria; o retorno preserva busca, status, prioridade e página. A montagem da fila deixou de zerar uma página restaurada, sem alterar o reinício de paginação ao trocar filtros. A tela protege rascunhos, mantém campos em erros e recomenda conferir a fila antes de repetir envio após falha de conexão.
+
+Vitest 11/11, Playwright 1/1, TypeScript e ESLint focal passaram. Inspecionei a interface renderizada em 1440 px e 390 px; não há modal, overflow horizontal ou ação encoberta pela navegação mobile. A gravação de teste foi interceptada. Detalhes: [abertura de chamado em página própria](EVOLUCAO_CHAMADO_SUPORTE_PAGINA.md). Publicação e SHA serão registrados após o deploy. A auditoria de configurações, suporte da plataforma, LGPD e demais operações continua aberta.
