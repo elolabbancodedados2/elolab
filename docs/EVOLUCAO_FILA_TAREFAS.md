@@ -62,3 +62,16 @@ Uma URL direta para a passagem de turno sem o snapshot de navegação apresenta 
 ## Publicação
 
 Commit `53dc69426f9e09d6e87676a2129add68fd4b7bd8`; imagem `easypanel/elolab/app:deploy-20261030-53dc694`. A imagem foi construída do arquivo versionado com o SHA integral, verificada em container isolado (`/healthz=ok`) e ativada com `stop-first`, rollback automático e período de observação. O Swarm convergiu para 1/1 réplica; o endpoint público confirmou `healthz=ok` e o mesmo SHA em `/version.json`. Houve contenção transitória da porta host-mode durante a troca, resolvida sem rollback. Imagem de rollback preservada: `easypanel/elolab/app:deploy-20261030-6fa4c9f`. Nenhuma migration ou alteração de dados de produção.
+
+## Publicação — jornada integrada
+
+- Commit: `11dc93ef657aa1e3f7b675d97748f8a585b5ea09`.
+- Imagem: `easypanel/elolab/app:deploy-20261030-11dc93e`.
+- Rollback: `easypanel/elolab/app:deploy-20261030-a74e6d0`; fonte anterior preservada em `code.before-20261030-11dc93e`.
+- O container isolado respondeu `/healthz=ok` e apresentou o SHA integral esperado em `/version.json`.
+- Swarm: `elolab_app` convergiu em `stop-first` para 1/1 réplica; o estado de atualização ficou `completed`. A disputa temporária pela porta host-mode terminou na convergência, sem rollback.
+- `app.elolab.com.br` e `elolab.com.br` retornaram `/healthz=ok` e o mesmo SHA publicado.
+- O `.env` da fonte ativa foi preservado sem alteração; nenhum segredo foi exibido. Nenhuma migration, escrita clínica ou alteração de dados de produção.
+- As verificações antes da publicação foram E2E sintético do módulo (26/26), build, acessibilidade, permissões, falhas silenciosas e `git diff --check`.
+
+Esta entrega conclui a validação sintética da jornada integrada da Recepção e Fila. A validação autenticada de RLS e exceções em operação real continuam pendentes; a próxima etapa é a cobertura residual de documentos e transições clínicas.

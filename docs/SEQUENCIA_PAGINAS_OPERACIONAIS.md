@@ -31,6 +31,8 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 
 Cada item exige investigar os pontos de entrada e as permissões antes de editar. Componentes incorporados em abas precisam preservar o retorno à aba e os filtros. Formulários de dinheiro, ações clínicas, autenticação e segurança não serão convertidos por substituição global.
 
+Atualização de 30/10/2026: jornada integrada da Recepção/Fila publicada no commit `11dc93ef657aa1e3f7b675d97748f8a585b5ea09` (`deploy-20261030-11dc93e`). E2E sintético 26/26; build e verificadores de acessibilidade, permissões e falhas passaram; as capturas desktop/mobile foram inspecionadas. Os dois domínios, `/healthz`, SHA e Swarm 1/1 foram confirmados. RLS autenticada e exceções com dados reais continuam fora desta validação. Próximo módulo em sequência: documentos e transições clínicas do prontuário. Registro: `EVOLUCAO_FILA_TAREFAS.md`.
+
 ## Registro de aceite
 
 O diagnóstico, os arquivos alterados, os testes executados, as capturas efetivamente inspecionadas, as limitações e o identificador publicado ficam em `EVOLUCAO_PAGINAS_OPERACIONAIS.md`. A existência de uma rota, compilação bem-sucedida ou botão que abre uma tela não constitui aceite completo.
