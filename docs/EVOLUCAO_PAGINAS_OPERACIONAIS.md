@@ -783,3 +783,6 @@ Implementação: /faturamento-convenios/glosas/nova consulta lotes elegíveis e 
 Validação: regressão Playwright dos fluxos TISS 10/10; Vitest de breadcrumbs 22/22; TypeScript, npm run check:a11y e git diff --check passaram. ESLint sem erros; 42 avisos preexistentes no arquivo FaturamentoConvenios.tsx e nenhum na página nova. Inspecionei capturas renderizadas desktop e mobile (390 x 844); sem transbordamento horizontal e a ação final fica acima da navegação fixa. Escritas foram mockadas; nenhuma glosa real foi registrada.
 
 Publicação: commit 84b4eac84a79f15059da7d926ba494a154188076, imagem easypanel/elolab/app:deploy-20261030-84b4eac. Swarm convergiu com 1/1 réplica; /healthz respondeu ok e /version.json confirmou o SHA integral. Fonte anterior preservada em code.before-84b4eac; .env foi copiado e comparado sem leitura ou exposição. Rollback: deploy-20261030-9f3c57f. Nenhuma migration ou alteração de dados de produção.
+
+
+Atualizacao TISS (2026-10-30): recurso de glosa, decisao da operadora e conferencia de guias foram movidos para paginas proprias e publicados. Registro detalhado: [evolucao do fluxo TISS](EVOLUCAO_FATURAMENTO_TISS_RECURSO_GUIAS.md). Outras jornadas do EloLab seguem pendentes; esta entrega nao encerra a auditoria integral.

@@ -50,3 +50,6 @@ Atualizacao de 30/10/2026: pagamento de repasse agora ocorre em pagina propria (
 Atualização de 30/10/2026: importação do extrato OFX tem página própria (1ac12fc), preserva a competência do Fluxo de Caixa e não cria lançamentos automaticamente. Na etapa 11, criação de lote TISS agora também tem página própria (68782fe); retorno do lote, registro de glosa, preparação de recurso e decisão da operadora seguem em modais. As etapas 9, 10 e 12 ainda exigem auditoria operacional; a sequência integral continua em andamento.
 
 Atualização de 30/10/2026: criação de lote TISS (68782fe), retorno/conciliação (9f3c57f) e registro de glosas (84b4eac) estão em páginas próprias. Preparação de recurso, documentos e decisão da operadora ainda estão em modais e seguem para a próxima rodada. As etapas 9, 10 e 12 continuam em auditoria; o app não está integralmente concluído.
+
+
+Atualizacao TISS (2026-10-30): recurso de glosa, decisao da operadora e conferencia de guias foram movidos para paginas proprias e publicados. Registro detalhado: [evolucao do fluxo TISS](EVOLUCAO_FATURAMENTO_TISS_RECURSO_GUIAS.md). Outras jornadas do EloLab seguem pendentes; esta entrega nao encerra a auditoria integral.
