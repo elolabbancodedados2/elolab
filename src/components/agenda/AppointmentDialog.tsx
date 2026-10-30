@@ -460,7 +460,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
   return (
     <>
       <UnsavedChangesGuard dirty={JSON.stringify(form) !== initialSnapshot} busy={saving || deleting} completed={completed} />
-      <div className="mx-auto w-full max-w-5xl space-y-6 pb-6">
+      <div className="mx-auto w-full max-w-6xl space-y-5 pb-6">
         <header className="space-y-3 border-b border-border pb-5">
           <Button variant="ghost" className="-ml-3 gap-2" onClick={() => onOpenChange(false)} disabled={saving || deleting}><ArrowLeft className="h-4 w-4" />Voltar à agenda</Button>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -475,143 +475,181 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
           )}
         </header>
 
-        <fieldset disabled={saving || deleting || consultaSomenteLeitura} className="min-w-0">
-        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-          <section aria-labelledby="appointment-patient-heading" className="min-w-0 space-y-4">
-            <h2 id="appointment-patient-heading" className="text-lg font-semibold">Paciente</h2>
-            <Label htmlFor="appointment-patient">Buscar paciente</Label>
-            <PacienteCombobox id="appointment-patient" value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
-            {paciente && (
-              <div className="space-y-1 rounded-xl border border-border/60 bg-muted/30 p-3 text-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-semibold">{paciente.nome_social || paciente.nome}</div>
-                  {whatsappPaciente && (
-                    <a href={whatsappPaciente} target="_blank" rel="noopener noreferrer" aria-label="Abrir conversa no WhatsApp" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#25D366]/10 text-[#128C7E] transition hover:bg-[#128C7E] hover:text-white">
-                      <MessageCircle className="h-4 w-4" />
-                    </a>
-                  )}
-                </div>
-                {paciente.cpf && <div className="text-xs text-muted-foreground">CPF: {paciente.cpf}</div>}
-                {paciente.telefone && <div className="text-xs text-muted-foreground">Tel: {paciente.telefone}</div>}
-                {ultimoAtendimento && (
-                  <div className="mt-1.5 flex items-center gap-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-                    <History className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span>
-                      Último atendimento: <span className="font-medium text-foreground">{String(ultimoAtendimento.data).split('-').reverse().join('/')} às {String(ultimoAtendimento.hora_inicio).slice(0, 5)}</span>
-                      {ultimoAtendimento.medicos?.nome && ` · ${nomeMedico(ultimoAtendimento.medicos.nome)}`}
-                      {' · '}{formatAppointmentStatus(ultimoAtendimento.status)}
-                    </span>
-                  </div>
-                )}
-                {!ultimoAtendimento && !ultimoAtendimentoQuery.isLoading && (
-                  <div className="mt-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">Primeira consulta na clínica.</div>
-                )}
+        <fieldset disabled={saving || deleting || consultaSomenteLeitura} className="min-w-0 space-y-5">
+          <section aria-labelledby="appointment-patient-heading" className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="mb-4">
+              <div className="flex items-center gap-2">
+                <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">1</span>
+                <h2 id="appointment-patient-heading" className="text-lg font-semibold">Paciente</h2>
               </div>
-            )}
-          </section>
-
-          <section aria-labelledby="appointment-details-heading" className="min-w-0 space-y-4 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-            <h2 id="appointment-details-heading" className="text-lg font-semibold">Dados da consulta</h2>
-            <div>
-              <Label htmlFor="appointment-doctor">Médico *</Label>
-              <Select value={form.medico_id} onValueChange={(v) => setForm({ ...form, medico_id: v })}>
-                <SelectTrigger id="appointment-doctor"><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
-                <SelectContent data-elo-font-preview="agenda">
-                  {[...medicos.filter(m => m.ativo !== false), ...(medicoInativoDaConsulta ? [medicoInativoDaConsulta] : [])].map(m => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {nomeMedico(m.nome || m.crm)} · {m.ativo === false ? 'Inativo (consulta existente)' : m.especialidade || 'Geral'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <p className="mt-1 text-sm text-muted-foreground">Busque pelo nome, CPF ou telefone para conferir o cadastro e o histórico.</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div>
-                <Label htmlFor="appointment-date">Data *</Label>
-                <Input id="appointment-date" type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+              <div className="space-y-2">
+                <Label htmlFor="appointment-patient">Buscar paciente</Label>
+                <PacienteCombobox id="appointment-patient" value={form.paciente_id} onChange={(id) => setForm((f: any) => ({ ...f, paciente_id: id }))} />
               </div>
-              <div>
-                <Label htmlFor="appointment-start">Início *</Label>
-                <Input id="appointment-start" type="time" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
-              </div>
-              <div>
-                <Label htmlFor="appointment-end">Fim</Label>
-                <Input id="appointment-end" type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
-              </div>
-            </div>
-            {terminoPrevisto && (
-              <p className="-mt-1 text-xs text-muted-foreground">
-                Sem término informado: será salvo até <span className="font-semibold text-foreground">{terminoPrevisto.hora}</span> ({terminoPrevisto.duracao} min pelo tipo escolhido).
-              </p>
-            )}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="appointment-type">Tipo</Label>
-                <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                  <SelectTrigger id="appointment-type"><SelectValue /></SelectTrigger>
-                  <SelectContent data-elo-font-preview="agenda">
-                    <SelectItem value="consulta">Consulta</SelectItem>
-                    <SelectItem value="retorno">Retorno</SelectItem>
-                    <SelectItem value="exame">Exame</SelectItem>
-                    <SelectItem value="procedimento">Procedimento</SelectItem>
-                    <SelectItem value="telemedicina">Teleconsulta</SelectItem>
-                    {tipos.map(t => <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="appointment-status">Status</Label>
-                {editing ? (
-                  <div id="appointment-status" className="flex h-10 items-center rounded-md border border-border bg-muted px-3 text-sm text-foreground" aria-label={`Status atual: ${rotulosStatusOperacionais[form.status] || form.status}`}>
-                    {rotulosStatusOperacionais[form.status] || form.status}
+              <div className="min-w-0">
+                {paciente ? (
+                  <div className="space-y-1 rounded-xl border border-border/60 bg-muted/30 p-3 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 truncate font-semibold">{paciente.nome_social || paciente.nome}</div>
+                      {whatsappPaciente && (
+                        <a href={whatsappPaciente} target="_blank" rel="noopener noreferrer" aria-label="Abrir conversa no WhatsApp" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#25D366]/10 text-[#128C7E] transition hover:bg-[#128C7E] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                          <MessageCircle aria-hidden="true" className="h-4 w-4" />
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {paciente.cpf && <span>CPF: {paciente.cpf}</span>}
+                      {paciente.telefone && <span>Tel: {paciente.telefone}</span>}
+                    </div>
+                    {ultimoAtendimento && (
+                      <div className="mt-1.5 flex items-start gap-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+                        <History aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span className="min-w-0">
+                          Último atendimento: <span className="font-medium text-foreground">{String(ultimoAtendimento.data).split('-').reverse().join('/')} às {String(ultimoAtendimento.hora_inicio).slice(0, 5)}</span>
+                          {ultimoAtendimento.medicos?.nome && ` · ${nomeMedico(ultimoAtendimento.medicos.nome)}`}
+                          {' · '}{formatAppointmentStatus(ultimoAtendimento.status)}
+                        </span>
+                      </div>
+                    )}
+                    {!ultimoAtendimento && !ultimoAtendimentoQuery.isLoading && (
+                      <div className="mt-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">Primeira consulta na clínica.</div>
+                    )}
+                    {ultimoAtendimentoQuery.isLoading && (
+                      <p className="mt-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">Carregando histórico recente…</p>
+                    )}
                   </div>
                 ) : (
-                  <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })} disabled={consultaSomenteLeitura}>
-                    <SelectTrigger id="appointment-status"><SelectValue /></SelectTrigger>
-                    <SelectContent data-elo-font-preview="agenda">
-                      <SelectItem value="agendado">Agendado</SelectItem>
-                      <SelectItem value="confirmado">Confirmado</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex min-h-11 items-center rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                    {form.paciente_id ? 'Carregando dados do paciente…' : 'Selecione um paciente para ver os dados de contato e o último atendimento.'}
+                  </div>
                 )}
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {editing ? 'O status muda pelos fluxos de atendimento e fila.' : 'Aguardando e falta são registrados pelos fluxos de atendimento.'}
-                </p>
-                {/* 'em_atendimento' e 'finalizado' saíram do select manual:
-                    são estados OPERACIONAIS, que nascem da fila e da
-                    finalização com faturamento. Marcá-los à mão burlava o
-                    fluxo e deixava consulta sem cobrança. */}
               </div>
             </div>
-            {salas.length > 0 && (
+          </section>
+
+          <section aria-labelledby="appointment-details-heading" className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="mb-4">
+              <div className="flex items-center gap-2">
+                <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">2</span>
+                <h2 id="appointment-details-heading" className="text-lg font-semibold">Dados da consulta</h2>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">Campos com * são obrigatórios. O horário final pode ser calculado pelo tipo de atendimento.</p>
+            </div>
+            <div className="space-y-4">
               <div>
-                <Label htmlFor="appointment-room">Sala</Label>
-                <Select value={form.sala_id || 'none'} onValueChange={(v) => setForm({ ...form, sala_id: v === 'none' ? '' : v })}>
-                  <SelectTrigger id="appointment-room"><SelectValue /></SelectTrigger>
+                <Label htmlFor="appointment-doctor">Médico *</Label>
+                <Select value={form.medico_id} onValueChange={(v) => setForm({ ...form, medico_id: v })}>
+                  <SelectTrigger id="appointment-doctor"><SelectValue placeholder="Selecione o médico" /></SelectTrigger>
                   <SelectContent data-elo-font-preview="agenda">
-                    <SelectItem value="none">Sem sala</SelectItem>
-                    {salas.map(s => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                    {[...medicos.filter(m => m.ativo !== false), ...(medicoInativoDaConsulta ? [medicoInativoDaConsulta] : [])].map(m => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {nomeMedico(m.nome || m.crm)} · {m.ativo === false ? 'Inativo (consulta existente)' : m.especialidade || 'Geral'}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-          <div className="space-y-4 border-t border-border pt-4">
-            <div>
-              <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
-              <Textarea id="appointment-notes" rows={4} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
-            </div>
-            {!editing && (
-              <div className="flex items-center justify-between rounded-md border p-3">
-                <Label htmlFor="appointment-whatsapp" className="flex items-center gap-2 text-sm">
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                  Enviar confirmação por WhatsApp
-                </Label>
-                <Switch id="appointment-whatsapp" checked={form.send_whatsapp} onCheckedChange={(v) => setForm({ ...form, send_whatsapp: v })} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="appointment-date">Data *</Label>
+                  <Input id="appointment-date" type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+                </div>
+                <div>
+                  <Label htmlFor="appointment-start">Início *</Label>
+                  <Input id="appointment-start" type="time" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
+                </div>
+                <div>
+                  <Label htmlFor="appointment-end">Fim (opcional)</Label>
+                  <Input id="appointment-end" type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
+                </div>
               </div>
-            )}
-          </div>
+              {terminoPrevisto && (
+                <p className="-mt-2 text-xs text-muted-foreground">
+                  Sem término informado: será salvo até <span className="font-semibold text-foreground">{terminoPrevisto.hora}</span> ({terminoPrevisto.duracao} min pelo tipo escolhido).
+                </p>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="appointment-type">Tipo</Label>
+                  <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+                    <SelectTrigger id="appointment-type"><SelectValue /></SelectTrigger>
+                    <SelectContent data-elo-font-preview="agenda">
+                      <SelectItem value="consulta">Consulta</SelectItem>
+                      <SelectItem value="retorno">Retorno</SelectItem>
+                      <SelectItem value="exame">Exame</SelectItem>
+                      <SelectItem value="procedimento">Procedimento</SelectItem>
+                      <SelectItem value="telemedicina">Teleconsulta</SelectItem>
+                      {tipos.map(t => <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="appointment-status">Status</Label>
+                  {editing ? (
+                    <div id="appointment-status" className="flex h-10 items-center rounded-md border border-border bg-muted px-3 text-sm text-foreground" aria-label={`Status atual: ${rotulosStatusOperacionais[form.status] || form.status}`}>
+                      {rotulosStatusOperacionais[form.status] || form.status}
+                    </div>
+                  ) : (
+                    <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })} disabled={consultaSomenteLeitura}>
+                      <SelectTrigger id="appointment-status"><SelectValue /></SelectTrigger>
+                      <SelectContent data-elo-font-preview="agenda">
+                        <SelectItem value="agendado">Agendado</SelectItem>
+                        <SelectItem value="confirmado">Confirmado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {editing ? 'O status muda pelos fluxos de atendimento e fila.' : 'Aguardando e falta são registrados pelos fluxos de atendimento.'}
+                  </p>
+                  {/* 'em_atendimento' e 'finalizado' saíram do select manual:
+                      são estados OPERACIONAIS, que nascem da fila e da
+                      finalização com faturamento. Marcá-los à mão burlava o
+                      fluxo e deixava consulta sem cobrança. */}
+                </div>
+              </div>
+              {salas.length > 0 && (
+                <div>
+                  <Label htmlFor="appointment-room">Sala</Label>
+                  <Select value={form.sala_id || 'none'} onValueChange={(v) => setForm({ ...form, sala_id: v === 'none' ? '' : v })}>
+                    <SelectTrigger id="appointment-room"><SelectValue /></SelectTrigger>
+                    <SelectContent data-elo-font-preview="agenda">
+                      <SelectItem value="none">Sem sala</SelectItem>
+                      {salas.map(s => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
           </section>
-        </div>
+
+          <section aria-labelledby="appointment-notes-heading" className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">3</span>
+              <h2 id="appointment-notes-heading" className="text-lg font-semibold">Observações e confirmação</h2>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">Informações adicionais para a equipe. Exames precisam do nome do exame.</p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.65fr)]">
+              <div className="space-y-2">
+                <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
+                <Textarea id="appointment-notes" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
+              </div>
+              {!editing && (
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+                  <div className="min-w-0">
+                    <Label htmlFor="appointment-whatsapp" className="flex items-center gap-2 text-sm">
+                      <MessageCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+                      Enviar confirmação por WhatsApp
+                    </Label>
+                    <p className="mt-1 pl-6 text-xs text-muted-foreground">A mensagem configurada entra na fila após agendar.</p>
+                  </div>
+                  <Switch id="appointment-whatsapp" checked={form.send_whatsapp} onCheckedChange={(v) => setForm({ ...form, send_whatsapp: v })} />
+                </div>
+              )}
+            </div>
+          </section>
         </fieldset>
 
         <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-border bg-background py-4">
@@ -636,7 +674,7 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Voltar à agenda</Button>
             <Button onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura}>
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar' : 'Agendar'}
+              {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar alterações' : 'Agendar consulta'}
             </Button>
           </div>
         </footer>
