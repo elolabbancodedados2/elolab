@@ -918,3 +918,9 @@ O início do acesso assistido à clínica passou para `/admin/clinicas/acesso`, 
 ## Configurações — credenciais de integração em página própria
 
 O formulário de conexão saiu do modal e passou a /configuracoes/integracoes/conectar/:integrationId. A função clinic-integrations, a validação de concorrência e o fluxo OAuth do Mercado Pago foram preservados. Credenciais permanecem apenas em memória no cliente e não aparecem na URL/localStorage. Três E2E sintéticos, componente 2/2, TypeScript, build, acessibilidade e verificações estáticas passaram; capturas desktop/mobile foram inspecionadas. Publicado no commit 7714c007, imagem deploy-20261030-7714c00, rollback deploy-20261030-3f85b85; health, SHA, Swarm 1/1, fonte anterior e hash do ambiente confirmados. Nenhuma credencial real foi usada. Detalhes: [credenciais de integração](EVOLUCAO_INTEGRACOES_CLINICA_PAGINA.md).
+
+## Portal do Paciente — reagendamento de consulta e retorno em página própria
+
+Os formulários de reagendamento saíram dos diálogos e passaram a `/portal-paciente?tela=reagendar`. A seleção permanece em memória; o endereço não inclui token nem identificador. A consulta mantém médico, horários disponíveis, limite do servidor, transição de volta a “Agendado” e tratamento de concorrência. O retorno mantém confirmação do horário pela clínica e atualiza a data local mesmo se a leitura seguinte falhar.
+
+Playwright 3/3; Vitest do Portal/contrato 32/32; TypeScript, build, acessibilidade, permissões, falhas silenciosas, colunas e inspeção visual mobile/desktop passaram. Publicado em `4f716d3` (`deploy-20261030-4f716d3`), rollback `deploy-20261030-5af4fd6`; smoke, `/healthz`, SHA público, Swarm 1/1 e hash do ambiente conferidos. Sem migration ou gravação de dados reais. Registro: [reagendamento do Portal do Paciente](EVOLUCAO_PORTAL_PACIENTE_REAGENDAMENTO_PAGINAS.md). As demais jornadas e a auditoria integral do EloLab seguem abertas.
