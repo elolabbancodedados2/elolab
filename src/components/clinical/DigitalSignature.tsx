@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { KeyRound, AlertTriangle, CheckCircle2, Loader2, FileKey, ExternalLink } from 'lucide-react';
+import { KeyRound, AlertTriangle, CheckCircle2, Loader2, FileKey, ExternalLink, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/PageHeader';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -23,6 +21,11 @@ interface DigitalSignatureProps {
   signedAt?: string | null;
   /** Prevent signing while the editor contains a version not persisted on the server. */
   disabledReason?: string;
+  fullPage?: boolean;
+  onOpenReview?: () => void;
+  onCloseReview?: () => void;
+  triggerId?: string;
+  patientName?: string;
 }
 
 /**
@@ -52,12 +55,18 @@ export function DigitalSignature({
   alreadySigned = false,
   signedAt = null,
   disabledReason,
+  fullPage = false,
+  onOpenReview,
+  onCloseReview,
+  triggerId,
+  patientName,
 }: DigitalSignatureProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [signing, setSigning] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signatureData, setSignatureData] = useState<SignatureData | null>(null);
   const [verificationCode, setVerificationCode] = useState<string | null>(null);
+  const [signError, setSignError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -71,9 +80,28 @@ export function DigitalSignature({
       .then(({ data }: any) => setVerificationCode(data?.codigo_verificacao ?? null));
   }, [alreadySigned, documentId, documentType]);
 
+  if (fullPage && alreadySigned && !signed) {
+    return (
+      <section className="mx-auto w-full max-w-4xl space-y-5" data-testid="clinical-signature-page">
+        <PageHeader
+          title="Documento já assinado"
+          description={`Paciente: ${patientName || 'Paciente atual'}`}
+          icon={<FileKey />}
+          actions={<Button variant="outline" onClick={onCloseReview} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao prontuário</Button>}
+        />
+        <div role="status" className="space-y-2 rounded-lg border border-success/30 bg-success/5 p-5">
+          <p className="font-semibold">Assinatura eletrônica registrada</p>
+          <p className="text-sm text-muted-foreground">{signerName}{signerCRM ? ` · CRM ${signerCRM}` : ''}{signedAt ? ` · ${new Date(signedAt).toLocaleString('pt-BR')}` : ''}</p>
+          {verificationCode && <VerificationLink code={verificationCode} />}
+        </div>
+      </section>
+    );
+  }
+
   const handleSign = async () => {
     if (disabledReason) return;
     setSigning(true);
+    setSignError(null);
     try {
       if (documentType !== 'prontuario') throw new Error('Assinatura verificável ainda não disponível para este documento.');
       const { data, error } = await (supabase as any).rpc('assinar_prontuario_verificavel', { p_prontuario_id: documentId });
@@ -85,15 +113,18 @@ export function DigitalSignature({
       setSigned(true);
       setIsDialogOpen(false);
       onSigned?.(result);
+      onCloseReview?.();
 
       toast({
         title: 'Documento assinado',
         description: 'Assinatura eletrônica registrada. O documento não pode mais ser editado.',
       });
     } catch (error) {
+      const message = (error as any)?.message || 'Tente novamente.';
+      setSignError(message);
       toast({
         title: 'Erro na assinatura',
-        description: (error as any)?.message || 'Não foi possível assinar o documento.',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -101,9 +132,11 @@ export function DigitalSignature({
     }
   };
 
-  if (alreadySigned && !signed) {
+  if (alreadySigned && !signed && !fullPage) {
     return (
       <motion.div
+        id="clinical-signature-status"
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
@@ -121,9 +154,11 @@ export function DigitalSignature({
     );
   }
 
-  if (signed && signatureData) {
+  if (signed && signatureData && !fullPage) {
     return (
       <motion.div
+        id="clinical-signature-status"
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
@@ -146,12 +181,50 @@ export function DigitalSignature({
     );
   }
 
+  if (fullPage) {
+    return (
+      <section className="mx-auto w-full max-w-4xl space-y-5" data-testid="clinical-signature-page">
+        <PageHeader
+          title="Assinatura eletrônica do prontuário"
+          description={`Paciente: ${patientName || 'Paciente atual'}`}
+          icon={<FileKey />}
+          actions={<Button variant="outline" onClick={onCloseReview} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao prontuário</Button>}
+        />
+        <section aria-labelledby="signature-review-heading" className="space-y-4 rounded-lg border bg-card p-5">
+          <div>
+            <h2 id="signature-review-heading" className="font-semibold">Revise a identificação antes de assinar</h2>
+            <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+              <div><dt className="text-muted-foreground">Profissional</dt><dd className="font-medium">{signerName}</dd></div>
+              <div><dt className="text-muted-foreground">Registro profissional</dt><dd>{signerCRM ? `CRM ${signerCRM}` : 'Não informado'}</dd></div>
+              <div><dt className="text-muted-foreground">Documento</dt><dd>Prontuário</dd></div>
+              <div><dt className="text-muted-foreground">Paciente</dt><dd>{patientName || 'Paciente atual'}</dd></div>
+            </dl>
+          </div>
+          <div role="note" className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+            <p>Esta assinatura eletrônica simples registra profissional, CRM, horário e hash de integridade no servidor. Ela não utiliza certificado ICP-Brasil e não equivale a assinatura digital qualificada.</p>
+            <p>Ao assinar, o prontuário fica bloqueado para edição. Complementações e correções devem ser feitas por adendo, mantendo o histórico.</p>
+          </div>
+          {disabledReason && <p role="alert" className="text-sm text-destructive">{disabledReason}</p>}
+          {signError && <p role="alert" className="text-sm text-destructive">A assinatura não foi confirmada: {signError}. Revise o estado do prontuário antes de tentar novamente.</p>}
+          <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={onCloseReview} disabled={signing}>Cancelar</Button>
+            <Button type="button" onClick={() => void handleSign()} disabled={signing || Boolean(disabledReason)} className="min-h-10">
+              {signing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileKey className="mr-2 h-4 w-4" />}
+              Assinar e fechar o documento
+            </Button>
+          </div>
+        </section>
+      </section>
+    );
+  }
+
   return (
     <>
       <Button
         variant="outline"
         size={compact ? 'sm' : 'default'}
-        onClick={() => setIsDialogOpen(true)}
+        id={triggerId}
+        onClick={() => onOpenReview ? onOpenReview() : setIsDialogOpen(true)}
         disabled={Boolean(disabledReason)}
         aria-describedby={disabledReason ? 'signature-disabled-reason' : undefined}
         className="gap-1.5"

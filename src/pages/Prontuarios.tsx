@@ -850,7 +850,7 @@ export default function Prontuarios() {
     else params.set('secao', section);
     setSearchParams(params, { replace: true });
   };
-  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta' | 'alertas-medicamentos' | 'anexo-portal', anexoId?: string) => {
+  const openProntuarioTool = (tool: 'protocolos' | 'relatorio-alta' | 'alertas-medicamentos' | 'anexo-portal' | 'assinatura-eletronica', anexoId?: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('tela', tool);
     if (tool === 'alertas-medicamentos') params.set('secao', 'prescricao');
@@ -862,6 +862,7 @@ export default function Prontuarios() {
   };
   const focusMedicationReviewAfterCloseRef = useRef(false);
   const focusPortalAttachmentAfterCloseRef = useRef<string | null>(null);
+  const focusSignatureAfterCloseRef = useRef(false);
   const closeProntuarioTool = () => {
     const params = new URLSearchParams(searchParams);
     params.delete('tela');
@@ -876,6 +877,10 @@ export default function Prontuarios() {
     focusMedicationReviewAfterCloseRef.current = true;
     closeProntuarioTool();
   };
+  const closeSignatureReview = () => {
+    focusSignatureAfterCloseRef.current = true;
+    closeProntuarioTool();
+  };
   useEffect(() => {
     if (telaProntuario === 'alertas-medicamentos' || !focusMedicationReviewAfterCloseRef.current) return;
     focusMedicationReviewAfterCloseRef.current = false;
@@ -884,6 +889,19 @@ export default function Prontuarios() {
       if (trigger instanceof HTMLElement) {
         trigger.focus();
         trigger.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }, [telaProntuario]);
+  useEffect(() => {
+    if (telaProntuario === 'assinatura-eletronica' || !focusSignatureAfterCloseRef.current) return;
+    focusSignatureAfterCloseRef.current = false;
+    window.requestAnimationFrame(() => {
+      const trigger = document.getElementById('clinical-signature-review-trigger');
+      const status = document.getElementById('clinical-signature-status');
+      const target = trigger ?? status;
+      if (target instanceof HTMLElement) {
+        target.focus();
+        target.scrollIntoView({ block: 'nearest' });
       }
     });
   }, [telaProntuario]);
@@ -955,7 +973,7 @@ export default function Prontuarios() {
   const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string) => {
     const secaoAtual = searchParams.get('secao');
     if (secaoAtual && !params.has('secao')) params.set('secao', secaoAtual);
-    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal') {
+    if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal' || telaProntuario === 'assinatura-eletronica') {
       params.set('tela', telaProntuario);
       if (telaProntuario === 'anexo-portal' && routeAnexoId) params.set('anexo', routeAnexoId);
     }
@@ -985,6 +1003,11 @@ export default function Prontuarios() {
     crm_assinante: currentProntuario.crm_assinante,
     medicoVinculado: medicoDoProntuario,
   });
+  const handleProntuarioSigned = (signature: { signedAt: string }) => {
+    setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: signature.signedAt }));
+    setIsEditing(false);
+    void refetchProntuarios();
+  };
   const { data: convenios = [], error: erroConvenios, refetch: refetchConvenios } = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
   const { medicoId, isMedicoOnly } = useCurrentMedico();
   // Pacientes agendados hoje para o médico logado: aparecem no topo da lista
@@ -1304,7 +1327,7 @@ export default function Prontuarios() {
       return;
     }
 
-    if (!record || record.paciente_id !== routePacienteId || (!record.assinado && secaoProntuario !== 'anexos')) {
+    if (!record || record.paciente_id !== routePacienteId || (!record.assinado && secaoProntuario !== 'anexos' && telaProntuario !== 'assinatura-eletronica')) {
       toast.error('Não foi possível reabrir esta evolução', {
         description: 'O prontuário pode ter mudado ou não estar disponível para este paciente, clínica e seção.',
       });
@@ -1314,7 +1337,7 @@ export default function Prontuarios() {
     void handleViewProntuarioRef.current(record);
   }, [
     isProntuarioOpen, location.pathname,
-    routeProntuarioId, routePacienteId, selectedPacienteId, selectedPaciente,
+    routeProntuarioId, routePacienteId, selectedPacienteId, selectedPaciente, telaProntuario,
     pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError,
     loadingProntuarios, loadingMedicos, erroProntuarios, erroMedicos,
     historicoAuditadoPacienteId, erroHistorico, user?.clinica_id,
@@ -1928,7 +1951,7 @@ export default function Prontuarios() {
     </div>
   );
 
-  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal') {
+  if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal' || telaProntuario === 'assinatura-eletronica') {
     if (pacienteSelecionadoQuery.isLoading || (routePacienteId && !isProntuarioOpen)) {
       return (
         <section role="status" className="mx-auto flex min-h-48 max-w-5xl items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -1979,6 +2002,29 @@ export default function Prontuarios() {
           loadError={erroPrescricoes}
           onRetry={() => { if (currentProntuario.id) void carregarPrescricoes(currentProntuario.id); }}
           onCloseReview={closeMedicationReview}
+        />
+      );
+    }
+
+    if (telaProntuario === 'assinatura-eletronica') {
+      if (!currentProntuario.id) {
+        return <section role="alert" className="mx-auto max-w-5xl space-y-4 rounded-xl border border-warning/40 bg-warning/10 p-5"><h1 className="text-lg font-semibold">Salve o prontuário antes de assinar</h1><p className="text-sm text-muted-foreground">A assinatura só pode ser registrada para uma versão persistida do documento.</p><Button variant="outline" onClick={closeProntuarioTool}>Voltar ao prontuário</Button></section>;
+      }
+      return (
+        <DigitalSignature
+          fullPage
+          documentId={currentProntuario.id}
+          documentType="prontuario"
+          signerName={identificacaoAssinante.nome}
+          signerCRM={identificacaoAssinante.crm}
+          patientName={selectedPaciente.nome_social || selectedPaciente.nome}
+          alreadySigned={isSigned}
+          signedAt={currentProntuario.assinado_em}
+          disabledReason={isEditing || hasUnsavedChanges || salvandoProntuario
+            ? 'Salve as alterações e reabra o prontuário para assinar a versão atual.'
+            : undefined}
+          onSigned={handleProntuarioSigned}
+          onCloseReview={closeSignatureReview}
         />
       );
     }
@@ -3111,14 +3157,12 @@ export default function Prontuarios() {
                     compact
                     alreadySigned={isSigned}
                     signedAt={currentProntuario.assinado_em}
+                    triggerId="clinical-signature-review-trigger"
                     disabledReason={isEditing || hasUnsavedChanges || salvandoProntuario
                       ? 'Salve as alterações e reabra o prontuário para assinar a versão atual.'
                       : undefined}
-                    onSigned={() => {
-                      setCurrentProntuario(prev => ({ ...prev, assinado: true, assinado_em: new Date().toISOString() }));
-                      setIsEditing(false);
-                      refetchProntuarios();
-                    }}
+                    onOpenReview={() => openProntuarioTool('assinatura-eletronica')}
+                    onSigned={handleProntuarioSigned}
                   />
                 )}
                 {autoSaveTime && !autoSaveError && (

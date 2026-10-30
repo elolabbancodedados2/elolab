@@ -453,3 +453,53 @@ test('document sharing in the patient portal uses a contextual page and returns 
   await expect(page.getByRole('button', { name: 'Revogar documento do portal para resultado-qa.pdf' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+test('signature review uses a contextual page and returns to the signed chart', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true, prontuarioDraft: true });
+  await installPageMocks(page, { ...record, assinado: false });
+  const signatureCalls: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/rpc/assinar_prontuario_verificavel*', route => {
+    signatureCalls.push(route.request().postDataJSON() as Record<string, unknown>);
+    return route.fulfill({ json: {
+      signedAt: '2026-10-30T12:00:00.000Z',
+      signerName: 'Dra. Marina Ribeiro',
+      signerCRM: '000000',
+      hash: 'abcdef1234567890',
+      method: 'eletronica_simples',
+      verificationCode: 'codigo-qa',
+    } });
+  });
+  await page.route('**/rest/v1/prontuario_assinaturas*', route => route.fulfill({ json: { codigo_verificacao: 'codigo-qa' } }));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=conduta&tela=assinatura-eletronica`);
+  await expect(page.getByTestId('clinical-signature-page')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Assinatura eletr/ })).toBeVisible();
+  await expect(page.getByText('Pessoa Exemplo QA', { exact: true })).toBeVisible();
+  await expect(page.getByRole('note')).toContainText('ICP-Brasil');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('clinical-signature-mobile.png'), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const signButton = page.getByRole('button', { name: /Assinar e fechar/ });
+  await signButton.scrollIntoViewIfNeeded();
+  await page.locator('main#main-content').evaluate(element => element.scrollTo(0, element.scrollHeight));
+  const signBounds = await signButton.boundingBox();
+  const mobileNavigation = await page.getByRole('navigation', { name: /Navega/ }).last().boundingBox();
+  expect(signBounds).not.toBeNull();
+  expect(mobileNavigation).not.toBeNull();
+  expect(signBounds!.y + signBounds!.height).toBeLessThanOrEqual(mobileNavigation!.y);
+  await page.screenshot({ path: info.outputPath('clinical-signature-mobile-action.png'), fullPage: true, animations: 'disabled' });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: info.outputPath('clinical-signature-desktop.png'), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId('clinical-signature-page')).toBeVisible();
+
+  await signButton.click();
+  await expect(page).toHaveURL(new RegExp(`/prontuarios/atendimento\\?paciente=${patient}.*prontuario=${recordId}(?:&|$)`));
+  await expect(page.locator('#clinical-signature-status')).toBeFocused();
+  await expect(page.getByText('Assinado eletronicamente', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(signatureCalls).toEqual([{ p_prontuario_id: recordId }]);
+});
