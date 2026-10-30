@@ -82,6 +82,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(cashId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(cashId))).toBe(false);
   });
+  it('omite o identificador do lançamento no breadcrumb de edição', () => {
+    const movementId = '00000000-0000-4000-9000-000000000085';
+    render(<MemoryRouter initialEntries={[`/recepcao/caixa/lancamentos/${movementId}/editar`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Editar lançamento do caixa')).toBeInTheDocument();
+    expect(screen.queryByText(movementId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(movementId))).toBe(false);
+  });
   it('omite o identificador do repasse no registro de pagamento', () => {
     const repasseId = '00000000-0000-4000-9000-000000000091';
     render(<MemoryRouter initialEntries={[`/repasses-medicos/${repasseId}/pagamento`]}><Breadcrumbs /></MemoryRouter>);

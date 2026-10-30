@@ -796,3 +796,7 @@ Implementação: `/recepcao/caixa/historico/:caixaId` apresenta o resumo do caix
 Validação: Playwright 3/3 em fixture sintética; TypeScript, `npm run check:a11y` e `git diff --check` passaram. ESLint sem erros, com dois avisos `any` preexistentes no legado `CaixaDiario.tsx`. Inspecionei capturas renderizadas mobile/desktop e a ação após rolagem; a navegação inferior não cobre a confirmação. Não houve operação financeira real, teste de RLS em produção ou validação manual de leitor de tela.
 
 Publicação: código `df095a7f2dc89511de9080444fcee2f249535a46`, imagem `easypanel/elolab/app:deploy-20261030-df095a7`. Smoke do container e do domínio público confirmou `/healthz=ok`, `/version.json` com o SHA integral e Swarm 1/1. Rollback imediato: `deploy-20261030-ef6509b`. Nenhuma migration ou alteração de dados. Registro: [caixa — histórico e reabertura](EVOLUCAO_CAIXA_HISTORICO_REABERTURA.md).
+
+## Financeiro — edição de lançamentos do caixa em página própria (30/10/2026)
+
+Descrição, valor e forma de pagamento de saídas agora são editados em `/recepcao/caixa/lancamentos/:lancamentoId/editar`. A tela preserva os demais campos, bloqueia recebimentos e protege rascunhos; nenhuma escrita ou contrato financeiro foi substituído. Playwright focado, TypeScript, acessibilidade automatizada, ESLint focal, inspeção visual mobile/desktop e `git diff --check` foram executados. Detalhes: [edição de lançamentos do caixa](EVOLUCAO_CAIXA_EDICAO_LANCAMENTOS.md). Publicação e rollback serão registrados após o rollout.

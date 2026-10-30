@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -31,11 +30,7 @@ import { printReceiptPdf, downloadReceiptPdf, type ReceiptData } from '@/lib/pdf
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
@@ -49,22 +44,6 @@ import { canAccessCashTab, canAccessRestrictedCashTabs } from '@/lib/cashierAcce
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
 
-
-function parseMoneyInput(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const compact = trimmed.replace(/\s/g, '');
-  const normalized = compact.includes(',')
-    ? compact.replace(/\./g, '').replace(',', '.')
-    : compact;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-
-function temPrecisaoDeCentavos(value: number): boolean {
-  return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
-}
 
 interface Lancamento {
   id: string;
@@ -184,14 +163,17 @@ export default function CaixaDiario() {
 
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState(['tipos', 'precos'].includes(location.state?.cashTab) ? location.state.cashTab : 'hoje');
+  const routeState = location.state as { cashTab?: unknown; cashSearchTerm?: unknown; cashTipoFiltro?: unknown } | null;
+  const requestedCashTab = typeof routeState?.cashTab === 'string' && ['hoje', 'historico', 'receber', 'pagar', 'fluxo', 'precos', 'tipos', 'relatorios'].includes(routeState.cashTab)
+    ? routeState.cashTab : 'hoje';
+  const [activeTab, setActiveTab] = useState(requestedCashTab);
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(typeof routeState?.cashSearchTerm === 'string' ? routeState.cashSearchTerm : '');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
-  const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
 
-  const [tipoFiltro, setTipoFiltro] = useState<'todos' | LancamentoTipo>('todos');
+  const initialTipoFiltro = ['todos', 'receita', 'despesa', 'sangria', 'suprimento'].includes(String(routeState?.cashTipoFiltro))
+    ? routeState?.cashTipoFiltro as 'todos' | LancamentoTipo : 'todos';
+  const [tipoFiltro, setTipoFiltro] = useState<'todos' | LancamentoTipo>(initialTipoFiltro);
 
   // ─── Queries ────────────────────────────────────
   const { data: caixaHoje, isLoading: loadingCaixa, isError: erroCaixa, refetch: recarregarCaixa } = useQuery({
@@ -338,27 +320,6 @@ export default function CaixaDiario() {
       queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
     },
     onError: (e: any) => toast.error(e?.message || 'Erro'),
-  });
-
-  const editarLancamentoMutation = useMutation({
-    mutationFn: async (payload: { id: string; descricao: string; valor: number; forma_pagamento: FormaPagamento }) => {
-      if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
-      const { data, error } = await supabase
-        .from('lancamentos')
-        .update({ descricao: payload.descricao, valor: payload.valor, forma_pagamento: payload.forma_pagamento })
-        .eq('id', payload.id).eq('clinica_id', profile.clinica_id)
-        .select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Sem permissão para editar este lançamento.');
-    },
-    onSuccess: () => {
-      toast.success('Lançamento atualizado!');
-      setEditLanc(null);
-      queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-    },
-    onError: (e: any) => toast.error(e?.message || 'Erro ao editar'),
   });
 
   // ─── Helpers ────────────────────────────────────
@@ -866,11 +827,13 @@ export default function CaixaDiario() {
                                         </Button>
                                         <Button variant="ghost" size="icon" aria-label="Editar lançamento" className="h-9 w-9 rounded-full"
                                           onClick={() => {
-                                            setEditLanc(l);
-                                            setEditForm({
-                                              descricao: l.descricao || '',
-                                              valor: String(l.valor ?? ''),
-                                              forma_pagamento: l.forma_pagamento,
+                                            navigate(`/recepcao/caixa/lancamentos/${l.id}/editar`, {
+                                              state: {
+                                                returnTo: '/recepcao?tab=caixa',
+                                                cashTab: 'hoje',
+                                                cashSearchTerm: searchTerm,
+                                                cashTipoFiltro: tipoFiltro,
+                                              },
                                             });
                                           }}>
                                           <Pencil className="h-3.5 w-3.5" />
@@ -1114,76 +1077,6 @@ export default function CaixaDiario() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Editar lançamento */}
-      <Dialog open={!!editLanc} onOpenChange={(o) => {
-        if (o || !editarLancamentoMutation.isPending) setEditLanc(o ? editLanc : null);
-      }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Editar lançamento</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="caixa-editar-descricao">Descrição</Label>
-              <Input
-                id="caixa-editar-descricao"
-                value={editForm.descricao}
-                onChange={(e) => setEditForm(f => ({ ...f, descricao: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="caixa-editar-valor">Valor (R$)</Label>
-              <Input
-                id="caixa-editar-valor"
-                type="text" inputMode="decimal"
-                value={editForm.valor}
-                onChange={(e) => setEditForm(f => ({ ...f, valor: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="caixa-editar-forma">Forma de pagamento</Label>
-              <Select
-                value={editForm.forma_pagamento}
-                onValueChange={(v) => setEditForm(f => ({ ...f, forma_pagamento: v as FormaPagamento }))}
-              >
-                <SelectTrigger id="caixa-editar-forma"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="cartao_credito">Crédito</SelectItem>
-                  <SelectItem value="cartao_debito">Débito</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
-                  <SelectItem value="transferencia">Transferência</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditLanc(null)} disabled={editarLancamentoMutation.isPending}>Cancelar</Button>
-            <Button
-              onClick={() => {
-                if (!editLanc) return;
-                const valor = parseMoneyInput(editForm.valor);
-                if (!editForm.descricao.trim()) { toast.error('Informe a descrição'); return; }
-                if (valor === null || valor <= 0 || !temPrecisaoDeCentavos(valor)) {
-                  toast.error('Informe um valor válido, maior que zero e com até duas casas decimais.');
-                  return;
-                }
-                editarLancamentoMutation.mutate({
-                  id: editLanc.id,
-                  descricao: editForm.descricao.trim(),
-                  valor,
-                  forma_pagamento: editForm.forma_pagamento,
-                });
-              }}
-              disabled={editarLancamentoMutation.isPending}
-            >
-              {editarLancamentoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
