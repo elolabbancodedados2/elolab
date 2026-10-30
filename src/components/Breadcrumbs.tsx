@@ -25,6 +25,10 @@ export function Breadcrumbs() {
         if (!isLast && /^\/atendimentos\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/repasses-medicos\/[^/]+$/.test(path) && /^\/repasses-medicos\/[^/]+\/pagamento$/.test(location.pathname)) return null;
         if (!isLast && /^\/faturamento-convenios\/lotes\/[^/]+$/.test(path) && /^\/faturamento-convenios\/lotes\/[^/]+\/retorno$/.test(location.pathname)) return null;
+        if (!isLast && /^\/faturamento-convenios\/lotes\/[^/]+$/.test(path) && /^\/faturamento-convenios\/lotes\/[^/]+\/guias$/.test(location.pathname)) return null;
+        if (!isLast && /^\/faturamento-convenios\/glosas\/[^/]+$/.test(path) && /^\/faturamento-convenios\/glosas\/[^/]+\/(?:recurso|retorno)$/.test(location.pathname)) return null;
+        if (!isLast && path === '/faturamento-convenios/lotes' && location.pathname.startsWith(`${path}/`)) return null;
+        if (!isLast && path === '/faturamento-convenios/glosas' && location.pathname.startsWith(`${path}/`)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/anexos$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/adendos$/.test(path)) return null;

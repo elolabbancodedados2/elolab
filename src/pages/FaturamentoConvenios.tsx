@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useId, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, BadgeCheck, FileDown, FileStack, Plus, RefreshCw, ShieldCheck, RotateCcw, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,10 +9,8 @@ import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
@@ -20,18 +18,15 @@ import { ErrorState } from '@/components/ErrorState';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PageHeader } from '@/components/PageHeader';
 import { FieldHelp } from '@/components/ContextualHelp';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { RelatorioFaturamentoCompetencia } from '@/components/financeiro/RelatorioFaturamentoCompetencia';
 import { ConciliacaoConvenioPorLote } from '@/components/financeiro/ConciliacaoConvenioPorLote';
-import { GuiasLoteDialog } from '@/components/financeiro/GuiasLoteDialog';
-import { RecursoGlosaDialog, ResumoRecurso, type DocumentoRecurso } from '@/components/financeiro/RecursoGlosaDialog';
+import { ResumoRecurso, type DocumentoRecurso } from '@/components/financeiro/ResumoRecursoGlosa';
 import { bloqueiaEnvio, validarLoteTiss, type AutorizacaoValidacao, type GuiaLote } from '@/lib/tissLoteValidacao';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-const temNoMaximoDuasCasas = (value: number) => Number.isFinite(value)
-  && Math.abs(value * 100 - Math.round(value * 100)) < 1e-7;
 const STATUS_LOTE_COR: Record<string, string> = {
   rascunho: 'border-border bg-muted text-muted-foreground',
   enviado: 'border-[#BFD8EE] bg-[#1080CA]/10 text-[#1080CA]',
@@ -69,11 +64,8 @@ interface EstadoFaturamento { restaurarFiltros?: FiltrosFaturamento }
 export default function FaturamentoConvenios() {
   const { profile } = useSupabaseAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [glosaParaRecurso, setGlosaParaRecurso] = useState<any | null>(null);
-  const [glosaParaRetorno, setGlosaParaRetorno] = useState<any | null>(null);
-  const [decisaoOperadora, setDecisaoOperadora] = useState<'aceita' | 'mantida'>('aceita');
-  const [valorRecuperado, setValorRecuperado] = useState('');
   const [loteParaConfirmarEnvio, setLoteParaConfirmarEnvio] = useState<any | null>(null);
   const [loteEnviandoId, setLoteEnviandoId] = useState<string | null>(null);
   const [glosaAtualizandoId, setGlosaAtualizandoId] = useState<string | null>(null);
@@ -143,7 +135,6 @@ export default function FaturamentoConvenios() {
   }, [lotes, guiasPorLote, autorizacoesQuery.data]);
   // Lote antigo, sem guias, segue o fluxo agregado: o banco também só bloqueia lotes com guias.
   const envioBloqueado = (loteId: string) => (guiasPorLote.get(loteId)?.length ?? 0) > 0 && bloqueiaEnvio(pendenciasPorLote.get(loteId) ?? []);
-  const [loteGuias, setLoteGuias] = useState<any | null>(null);
   const consultasAtingiramLimite = lotes.length >= LIMITE_BUSCA_EM_BLOCOS
     || glosas.length >= LIMITE_BUSCA_EM_BLOCOS;
   const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading || guiasQuery.isLoading || autorizacoesQuery.isLoading;
@@ -197,35 +188,28 @@ export default function FaturamentoConvenios() {
     finally { setLoteEnviandoId(null); }
   }
 
-  async function updateGlosa(id: string, status: 'recurso_preparacao' | 'recurso_enviado' | 'aceita' | 'mantida', extra: Record<string, unknown> = {}) {
+  async function updateGlosa(id: string) {
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return false; }
     if (glosaAtualizacaoLock.current) return false;
-    if (status === 'recurso_enviado') {
-      const atual = glosas.find((item: any) => item.id === id);
-      if (String(atual?.recurso_justificativa || '').trim().length < 10) {
-        toast.error('Registre a justificativa antes de marcar o recurso como enviado.');
-        return false;
-      }
+    const atual = glosas.find((item: any) => item.id === id);
+    if (atual?.status !== 'recurso_preparacao' || String(atual?.recurso_justificativa || '').trim().length < 10
+      || !atual?.recurso_prazo || !atual?.recurso_responsavel_id) {
+      toast.error('Atualize o recurso e confirme justificativa, prazo e responsável antes de marcar como enviado.');
+      return false;
     }
     glosaAtualizacaoLock.current = true;
     setGlosaAtualizandoId(id);
-    const statusEsperado: Record<typeof status, string> = {
-      recurso_preparacao: glosas.find((item: any) => item.id === id)?.status === 'recurso_preparacao' ? 'recurso_preparacao' : 'pendente',
-      recurso_enviado: 'recurso_preparacao',
-      aceita: 'recurso_enviado',
-      mantida: 'recurso_enviado',
-    };
     try {
       const { data, error } = await (supabase as any).rpc('atualizar_glosa_convenio', {
         p_glosa_id: id,
-        p_status: status,
-        p_recurso_justificativa: status === 'recurso_preparacao' ? String(extra.recurso_justificativa || '') : null,
-        p_valor_recuperado: ['aceita', 'mantida'].includes(status) ? Number(extra.valor_recuperado || 0) : null,
+        p_status: 'recurso_enviado',
+        p_recurso_justificativa: null,
+        p_valor_recuperado: null,
       });
       if (error) throw error;
-      if (!data?.success) throw new Error(`A glosa já mudou de status (${statusEsperado[status]}). Atualize a lista antes de continuar.`);
+      if (!data?.success) throw new Error('A glosa já mudou de status. Atualize a lista antes de continuar.');
       await queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] });
-      toast.success(({ recurso_preparacao: 'Preparação do recurso registrada.', recurso_enviado: 'Recurso marcado como enviado.', aceita: 'Glosa aceita; valor recuperado registrado.', mantida: 'Decisão da operadora registrada.' })[status]);
+      toast.success('Recurso marcado como enviado.');
       return true;
     } catch (error: any) { toast.error('Não foi possível atualizar a glosa.', { description: error?.message }); }
     finally {
@@ -234,26 +218,10 @@ export default function FaturamentoConvenios() {
     }
     return false;
   }
-
-
-  async function salvarRetornoOperadora() {
-    if (!glosaParaRetorno) return;
-    const valor = decisaoOperadora === 'aceita' ? Number(valorRecuperado) : 0;
-    if (decisaoOperadora === 'aceita' && !valorRecuperado.trim()) {
-      return toast.error('Informe o valor efetivamente recuperado; use zero se nada foi recuperado.');
-    }
-    if (!Number.isFinite(valor) || valor < 0 || valor > Number(glosaParaRetorno.valor_glosado)) {
-      return toast.error('Informe um valor recuperado entre zero e o valor da glosa.');
-    }
-    if (!temNoMaximoDuasCasas(valor)) return toast.error('O valor recuperado deve ter no máximo duas casas decimais.');
-    const salvo = await updateGlosa(glosaParaRetorno.id, decisaoOperadora, { valor_recuperado: valor });
-    if (salvo) { setGlosaParaRetorno(null); setValorRecuperado(''); }
-  }
-
   function exportLot(lote: any) {
     if (envioBloqueado(lote.id)) {
       toast.error('Corrija as pendências do lote antes de exportar.', { description: 'Cada guia e campo a corrigir está listado na conferência de guias.' });
-      setLoteGuias(lote);
+      void navigate(`/faturamento-convenios/lotes/${lote.id}/guias`, { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } });
       return;
     }
     const guiasXml = (guiasPorLote.get(lote.id) ?? []).map(g => `<guia><numero>${escapeXml(g.numero_guia)}</numero><carteira>${escapeXml(g.numero_carteira)}</carteira><dataAtendimento>${escapeXml(g.data_atendimento)}</dataAtendimento><procedimento>${escapeXml(g.codigo_procedimento)}</procedimento><quantidade>${g.quantidade}</quantidade><valor>${Number(g.valor_total).toFixed(2)}</valor></guia>`).join('');
@@ -330,7 +298,7 @@ export default function FaturamentoConvenios() {
                 return envioBloqueado(l.id) ? <p className="mt-1 text-xs font-medium text-destructive">{erros} pendência(s) a corrigir</p> : null;
               })()}</TableCell>
               <TableCell><div className="flex flex-wrap gap-1">
-                <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" onClick={() => setLoteGuias(l)} aria-label={`Conferir guias do lote ${l.numero_lote}`}>Guias ({guiasPorLote.get(l.id)?.length ?? 0})</Button>
+                <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" onClick={() => navigate('/faturamento-convenios/lotes/' + l.id + '/guias', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })} aria-label={`Conferir guias do lote ${l.numero_lote}`}>Guias ({guiasPorLote.get(l.id)?.length ?? 0})</Button>
                 <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs" onClick={() => exportLot(l)} aria-label={`Baixar resumo XML do lote ${l.numero_lote}`} title="Baixar resumo operacional XML (não é arquivo TISS de transmissão)"><FileDown className="mr-1 h-4 w-4" />Baixar resumo XML</Button>
                 {l.status === 'rascunho' && <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={loteEnviandoId !== null || envioBloqueado(l.id)} title={envioBloqueado(l.id) ? 'Corrija as pendências das guias antes de registrar o envio' : undefined} onClick={() => setLoteParaConfirmarEnvio(l)}>{loteEnviandoId === l.id && <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />}Registrar envio</Button>}
                 {['enviado', 'processando', 'pago_parcial', 'pago'].includes(l.status) && <Button asChild size="sm" variant="outline" className="h-9 rounded-full text-xs"><Link to={`/faturamento-convenios/lotes/${l.id}/retorno`} state={{ filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } }}>{l.retorno_em ? 'Atualizar retorno' : 'Registrar retorno'}</Link></Button>}
@@ -347,7 +315,7 @@ export default function FaturamentoConvenios() {
           {filtroGlosaAtivo && <Button size="sm" variant="outline" className="h-8 rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}
           <p className="ml-auto text-xs tabular-nums text-muted-foreground">Mostrando {glosasFiltradas.length} de {glosas.length} glosas.</p>
         </div>}
-        {glosasFiltradas.length > 0 ? <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}<ResumoRecurso glosa={g} responsavel={responsaveisQuery.data?.find(r => r.id === g.recurso_responsavel_id)?.nome} documentos={documentosPorGlosa.get(g.id)?.length ?? 0} /></TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_GLOSA_COR[g.status])}>{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1 space-y-1">{g.status === 'pendente' && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => setGlosaParaRecurso(g)}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => setGlosaParaRecurso(g)}>Revisar recurso</Button><Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10 || !g.recurso_prazo || !g.recurso_responsavel_id} title={!g.recurso_prazo || !g.recurso_responsavel_id ? 'Defina prazo e responsável antes de enviar' : undefined} onClick={() => void updateGlosa(g.id, 'recurso_enviado')}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={glosaAtualizandoId !== null} onClick={() => { setGlosaParaRetorno(g); setDecisaoOperadora('aceita'); setValorRecuperado(String(g.valor_glosado)); }}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table></div></div> : <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ShieldCheck className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
+        {glosasFiltradas.length > 0 ? <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}<ResumoRecurso glosa={g} responsavel={responsaveisQuery.data?.find(r => r.id === g.recurso_responsavel_id)?.nome} documentos={documentosPorGlosa.get(g.id)?.length ?? 0} /></TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_GLOSA_COR[g.status])}>{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1 space-y-1">{g.status === 'pendente' && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/recurso', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/recurso', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Revisar recurso</Button><Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10 || !g.recurso_prazo || !g.recurso_responsavel_id} title={!g.recurso_prazo || !g.recurso_responsavel_id ? 'Defina prazo e responsável antes de enviar' : undefined} onClick={() => void updateGlosa(g.id)}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/retorno', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table></div></div> : <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><ShieldCheck className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
       </CardContent></Card></TabsContent>
       <TabsContent value="conciliacao">
         {profile?.clinica_id && <ConciliacaoConvenioPorLote clinicaId={profile.clinica_id} lotes={lotesComNomeConvenio} />}
@@ -358,14 +326,6 @@ export default function FaturamentoConvenios() {
     </Tabs>
     <div className="flex items-start gap-2 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-3 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0 text-[#1080CA]" /><span>O XML é um resumo operacional e este sistema não o transmite à operadora. Valide o arquivo no padrão/XSD exigido e registre o envio somente depois de transmiti-lo pelo canal oficial. O retorno pode ser conciliado com o <Link to="/fluxo-caixa" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Fluxo de Caixa</Link> pelo formulário. Como o lote não identifica as cobranças individuais, confira lançamentos anteriores antes de confirmar para evitar duplicidade.</span></div>
 
-    <GuiasLoteDialog
-      lote={loteGuias}
-      guias={loteGuias ? guiasPorLote.get(loteGuias.id) ?? [] : []}
-      autorizacoes={(autorizacoesQuery.data ?? []).filter(a => !loteGuias || a.convenio_id === loteGuias.convenio_id || (guiasPorLote.get(loteGuias.id) ?? []).some(g => g.autorizacao_id === a.id))}
-      pendencias={loteGuias ? pendenciasPorLote.get(loteGuias.id) ?? [] : []}
-      onOpenChange={open => { if (!open) setLoteGuias(null); }}
-      onChanged={() => queryClient.invalidateQueries({ queryKey: ['lote-tiss-guias'] })}
-    />
     <AlertDialog open={!!loteParaConfirmarEnvio} onOpenChange={open => { if (!open && !loteEnviandoId) setLoteParaConfirmarEnvio(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -393,16 +353,6 @@ export default function FaturamentoConvenios() {
       </AlertDialogContent>
     </AlertDialog>
 
-    {profile?.clinica_id && <RecursoGlosaDialog glosa={glosaParaRecurso} clinicaId={profile.clinica_id} responsaveis={responsaveisQuery.data ?? []} documentos={glosaParaRecurso ? documentosPorGlosa.get(glosaParaRecurso.id) ?? [] : []} salvarJustificativa={(id, justificativa) => updateGlosa(id, 'recurso_preparacao', { recurso_justificativa: justificativa })} onClose={() => setGlosaParaRecurso(null)} onChanged={() => Promise.all([queryClient.invalidateQueries({ queryKey: ['glosas-convenio'] }), queryClient.invalidateQueries({ queryKey: ['glosa-recurso-documentos'] })])} />}
-    <Dialog open={!!glosaParaRetorno} onOpenChange={open => { if (!open && glosaAtualizandoId === null) setGlosaParaRetorno(null); }}><DialogContent><DialogHeader><DialogTitle>Registrar retorno da operadora</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Glosa {glosaParaRetorno?.codigo_glosa} · valor original {brl(Number(glosaParaRetorno?.valor_glosado || 0))}</p><Field label="Decisão"><Select value={decisaoOperadora} disabled={glosaAtualizandoId !== null} onValueChange={value=>setDecisaoOperadora(value as 'aceita' | 'mantida')}><SelectTrigger aria-label="Decisão"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aceita">Recurso aceito</SelectItem><SelectItem value="mantida">Glosa mantida</SelectItem></SelectContent></Select></Field>{decisaoOperadora === 'aceita' && <Field label="Valor recuperado"><Input type="number" min="0" max={glosaParaRetorno?.valor_glosado || 0} step="0.01" disabled={glosaAtualizandoId !== null} value={valorRecuperado} onChange={e=>setValorRecuperado(e.target.value)} /></Field>}<DialogFooter><Button variant="outline" onClick={()=>setGlosaParaRetorno(null)} disabled={glosaAtualizandoId !== null}>Cancelar</Button><Button onClick={salvarRetornoOperadora} disabled={glosaAtualizandoId !== null}>{glosaAtualizandoId === glosaParaRetorno?.id && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}Registrar decisão</Button></DialogFooter></DialogContent></Dialog>
-  </div>;
-}
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const controlId = useId();
-  const labelId = `${controlId}-label`;
-  const control = isValidElement(children)
-    ? cloneElement(children as React.ReactElement<Record<string, unknown>>, { id: controlId, 'aria-labelledby': labelId })
-    : children;
-  return <div className="space-y-1.5"><Label id={labelId} htmlFor={controlId}>{label}</Label>{control}</div>;
+  </div>;
 }

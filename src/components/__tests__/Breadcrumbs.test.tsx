@@ -21,10 +21,29 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(lotId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(lotId))).toBe(false);
   });
+  it('hides the lot identifier on the dedicated guides workspace', () => {
+    const lotId = '00000000-0000-4000-9000-000000000241';
+    render(<MemoryRouter initialEntries={[`/faturamento-convenios/lotes/${lotId}/guias`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Conferir guias do lote')).toBeInTheDocument();
+    expect(screen.queryByText(lotId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(lotId))).toBe(false);
+    expect(screen.queryByRole('link', { name: 'Lotes' })).not.toBeInTheDocument();
+  });
   it('labels the dedicated TISS glosa form', () => {
     render(<MemoryRouter initialEntries={['/faturamento-convenios/glosas/nova']}><Breadcrumbs /></MemoryRouter>);
     expect(screen.getByText('Registrar glosa')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Faturamento de convênios' })).toHaveAttribute('href', '/faturamento-convenios');
+  });
+  it.each([
+    ['/faturamento-convenios/glosas/00000000-0000-4000-9000-000000000242/recurso', 'Preparar recurso de glosa'],
+    ['/faturamento-convenios/glosas/00000000-0000-4000-9000-000000000243/retorno', 'Registrar retorno da operadora'],
+  ])('hides glosa identifiers on dedicated workflow pages: %s', (path, label) => {
+    const id = path.split('/')[3];
+    render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText(id)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(id))).toBe(false);
+    expect(screen.queryByRole('link', { name: 'Glosas' })).not.toBeInTheDocument();
   });
   it.each([
     '/exames/laboratorios/record-qa/editar',

@@ -149,6 +149,9 @@ const FaturamentoConvenios = lazy(() => import("@/pages/FaturamentoConvenios"));
 const NovoLoteTissPage = lazy(() => import("@/pages/NovoLoteTissPage"));
 const RetornoLoteTissPage = lazy(() => import("@/pages/RetornoLoteTissPage"));
 const NovaGlosaTissPage = lazy(() => import("@/pages/NovaGlosaTissPage"));
+const RecursoGlosaTissPage = lazy(() => import("@/pages/RecursoGlosaTissPage"));
+const RetornoGlosaTissPage = lazy(() => import("@/pages/RetornoGlosaTissPage"));
+const GuiasLoteTissPage = lazy(() => import("@/pages/GuiasLoteTissPage"));
 const RepassesMedicos = lazy(() => import("@/pages/RepassesMedicos"));
 const RepassePagamentoPage = lazy(() => import("@/pages/RepassePagamentoPage"));
 const BankStatementImportPage = lazy(() => import("@/pages/BankStatementImportPage"));
@@ -368,7 +371,10 @@ function AppRoutes() {
                           <Route path="/faturamento-convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><FaturamentoConvenios /></SupabaseProtectedRoute>} />
                           <Route path="/faturamento-convenios/lotes/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><NovoLoteTissPage /></SupabaseProtectedRoute>} />
                           <Route path="/faturamento-convenios/lotes/:loteId/retorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RetornoLoteTissPage /></SupabaseProtectedRoute>} />
+                          <Route path="/faturamento-convenios/lotes/:loteId/guias" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><GuiasLoteTissPage /></SupabaseProtectedRoute>} />
                           <Route path="/faturamento-convenios/glosas/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><NovaGlosaTissPage /></SupabaseProtectedRoute>} />
+                          <Route path="/faturamento-convenios/glosas/:glosaId/recurso" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RecursoGlosaTissPage /></SupabaseProtectedRoute>} />
+                          <Route path="/faturamento-convenios/glosas/:glosaId/retorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RetornoGlosaTissPage /></SupabaseProtectedRoute>} />
                           <Route path="/repasses-medicos/:repasseId/pagamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassePagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/repasses-medicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RepassesMedicos /></SupabaseProtectedRoute>} />
                           <Route path="/interoperabilidade" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Interoperabilidade /></SupabaseProtectedRoute>} />
