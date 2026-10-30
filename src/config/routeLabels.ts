@@ -64,6 +64,7 @@ const labelsByPath: Record<string, string> = {
   '/todos-templates': 'Modelos clínicos',
   '/tarefas': 'Tarefas',
   '/recepcao': 'Recepção e caixa',
+  '/recepcao/caixa/abrir': 'Abrir caixa',
   '/recepcao/encaixe': 'Encaixe sem agendamento',
   '/financeiro': 'Financeiro',
   '/contas': 'Contas a receber e a pagar',

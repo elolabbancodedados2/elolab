@@ -1,4 +1,4 @@
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -267,10 +267,10 @@ export default function CaixaDiario() {
   }, []);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(['tipos', 'precos'].includes(location.state?.cashTab) ? location.state.cashTab : 'hoje');
   const activeTabPermitida = canAccessCashTab(activeTab, roles) ? activeTab : 'hoje';
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAbertura, setShowAbertura] = useState(false);
   const [showFechamento, setShowFechamento] = useState(false);
   const [showLancamento, setShowLancamento] = useState(false);
   const [showSangria, setShowSangria] = useState(false);
@@ -281,7 +281,6 @@ export default function CaixaDiario() {
   const [showDetalhesCaixa, setShowDetalhesCaixa] = useState<CaixaDiarioType | null>(null);
   const [caixaParaFechar, setCaixaParaFechar] = useState<CaixaDiarioType | null>(null);
 
-  const [valorAbertura, setValorAbertura] = useState('');
   const [valorFechamento, setValorFechamento] = useState('');
   const [showReabertura, setShowReabertura] = useState(false);
   const [motivoReabertura, setMotivoReabertura] = useState('');
@@ -685,42 +684,6 @@ export default function CaixaDiario() {
     sangria: lancamentos.filter(l => l.tipo === 'sangria').length,
     suprimento: lancamentos.filter(l => l.tipo === 'suprimento').length,
   }), [lancamentos]);
-
-  const valorAberturaInformado = parseMoneyInput(valorAbertura);
-  const aberturaInvalida = valorAberturaInformado === null
-    || !Number.isFinite(valorAberturaInformado)
-    || valorAberturaInformado < 0
-    || !temPrecisaoDeCentavos(valorAberturaInformado);
-
-  // ─── Mutations ──────────────────────────────────
-  const abrirCaixaMutation = useMutation({
-    mutationFn: async (valor: number) => {
-      if (!Number.isFinite(valor) || valor < 0 || !temPrecisaoDeCentavos(valor)) {
-        throw new Error('Informe o valor inicial do caixa, igual ou maior que zero e com até duas casas decimais.');
-      }
-      const { data, error } = await supabase.rpc('abrir_caixa_diario', { p_valor_abertura: valor });
-      if (error) throw error;
-      validarResultadoRpcCaixa(data);
-      return valor;
-    },
-    onSuccess: (valorConfirmado) => {
-      // Sync state to localStorage so Recepcao picks it up instantly
-      const estado = { aberto: true, data: today, valorAbertura: valorConfirmado, operador: profile?.nome };
-      const estadoLocalSalvo = salvarEstadoLocalCaixa(estado, profile?.id, profile?.clinica_id);
-
-      toast.success('Caixa aberto com sucesso!');
-      if (!estadoLocalSalvo) toast.warning('O caixa foi aberto, mas a Recepção pode precisar atualizar o estado direto do sistema. Recarregue a tela da Recepção.');
-      setShowAbertura(false);
-      setValorAbertura('');
-      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-    },
-    onError: (e: any) => {
-      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      toast.error(e?.message || 'Erro ao abrir caixa');
-    },
-  });
 
   const fecharCaixaMutation = useMutation({
     mutationFn: async ({ caixa: caixaSolicitado, valor, observacoes }: { caixa?: CaixaDiarioType; valor: number | null; observacoes?: string | null }) => {
@@ -1206,8 +1169,8 @@ export default function CaixaDiario() {
             </Button>
             {!caixaHoje ? (
               <Button
-                onClick={() => setShowAbertura(true)}
-                className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"
+                onClick={() => navigate("/recepcao/caixa/abrir", { state: { returnTo: location.pathname + location.search } })}
+                className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <Unlock className="h-4 w-4" /> Abrir Caixa
               </Button>
@@ -1272,7 +1235,7 @@ export default function CaixaDiario() {
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
             {!caixaHoje ? (
-              <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-[0_6px_18px_rgba(16,128,202,0.35)] hover:brightness-110">
+              <Button onClick={() => navigate("/recepcao/caixa/abrir", { state: { returnTo: location.pathname + location.search } })} className="h-11 gap-2 rounded-full bg-primary px-5 text-primary-foreground hover:bg-primary/90">
                 <Unlock className="h-4 w-4" /> Abrir Caixa
               </Button>
             ) : isOpen ? (
@@ -1592,7 +1555,7 @@ export default function CaixaDiario() {
                 </span>
                 <h3 className="text-lg font-semibold text-foreground mb-1">Caixa não aberto hoje</h3>
                 <p className="text-sm text-muted-foreground mb-4">Abra o caixa para iniciar as movimentações do dia</p>
-                <Button onClick={() => setShowAbertura(true)} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
+                <Button onClick={() => navigate("/recepcao/caixa/abrir", { state: { returnTo: location.pathname + location.search } })} className="h-11 gap-2 rounded-full bg-primary px-5 text-primary-foreground hover:bg-primary/90">
                   <Unlock className="h-4 w-4" /> Abrir Caixa Agora
                 </Button>
               </CardContent>
@@ -1785,38 +1748,6 @@ export default function CaixaDiario() {
       </Tabs>
 
       {/* ═══ DIALOGS ═══ */}
-
-      {/* Abrir Caixa */}
-      <Dialog open={showAbertura} onOpenChange={open => {
-        if (open || !abrirCaixaMutation.isPending) setShowAbertura(open);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Unlock className="h-5 w-5 text-emerald-600" /> Abrir Caixa
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="caixa-valor-inicial" className="text-xs">Valor inicial em caixa (R$) *</Label>
-              <Input id="caixa-valor-inicial" type="text" inputMode="decimal" placeholder="0,00" value={valorAbertura} disabled={abrirCaixaMutation.isPending}
-                onChange={e => setValorAbertura(e.target.value)} step="0.01" min="0" autoFocus />
-              <p className="text-xs text-muted-foreground">Informe o valor contado antes de abrir. Digite 0 se não houver dinheiro na gaveta.</p>
-              {valorAbertura.trim() !== '' && aberturaInvalida && (
-                <p role="alert" className="text-xs text-destructive">Use um valor igual ou maior que zero, com até duas casas decimais.</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={abrirCaixaMutation.isPending} onClick={() => setShowAbertura(false)}>Cancelar</Button>
-            <Button onClick={() => valorAberturaInformado !== null && abrirCaixaMutation.mutate(valorAberturaInformado)}
-              disabled={abrirCaixaMutation.isPending || aberturaInvalida} className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110">
-              {abrirCaixaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Abrir Caixa
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ═══ PDV — Ponto de Venda ═══ */}
       <Dialog

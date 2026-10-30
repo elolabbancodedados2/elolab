@@ -37,6 +37,7 @@ const NovoAdendoProntuarioPage = lazy(() => import("@/pages/NovoAdendoProntuario
 const NovoAnexoProntuarioPage = lazy(() => import("@/pages/NovoAnexoProntuarioPage"));
 const NovoRetornoProntuarioPage = lazy(() => import("@/pages/NovoRetornoProntuarioPage"));
 const Financeiro = lazy(() => import("@/pages/Financeiro"));
+const AbrirCaixaPage = lazy(() => import("@/pages/AbrirCaixaPage"));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
@@ -375,6 +376,7 @@ function AppRoutes() {
                           <Route path="/tarefas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><Tarefas /></SupabaseProtectedRoute>} />
                           <Route path="/minha-fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><MinhaFilaTarefas /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/encaixe" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><RecepcaoOperacional task="walk-in" /></SupabaseProtectedRoute>} />
+                          <Route path="/recepcao/caixa/abrir" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><AbrirCaixaPage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/pagamentos/:lancamentoId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoOperacional task="payment" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><RecepcaoCaixa /></SupabaseProtectedRoute>} />
                           <Route path="/caixa" element={<Navigate to="/recepcao?tab=caixa" replace />} />
