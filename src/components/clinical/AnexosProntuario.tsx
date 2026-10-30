@@ -17,12 +17,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,39 +36,11 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
+import { clinicalAttachmentStoragePath, createClinicalAttachmentSignedUrl } from '@/lib/clinicalAttachmentStorage';
 import { PageHeader } from '@/components/PageHeader';
 import { ArrowLeft, Shield } from 'lucide-react';
 
 const BUCKET = 'medical-attachments';
-
-/**
- * `url_arquivo` guarda o path do arquivo. Registros antigos guardam a URL
- * pública completa (que nunca funcionou, pois o bucket é privado) — para esses,
- * recuperamos o path a partir do final da URL.
- */
-function storagePath(stored: string): string {
-  if (!stored.startsWith('http')) return stored;
-  const afterBucket = stored.split(`/${BUCKET}/`)[1];
-  if (afterBucket) return decodeURIComponent(afterBucket.split('?')[0]);
-  return stored.split('/').slice(-2).join('/');
-}
-
-/** Gera um link temporário (1h) para visualizar ou baixar o anexo. */
-async function signedUrlFor(stored: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(storagePath(stored), 3600);
-    if (error) {
-      console.error('Erro ao gerar link do anexo:', error);
-      return null;
-    }
-    return data?.signedUrl ?? null;
-  } catch (error) {
-    console.error('Erro ao gerar link do anexo:', error);
-    return null;
-  }
-}
 
 interface Anexo {
   id: string;
@@ -93,6 +59,7 @@ interface AnexosProntuarioProps {
   pacienteId: string;
   anexos: Anexo[];
   onAnexoRemovido: () => void;
+  onOpenPreview?: (anexoId: string) => void;
   onAdicionarAnexo?: () => void;
   readOnly?: boolean;
   podeGerenciarPortal?: boolean;
@@ -128,6 +95,7 @@ export function AnexosProntuario({
   pacienteId, 
   anexos, 
   onAnexoRemovido,
+  onOpenPreview,
   onAdicionarAnexo,
   readOnly = false,
   podeGerenciarPortal = false,
@@ -139,9 +107,6 @@ export function AnexosProntuario({
   onRetryPortalPage,
   portalPageLoading = false,
 }: AnexosProntuarioProps) {
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewType, setPreviewType] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [publicacoesPortal, setPublicacoesPortal] = useState<Record<string, PublicacaoPortal>>({});
   const [portalStatusLoading, setPortalStatusLoading] = useState(true);
@@ -241,7 +206,7 @@ export function AnexosProntuario({
       // Delete from storage
       const { error: storageError } = await supabase.storage
         .from(BUCKET)
-        .remove([storagePath(anexo.url_arquivo)]);
+        .remove([clinicalAttachmentStoragePath(anexo.url_arquivo)]);
       if (storageError) throw storageError;
 
       // Delete from database
@@ -270,26 +235,7 @@ export function AnexosProntuario({
     }
   };
 
-  const handlePreview = async (anexo: Anexo) => {
-    const url = await signedUrlFor(anexo.url_arquivo);
-    if (!url) {
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível abrir o anexo.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    try {
-      await registrarAcessoDocumentoClinico('anexo_prontuario', anexo.id, 'visualizacao');
-    } catch (error) {
-      toast({ title: 'Não foi possível registrar o acesso', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
-      return;
-    }
-    setPreviewUrl(url);
-    setPreviewType(anexo.tipo_arquivo);
-    setIsPreviewOpen(true);
-  };
+  const handlePreview = (anexo: Anexo) => onOpenPreview?.(anexo.id);
 
   const handleDownload = async (anexo: Anexo) => {
     // Abra a aba durante o gesto do clique. Abrir depois do await costuma ser
@@ -301,7 +247,7 @@ export function AnexosProntuario({
       return;
     }
 
-    const url = await signedUrlFor(anexo.url_arquivo);
+    const url = await createClinicalAttachmentSignedUrl(anexo.url_arquivo);
     if (!url) {
       aba.close();
       toast({
@@ -492,6 +438,7 @@ export function AnexosProntuario({
                       className="h-8 w-8"
                       aria-label={`Visualizar anexo ${anexo.nome_arquivo}`}
                       onClick={() => handlePreview(anexo)}
+                      disabled={!onOpenPreview}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -522,35 +469,6 @@ export function AnexosProntuario({
         </CardContent>
       </Card>
 
-      {/* Dialog de Preview */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle>Visualizar Anexo</DialogTitle>
-          </DialogHeader>
-          <div className="flex items-center justify-center min-h-[400px]">
-            {previewUrl && (
-              previewType.startsWith('image/') ? (
-                <img 
-                  src={previewUrl} 
-                  alt="Preview" 
-                  className="max-w-full max-h-[70vh] object-contain"
-                />
-              ) : previewType === 'application/pdf' ? (
-                <iframe
-                  src={previewUrl}
-                  className="w-full h-[70vh]"
-                  title="PDF Preview"
-                />
-              ) : (
-                <p className="text-muted-foreground">
-                  Visualização não disponível para este tipo de arquivo.
-                </p>
-              )
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

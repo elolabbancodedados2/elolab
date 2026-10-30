@@ -33,7 +33,7 @@ describe('read-only attachments', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('keeps viewing and downloading available while disabling attachment changes', () => {
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} readOnly onAnexoRemovido={vi.fn()} />);
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} readOnly onOpenPreview={vi.fn()} onAnexoRemovido={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: 'Adicionar Anexo' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' })).toBeDisabled();
@@ -122,16 +122,15 @@ describe('AnexosProntuario', () => {
     abrir.mockRestore();
   });
 
-  it('registra visualização antes de mostrar o anexo', async () => {
-    mocks.createSignedUrl.mockResolvedValue({ data: { signedUrl: 'https://storage.example/signed-file' }, error: null });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={vi.fn()} />);
+  it('encaminha a visualização do anexo para a página própria sem abrir diálogo', () => {
+    const onOpenPreview = vi.fn();
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onOpenPreview={onOpenPreview} onAnexoRemovido={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Visualizar anexo resultado.pdf' }));
 
-    expect(await screen.findByRole('dialog')).toBeVisible();
-    expect(mocks.rpc).toHaveBeenCalledWith('registrar_acesso_documento_clinico', {
-      p_tipo: 'anexo_prontuario', p_documento_id: 'anexo-1', p_acao: 'visualizacao',
-    });
+    expect(onOpenPreview).toHaveBeenCalledOnce();
+    expect(onOpenPreview).toHaveBeenCalledWith('anexo-1');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('não baixa o anexo se a auditoria do download falhar', async () => {

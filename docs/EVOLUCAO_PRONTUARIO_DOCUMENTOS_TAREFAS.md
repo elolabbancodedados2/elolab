@@ -38,3 +38,34 @@ No workspace de evolução, a busca/aplicação de protocolos e a prévia do rel
 ## Publicação
 
 Commit `8245ac704f156228786d8ae11b39f64640515e5c`; imagem `easypanel/elolab/app:deploy-20261030-8245ac7`. O arquivo versionado foi transferido e comparado por SHA-256 local/remoto; build Docker e smoke isolado passaram. O Swarm convergiu para 1/1 réplica e `/healthz` público respondeu `ok`; `/version.json` confirmou o SHA integral. O rollout registrou uma contenção transitória de porta host-mode antes de convergir, sem rollback. Imagem de rollback preservada: `easypanel/elolab/app:deploy-20261030-53dc694`. Nenhuma migration, alteração de configuração do Supabase ou gravação em dados de produção.
+
+## Prontuário — visualização de anexos em página própria (30/10/2026)
+
+### Diagnóstico
+
+A prévia de anexos ocupava um diálogo de até 90% da altura da tela sobre a lista e o contexto clínico. A leitura de um documento longo escondia a evolução e, no mobile, deixava pouco espaço para navegação. A lista, a gravação do anexo e a publicação no Portal já eram fluxos separados; o ponto pendente era a leitura/download do conteúdo.
+
+### Direção e implementação
+
+- A visualização agora usa `/prontuarios/:prontuarioId/anexos/:anexoId/visualizar`, uma página integral com paciente, nome do documento, categoria, tamanho, evolução, profissional responsável e descrição.
+- A consulta confirma prontuário e anexo no escopo da clínica ativa e cruza também o paciente e o prontuário do próprio anexo. O bucket continua privado; a URL assinada é temporária.
+- Leitura e exportação usam as RPCs de auditoria existentes. A prévia só aparece depois que a auditoria de leitura é confirmada. Download cria um link temporário novo e registra exportação antes de navegar.
+- PDF e imagens usam visualização embutida; outros formatos informam que não há prévia e oferecem download. Estados de validação, erro e nova tentativa ficam na própria página.
+- O retorno só aceita as rotas internas de prontuário/atendimento, preserva a seção de anexos e bloqueia redirecionamento externo. O breadcrumb mostra “Visualizar documento clínico” e omite o ID do anexo.
+- A página respeita os perfis admin/médico já usados no workspace. Nenhuma API, RPC, permissão de banco, tabela, migration ou regra clínica foi alterada.
+
+### Validação
+
+- Vitest: 51/51 testes focados passaram (lista de anexos, página, escopo, auditoria, download e breadcrumb).
+- Playwright Chromium sintético: 1/1 fluxo de inclusão, abertura da página própria, ausência de modal e retorno à mesma seção passou; largura mobile de 390 px não produz overflow horizontal. Todas as escritas ficaram interceptadas.
+- `npm run build`, acessibilidade, permissões, falhas silenciosas e colunas passaram. `git diff --check` passou.
+- ESLint focal: zero erros e 61 avisos `no-explicit-any` preexistentes, concentrados em `Prontuarios.tsx` (59) e `AnexosProntuario.tsx` (2).
+- O typecheck encontrou três erros preexistentes fora desta mudança: `user_id` ausente no tipo `UserWithRole` em dois hooks da Agenda e incompatibilidade JSON em `SalvarRelatorioPage.tsx`.
+- As capturas desktop e mobile foram inspecionadas. O contêiner de prévia PDF fica em branco no screenshot do Chromium headless, embora o teste confirme que a URL assinada e o fixture PDF são carregados; o visualizador PDF nativo em navegador de usuário não foi exercitado nesta validação.
+
+### Limitações e continuidade
+
+- A validação de autorização/RLS com uma sessão clínica real e arquivos de produção não foi executada; nenhum arquivo ou dado clínico real foi lido ou alterado.
+- Esta entrega conclui a leitura de anexos. A auditoria das demais transições e documentos clínicos permanece aberta; não encerra a etapa 10 nem a auditoria geral.
+
+Publicação e conferência de produção: em andamento.

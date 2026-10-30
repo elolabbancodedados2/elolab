@@ -45,6 +45,7 @@ export function Breadcrumbs() {
         if (!isLast && path === '/faturamento-convenios/glosas' && location.pathname.startsWith(`${path}/`)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/anexos$/.test(path)) return null;
+        if (!isLast && /^\/prontuarios\/[^/]+\/anexos\/[^/]+$/.test(path) && location.pathname.endsWith('/visualizar')) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/adendos$/.test(path)) return null;
         if (!isLast && /^\/prontuarios\/[^/]+\/retornos$/.test(path)) return null;
         if (!isLast && /^\/contas\/receber\/[^/]+$/.test(path) && /^\/contas\/receber\/[^/]+\/(?:recebimento|estorno)$/.test(location.pathname)) return null;

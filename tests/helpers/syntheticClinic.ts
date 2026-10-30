@@ -788,6 +788,8 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     if (pathname.startsWith('/rest/v1/rpc/')) {
       if (pathname.endsWith('/clinica_acesso_bloqueado')) {
         await json(route, false);
+      } else if (pathname.endsWith('/registrar_prontuario_acesso') || pathname.endsWith('/registrar_acesso_documento_clinico')) {
+        await json(route, 'synthetic-audit-record');
       } else if (pathname.endsWith('/estado_operacional')) {
         await json(route, { bloqueio_emergencial: false, somente_leitura: false, mensagem: null });
       } else if (pathname.endsWith('/platform_ai_usage_summary')) {

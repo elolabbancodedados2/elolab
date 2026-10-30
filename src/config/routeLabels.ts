@@ -182,6 +182,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/pacientes\/[^/]+\/consentimentos\/novo$/.test(pathname)) return 'Novo consentimento';
   if (/^\/pacientes\/[^/]+\/consentimentos\/[^/]+\/revogar$/.test(pathname)) return 'Revogar consentimento';
   if (/^\/prontuarios\/[^/]+\/anexos\/novo$/.test(pathname)) return 'Adicionar anexo ao prontuário';
+  if (/^\/prontuarios\/[^/]+\/anexos\/[^/]+\/visualizar$/.test(pathname)) return 'Visualizar documento clínico';
   if (/^\/prontuarios\/[^/]+\/adendos\/novo$/.test(pathname)) return 'Novo adendo ao prontuário';
   if (/^\/prontuarios\/(?:[^/]+\/)?retornos\/novo$/.test(pathname)) return 'Agendar retorno clínico';
   if (/^\/atendimentos\/[^/]+\/finalizar$/.test(pathname)) return 'Finalizar atendimento';

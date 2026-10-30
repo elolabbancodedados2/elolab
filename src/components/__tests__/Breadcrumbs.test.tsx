@@ -14,6 +14,14 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Passagem de turno')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Fila de atendimento' })).toHaveAttribute('href', '/fila');
   });
+  it('hides the attachment identifier on the clinical document page', () => {
+    const recordId = '00000000-0000-4000-9000-000000000013';
+    const attachmentId = '00000000-0000-4000-9000-000000000014';
+    render(<MemoryRouter initialEntries={[`/prontuarios/${recordId}/anexos/${attachmentId}/visualizar`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Visualizar documento clínico')).toBeInTheDocument();
+    expect(screen.queryByText(attachmentId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(attachmentId))).toBe(false);
+  });
   it('labels the dedicated TISS lot creation page', () => {
     render(<MemoryRouter initialEntries={['/faturamento-convenios/lotes/novo']}><Breadcrumbs /></MemoryRouter>);
     expect(screen.getByText('Novo lote TISS')).toBeInTheDocument();

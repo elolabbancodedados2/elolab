@@ -746,7 +746,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
 }
 
 // ─── Anexos Wrapper ────────────────────────────────────────
-function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal, onAdicionarAnexo, portalAnexoId, patientName, onManagePortal, onClosePortalPage }: { pacienteId: string; prontuarioId: string; readOnly: boolean; podeGerenciarPortal: boolean; onAdicionarAnexo: () => void; portalAnexoId?: string | null; patientName?: string; onManagePortal?: (anexoId: string) => void; onClosePortalPage?: () => void }) {
+function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal, onAdicionarAnexo, onOpenPreview, portalAnexoId, patientName, onManagePortal, onClosePortalPage }: { pacienteId: string; prontuarioId: string; readOnly: boolean; podeGerenciarPortal: boolean; onAdicionarAnexo: () => void; onOpenPreview: (anexoId: string) => void; portalAnexoId?: string | null; patientName?: string; onManagePortal?: (anexoId: string) => void; onClosePortalPage?: () => void }) {
   const [anexos, setAnexos] = useState<any[]>([]);
   const [erro, setErro] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -765,10 +765,10 @@ function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal
     }
   }, [prontuarioId]);
   useEffect(() => { loadAnexos(); }, [loadAnexos]);
-  if (portalAnexoId) return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} portalAnexoId={portalAnexoId} patientName={patientName} onManagePortal={onManagePortal} onClosePortalPage={onClosePortalPage} portalPageError={erro} onRetryPortalPage={() => { void loadAnexos(); }} portalPageLoading={loading} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
+  if (portalAnexoId) return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} portalAnexoId={portalAnexoId} patientName={patientName} onManagePortal={onManagePortal} onOpenPreview={onOpenPreview} onClosePortalPage={onClosePortalPage} portalPageError={erro} onRetryPortalPage={() => { void loadAnexos(); }} portalPageLoading={loading} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
   if (loading) return <Skeleton className="h-32 w-full" />;
   if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os anexos" onRetry={() => { void loadAnexos(); }} />;
-  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} patientName={patientName} onManagePortal={onManagePortal} onClosePortalPage={onClosePortalPage} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
+  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} patientName={patientName} onManagePortal={onManagePortal} onOpenPreview={onOpenPreview} onClosePortalPage={onClosePortalPage} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2037,6 +2037,7 @@ export default function Prontuarios() {
           readOnly={isReadOnly || salvandoProntuario}
           podeGerenciarPortal={user?.roles?.some((role) => ['admin', 'medico'].includes(role)) ?? false}
           onAdicionarAnexo={() => navigate(`/prontuarios/${currentProntuario.id}/anexos/novo`)}
+          onOpenPreview={(anexoId) => navigate(`/prontuarios/${currentProntuario.id}/anexos/${anexoId}/visualizar`, { state: { returnTo: `${location.pathname}${location.search}` } })}
           portalAnexoId={routeAnexoId}
           patientName={selectedPaciente.nome_social || selectedPaciente.nome}
           onClosePortalPage={closePortalAttachmentPage}
@@ -3066,6 +3067,7 @@ export default function Prontuarios() {
                       readOnly={isReadOnly || salvandoProntuario}
                       podeGerenciarPortal={user?.roles?.some((role) => ['admin', 'medico'].includes(role)) ?? false}
                       onAdicionarAnexo={() => navigate(`/prontuarios/${currentProntuario.id}/anexos/novo`)}
+                      onOpenPreview={(anexoId) => navigate(`/prontuarios/${currentProntuario.id}/anexos/${anexoId}/visualizar`, { state: { returnTo: `${location.pathname}${location.search}` } })}
                       onManagePortal={(anexoId) => openProntuarioTool('anexo-portal', anexoId)}
                     />
                   ) : (
