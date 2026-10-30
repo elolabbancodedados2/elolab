@@ -193,6 +193,16 @@ describe('Fila de atendimento', () => {
     expect(screen.getByRole('button', { name: 'Adicionar à fila' })).toBeInTheDocument();
   });
 
+  it('abre a passagem de turno como página e leva o resumo sem informações de paciente', () => {
+    setup();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Passagem de turno' }));
+
+    expect(screen.getByTestId('fila-current-location')).toHaveTextContent('/fila/passagem');
+    expect(screen.getByTestId('fila-current-location')).toHaveTextContent('"summary":');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('separa agendamentos antigos e encerrados, e não expõe valor financeiro à enfermagem', () => {
     setup();
 

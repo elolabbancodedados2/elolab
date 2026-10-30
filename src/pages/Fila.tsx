@@ -5,7 +5,7 @@ import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
 import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
 import { generateFilaShiftHandoff } from '@/lib/filaShiftHandoff';
-import { FILA_REMOVAL_REASONS, filaRemovalReasonLabel, isFilaRemovalReason } from '@/lib/filaRemoval';
+import { filaRemovalReasonLabel } from '@/lib/filaRemoval';
 import { forwardRef, useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,10 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
 import { formatarEspera, minutosDeEspera } from '@/lib/filaEspera';
 import { explicarBloqueioFila, PERFIS_LIBERACAO_EXCEPCIONAL } from '@/lib/filaBloqueio';
@@ -240,10 +237,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const [selectedPrioridade, setSelectedPrioridade] = useState('normal');
   const [isSaving, setIsSaving] = useState(false);
   const formCompleted = useRef(false);
-  const [removeId, setRemoveId] = useState<string | null>(null);
-  const [isHandoffOpen, setIsHandoffOpen] = useState(false);
-  const [motivoSaida, setMotivoSaida] = useState('');
-  const [isRemoving, setIsRemoving] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING');
   const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
@@ -728,49 +721,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const updateStatus = (id: string, status: string, agendamentoId?: string) =>
     withQueueAction(id, () => performStatusUpdate(id, status, agendamentoId));
 
-  const performRemove = async (id: string) => {
-    if (!isFilaRemovalReason(motivoSaida)) {
-      toast.error('Selecione o motivo da saída da fila');
-      return;
-    }
-    const item = fila.find(f => f.id === id);
-    if (!item) {
-      refresh();
-      setRemoveId(null);
-      setMotivoSaida('');
-      toast.warning('Este item já saiu da fila. A lista foi atualizada.');
-      return;
-    }
-    const { data: rawData, error } = await supabase.rpc('remover_item_fila_com_motivo', {
-      p_fila_id: id,
-      p_status_esperado: String(item.status),
-      p_motivo: motivoSaida,
-    });
-    if (error) {
-      toast.error('Falha ao remover da fila', { description: mensagemDeErro(error) });
-      refresh();
-      return;
-    }
-    const data = rawData as any;
-    if (data?.removido !== true) {
-      refresh();
-      setRemoveId(null);
-      setMotivoSaida('');
-      toast.warning(canRemoveFromQueue
-        ? 'O estado do paciente mudou. A fila foi atualizada.'
-        : 'Seu perfil nao pode remover itens da fila.');
-      return;
-    }
-    toast.info('Paciente removido da fila', {
-      description: data.atendimento_reaberto
-        ? 'O atendimento voltou para “aguardando” e pode ser chamado novamente.'
-        : 'O agendamento foi preservado.',
-    });
-    setRemoveId(null);
-    setMotivoSaida('');
-    refresh();
-  };
-
   const alterarPrioridade = (id: string, prioridade: string) => withQueueAction(id, async () => {
     if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
     const { data, error } = await supabase.from('fila_atendimento').update({ prioridade })
@@ -781,15 +731,9 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
   });
 
-  const handleRemover = async (id: string) => {
-    if (isRemoving) return;
-    setIsRemoving(true);
-    try {
-      await withQueueAction(id, () => performRemove(id));
-    } finally {
-      setIsRemoving(false);
-    }
-  };
+  const abrirRemocao = (id: string) => navigate(`/fila/${encodeURIComponent(id)}/saida`, {
+    state: { returnTo: `${location.pathname}${location.search}` },
+  });
 
   // Stats
   const stats = {
@@ -972,13 +916,10 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     urgent: stats.urgentes,
     overdue: acimaDeTrinta([...aguardandoJornada, ...filaAguardandoTriagem], item => item.horario_chegada),
   });
-  const copyHandoffText = async () => {
-    try {
-      await navigator.clipboard.writeText(handoffText);
-      toast.success('Resumo de passagem de turno copiado.');
-    } catch {
-      toast.error('Não foi possível copiar o resumo neste dispositivo.');
-    }
+  const abrirPassagem = () => {
+    navigate('/fila/passagem', {
+      state: { summary: handoffText, returnTo: `${location.pathname}${location.search}` },
+    });
   };
 
   return (
@@ -993,7 +934,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
               variant="outline"
               aria-label="Passagem de turno"
               className="h-10 w-10 shrink-0 gap-2 rounded-full p-0 sm:w-auto sm:px-3"
-              onClick={() => setIsHandoffOpen(true)}
+              onClick={abrirPassagem}
               disabled={isLoading || filaQuery.isError || agendamentosQuery.isError}
             >
               <ClipboardCopy aria-hidden="true" className="h-4 w-4" />
@@ -1052,24 +993,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
           </>
         }
       />
-
-      <Dialog open={isHandoffOpen} onOpenChange={setIsHandoffOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Passagem de turno</DialogTitle>
-            <DialogDescription>Resumo operacional da fila visível. Não inclui nomes nem informações clínicas.</DialogDescription>
-          </DialogHeader>
-          <pre aria-label="Resumo operacional da fila" className="max-h-[55vh] overflow-y-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm font-sans">
-            {handoffText}
-          </pre>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHandoffOpen(false)}>Fechar</Button>
-            <Button onClick={() => void copyHandoffText()} className="gap-2">
-              <ClipboardCopy aria-hidden="true" className="h-4 w-4" /> Copiar resumo
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <section role="group" aria-label="Resumo da fila" aria-busy={isLoading} className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -1177,7 +1100,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                 onChamar={() => updateStatus(item.id, 'chamado', item.agendamento_id)}
                 onIniciar={() => updateStatus(item.id, 'em_atendimento', item.agendamento_id)}
                 onFinalizar={() => updateStatus(item.id, 'finalizado', item.agendamento_id)}
-                onRemover={() => setRemoveId(item.id)}
+                onRemover={() => abrirRemocao(item.id)}
                 onAlterarPrioridade={canRemoveFromQueue ? (prioridade) => void alterarPrioridade(item.id, prioridade) : undefined}
                 onAbrirProntuario={(() => {
                   const ag = agendamentos.find(a => a.id === item.agendamento_id);
@@ -1225,7 +1148,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                   {canRemoveFromQueue && (
                     <Button
                       size="sm" variant="outline" className="min-h-9 gap-1.5 text-destructive"
-                      onClick={() => setRemoveId(item.id)}
+                      onClick={() => abrirRemocao(item.id)}
                       aria-label={`Remover ${getPacienteNome(item.agendamento_id)} da fila`}
                     >
                       <XCircle className="h-4 w-4" /> Remover
@@ -1422,45 +1345,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
         </section>
       )}
 
-      {/* Confirm removal dialog */}
-      <AlertDialog open={!!removeId} onOpenChange={(open) => {
-        if (!open && !isRemoving) { setRemoveId(null); setMotivoSaida(''); }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover da fila?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O paciente será removido da fila. Se o atendimento estiver em andamento, o agendamento volta para “aguardando” e poderá ser chamado novamente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="fila-motivo-saida">Motivo da saída</Label>
-            <Select value={motivoSaida} onValueChange={setMotivoSaida}>
-              <SelectTrigger id="fila-motivo-saida" aria-label="Motivo da saída da fila" disabled={isRemoving}>
-                <SelectValue placeholder="Selecione um motivo" />
-              </SelectTrigger>
-              <SelectContent>
-                {FILA_REMOVAL_REASONS.map((reason) => (
-                  <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isRemoving}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isRemoving || !isFilaRemovalReason(motivoSaida)}
-              onClick={(event) => {
-                event.preventDefault();
-                if (removeId) void handleRemover(removeId);
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isRemoving ? 'Removendo...' : 'Remover'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

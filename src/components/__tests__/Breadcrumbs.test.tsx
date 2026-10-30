@@ -9,6 +9,11 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Importar extrato bancário')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Fluxo de caixa' })).toHaveAttribute('href', '/fluxo-caixa');
   });
+  it('keeps the queue as the parent of the handoff page', () => {
+    render(<MemoryRouter initialEntries={['/fila/passagem']}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Passagem de turno')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Fila de atendimento' })).toHaveAttribute('href', '/fila');
+  });
   it('labels the dedicated TISS lot creation page', () => {
     render(<MemoryRouter initialEntries={['/faturamento-convenios/lotes/novo']}><Breadcrumbs /></MemoryRouter>);
     expect(screen.getByText('Novo lote TISS')).toBeInTheDocument();
@@ -94,6 +99,13 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Liberar atendimento')).toBeInTheDocument();
     expect(screen.queryByText(appointmentId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(appointmentId))).toBe(false);
+  });
+  it('omite o identificador da fila na remoção do paciente', () => {
+    const filaId = '00000000-0000-4000-9000-000000000295';
+    render(<MemoryRouter initialEntries={[`/fila/${filaId}/saida`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Remover paciente da fila')).toBeInTheDocument();
+    expect(screen.queryByText(filaId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(filaId))).toBe(false);
   });
   it('omite o identificador do caixa no breadcrumb de fechamento', () => {
     const cashId = '00000000-0000-4000-9000-000000000015';

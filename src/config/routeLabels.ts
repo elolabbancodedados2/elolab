@@ -51,6 +51,7 @@ const labelsByPath: Record<string, string> = {
   '/exames/nova': 'Nova guia de exames',
   '/fila': 'Fila de atendimento',
   '/fila/adicionar': 'Adicionar à fila',
+  '/fila/passagem': 'Passagem de turno',
   '/triagem/nova': 'Nova triagem',
   '/equipe': 'Equipe',
   '/equipe/convites': 'Convites',
@@ -158,6 +159,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/atendimentos\/[^/]+\/finalizar$/.test(pathname)) return 'Finalizar atendimento';
   if (/^\/recepcao\/pagamentos\/[^/]+$/.test(pathname)) return 'Receber pagamento';
   if (/^\/fila\/[^/]+\/liberacao\/(pagamento|triagem)$/.test(pathname)) return 'Liberar atendimento';
+  if (/^\/fila\/[^/]+\/saida$/.test(pathname)) return 'Remover paciente da fila';
   if (/^\/recepcao\/caixa\/[^/]+\/fechar$/.test(pathname)) return 'Fechar caixa';
   if (pathname === '/recepcao/caixa/reabrir') return 'Reabrir caixa';
   if (/^\/recepcao\/caixa\/historico\/[^/]+$/.test(pathname)) return 'Detalhes do caixa';
