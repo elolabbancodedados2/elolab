@@ -4,7 +4,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 
 ## Entregas já publicadas
 
-- Agenda: criação e edição.
+- Agenda: criação e edição de consultas; gestão de bloqueios em páginas próprias.
 - Pacientes: cadastro, edição e detalhes.
 - Prescrições: criação e conclusão.
 - Atestados: criação, consulta e duplicação.
@@ -63,3 +63,5 @@ Atualização de 30/10/2026: o pagamento de contas a pagar tem página própria 
 Atualização de 30/10/2026: o detalhe/histórico de contas a receber foi migrado para página própria e publicado (`ccc8ee8`). A sequência financeira continua com auditoria da conciliação e demais operações pendentes; as etapas 9, 10 e 12 ainda exigem auditoria, e o EloLab não está integralmente concluído.
 
 Atualização de 30/10/2026: na etapa 9, a liberação excepcional sem pagamento confirmado ou sem triagem agora tem página própria (`/fila/:agendamentoId/liberacao/:tipo`), preservando justificativa, perfis admin/médico e validações do banco. Detalhes e publicação: [liberação excepcional da Fila](EVOLUCAO_FILA_LIBERACAO_EXCEPCIONAL.md). A auditoria de Recepção, prontuário/documentos e demais pendências operacionais continua; não há conclusão integral do aplicativo.
+
+Atualização de 30/10/2026: gerenciamento e cadastro de bloqueios da Agenda agora têm páginas próprias (`/agenda/bloqueios` e `/agenda/bloqueios/novo`), commit `c580292`, publicado e validado. Seguem pendentes a auditoria integral e as tarefas restantes das etapas 9, 10 e 12, além de operações financeiras registradas acima. O EloLab não está integralmente concluído.
