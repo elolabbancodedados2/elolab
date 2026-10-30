@@ -54,6 +54,7 @@ const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
+const SalvarRelatorio = lazy(() => import("@/pages/SalvarRelatorioPage"));
 const RelatoriosSalvos = lazy(() => import("@/pages/RelatoriosSalvos"));
 const CobrancaInadimplentes = lazy(() => import("@/pages/CobrancaInadimplentes"));
 const Usuarios = lazy(() => import("@/pages/Usuarios"));
@@ -466,6 +467,7 @@ function AppRoutes() {
                           <Route path="/precos-servicos/exames/convenios/:examPriceId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><PrecosExames task="convenio-edit" /></SupabaseProtectedRoute>} />
                           <Route path="/tipos-consulta" element={<Navigate to="/precos-servicos?tab=tipos" replace />} />
                           <Route path="/relatorios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Relatorios /></SupabaseProtectedRoute>} />
+                          <Route path="/relatorios/salvar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><SalvarRelatorio /></SupabaseProtectedRoute>} />
                           <Route path="/relatorios/salvos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RelatoriosSalvos /></SupabaseProtectedRoute>} />
                           <Route path="/cobranca-inadimplentes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><CobrancaInadimplentes /></SupabaseProtectedRoute>} />
                           <Route path="/usuarios/:accountId/editar" element={<SupabaseProtectedRoute somentePlataforma><Usuarios editing /></SupabaseProtectedRoute>} />

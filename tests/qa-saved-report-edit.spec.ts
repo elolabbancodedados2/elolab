@@ -39,6 +39,8 @@ test('atualiza filtros do relatório próprio sem duplicar o agendamento', async
   await page.goto('/relatorios/salvos');
   await page.getByRole('button', { name: 'Abrir filtros do relatório Receita mensal QA' }).click();
   await page.getByRole('button', { name: 'Atualizar salvo' }).click();
+  await expect(page).toHaveURL(/\/relatorios\/salvar$/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Nome do relatorio salvo' })).toHaveValue('Receita mensal QA');
   await page.getByText('Semanal', { exact: true }).last().click();
   await page.getByRole('option', { name: 'Apenas favoritar (sem envio)' }).click();
@@ -80,18 +82,20 @@ test('agenda somente com canal ativo, destinatario da lista e confirmacao de Bra
 
   await page.goto('/relatorios');
   await page.getByRole('button', { name: 'Salvar / Agendar' }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('textbox', { name: 'Nome do relatorio salvo' }).fill('Relatório agendado QA');
-  await dialog.getByRole('combobox', { name: 'Frequencia de envio' }).click();
+  await expect(page).toHaveURL(/\/relatorios\/salvar$/);
+  await expect(page.getByRole('heading', { name: 'Salvar relatório personalizado' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Nome do relatorio salvo' }).fill('Relatório agendado QA');
+  await page.getByRole('combobox', { name: 'Frequencia de envio' }).click();
   await page.getByRole('option', { name: 'Diária' }).click();
 
   await expect.poll(() => preflights.length).toBeGreaterThan(0);
   expect(preflights[0]).toMatchObject({ action: 'preflight', dataset: 'lancamentos' });
-  await expect(dialog.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' })).toBeVisible();
-  const save = dialog.getByRole('button', { name: 'Salvar' });
-  await dialog.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' }).check();
+  await expect(page.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' })).toBeVisible();
+  const save = page.getByRole('button', { name: 'Salvar relatório' });
+  await page.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' }).check();
   await expect(save).toBeDisabled();
-  await dialog.getByRole('checkbox', { name: 'Confirmo o fuso horário de Brasília' }).check();
+  await page.getByRole('checkbox', { name: 'Confirmo o fuso horário de Brasília' }).check();
   await expect(save).toBeEnabled();
   await save.click();
 
@@ -116,12 +120,38 @@ test('bloqueia agenda quando o canal de e-mail nao esta ativo', async ({ page },
 
   await page.goto('/relatorios');
   await page.getByRole('button', { name: 'Salvar / Agendar' }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('textbox', { name: 'Nome do relatorio salvo' }).fill('Canal indisponível QA');
-  await dialog.getByRole('combobox', { name: 'Frequencia de envio' }).click();
+  await expect(page).toHaveURL(/\/relatorios\/salvar$/);
+  await page.getByRole('textbox', { name: 'Nome do relatorio salvo' }).fill('Canal indisponível QA');
+  await page.getByRole('combobox', { name: 'Frequencia de envio' }).click();
   await page.getByRole('option', { name: 'Diária' }).click();
-  await expect(dialog.getByRole('alert')).toContainText('canal de e-mail está sem configuração válida ou indisponível');
-  await expect(dialog.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+  await expect(page.getByRole('alert')).toContainText('canal de e-mail está sem configuração válida ou indisponível');
+  await expect(page.getByRole('button', { name: 'Salvar relatório' })).toBeDisabled();
   expect(writes).toBe(0);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('retorna ao construtor preservando os filtros em memória', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin });
+
+  await page.goto('/relatorios');
+  const search = page.getByRole('textbox', { name: 'Buscar registros' });
+  await search.fill('referencia-interna-qa');
+  await page.getByRole('button', { name: 'Salvar / Agendar' }).click();
+  await expect(page).toHaveURL(/\/relatorios\/salvar$/);
+  await expect(page.getByRole('heading', { name: 'Salvar relatório personalizado' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/relatorio-salvar-desktop.png', fullPage: true });
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const saveAction = page.getByRole('button', { name: 'Salvar relatório' });
+  await saveAction.scrollIntoViewIfNeeded();
+  await expect(saveAction).toBeInViewport();
+  await page.screenshot({ path: 'test-results/relatorio-salvar-mobile-action.png' });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: 'test-results/relatorio-salvar-mobile.png' });
+  if (originalViewport) await page.setViewportSize(originalViewport);
+  await page.getByRole('button', { name: 'Voltar ao construtor' }).click();
+  await expect(page).toHaveURL(/\/relatorios$/);
+  await expect(page.getByRole('textbox', { name: 'Buscar registros' })).toHaveValue('referencia-interna-qa');
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

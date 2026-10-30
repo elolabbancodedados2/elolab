@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const reportPage = readFileSync('src/components/relatorios/RelatorioCustomizado.tsx', 'utf8');
+const reportPage = readFileSync('src/pages/SalvarRelatorioPage.tsx', 'utf8');
 const savedReportsPage = readFileSync('src/pages/RelatoriosSalvos.tsx', 'utf8');
 
 describe('atualização segura de relatório salvo', () => {
@@ -12,7 +12,7 @@ describe('atualização segura de relatório salvo', () => {
 
   it('faz compare-and-set dentro do escopo de dono e clínica', () => {
     const updateFlow = reportPage.split(".from('relatorios_salvos')")[1] ?? '';
-    expect(updateFlow).toMatch(/\.update\(payload\)[\s\S]*?\.eq\('id', savedReport\.id\)[\s\S]*?\.eq\('user_id', user\.id\)[\s\S]*?\.eq\('clinica_id', clinicaId\)[\s\S]*?\.eq\('updated_at', savedReport\.updatedAt\)/);
+    expect(updateFlow).toMatch(/\.update\(payload\)[\s\S]*?\.eq\('id', savedReport\.id\)[\s\S]*?\.eq\('user_id', currentUser\.id\)[\s\S]*?\.eq\('clinica_id', clinicaId\)[\s\S]*?\.eq\('updated_at', savedReport\.updatedAt\)/);
     expect(updateFlow).toMatch(/\.select\('id'\)\s*\.maybeSingle\(\)/);
   });
 

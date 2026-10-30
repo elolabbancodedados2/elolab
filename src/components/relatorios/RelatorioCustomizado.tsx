@@ -1,6 +1,5 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Filter, Download, Printer, Loader2, FileSpreadsheet, RefreshCw, Star, Calendar as CalendarIcon } from 'lucide-react';
@@ -15,8 +14,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { autorizarLeituraHistoricoClinica } from '@/lib/prontuarioAudit';
 import { useMedicos, useConvenios } from '@/hooks/useSupabaseData';
@@ -24,11 +21,12 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { exportToExcel } from '@/lib/excelExporter';
 import { toast } from 'sonner';
 import { escapeHtml } from '@/lib/html';
-import { dateRangeInTimeZoneIso, parseDateOnly, proximaExecucaoSaoPaulo } from '@/lib/dateOnly';
+import { dateRangeInTimeZoneIso, parseDateOnly } from '@/lib/dateOnly';
 import { podeAcessarRelatorioCompletoDePacientes } from '@/lib/reportAccess';
 import { formatCsvCell } from '@/lib/csv';
 import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
 import { existeMaisResultadoQueLimite } from '@/lib/reportAccess';
+import { getRelatorioSaveDraft, setRelatorioSaveDraft, type RelatorioSaveForm } from '@/lib/relatorioSaveDraft';
 
 type DatasetKey =
   | 'pacientes' | 'agendamentos' | 'lancamentos' | 'exames'
@@ -281,7 +279,6 @@ function formatCell(val: any, fmt?: ColumnDef['format']): string {
 }
 
 export default function RelatorioCustomizado() {
-  const queryClient = useQueryClient();
   const { user, profile, isLoading: authLoading } = useSupabaseAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -311,8 +308,7 @@ export default function RelatorioCustomizado() {
   const [reportState, setReportState] = useState<'idle' | 'success' | 'error'>('idle');
   const [haMaisResultados, setHaMaisResultados] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [saveForm, setSaveForm] = useState({
+  const [saveForm, setSaveForm] = useState<RelatorioSaveForm>({
     nome: '',
     descricao: '',
     frequencia: 'nenhuma',
@@ -322,56 +318,50 @@ export default function RelatorioCustomizado() {
     destinatarios: '',
     formato: 'csv',
   });
-  const [timezoneConfirmed, setTimezoneConfirmed] = useState(false);
-  const [preflightLoading, setPreflightLoading] = useState(false);
-  const [preflight, setPreflight] = useState<{
-    emailConfigured: boolean;
-    timezone: string;
-    recipients: Array<{ id: string; nome: string; email: string }>;
-  } | null>(null);
-  const [preflightError, setPreflightError] = useState('');
   const [savedReport, setSavedReport] = useState<{ id: string; userId: string; updatedAt: string; ativo: boolean } | null>(null);
   const canUpdateSavedReport = !!savedReport && savedReport.userId === user?.id;
-  const [saving, setSaving] = useState(false);
   const [executarAposRestauro, setExecutarAposRestauro] = useState(false);
   const restauradoIdRef = useRef<string | null>(null);
   const ignorarResetDatasetRef = useRef(false);
 
+  const saveDraftRestoreKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!saveOpen) return;
-    let cancelled = false;
-    setTimezoneConfirmed(false);
-    setPreflight(null);
-    setPreflightError('');
-    setPreflightLoading(true);
-    void (supabase as any).functions.invoke('scheduled-reports-runner', {
-      body: { action: 'preflight', dataset },
-    }).then(({ data, error }: { data: any; error: any }) => {
-      if (cancelled) return;
-      if (error) throw error;
-      if (!data || typeof data.emailConfigured !== 'boolean' || !Array.isArray(data.recipients)) {
-        throw new Error('Resposta inválida ao verificar o envio agendado.');
-      }
-      if (data.timezone !== 'America/Sao_Paulo') throw new Error('O fuso horário retornado pelo servidor não é compatível com este agendamento.');
-      const recipients = data.recipients.filter((item: any) => typeof item?.email === 'string' && typeof item?.id === 'string');
-      setPreflight({
-        emailConfigured: data.emailConfigured,
-        timezone: data.timezone,
-        recipients,
-      });
-      const emailsPermitidos = new Set(recipients.map((item: { email: string }) => item.email.toLocaleLowerCase('pt-BR')));
-      setSaveForm((current) => ({
-        ...current,
-        destinatarios: current.destinatarios.split(',').map((email) => email.trim())
-          .filter((email) => emailsPermitidos.has(email.toLocaleLowerCase('pt-BR'))).join(', '),
-      }));
-    }).catch((error: unknown) => {
-      if (!cancelled) setPreflightError(error instanceof Error ? error.message : 'Não foi possível verificar o envio agendado.');
-    }).finally(() => {
-      if (!cancelled) setPreflightLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [saveOpen, dataset]);
+    const saveDraft = getRelatorioSaveDraft();
+    if (authLoading || !saveDraft || saveDraftRestoreKeyRef.current === saveDraft.key) return;
+    if (saveDraft.userId !== user?.id || saveDraft.clinicaId !== profile?.clinica_id) {
+      setRelatorioSaveDraft(null);
+      toast.error('O rascunho do relatório foi descartado', { description: 'A sessão ou clínica ativa mudou.' });
+      return;
+    }
+    if (!DATASETS[saveDraft.dataset as DatasetKey] || !allowedDatasets.includes(saveDraft.dataset as DatasetKey)) {
+      setRelatorioSaveDraft(null);
+      toast.error('Não é possível reabrir este relatório', { description: 'Sua função não tem acesso à fonte de dados salva.' });
+      return;
+    }
+    saveDraftRestoreKeyRef.current = saveDraft.key;
+    setSavedReport(saveDraft.savedReport);
+    setSaveForm(saveDraft.form);
+    const nextDataset = saveDraft.dataset as DatasetKey;
+    if (nextDataset !== dataset) ignorarResetDatasetRef.current = true;
+    setDataset(nextDataset);
+    setDataInicio(saveDraft.config.dataInicio);
+    setDataFim(saveDraft.config.dataFim);
+    setStatusFilter(saveDraft.config.statusFilter);
+    setMedicoFilter(saveDraft.config.medicoFilter);
+    setConvenioFilter(saveDraft.config.convenioFilter);
+    setTextoBusca(saveDraft.config.textoBusca);
+    setLimite(String(Math.min(5000, Math.max(1, Math.floor(Number(saveDraft.config.limite) || 500)))));
+    setValorMin(saveDraft.config.valorMin);
+    setValorMax(saveDraft.config.valorMax);
+    setTipoLancamento(saveDraft.config.tipoLancamento);
+    setGroupBy(saveDraft.config.groupBy);
+    const validColumns = new Set(DATASETS[nextDataset].columns.map(column => column.key));
+    setVisibleCols(new Set(saveDraft.config.colunas.filter(column => validColumns.has(column))));
+    setRows([]);
+    setReportState('idle');
+    setExecutarAposRestauro(true);
+    setRelatorioSaveDraft(null);
+  }, [authLoading, user?.id, profile?.clinica_id, dataset, allowedDatasets]);
 
   const { data: medicos = [] } = useMedicos();
   const { data: convenios = [] } = useConvenios();
@@ -511,6 +501,28 @@ export default function RelatorioCustomizado() {
     () => cfg.columns.filter(c => visibleCols.has(c.key)),
     [cfg, visibleCols]
   );
+
+  const openSaveWorkspace = () => {
+    if (!user?.id || !profile?.clinica_id) {
+      toast.error('Não foi possível abrir o salvamento', { description: 'A sessão ou clínica ativa não está disponível.' });
+      return;
+    }
+    setRelatorioSaveDraft({
+      key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      userId: user.id,
+      clinicaId: profile.clinica_id,
+      dataset,
+      datasetLabel: cfg.label,
+      config: {
+        dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter,
+        textoBusca, limite: Number(limite), valorMin, valorMax,
+        tipoLancamento, groupBy, colunas: Array.from(visibleCols),
+      },
+      savedReport,
+      form: saveForm,
+    });
+    navigate('/relatorios/salvar');
+  };
 
   const exportExcel = () => {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
@@ -769,7 +781,7 @@ export default function RelatorioCustomizado() {
             <Button variant="outline" onClick={printReport} disabled={loading || !rows.length || haMaisResultados}>
               <Printer className="h-4 w-4 mr-2" /> Imprimir / PDF
             </Button>
-            <Button variant="outline" onClick={() => setSaveOpen(true)}>
+            <Button variant="outline" onClick={openSaveWorkspace}>
               <Star className="h-4 w-4 mr-2" /> {canUpdateSavedReport ? 'Atualizar salvo' : 'Salvar / Agendar'}
             </Button>
           </div>
@@ -873,205 +885,7 @@ export default function RelatorioCustomizado() {
         </Card>
       )}
 
-      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-primary" />
-              {canUpdateSavedReport ? 'Atualizar relatório salvo' : 'Salvar relatório como favorito'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Nome*</Label>
-              <Input aria-label="Nome do relatorio salvo" value={saveForm.nome} onChange={e => setSaveForm({ ...saveForm, nome: e.target.value })} placeholder="Ex: Receita mensal" />
-            </div>
-            <div>
-              <Label className="text-xs">Descrição</Label>
-              <Textarea aria-label="Descricao do relatorio salvo" rows={2} value={saveForm.descricao} onChange={e => setSaveForm({ ...saveForm, descricao: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Frequência de envio</Label>
-                <Select value={saveForm.frequencia} onValueChange={v => setSaveForm({ ...saveForm, frequencia: v })}>
-                  <SelectTrigger aria-label="Frequencia de envio"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhuma">Apenas favoritar (sem envio)</SelectItem>
-                    <SelectItem value="diaria">Diária</SelectItem>
-                    <SelectItem value="semanal">Semanal</SelectItem>
-                    <SelectItem value="mensal">Mensal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Horário de envio</Label>
-                <Input aria-label="Horario de envio" type="time" value={saveForm.hora} onChange={e => setSaveForm({ ...saveForm, hora: e.target.value })} />
-              </div>
-              {saveForm.frequencia === 'semanal' && (
-                <div>
-                  <Label className="text-xs">Dia da semana</Label>
-                  <Select value={saveForm.dia_semana} onValueChange={v => setSaveForm({ ...saveForm, dia_semana: v })}>
-                    <SelectTrigger aria-label="Dia da semana"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'].map((d, i) => (
-                        <SelectItem key={i} value={String(i)}>{d}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {saveForm.frequencia === 'mensal' && (
-                <div>
-                  <Label className="text-xs">Dia do mês</Label>
-                  <Input aria-label="Dia do mes" type="number" min={1} max={28} value={saveForm.dia_mes} onChange={e => setSaveForm({ ...saveForm, dia_mes: e.target.value })} />
-                </div>
-              )}
-              <div>
-                <Label className="text-xs">Formato</Label>
-                <Select value={saveForm.formato} onValueChange={v => setSaveForm({ ...saveForm, formato: v })}>
-                  <SelectTrigger aria-label="Formato do relatorio"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="csv">CSV</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {saveForm.frequencia !== 'nenhuma' && (
-              <div className="space-y-3 rounded-md border p-3">
-                <div>
-                  <p className="text-sm font-medium">Destinatários autorizados</p>
-                  <p className="text-xs text-muted-foreground">Somente contas ativas desta clínica com acesso a {DATASETS[dataset].label.toLocaleLowerCase('pt-BR')}.</p>
-                </div>
-                {preflightLoading && <p role="status" className="text-sm text-muted-foreground">Verificando canal e permissões…</p>}
-                {preflightError && <p role="alert" className="text-sm text-destructive">{preflightError}</p>}
-                {!preflightLoading && preflight && !preflight.emailConfigured && (
-                  <p role="alert" className="text-sm text-destructive">O canal de e-mail está sem configuração válida ou indisponível. O agendamento fica bloqueado até a integração estar ativa.</p>
-                )}
-                {!preflightLoading && preflight?.recipients.length === 0 && (
-                  <p role="status" className="text-sm text-muted-foreground">Nenhum membro ativo com acesso a esta fonte pode receber o relatório.</p>
-                )}
-                {preflight?.recipients.map((recipient) => {
-                  const selected = saveForm.destinatarios.split(',').map((email) => email.trim().toLocaleLowerCase('pt-BR')).includes(recipient.email.toLocaleLowerCase('pt-BR'));
-                  return (
-                    <label key={recipient.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <Checkbox
-                        aria-label={`Destinatário ${recipient.nome} (${recipient.email})`}
-                        checked={selected}
-                        onCheckedChange={(checked) => {
-                          const current = saveForm.destinatarios.split(',').map((email) => email.trim()).filter(Boolean);
-                          const next = checked
-                            ? [...current.filter((email) => email.toLocaleLowerCase('pt-BR') !== recipient.email.toLocaleLowerCase('pt-BR')), recipient.email]
-                            : current.filter((email) => email.toLocaleLowerCase('pt-BR') !== recipient.email.toLocaleLowerCase('pt-BR'));
-                          setSaveForm({ ...saveForm, destinatarios: next.join(', ') });
-                        }}
-                      />
-                      <span>{recipient.nome} <span className="text-muted-foreground">({recipient.email})</span></span>
-                    </label>
-                  );
-                })}
-                <label className="flex cursor-pointer items-start gap-2 border-t pt-3 text-sm">
-                  <Checkbox aria-label="Confirmo o fuso horário de Brasília" checked={timezoneConfirmed} onCheckedChange={(checked) => setTimezoneConfirmed(checked === true)} />
-                  <span>Confirmo que horários e períodos usam o fuso de Brasília (<code>America/Sao_Paulo</code>).</span>
-                </label>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Os filtros e colunas atuais serão salvos. Use a página <b>Relatórios → Salvos</b> para gerenciar.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSaveOpen(false)}>Cancelar</Button>
-            <Button
-              disabled={saving || !saveForm.nome || (saveForm.frequencia !== 'nenhuma' && (preflightLoading || !preflight?.emailConfigured || !timezoneConfirmed || saveForm.destinatarios.trim().length === 0))}
-              onClick={async () => {
-                setSaving(true);
-                try {
-                  if (dataInicio && dataFim && dataInicio > dataFim) {
-                    throw new Error('A data inicial deve ser anterior ou igual à data final.');
-                  }
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (!user) throw new Error('Sem sessão');
-                  const clinicaId = profile?.clinica_id;
-                  if (!clinicaId) throw new Error('Clínica não identificada');
-                  const config = {
-                    dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter,
-                    textoBusca, limite: Number(limite), valorMin, valorMax,
-                    tipoLancamento, groupBy, colunas: Array.from(visibleCols),
-                  };
-                  const dests = saveForm.destinatarios.split(',').map(s => s.trim()).filter(Boolean);
-                  if (saveForm.frequencia !== 'nenhuma') {
-                    if (!preflight?.emailConfigured) throw new Error('O canal de e-mail precisa estar ativo e acessível antes de agendar.');
-                    if (!timezoneConfirmed) throw new Error('Confirme o fuso horário de Brasília para agendar o relatório.');
-                    const emailsAutorizados = new Set((preflight?.recipients ?? []).map((recipient) => recipient.email.toLocaleLowerCase('pt-BR')));
-                    const unicos = [...new Set(dests.map((email) => email.toLocaleLowerCase('pt-BR')))];
-                    if (dests.length === 0) throw new Error('Selecione ao menos um membro autorizado para receber o relatório.');
-                    if (unicos.length !== dests.length || unicos.some((email) => !emailsAutorizados.has(email))) {
-                      throw new Error('Atualize a lista e selecione somente destinatários autorizados da clínica.');
-                    }
-                  }
-                  const payload: any = {
-                    user_id: user.id,
-                    clinica_id: clinicaId,
-                    nome: saveForm.nome,
-                    descricao: saveForm.descricao || null,
-                    dataset,
-                    config,
-                    formato: saveForm.formato,
-                    destinatarios: saveForm.frequencia === 'nenhuma' ? [] : dests,
-                    ativo: canUpdateSavedReport && savedReport ? savedReport.ativo : true,
-                    frequencia: null,
-                    dia_semana: null,
-                    dia_mes: null,
-                    hora: null,
-                    proxima_execucao: null,
-                  };
-                  if (saveForm.frequencia !== 'nenhuma') {
-                    payload.frequencia = saveForm.frequencia;
-                    payload.hora = saveForm.hora + ':00';
-                    if (saveForm.frequencia === 'semanal') payload.dia_semana = Number(saveForm.dia_semana);
-                    if (saveForm.frequencia === 'mensal') payload.dia_mes = Number(saveForm.dia_mes);
-                    payload.proxima_execucao = proximaExecucaoSaoPaulo(
-                      saveForm.frequencia as 'diaria' | 'semanal' | 'mensal',
-                      saveForm.hora,
-                      Number(saveForm.dia_semana),
-                      Number(saveForm.dia_mes),
-                    );
-                  }
-                  if (canUpdateSavedReport && savedReport && savedReport.userId === user.id) {
-                    const { data, error } = await (supabase as any)
-                      .from('relatorios_salvos')
-                      .update(payload)
-                      .eq('id', savedReport.id)
-                      .eq('user_id', user.id)
-                      .eq('clinica_id', clinicaId)
-                      .eq('updated_at', savedReport.updatedAt)
-                      .select('id')
-                      .maybeSingle();
-                    if (error) throw error;
-                    if (!data) throw new Error('O relatório mudou ou não está mais disponível. Reabra-o antes de salvar alterações.');
-                    toast.success('Relatório atualizado');
-                  } else {
-                    const { error } = await (supabase as any).from('relatorios_salvos').insert(payload);
-                    if (error) throw error;
-                    toast.success('Relatório salvo com sucesso');
-                  }
-                  await queryClient.invalidateQueries({ queryKey: ['relatorios-salvos'] });
-                  setSaveOpen(false);
-                  setSaveForm({ nome: '', descricao: '', frequencia: 'nenhuma', dia_semana: '1', dia_mes: '1', hora: '08:00', destinatarios: '', formato: 'csv' });
-                  setSavedReport(null);
-                } catch (e: any) {
-                  toast.error(e.message || 'Erro ao salvar');
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Star className="h-4 w-4 mr-2" />}
-              {canUpdateSavedReport ? 'Salvar alterações' : 'Salvar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   );
 }

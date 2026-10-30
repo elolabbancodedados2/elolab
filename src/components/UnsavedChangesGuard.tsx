@@ -3,11 +3,12 @@ import { type Location, useBeforeUnload, useBlocker } from 'react-router-dom';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 /** Keeps sensitive drafts in memory and protects both app navigation and reload. */
-export function UnsavedChangesGuard({ dirty, busy = false, completed, allowNavigation }: {
+export function UnsavedChangesGuard({ dirty, busy = false, completed, allowNavigation, onDiscard }: {
   dirty: boolean;
   busy?: boolean;
   completed: RefObject<boolean>;
   allowNavigation?: (current: Pick<Location, 'pathname' | 'search'>, next: Pick<Location, 'pathname' | 'search'>) => boolean;
+  onDiscard?: () => void;
 }) {
   const discarding = useRef(false);
   const shouldBlock = useCallback(() => (dirty || busy) && !completed.current && !discarding.current, [dirty, busy, completed]);
@@ -32,6 +33,7 @@ export function UnsavedChangesGuard({ dirty, busy = false, completed, allowNavig
           event.preventDefault();
           if (blocker.state === 'blocked') {
             discarding.current = true;
+            onDiscard?.();
             blocker.proceed();
           }
         }}>Descartar e sair</AlertDialogAction>

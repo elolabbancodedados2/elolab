@@ -93,6 +93,7 @@ const labelsByPath: Record<string, string> = {
   '/equipe/funcionarios/novo': 'Novo funcionário',
   '/equipe/funcionarios/perfis': 'Nomes dos perfis',
   '/relatorios': 'Relatórios',
+  '/relatorios/salvar': 'Salvar relatório personalizado',
   '/relatorios/salvos': 'Relatórios salvos',
   '/cobranca-inadimplentes': 'Cobrança de inadimplentes',
   '/usuarios': 'Usuários',

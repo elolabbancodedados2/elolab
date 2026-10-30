@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const runner = readFileSync('supabase/functions/scheduled-reports-runner/index.ts', 'utf8');
-const form = readFileSync('src/components/relatorios/RelatorioCustomizado.tsx', 'utf8');
+const form = readFileSync('src/pages/SalvarRelatorioPage.tsx', 'utf8');
 
 describe('preflight de relatórios agendados', () => {
   it('oferece preflight autenticado para canal e membros ativos com papel permitido', () => {
