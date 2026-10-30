@@ -148,6 +148,8 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/faturamento-convenios\/glosas\/[^/]+\/recurso$/.test(pathname)) return 'Preparar recurso de glosa';
   if (/^\/faturamento-convenios\/glosas\/[^/]+\/retorno$/.test(pathname)) return 'Registrar retorno da operadora';
   if (/^\/repasses-medicos\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento de repasse';
+  if (/^\/seguranca-assistencial\/[^/]+\/retificacao$/.test(pathname)) return 'Solicitar retificação do relato';
+  if (/^\/seguranca-assistencial\/[^/]+$/.test(pathname)) return 'Detalhe do relato assistencial';
   if (/^\/pacientes\/[^/]+\/consentimentos\/novo$/.test(pathname)) return 'Novo consentimento';
   if (/^\/pacientes\/[^/]+\/consentimentos\/[^/]+\/revogar$/.test(pathname)) return 'Revogar consentimento';
   if (/^\/prontuarios\/[^/]+\/anexos\/novo$/.test(pathname)) return 'Adicionar anexo ao prontuário';

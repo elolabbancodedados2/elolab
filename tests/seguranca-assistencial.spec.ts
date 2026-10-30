@@ -64,6 +64,7 @@ test('fluxo de relato confidencial com revisão e ação corretiva oculta a iden
 
   await expect(page.getByText('Identidade protegida', { exact: true })).toBeVisible();
   await expect(page.getByText('Relator: Identidade protegida')).toBeVisible();
+  await page.getByLabel('Buscar relatos').fill('Material');
   await expect(page.getByTestId('safety-indicator-value-critical_open')).toHaveClass(/text-muted-foreground/);
   await page.screenshot({ path: testInfo.outputPath('seguranca-relato-desktop-before.png'), fullPage: true });
   await expect(page.getByText(synthetic.userId)).toHaveCount(0);
@@ -72,8 +73,15 @@ test('fluxo de relato confidencial com revisão e ação corretiva oculta a iden
   expect(createPayload).not.toHaveProperty('reporter_user_id');
   expect(createPayload).not.toHaveProperty('patient_id');
 
-  await page.getByRole('button', { name: 'Revisar e acompanhar' }).click();
+  await page.getByRole('link', { name: 'Revisar e acompanhar' }).click();
+  await expect(page).toHaveURL(`/seguranca-assistencial/${reportId}`);
   await expect(page.getByRole('heading', { name: 'Revisar relato assistencial' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('seguranca-detalhe-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('seguranca-detalhe-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByLabel('Status da revisão').click();
   await page.getByRole('option', { name: 'Ação necessária' }).click();
   await page.getByLabel('Responsável', { exact: true }).click();
@@ -83,18 +91,36 @@ test('fluxo de relato confidencial com revisão e ação corretiva oculta a iden
   await page.getByLabel('Ação corretiva ou preventiva').fill('Atualizar checklist de conferência.');
   await page.getByRole('button', { name: 'Salvar revisão' }).click();
   await expect(page.getByText('Ação corretiva: Atualizar checklist de conferência.')).toBeVisible();
-  await page.getByRole('button', { name: 'Solicitar retificação' }).click();
-  await page.getByLabel('Texto corrigido *').fill('A versão corrigida preserva os fatos e corrige a ordem da ocorrência.');
-  await page.getByLabel('Ação imediata corrigida').fill('Material isolado, etiquetado e equipe avisada.');
-  await page.getByLabel('Motivo da retificação *').fill('Corrigi a ordem dos fatos registrada no primeiro relato.');
-  await page.getByRole('button', { name: 'Enviar pedido' }).click();
+  await page.getByRole('link', { name: 'Solicitar retificação' }).click();
+  await expect(page).toHaveURL(`/seguranca-assistencial/${reportId}/retificacao`);
+  await expect(page.getByRole('heading', { name: 'Solicitar retificação do relato' })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('seguranca-retificacao-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const proposedSummary = 'A versão corrigida preserva os fatos e corrige a ordem da ocorrência.';
+  const proposedAction = 'Material isolado, etiquetado e equipe avisada.';
+  const correctionReason = 'Corrigi a ordem dos fatos registrada no primeiro relato.';
+  await page.getByLabel('Texto corrigido *', { exact: true }).fill(proposedSummary);
+  await page.getByLabel('Ação imediata corrigida', { exact: true }).fill(proposedAction);
+  await page.getByLabel('Motivo da retificação *', { exact: true }).fill(correctionReason);
+  await page.getByRole('link', { name: 'Voltar aos relatos' }).click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Continuar nesta página' }).click();
+  await expect(page.getByLabel('Texto corrigido *', { exact: true })).toHaveValue(proposedSummary);
+  await expect(page.getByLabel('Ação imediata corrigida', { exact: true })).toHaveValue(proposedAction);
+  await expect(page.getByLabel('Motivo da retificação *', { exact: true })).toHaveValue(correctionReason);
+  await page.getByRole('button', { name: 'Enviar pedido de retificação' }).click();
+  await expect(page).toHaveURL(`/seguranca-assistencial/${reportId}`);
   await expect(page.getByText('Aguardando análise')).toBeVisible();
   await page.getByLabel('Nota da decisão *').fill('Correção conferida e aplicada.');
   await page.getByRole('button', { name: 'Aprovar e aplicar retificação' }).click();
   await expect(page.getByText('A versão corrigida preserva os fatos e corrige a ordem da ocorrência.', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Aprovada', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Fechar', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeHidden();
+  await page.getByRole('link', { name: 'Voltar aos relatos' }).click();
+  await expect(page).toHaveURL('/seguranca-assistencial');
+  await expect(page.getByLabel('Buscar relatos')).toHaveValue('Material');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.mouse.move(10, 10);
   await page.waitForTimeout(5000);
   await page.screenshot({ path: testInfo.outputPath('seguranca-relato-desktop-after.png'), fullPage: true });
@@ -157,11 +183,13 @@ test('médico acompanha apenas os próprios relatos sem ações administrativas'
   });
   await page.goto('/seguranca-assistencial');
   await expect(page.getByRole('heading', { name: 'Meus relatos' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Acompanhar relato' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Revisar e acompanhar' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Acompanhar relato' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Revisar e acompanhar' })).toHaveCount(0);
   await expect(page.getByText(synthetic.userId)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Acompanhar relato' }).click();
+  await page.getByRole('link', { name: 'Acompanhar relato' }).click();
+  await expect(page).toHaveURL(new RegExp(`/seguranca-assistencial/${report.id}$`));
   await expect(page.getByRole('heading', { name: 'Acompanhar relato' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Status da revisão')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Salvar revisão' })).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
@@ -184,5 +212,62 @@ test('erro ao carregar relatos oferece recuperação por tentativa novamente', a
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByText('Nenhum relato registrado')).toBeVisible();
   expect(attempts).toBe(3);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('detalhe do relato permite tentar novamente após falha de carregamento', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'admin' });
+  const reportId = '00000000-0000-4000-8000-000000000095';
+  let detailAttempts = 0;
+  await page.route('**/functions/v1/seguranca-assistencial', async (route) => {
+    const { action } = route.request().postDataJSON() as { action: string };
+    if (action === 'list') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reports: [], reviewers: [] }) });
+      return;
+    }
+    detailAttempts += 1;
+    if (detailAttempts <= 2) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha sintética de leitura' }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      report: {
+        id: reportId, category: 'near_miss', severity: 'moderate', occurred_at: '2026-10-14T13:00:00.000Z',
+        location_label: 'Sala de coleta', summary: 'Relato disponível após nova tentativa.', immediate_action: '',
+        status: 'submitted', reporter_confidential: true, is_reporter: false, assigned_to: null, due_at: null,
+        created_at: '2026-10-14T13:05:00.000Z', updated_at: '2026-10-14T13:05:00.000Z',
+      }, updates: [], correction_requests: [],
+    }) });
+  });
+
+  await page.goto(`/seguranca-assistencial/${reportId}`);
+  await expect(page.getByRole('alert')).toContainText('Não foi possível carregar este relato');
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByText('Relato disponível após nova tentativa.')).toBeVisible();
+  expect(detailAttempts).toBe(3);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('pedido de retificação não é exibido para quem não registrou o relato', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, role: 'medico', platformAdmin: false });
+  const reportId = '00000000-0000-4000-8000-000000000096';
+  await page.route('**/functions/v1/seguranca-assistencial', async (route) => {
+    const { action } = route.request().postDataJSON() as { action: string };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(action === 'get'
+      ? { report: {
+        id: reportId, category: 'near_miss', severity: 'moderate', occurred_at: '2026-10-14T13:00:00.000Z',
+        location_label: 'Sala de coleta', summary: 'Relato de outro profissional.', immediate_action: '', status: 'submitted',
+        reporter_confidential: true, is_reporter: false, assigned_to: null, due_at: null,
+        created_at: '2026-10-14T13:05:00.000Z', updated_at: '2026-10-14T13:05:00.000Z',
+      }, updates: [], correction_requests: [] }
+      : { reports: [], reviewers: [] }) });
+  });
+
+  await page.goto(`/seguranca-assistencial/${reportId}/retificacao`);
+  await expect(page.getByRole('alert')).toHaveText('Somente quem registrou este relato pode solicitar a retificação.');
+  await expect(page.getByLabel('Texto corrigido *')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Enviar pedido de retificação' })).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

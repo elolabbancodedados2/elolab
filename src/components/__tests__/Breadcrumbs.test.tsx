@@ -21,6 +21,19 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(lotId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(lotId))).toBe(false);
   });
+  it('hides the safety report identifier on its review and correction pages', () => {
+    const reportId = '00000000-0000-4000-9000-000000000294';
+    for (const [path, label] of [
+      [`/seguranca-assistencial/${reportId}`, 'Detalhe do relato assistencial'],
+      [`/seguranca-assistencial/${reportId}/retificacao`, 'Solicitar retificação do relato'],
+    ]) {
+      const { unmount } = render(<MemoryRouter initialEntries={[path]}><Breadcrumbs /></MemoryRouter>);
+      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.queryByText(reportId)).not.toBeInTheDocument();
+      expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(reportId))).toBe(false);
+      unmount();
+    }
+  });
   it('hides the lot identifier on the dedicated guides workspace', () => {
     const lotId = '00000000-0000-4000-9000-000000000241';
     render(<MemoryRouter initialEntries={[`/faturamento-convenios/lotes/${lotId}/guias`]}><Breadcrumbs /></MemoryRouter>);

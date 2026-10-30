@@ -165,6 +165,8 @@ const BankStatementImportPage = lazy(() => import("@/pages/BankStatementImportPa
 const Interoperabilidade = lazy(() => import("@/pages/Interoperabilidade"));
 const Teleconsulta = lazy(() => import("@/pages/Teleconsulta"));
 const SegurancaAssistencial = lazy(() => import("@/pages/SegurancaAssistencial"));
+const SegurancaAssistencialDetalhePage = lazy(() => import("@/pages/SegurancaAssistencialDetalhe").then(module => ({ default: module.SegurancaAssistencialDetalhePage })));
+const SolicitarRetificacaoPage = lazy(() => import("@/pages/SegurancaAssistencialDetalhe").then(module => ({ default: module.SolicitarRetificacaoPage })));
 import { CookieConsent } from "@/components/CookieConsent";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
 import { MobileTableAdapter } from "@/components/ui/table";
@@ -491,6 +493,8 @@ function AppRoutes() {
                           <Route path="/lgpd-pacientes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><LgpdPacientes /></SupabaseProtectedRoute>} />
                           <Route path="/vitais-graficos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><VitaisGraficos /></SupabaseProtectedRoute>} />
                           <Route path="/seguranca-assistencial" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><SegurancaAssistencial /></SupabaseProtectedRoute>} />
+                          <Route path="/seguranca-assistencial/:reportId/retificacao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><SolicitarRetificacaoPage /></SupabaseProtectedRoute>} />
+                          <Route path="/seguranca-assistencial/:reportId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><SegurancaAssistencialDetalhePage /></SupabaseProtectedRoute>} />
                           <Route path="/higiene-salas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><HigieneSalas /></SupabaseProtectedRoute>} />
                           <Route path="/patrimonio-equipamentos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><PatrimonioEquipamentos /></SupabaseProtectedRoute>} />
                           <Route path="/analise-preditiva" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><AnalisePreditiva /></SupabaseProtectedRoute>} />
