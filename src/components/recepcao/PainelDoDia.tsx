@@ -263,8 +263,8 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
       tom: n.recebidoTotal < 0 ? 'text-destructive' : 'text-success',
     },
   ];
-  const indicadoresPrincipais = cartoes.filter(c => ['agenda', 'nao-chegaram', 'balcao', 'atendendo'].includes(c.id));
-  const indicadoresSecundarios = cartoes.filter(c => ['esperando', 'adicional', 'caixa'].includes(c.id));
+  const indicadoresPrincipais = cartoes.filter(c => ['agenda', 'nao-chegaram'].includes(c.id));
+  const indicadoresSecundarios = cartoes.filter(c => !['agenda', 'nao-chegaram'].includes(c.id));
 
   const renderIndicador = (c: (typeof cartoes)[number]) => {
     const clicavel = !!c.aba;
@@ -277,7 +277,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
         disabled={!clicavel}
         aria-pressed={clicavel ? Boolean(ativo) : undefined}
         className={cn(
-          'grid min-h-[4.25rem] min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center gap-x-1 border-b-2 border-transparent px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem] lg:min-h-[3.5rem] sm:gap-x-1.5 sm:px-1.5 sm:py-1.5',
+          'grid min-h-[4.25rem] min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center gap-x-1 border-b-2 border-transparent px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem] lg:min-h-12 sm:gap-x-1.5 sm:px-1.5 sm:py-1.5',
           clicavel ? 'cursor-pointer hover:bg-muted/40' : 'cursor-default',
           ativo ? 'border-primary bg-primary/5' : c.id === 'caixa' ? 'bg-muted/30' : '',
           c.alerta && !ativo && c.id !== 'caixa' && 'border-warning/70',
@@ -329,7 +329,7 @@ export function PainelDoDia({ atendimentos, clinicaId, hoje, carregandoAtendimen
         aria-controls="reception-secondary-metrics"
         onClick={() => setMostrarIndicadoresSecundarios(value => !value)}
       >
-        {mostrarIndicadoresSecundarios ? 'Ocultar indicadores adicionais' : 'Ver outros 3 indicadores'}
+        {mostrarIndicadoresSecundarios ? 'Ocultar indicadores adicionais' : `Ver outros ${indicadoresSecundarios.length} indicadores`}
       </Button>
 
       {n.porForma.length > 0 && (

@@ -466,11 +466,16 @@ test('reception preserves the return decision when finalizing an old visit fails
     id: appointmentId, clinica_id: '00000000-0000-4000-8000-000000000002', data: yesterday,
     hora_inicio: '10:00:00', tipo: 'consulta', paciente_id: '00000000-0000-4000-8000-000000000010',
     medico_id: '00000000-0000-4000-8000-000000000003', status: 'em_atendimento',
-    pacientes: { nome: 'Ana Souza' },
+    observacoes: null,
+    pacientes: { nome: 'Ana Souza', nome_social: null, convenio_id: null },
+    medicos: { nome: 'Dra. Marina Ribeiro' },
   };
   let allowFinalization = false;
   await page.route('**/rest/v1/agendamentos?*', route => {
     const requestUrl = new URL(route.request().url());
+    if (route.request().method() === 'GET' && requestUrl.searchParams.get('id') === `eq.${appointmentId}`) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([oldVisit]) });
+    }
     if (route.request().method() === 'GET' && requestUrl.searchParams.get('status') === 'eq.em_atendimento') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(allowFinalization ? [] : [oldVisit]) });
     }
@@ -483,16 +488,19 @@ test('reception preserves the return decision when finalizing an old visit fails
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/recepcao');
   await page.getByRole('button', { name: 'Foi atendido' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: /Finalizar/ })).toBeVisible();
-  await dialog.getByRole('button', { name: '30 dias' }).click();
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('button', { name: '30 dias' })).toBeEnabled();
+  await expect(page).toHaveURL(`/atendimentos/${appointmentId}/finalizar?origem=atendimentos-abertos`);
+  const finalizationPage = page.locator('#main-content');
+  await expect(finalizationPage.getByRole('heading', { name: 'Finalizar atendimento' })).toBeVisible();
+  await finalizationPage.getByText('30 dias', { exact: true }).click();
+  await expect(finalizationPage.getByText(/Retorno previsto:/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-finalization-retry-1280.png'), animations: 'disabled' });
+  await finalizationPage.getByRole('button', { name: 'Confirmar finalização' }).click();
+  await expect(page.getByText('Não foi possível finalizar o atendimento')).toBeVisible();
+  await expect(finalizationPage.getByRole('radio', { name: '30 dias' })).toBeChecked();
 
   allowFinalization = true;
-  await dialog.getByRole('button', { name: '30 dias' }).click();
-  await expect(dialog).toBeHidden();
+  await finalizationPage.getByRole('button', { name: 'Confirmar finalização' }).click();
+  await expect(page).toHaveURL('/recepcao');
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
@@ -1502,19 +1510,20 @@ test('doctor starts a called appointment and opens the same patient in a new pro
     p_agendamento_id: appointmentId,
     p_fila_id: '00000000-0000-4000-9000-000000000061',
   });
-  await expect(page).toHaveURL(/\/prontuarios(?:\?.*)?$/);
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'Novo Atendimento' })).toBeVisible();
-  await expect(dialog.getByText('Bruno Almeida', { exact: true })).toBeVisible();
-  const appointmentContext = dialog.getByTestId('prontuario-agendamento-context');
+  await expect(page).toHaveURL(new RegExp(`/prontuarios/atendimento\\?paciente=${patientId}.*agendamento=${appointmentId}`));
+  const clinicalWorkspace = page.locator('#main-content');
+  await expect(clinicalWorkspace.getByRole('heading', { name: 'Nova evolução' })).toBeVisible();
+  await expect(clinicalWorkspace.getByText('Bruno Almeida', { exact: true }).first()).toBeVisible();
+  const appointmentContext = clinicalWorkspace.getByTestId('prontuario-agendamento-context');
   await expect(appointmentContext).toContainText('08:30');
   await expect(appointmentContext).toContainText('Consulta');
   await expect(appointmentContext).toContainText('Dra. Marina Ribeiro');
   await expect.poll(() => auditCalls.length).toBeGreaterThan(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('fila-atendimento-prontuario-novo-1280.png'), animations: 'disabled' });
 
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(dialog.getByRole('heading', { name: 'Novo Atendimento' })).toBeVisible();
+  await expect(clinicalWorkspace.getByRole('heading', { name: 'Nova evolução' })).toBeVisible();
   await expect(appointmentContext).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('fila-atendimento-prontuario-novo-375.png'), animations: 'disabled' });
@@ -2054,7 +2063,7 @@ test('reception identifies the patient while check-in is pending', async ({ page
   expect(mobileColumns).toBe(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('reception-summary-375.png'), fullPage: true, animations: 'disabled' });
-  const showSecondaryMetrics = page.getByRole('button', { name: 'Ver outros 3 indicadores' });
+  const showSecondaryMetrics = page.getByRole('button', { name: 'Ver outros 5 indicadores' });
   await expect(showSecondaryMetrics).toHaveAttribute('aria-expanded', 'false');
   await showSecondaryMetrics.click();
   await expect(page.getByRole('button', { name: 'Ocultar indicadores adicionais' })).toHaveAttribute('aria-expanded', 'true');
@@ -2187,6 +2196,9 @@ test('reception check-in keeps context through queue triage and applies the clin
   let queueRow: Record<string, any> | null = null;
   let savedTriage: Record<string, any> | null = null;
   const checkinCalls: Array<Record<string, unknown>> = [];
+  let startPayload: Record<string, unknown> | null = null;
+  let finalizationPayload: Record<string, unknown> | null = null;
+  let exitEventsRequested = false;
 
   await page.route('**/rest/v1/tipos_consulta**', route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -2214,7 +2226,11 @@ test('reception check-in keeps context through queue triage and applies the clin
     }
     await route.fallback();
   });
-  await page.route('**/rest/v1/fila_atendimento**', async route => {
+  await page.route('**/rest/v1/fila_atendimento_eventos**', route => {
+    exitEventsRequested = true;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+  await page.route(url => new URL(url).pathname === '/rest/v1/fila_atendimento', async route => {
     if (route.request().method() === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(queueRow ? [queueRow] : []) });
       return;
@@ -2260,6 +2276,25 @@ test('reception check-in keeps context through queue triage and applies the clin
     if (queueRow) queueRow.cobranca_estado = 'gratuita';
     await route.fulfill({ status: 200, contentType: 'application/json', body: 'true' });
   });
+  await page.route('**/rest/v1/rpc/iniciar_atendimento_atomico*', async route => {
+    startPayload = route.request().postDataJSON() as Record<string, unknown>;
+    appointment.status = 'em_atendimento';
+    if (queueRow) {
+      queueRow.status = 'em_atendimento';
+      queueRow.updated_at = new Date().toISOString();
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ repetido: false, status: 'em_atendimento' }) });
+  });
+  await page.route('**/rest/v1/rpc/finalizar_atendimento_atomico*', async route => {
+    finalizationPayload = route.request().postDataJSON() as Record<string, unknown>;
+    appointment.status = 'finalizado';
+    if (queueRow) {
+      queueRow.status = 'finalizado';
+      queueRow.updated_at = new Date().toISOString();
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ status_agendamento: 'finalizado', cobranca_criada: false, repetido: false }]) });
+  });
+  await page.route('**/rest/v1/notification_queue*', route => route.fulfill({ status: 201, contentType: 'application/json', body: '[]' }));
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/recepcao');
@@ -2299,13 +2334,60 @@ test('reception check-in keeps context through queue triage and applies the clin
     pressao_arterial: '120/80', classificacao_risco: 'amarelo',
     queixa_principal: 'Dor de cabeça há dois dias — dado sintético de QA',
   });
+  await page.clock.fastForward(5_000);
+  await expect(page.getByText('Triagem registrada!')).toBeHidden();
   expect(checkinCalls).toEqual([
     { p_agendamento_id: appointmentId, p_prioridade: 'normal' },
     { p_agendamento_id: appointmentId, p_prioridade: 'preferencial' },
   ]);
   expect(queueRow).toMatchObject({ prioridade: 'preferencial', status: 'aguardando', cobranca_estado: 'gratuita' });
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole('tab', { name: 'Fila' }).click();
+  await expect(page).toHaveURL('/fila');
+  await expect.poll(() => exitEventsRequested).toBe(true);
+  const queueMain = page.locator('#main-content');
+  const queueCard = queueMain.getByTestId('fila-card').filter({ hasText: 'Ana Souza' });
+  await expect(queueCard.getByText('Preferencial')).toBeVisible();
+  await expect(queueCard.getByRole('button', { name: 'Iniciar' })).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath('reception-queue-ready-for-care-1280.png'), animations: 'disabled' });
+  await queueCard.getByRole('button', { name: 'Iniciar' }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/prontuarios/atendimento\\?paciente=${patientId}.*agendamento=${appointmentId}`));
+  const prontuarioWorkspace = page.locator('#main-content');
+  await expect(prontuarioWorkspace.getByRole('heading', { name: 'Nova evolução' })).toBeVisible();
+  await expect(prontuarioWorkspace.getByText('Ana Souza', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(startPayload).toEqual({ p_agendamento_id: appointmentId, p_fila_id: queueId });
+  await page.screenshot({ path: testInfo.outputPath('reception-queue-clinical-handoff-1280.png'), animations: 'disabled' });
+
+  await page.getByRole('link', { name: 'Fila e triagem', exact: true }).click();
+  await expect(page).toHaveURL('/fila');
+  const activeQueueCard = page.locator('#main-content').getByTestId('fila-card').filter({ hasText: 'Ana Souza' });
+  await expect(activeQueueCard.getByText('Em Atendimento')).toBeVisible();
+  await activeQueueCard.getByRole('button', { name: 'Finalizar' }).click();
+  await expect(page).toHaveURL(new RegExp(`/atendimentos/${appointmentId}/finalizar\\?filaId=${queueId}&origem=fila$`));
+  const finalizationMain = page.locator('#main-content');
+  await expect(finalizationMain.getByRole('heading', { name: 'Finalizar atendimento' })).toBeVisible();
+  await finalizationMain.getByText('30 dias', { exact: true }).click();
+  await expect(finalizationMain.getByText(/Retorno previsto:/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('reception-queue-finalization-1280.png'), fullPage: true, animations: 'disabled' });
+  await finalizationMain.getByRole('button', { name: 'Confirmar finalização' }).click();
+
+  await expect(page).toHaveURL('/fila');
+  expect(finalizationPayload).toMatchObject({
+    p_agendamento_id: appointmentId,
+    p_fila_id: queueId,
+    p_agendar_retorno: true,
+    p_dias_retorno: 30,
+  });
+  expect(queueRow).toMatchObject({ status: 'finalizado', cobranca_estado: 'gratuita' });
+  expect(appointment).toMatchObject({ status: 'finalizado' });
+  await page.clock.fastForward(8_000);
+  await expect(page.getByText('Atendimento finalizado — Ana Souza')).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('reception-queue-finalized-390.png'), fullPage: true, animations: 'disabled' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

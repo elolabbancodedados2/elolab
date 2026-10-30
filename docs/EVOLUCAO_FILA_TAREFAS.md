@@ -32,7 +32,32 @@ A remoção de paciente exigia selecionar um motivo dentro de um diálogo sobre 
 
 ## Limitações e sequência
 
-Uma URL direta para a passagem de turno sem o snapshot de navegação apresenta uma orientação para gerar outro resumo pela Fila. A operação de remoção continua sujeita à revalidação da RPC; alterações concorrentes voltam à fila para nova conferência. A etapa de Recepção ainda requer auditoria integrada além das tarefas desta página; as etapas clínicas e de plataforma também continuam abertas.
+Uma URL direta para a passagem de turno sem o snapshot de navegação apresenta uma orientação para gerar outro resumo pela Fila. A operação de remoção continua sujeita à revalidação da RPC; alterações concorrentes voltam à fila para nova conferência. A jornada integrada de recepção, triagem, fila e finalização foi validada em ambiente sintético; permissões reais e RLS em produção não foram revalidadas nesta etapa. As etapas clínicas e de plataforma continuam abertas.
+
+## Jornada integrada — Recepção, triagem e fila
+
+### Diagnóstico atual
+
+- A sequência de check-in, triagem, atendimento e finalização já existia, mas a validação anterior não cobria o caminho completo mantendo o contexto entre módulos.
+- Na primeira dobra da recepção em 1280×800, a faixa de avisos e o resumo empurravam o terceiro paciente para fora da área visível.
+- Em mobile, os indicadores secundários competiam com a ação operacional principal; quando a agenda falhava, a tentativa de recuperação podia ficar escondida pela navegação inferior.
+- A triagem clínica tem risco e rastreabilidade próprios; prioridade clínica continua determinada e persistida pelas regras já implementadas.
+
+### Direção e implementação
+
+- A primeira dobra prioriza os indicadores mais úteis e a fila de pacientes esperados. Os cinco indicadores restantes ficam recolhidos em mobile e permanecem disponíveis por ação explícita; em telas maiores continuam visíveis.
+- Reduzimos o intervalo acima do painel e a altura mínima da faixa de resumo para recuperar espaço sem remover informação.
+- Quando a agenda não carrega, a Recepção mostra uma tela de recuperação compacta, mantém os atendimentos abertos acessíveis e oferece nova tentativa sem exibir uma lista desatualizada como se fosse atual.
+- O E2E agora percorre check-in, triagem, passagem à fila, prioridade, abertura do workspace clínico e finalização com retorno; também verifica a preservação das RPCs, dos argumentos e do contexto.
+- Nenhum contrato, permissão, regra clínica, banco ou integração foi alterado. As escritas foram interceptadas no navegador de teste.
+
+### Validação e limites
+
+- E2E sintético do conjunto de Recepção/Fila: 26/26 aprovados, incluindo páginas próprias e exceções selecionadas.
+- Build de produção, verificadores de acessibilidade, permissões e falhas passaram; `git diff --check` não encontrou erros.
+- Capturas mobile e desktop foram inspecionadas: pacientes visíveis na primeira dobra de desktop, indicadores essenciais e ação de check-in visíveis em mobile, e erro da agenda com botão de nova tentativa acima da navegação inferior.
+- A validação não executou RLS autenticada, gravações reais, sincronização com backend de produção nem dispositivos físicos. Esses limites não equivalem a uma validação operacional em clínica.
+- Próxima área da sequência: cobertura residual de documentos e transições clínicas do prontuário.
 
 ## Publicação
 

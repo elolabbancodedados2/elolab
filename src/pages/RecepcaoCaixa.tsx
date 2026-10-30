@@ -31,7 +31,7 @@ export default function RecepcaoCaixa() {
           </TabsTrigger>
         </TabsList>
 
-        {podeAcessarRecepcao && <TabsContent value="recepcao" className="mt-4">
+        {podeAcessarRecepcao && <TabsContent value="recepcao" className="mt-2">
           <Recepcao onOpenCaixa={() => setActiveTab('caixa')} />
         </TabsContent>}
 

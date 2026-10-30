@@ -1310,6 +1310,20 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     );
   }
 
+  if (agendaHojeQuery.isError) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Painel de Recepção"
+          description={`${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })} · Fluxo completo do paciente`}
+          icon={<Users />}
+        />
+        <AtendimentosEmAberto onFinalizar={agendamentoId => abrirFinalizacao(agendamentoId, 'atendimentos-abertos')} />
+        <ErrorState compact title="Não foi possível carregar a agenda de hoje" description="A agenda de hoje não carregou. Tente novamente." error={agendaHojeQuery.error} onRetry={() => void agendaHojeQuery.refetch()} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       <PageHeader
