@@ -574,4 +574,4 @@ Validação: Vitest 25/25 em três arquivos, cobrindo fila, atendimentos antigos
 
 Limites: os cenários usam dados e respostas sintéticas, sem gravação real ou validação de RLS. Revisão manual com leitor de tela e concorrência contra a RPC em ambiente isolado permanecem pendentes.
 
-Publicação: registrar após o deploy e a verificação de produção.
+Publicação: commit `49e5056f1c9b3e963c1310fbf5822adf359e6db1`, imagem `easypanel/elolab/app:deploy-20261029-49e5056f`. Swarm confirmou 1/1 réplica; `/healthz` respondeu `ok` e `/version.json` confirmou o build completo. Fonte anterior preservada em `code.before-20261029-49e5056f`; `.env` comparado sem leitura ou exposição. Rollback da imagem: `deploy-20261029-af68e69`. Nenhum dado de produção ou migration foi alterado.
