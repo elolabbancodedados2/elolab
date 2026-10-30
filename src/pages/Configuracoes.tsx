@@ -3,7 +3,7 @@ import {
   Save, Building, Clock, Bell, Download, History,
   Shield,
   Key, RefreshCw, CloudOff, Cloud,
-  DollarSign, Printer, MapPin, Phone, Users, Plus, Trash2, Edit,
+  DollarSign, Printer, MapPin, Users,
   CreditCard, Receipt, Loader2, Hash, Image, Workflow,
   PlugZap, Settings2,
 } from 'lucide-react';
@@ -29,7 +29,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { DeleteConfirmDialog } from '@/components/ConfirmDialog';
 import { BackupRestore } from '@/components/BackupRestore';
 import { ImportadorDePlanilha } from '@/components/importacao/ImportadorDePlanilha';
 import { AuditLog } from '@/components/AuditLog';
@@ -177,193 +176,6 @@ function validarHorarioClinica(config: ConfiguracaoClinica): string | null {
 }
 
 /* ─── Salas Management ─── */
-function SalasManager() {
-  const { profile } = useSupabaseAuth();
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  /** Excluir sala é irreversível e ficava a um clique de distância, sem aviso. */
-  const [salaParaExcluir, setSalaParaExcluir] = useState<{ id: string; nome: string } | null>(null);
-  const [form, setForm] = useState({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' as string });
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const saveLock = useRef(false);
-  const deleteLock = useRef(false);
-
-  const salasQuery = useQuery({
-    queryKey: ['salas-config', profile?.id ?? null, profile?.clinica_id ?? null],
-    queryFn: async () => {
-      if (!profile?.clinica_id) return [];
-      const { data, error } = await supabase.from('salas').select('*').eq('clinica_id', profile.clinica_id).order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.clinica_id,
-  });
-  const salas = salasQuery.data ?? [];
-  const { isLoading } = salasQuery;
-
-  const handleSave = async () => {
-    if (saveLock.current) return;
-    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
-    if (salasQuery.isError || salasQuery.isLoading) { toast.error('Carregue as salas antes de salvar.'); return; }
-    if (!form.nome.trim()) { toast.error('Nome é obrigatório'); return; }
-    saveLock.current = true;
-    setSaving(true);
-    try {
-      const equipArray = form.equipamentos ? form.equipamentos.split(',').map(s => s.trim()).filter(Boolean) : null;
-      const payload: any = { nome: form.nome.trim(), tipo: form.tipo, ativo: form.ativo, equipamentos: equipArray };
-      if (editId) {
-        const { data, error } = await supabase.from('salas').update(payload)
-          .eq('id', editId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
-        if (error) throw error;
-        if (!data) throw new Error('Sala não encontrada ou sem permissão para alterar.');
-        toast.success('Sala atualizada!');
-      } else {
-        const { error } = await supabase.from('salas').insert([{
-          ...payload,
-          clinica_id: profile.clinica_id,
-        }]);
-        if (error) throw error;
-        toast.success('Sala criada!');
-      }
-      queryClient.invalidateQueries({ queryKey: ['salas-config'] });
-      setShowForm(false); setEditId(null);
-    } catch (e: any) { toast.error(e.message); }
-    finally {
-      saveLock.current = false;
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (deleteLock.current) return;
-    if (!profile?.clinica_id) { toast.error('Clínica não identificada.'); return; }
-    deleteLock.current = true;
-    setDeleting(true);
-    try {
-      const { data, error } = await supabase.from('salas').delete()
-        .eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Sem permissão para excluir esta sala.');
-      await queryClient.invalidateQueries({ queryKey: ['salas-config'] });
-      setSalaParaExcluir(null);
-      toast.success('Sala removida!');
-    } catch (error) {
-      toast.error('Não foi possível excluir a sala', { description: (error as Error)?.message || 'Tente novamente.' });
-    } finally {
-      deleteLock.current = false;
-      setDeleting(false);
-    }
-  };
-
-  const openEdit = (s: any) => {
-    setEditId(s.id);
-    const eq = Array.isArray(s.equipamentos) ? s.equipamentos.join(', ') : (s.equipamentos || '');
-    setForm({ nome: s.nome, tipo: s.tipo || 'consultorio', ativo: s.ativo ?? true, equipamentos: eq });
-    setShowForm(true);
-  };
-
-  return (
-    <Card className="rounded-2xl border-border/60 shadow-xs">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><MapPin className="h-4 w-4" /></span>Salas e Consultórios</CardTitle>
-            <CardDescription>Gerencie os espaços físicos da clínica</CardDescription>
-          </div>
-          <Button size="sm" disabled={!profile?.clinica_id || isLoading || salasQuery.isError} onClick={() => { setEditId(null); setForm({ nome: '', tipo: 'consultorio', ativo: true, equipamentos: '' }); setShowForm(true); }} className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110">
-            <Plus className="h-4 w-4" /> Nova Sala
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {salasQuery.isError ? <ErrorState compact title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} /> : isLoading ? <Skeleton className="h-32 w-full" /> : (salas as any[]).length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">
-            <MapPin className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">Nenhuma sala cadastrada</p>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Equipamentos</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(salas as any[]).map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.nome}</TableCell>
-                    <TableCell><Badge variant="outline" className="rounded-full capitalize">{s.tipo || 'Consultório'}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{s.equipamentos || '—'}</TableCell>
-                    <TableCell><Badge variant={s.ativo !== false ? 'default' : 'secondary'} className="rounded-full">{s.ativo !== false ? 'Ativa' : 'Inativa'}</Badge></TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                         <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full" aria-label={`Editar sala ${s.nome}`} onClick={() => openEdit(s)}><Edit className="h-3.5 w-3.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full text-destructive" aria-label={`Excluir sala ${s.nome}`} onClick={() => setSalaParaExcluir(s)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-
-      <Dialog open={showForm} onOpenChange={v => {
-        if (v || !saveLock.current) {
-          setShowForm(v);
-          if (!v) setEditId(null);
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editId ? 'Editar Sala' : 'Nova Sala'}</DialogTitle><DialogDescription>Preencha os dados do espaço.</DialogDescription></DialogHeader>
-          <div className="space-y-4">
-            <div><Label htmlFor="sala-nome">Nome *</Label><Input id="sala-nome" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Consultório 1" /></div>
-            <div>
-              <Label id="sala-tipo-label">Tipo</Label>
-              <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v })}>
-                <SelectTrigger aria-labelledby="sala-tipo-label"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="consultorio">Consultório</SelectItem>
-                  <SelectItem value="exame">Sala de Exames</SelectItem>
-                  <SelectItem value="procedimento">Sala de Procedimentos</SelectItem>
-                  <SelectItem value="coleta">Sala de Coleta</SelectItem>
-                  <SelectItem value="espera">Sala de Espera</SelectItem>
-                  <SelectItem value="reuniao">Sala de Reunião</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label htmlFor="sala-equipamentos">Equipamentos</Label><Textarea id="sala-equipamentos" value={form.equipamentos} onChange={e => setForm({ ...form, equipamentos: e.target.value })} placeholder="Maca, Esfigmomanômetro..." rows={2} /></div>
-            <div className="flex items-center gap-2"><Switch id="sala-ativa" aria-label="Sala ativa" checked={form.ativo} onCheckedChange={v => setForm({ ...form, ativo: v })} /><Label htmlFor="sala-ativa">Ativa</Label></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</Button>
-            <Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={handleSave} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}{editId ? 'Salvar' : 'Criar'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {salaParaExcluir && (
-        <DeleteConfirmDialog
-          open
-          onOpenChange={(o) => { if (!o && !deleteLock.current) setSalaParaExcluir(null); }}
-          itemName={salaParaExcluir.nome}
-          onConfirm={() => { void handleDelete(salaParaExcluir.id); }}
-          isLoading={deleting}
-          closeOnConfirm={false}
-        />
-      )}
-    </Card>
-  );
-}
-
 /* ─── Main Component ─── */
 export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
@@ -1059,9 +871,16 @@ export default function Configuracoes() {
 
         {/* ─── Salas ─── */}
         <TabsContent value="salas">
-          <div>
-            <SalasManager />
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" />Salas e leitos</CardTitle>
+              <CardDescription>Cadastre espaços, acompanhe ocupação e disponibilidade no workspace de salas.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-2xl text-sm text-muted-foreground">A gestão foi centralizada junto da lista de espera para manter cadastro, ocupação e encaminhamento no mesmo contexto.</p>
+              <Button asChild className="shrink-0"><Link to="/gestao-fluxo?tab=salas">Abrir salas e leitos</Link></Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
 

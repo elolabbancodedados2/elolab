@@ -58,3 +58,18 @@ test('configuração compara versões em página própria e restaura com control
   expect(restoreWrites).toEqual([{ p_versao_id: 'versao-anterior', p_versao_esperada: 'versao-etag-sintetica' }]);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('configurações encaminha salas e leitos ao workspace operacional', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/configuracoes?tab=salas');
+  await page.getByRole('link', { name: 'Abrir salas e leitos' }).click();
+
+  await expect(page).toHaveURL(/\/gestao-fluxo\?tab=salas$/);
+  await expect(page.getByRole('heading', { name: 'Salas e Leitos', level: 1 })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('settings-rooms-workspace-mobile.png'), fullPage: true, animations: 'disabled' });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
