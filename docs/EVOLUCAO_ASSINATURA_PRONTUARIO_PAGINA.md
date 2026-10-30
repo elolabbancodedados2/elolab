@@ -32,4 +32,10 @@
 
 ## Publicação
 
-- Commit, imagem, smoke, verificação pública, réplica e rollback serão registrados após o deploy.
+- Commit: `e98e83ebf2df351577a9759e51c90eac0ebb77c3`.
+- Imagem: `easypanel/elolab/app:deploy-20261030-e98e83e`.
+- Smoke isolado: `/healthz=ok`; `/version.json` confirmou o SHA integral.
+- Produção: Swarm concluiu a atualização (`completed`) com 1/1 réplica; `/healthz` público respondeu `ok` e `/version.json` publicou o mesmo SHA.
+- Rollback imediato: `deploy-20261030-e0b2ae3`.
+- Código anterior preservado em `/etc/easypanel/projects/elolab/app/code.before-20261030-e98e83e`. O `.env` foi copiado e comparado por hash, sem leitura ou exposição.
+- Houve uma disputa transitória pela porta host-mode após o smoke; o Swarm repetiu a tentativa, liberou a porta e concluiu sem rollback. Nenhuma migration ou alteração de dados de produção.
