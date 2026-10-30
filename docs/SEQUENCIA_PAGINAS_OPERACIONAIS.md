@@ -12,6 +12,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 - Exames: solicitação, consulta e resultado.
 - Agente IA: criação de sessão de WhatsApp em página própria.
 - Tour de primeiros passos: acesso opcional em página própria; o diálogo automático foi removido.
+- Plataforma IA: leitura das versões imutáveis do prompt em página própria sob a proteção de plataforma.
 
 ## Ordem de execução e verificação
 

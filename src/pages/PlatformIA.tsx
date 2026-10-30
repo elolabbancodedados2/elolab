@@ -8,7 +8,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -74,7 +73,6 @@ export default function PlatformIA() {
   const queryClient = useQueryClient();
   const publishLock = useRef(false);
   const [draft, setDraft] = useState<ConfigDraft | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<PromptVersion | null>(null);
   const [versionConflict, setVersionConflict] = useState<AIConfig | null>(null);
 
   const config = useQuery({
@@ -319,7 +317,9 @@ export default function PlatformIA() {
                   <p className="flex flex-wrap items-center gap-2 font-medium">Versão {version.versao} · {version.modelo}{current && <Badge className="rounded-full border-transparent bg-gradient-primary text-white">Em uso</Badge>}</p>
                   <p className="text-xs text-muted-foreground">Publicada em {formatDate(version.created_at)}</p>
                 </div>
-                <Button className="h-9 rounded-full text-xs" size="sm" variant="outline" onClick={() => setSelectedVersion(version)}>Ver prompt</Button>
+                <Button asChild className="h-9 rounded-full text-xs" size="sm" variant="outline">
+                  <Link to={`/admin/ia/versoes/${version.id}`} aria-label={`Ver prompt da versão ${version.versao}`}>Ver prompt</Link>
+                </Button>
               </div>
             );
           }) : (
@@ -327,16 +327,6 @@ export default function PlatformIA() {
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={!!selectedVersion} onOpenChange={(open) => !open && setSelectedVersion(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Prompt da versão {selectedVersion?.versao}</DialogTitle>
-            <DialogDescription>{selectedVersion?.modelo} · {selectedVersion ? formatDate(selectedVersion.created_at) : ''}</DialogDescription>
-          </DialogHeader>
-          <pre className="whitespace-pre-wrap break-words rounded-xl bg-[#F3F8FC] p-4 text-sm">{selectedVersion?.prompt}</pre>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }

@@ -8,6 +8,8 @@ O tour de primeiros passos também foi retirado do diálogo automático e movido
 
 A configuração do esquema de cores da Agenda também saiu do diálogo e passou para uma página dedicada; o registro da implementação está em [cores da Agenda em página própria](EVOLUCAO_AGENDA_CORES_PAGINA.md).
 
+A leitura integral de versões do prompt da plataforma também foi separada do modal e passou para uma rota própria: [histórico do prompt da IA](EVOLUCAO_HISTORICO_PROMPT_IA_PAGINA.md).
+
 Base do plano: `AUDITORIA_COMPLETUDE_MODULOS_2026-10-29.md`. Evolução incremental: agenda → pacientes → prontuário/documentos/exames/laboratório → financeiro → demais cadastros, validando cada fluxo antes de avançar.
 
 ## Agenda — primeira entrega

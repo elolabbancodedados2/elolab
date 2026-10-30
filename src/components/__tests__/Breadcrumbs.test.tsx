@@ -156,6 +156,13 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText(patientId)).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(patientId))).toBe(false);
   });
+  it('omite o identificador de uma versão do prompt no breadcrumb', () => {
+    const versionId = '00000000-0000-4000-9000-000000000901';
+    render(<MemoryRouter initialEntries={[`/admin/ia/versoes/${versionId}`]}><Breadcrumbs /></MemoryRouter>);
+    expect(screen.getByText('Versão do prompt')).toBeInTheDocument();
+    expect(screen.queryByText(versionId)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').some(link => link.getAttribute('href')?.includes(versionId))).toBe(false);
+  });
   it('exibe o nome correto da Central de Notificações', () => {
     render(
       <MemoryRouter initialEntries={['/notificacoes']}>

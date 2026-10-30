@@ -133,6 +133,7 @@ const labelsByPath: Record<string, string> = {
   '/admin/saude': 'Saúde do serviço',
   '/admin/suporte': 'Suporte da plataforma',
   '/admin/ia': 'Configuração da IA',
+  '/admin/ia/versoes': 'Histórico de prompt',
   '/admin/comunicacao': 'Comunicação com clientes',
   '/admin/operacoes': 'Operação do serviço',
   '/admin/lgpd': 'Solicitações de privacidade',
@@ -157,6 +158,7 @@ const labelsByMenuPath: Record<string, string> = Object.fromEntries(
 );
 
 export function getRouteLabel(pathname: string): string {
+  if (/^\/admin\/ia\/versoes\/[^/]+$/.test(pathname)) return 'Versão do prompt';
   if (/^\/configuracoes\/integracoes\/conectar\/[^/]+$/.test(pathname)) return 'Conectar integração';
   if (pathname === '/admin/cobrancas/reconciliar') return 'Cobrança divergente';
   if (/^\/admin\/cobrancas\/reconciliar\/[^/]+\/[^/]+$/.test(pathname)) return 'Reconciliar cobrança';
