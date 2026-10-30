@@ -1,16 +1,14 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArchiveRestore, CheckCircle2, DatabaseBackup, FileJson, RefreshCw, ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -55,8 +53,7 @@ function statusRestauracao(status: string) {
 export default function PlatformBackups() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
-  const [restoreReason, setRestoreReason] = useState('');
+  const navigate = useNavigate();
   const [restoreDecision, setRestoreDecision] = useState<{ id: string; name: string; reason: string; approve: boolean } | null>(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [verificando, setVerificando] = useState(false);
@@ -112,33 +109,6 @@ export default function PlatformBackups() {
   const atualizar = () => {
     void overview.refetch();
     void restores.refetch();
-  };
-  const solicitar = async () => {
-    if (restoreLock.current) return;
-    if (!restoreTarget || restoreReason.trim().length < 20 || restoreReason.trim().length > 1000) {
-      toast.error('A justificativa deve ter entre 20 e 1.000 caracteres.');
-      return;
-    }
-    restoreLock.current = true;
-    setRestoreBusy(true);
-    try {
-      const { error } = await (supabase as any).rpc('platform_request_restore', {
-        p_backup_name: restoreTarget,
-        p_reason: restoreReason.trim(),
-        p_scope: 'full',
-        p_scope_ref: null,
-      });
-      if (error) throw error;
-      toast.success('Solicitação criada; outro administrador precisa aprová-la.');
-      setRestoreTarget(null);
-      setRestoreReason('');
-      await queryClient.invalidateQueries({ queryKey: ['platform-restores'] });
-    } catch (error) {
-      toast.error('Solicitação recusada', { description: mensagemDeErro(error) });
-    } finally {
-      restoreLock.current = false;
-      setRestoreBusy(false);
-    }
   };
   const decidir = async () => {
     if (!restoreDecision || restoreLock.current) return;
@@ -219,7 +189,7 @@ export default function PlatformBackups() {
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader><CardTitle>Arquivos privados recentes</CardTitle><CardDescription>Somente metadados operacionais; o conteúdo clínico nunca é exposto ao navegador.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
-          {overview.isLoading ? <Skeleton className="h-24 w-full rounded-xl" /> : arquivos.slice(0, 15).map((arquivo) => <div key={arquivo.name} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 p-3"><div className="min-w-0"><p className="flex items-center gap-2 break-all text-sm font-medium"><FileJson className="h-4 w-4 shrink-0 text-[#1080CA]" />{arquivo.name}</p><p className="text-xs text-muted-foreground">{dataHora(arquivo.created_at)}</p></div><div className="flex flex-wrap gap-2"><Badge variant="secondary" className="rounded-full">{tamanho(Number(arquivo.size_bytes))}</Badge><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={restoreBusy} onClick={()=>{setRestoreTarget(arquivo.name);setRestoreReason('')}}>Solicitar restauração</Button></div></div>)}
+          {overview.isLoading ? <Skeleton className="h-24 w-full rounded-xl" /> : arquivos.slice(0, 15).map((arquivo) => <div key={arquivo.name} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 p-3"><div className="min-w-0"><p className="flex items-center gap-2 break-all text-sm font-medium"><FileJson className="h-4 w-4 shrink-0 text-[#1080CA]" />{arquivo.name}</p><p className="text-xs text-muted-foreground">{dataHora(arquivo.created_at)}</p></div><div className="flex flex-wrap gap-2"><Badge variant="secondary" className="rounded-full">{tamanho(Number(arquivo.size_bytes))}</Badge><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={restoreBusy} onClick={() => navigate('/admin/backups/restaurar', { state: { backup: arquivo } })}>Solicitar restauração</Button></div></div>)}
           {!overview.isLoading && !overview.isError && !arquivos.length && (
             <div className="flex flex-col items-center gap-2 py-6 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><DatabaseBackup className="h-6 w-6" /></span>
@@ -248,24 +218,6 @@ export default function PlatformBackups() {
       </Card>
 
       {overview.data?.generated_at && <p className="text-right text-xs text-muted-foreground">Estado consultado em {dataHora(overview.data.generated_at)}</p>}
-
-      <Dialog open={!!restoreTarget} onOpenChange={open => { if (!open && !restoreBusy) setRestoreTarget(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Solicitar restauração</DialogTitle>
-            <DialogDescription>Backup: {restoreTarget}. A solicitação será analisada por outro administrador; ela não executa a restauração agora.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="restore-reason">Justificativa (20 a 1.000 caracteres)</Label>
-            <Textarea id="restore-reason" value={restoreReason} maxLength={1000} disabled={restoreBusy} onChange={event => setRestoreReason(event.target.value)} rows={4} placeholder="Descreva o incidente e por que este backup deve ser restaurado." />
-            <p className="text-xs text-muted-foreground">{restoreReason.trim().length}/1.000 caracteres</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setRestoreTarget(null)} disabled={restoreBusy}>Cancelar</Button>
-            <Button className="rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => void solicitar()} disabled={restoreBusy || restoreReason.trim().length < 20 || restoreReason.trim().length > 1000}>{restoreBusy ? 'Enviando…' : 'Enviar para aprovação'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog open={!!restoreDecision} onOpenChange={open => { if (!open && !restoreBusy) setRestoreDecision(null); }}>
         <AlertDialogContent>

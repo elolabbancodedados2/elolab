@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn(), from: vi.fn(), functions: { invoke: vi.fn() } } }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ user: { id: 'admin-2' } }) }));
@@ -21,7 +22,7 @@ import PlatformBackups from '@/pages/PlatformBackups';
 
 describe('decisão de restauração', () => {
   it('confirma rejeição com botão destrutivo', async () => {
-    render(<PlatformBackups />);
+    render(<MemoryRouter><PlatformBackups /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Rejeitar' }));
     const action = await screen.findByRole('button', { name: 'Confirmar rejeição' });
     expect(action.className).toContain('bg-destructive');
@@ -29,7 +30,7 @@ describe('decisão de restauração', () => {
   });
 
   it('mantém a aprovação no estilo primário', async () => {
-    render(<PlatformBackups />);
+    render(<MemoryRouter><PlatformBackups /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Aprovar' }));
     const action = await screen.findByRole('button', { name: 'Confirmar aprovação' });
     expect(action.className).not.toContain('bg-destructive');

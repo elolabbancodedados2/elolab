@@ -124,6 +124,7 @@ const PlatformOperacoes = lazy(() => import("@/pages/PlatformOperacoes"));
 const PlatformLGPD = lazy(() => import("@/pages/PlatformLGPD"));
 const PlatformErros = lazy(() => import("@/pages/PlatformErros"));
 const PlatformBackups = lazy(() => import("@/pages/PlatformBackups"));
+const PlatformBackupRestoreRequest = lazy(() => import("@/pages/PlatformBackupRestoreRequest"));
 const PlatformRelatorioExecutivo = lazy(() => import("@/pages/PlatformRelatorioExecutivo"));
 const PlatformCobrancas = lazy(() => import("@/pages/PlatformCobrancas"));
 const PlatformHistoricoFinanceiro = lazy(() => import("@/pages/PlatformHistoricoFinanceiro"));
@@ -501,6 +502,7 @@ function AppRoutes() {
                           <Route path="/admin/lgpd/:requestId/decisao" element={<SupabaseProtectedRoute somentePlataforma><PlatformLGPD /></SupabaseProtectedRoute>} />
                           <Route path="/admin/erros" element={<SupabaseProtectedRoute somentePlataforma><PlatformErros /></SupabaseProtectedRoute>} />
                           <Route path="/admin/backups" element={<SupabaseProtectedRoute somentePlataforma><PlatformBackups /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/backups/restaurar" element={<SupabaseProtectedRoute somentePlataforma><PlatformBackupRestoreRequest /></SupabaseProtectedRoute>} />
                           <Route path="/admin/relatorio-executivo" element={<SupabaseProtectedRoute somentePlataforma><PlatformRelatorioExecutivo /></SupabaseProtectedRoute>} />
                           <Route path="/admin/cobrancas" element={<SupabaseProtectedRoute somentePlataforma><PlatformCobrancas /></SupabaseProtectedRoute>} />
                           <Route path="/admin/historico-financeiro" element={<SupabaseProtectedRoute somentePlataforma><PlatformHistoricoFinanceiro /></SupabaseProtectedRoute>} />
