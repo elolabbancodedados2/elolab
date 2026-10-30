@@ -58,6 +58,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { canalUnico } from '@/lib/realtimeCanal';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 // ─── Constants ──────────────────────────────────────────
 const FORMAS_PAGAMENTO = [
@@ -148,7 +149,7 @@ const fadeUp = {
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
 
 // ─── Main Component ─────────────────────────────────────
-export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } = {}) {
+export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => void; task?: 'walk-in' } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile, hasAnyRole } = useSupabaseAuth();
@@ -206,17 +207,14 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
     * check-in — três navegações no meio de um balcão cheio. Aqui o caminho
     * é um só: busca, médico, tipo e pronto.
     */
-   const [encaixeOpen, setEncaixeOpen] = useState(false);
    const [encaixePacienteId, setEncaixePacienteId] = useState('');
    const [encaixeMedicoId, setEncaixeMedicoId] = useState('');
    const [encaixeTipo, setEncaixeTipo] = useState('');
    const [salvandoEncaixe, setSalvandoEncaixe] = useState(false);
-   const encaixeTriggerRef = useRef<HTMLButtonElement>(null);
+   const encaixeCompleted = useRef(false);
+   const encaixeSubmitLock = useRef(false);
 
-  const abrirEncaixe = (trigger: HTMLButtonElement) => {
-    encaixeTriggerRef.current = trigger;
-    setEncaixeOpen(true);
-  };
+  const abrirEncaixe = () => navigate('/recepcao/encaixe');
 
   // Refresh timer every 30s
   useEffect(() => {
@@ -365,7 +363,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
   const tiposConsultaQuery = useQuery({
     queryKey: ['tipos-consulta-encaixe', profile?.clinica_id],
     meta: { suppressGlobalErrorToast: true },
-    enabled: !!profile?.clinica_id && encaixeOpen,
+    enabled: !!profile?.clinica_id && task === 'walk-in',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tipos_consulta')
@@ -1050,6 +1048,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
    * Agenda. O caixa só é exigido quando a equipe for receber o pagamento.
    */
   async function handleEncaixe() {
+    if (encaixeSubmitLock.current) return;
     if (!encaixePacienteId || !encaixeMedicoId || !encaixeTipo) {
       toast.error('Selecione paciente, médico e tipo de consulta.');
       return;
@@ -1080,6 +1079,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       });
       return;
     }
+    encaixeSubmitLock.current = true;
     setSalvandoEncaixe(true);
     try {
       // A lista do diálogo pode ter ficado aberta enquanto o profissional era
@@ -1161,7 +1161,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // A consulta já está persistida; mantê-la visível permite repetir o
       // check-in se a criação da fila ou da cobrança falhar nesta etapa.
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-      setEncaixeOpen(false);
+      encaixeCompleted.current = true;
       setEncaixePacienteId('');
       setEncaixeMedicoId('');
       setEncaixeTipo('');
@@ -1169,6 +1169,7 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
       // O check-in (fila + cobrança) segue o mesmo caminho do agendado, com o
       // item passado na mão porque a lista ainda não tem o agendamento novo.
       await handleCheckin(novo.id, { ag: novo, pac, med: null });
+      navigate('/recepcao', { replace: true });
     } catch (e) {
       const mensagem = mensagemDeErro(e);
       toast.error('Não foi possível criar o encaixe', {
@@ -1177,8 +1178,82 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
           : mensagem,
       });
     } finally {
+      encaixeSubmitLock.current = false;
       setSalvandoEncaixe(false);
     }
+  }
+
+  if (task === 'walk-in') {
+    const formDirty = Boolean(encaixePacienteId || encaixeMedicoId || encaixeTipo);
+    return (
+      <div className="space-y-6 pb-8">
+        <UnsavedChangesGuard dirty={formDirty} busy={salvandoEncaixe || isProcessing} completed={encaixeCompleted} />
+        <PageHeader
+          title="Encaixe sem agendamento"
+          description={`Atendimento presencial para hoje, com início previsto às ${horaDaClinica(new Date(now))}.`}
+          icon={<UserPlus />}
+          actions={<Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/recepcao')}>Voltar para a recepção</Button>}
+        />
+
+        {medicosQuery.isError && <ErrorState compact title="Não foi possível carregar os médicos" description="A criação fica bloqueada até confirmar um profissional ativo." error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}
+        {tiposConsultaQuery.isError && <ErrorState compact title="Não foi possível carregar os tipos de consulta" description="A criação fica bloqueada até confirmar o tipo e a duração do atendimento." error={tiposConsultaQuery.error} onRetry={() => void tiposConsultaQuery.refetch()} />}
+
+        <form onSubmit={event => { event.preventDefault(); void handleEncaixe(); }} className="max-w-4xl space-y-5">
+          <section aria-labelledby="recepcao-walk-in-heading" className="space-y-5 rounded-xl border border-border bg-card p-4 sm:p-6">
+            <div className="space-y-1">
+              <h2 id="recepcao-walk-in-heading" className="text-base font-semibold text-foreground">Identificação e encaminhamento</h2>
+              <p className="text-sm text-muted-foreground">Confirme a pessoa, o profissional e o tipo antes de criar o horário e iniciar o check-in.</p>
+            </div>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="recepcao-encaixe-paciente">Paciente</Label>
+                <PacienteCombobox id="recepcao-encaixe-paciente" value={encaixePacienteId} onChange={id => setEncaixePacienteId(id)} />
+                {encaixePacienteId && carregandoPacienteEncaixe && <p role="status" className="text-xs text-muted-foreground">Carregando os dados do paciente…</p>}
+                {encaixePacienteId && erroPacienteEncaixe && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p role="alert" className="text-xs text-destructive">Não foi possível confirmar os dados do paciente.</p>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void recarregarPacienteEncaixe()} disabled={carregandoPacienteEncaixe}>Tentar novamente</Button>
+                  </div>
+                )}
+                {encaixePacienteId && !carregandoPacienteEncaixe && !erroPacienteEncaixe && !pacienteEncaixe && <p role="alert" className="text-xs text-destructive">Paciente não encontrado nesta clínica. Selecione novamente.</p>}
+                <p className="text-xs text-muted-foreground">Não encontrou? Cadastre em Pacientes primeiro e volte para criar o encaixe.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="recepcao-encaixe-medico">Médico</Label>
+                <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId} disabled={medicosQuery.isLoading || medicosQuery.isError}>
+                  <SelectTrigger id="recepcao-encaixe-medico" aria-label="Médico"><SelectValue placeholder="Selecionar médico ativo..." /></SelectTrigger>
+                  <SelectContent>
+                    {(medicos as any[]).filter(m => m.ativo !== false).map(m => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {!medicosQuery.isLoading && !medicosQuery.isError && !(medicos as any[]).some(m => m.ativo !== false) && <p className="text-xs text-muted-foreground">Nenhum médico ativo disponível.</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="recepcao-encaixe-tipo">Tipo de consulta</Label>
+                <Select value={encaixeTipo} onValueChange={setEncaixeTipo} disabled={tiposConsultaQuery.isLoading || tiposConsultaQuery.isError}>
+                  <SelectTrigger id="recepcao-encaixe-tipo" aria-label="Tipo de consulta"><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
+                  <SelectContent>
+                    {(tiposConsulta as any[]).map(tipo => <SelectItem key={tipo.id} value={tipo.nome}>{tipo.nome} · {Number(tipo.duracao_minutos) > 0 ? `${tipo.duracao_minutos} min` : '30 min'}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {!tiposConsultaQuery.isLoading && !tiposConsultaQuery.isError && !(tiposConsulta as any[]).length && <p className="text-xs text-muted-foreground">Nenhum tipo de consulta ativo disponível.</p>}
+              </div>
+            </div>
+          </section>
+
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" className="rounded-full" disabled={salvandoEncaixe || isProcessing} onClick={() => navigate('/recepcao')}>Cancelar</Button>
+            <Button type="submit" disabled={salvandoEncaixe || isProcessing || carregandoPacienteEncaixe || erroPacienteEncaixe || !pacienteEncaixe || medicosQuery.isLoading || tiposConsultaQuery.isLoading || medicosQuery.isError || tiposConsultaQuery.isError || !(medicos as any[]).some(m => m.id === encaixeMedicoId && m.ativo !== false) || !(tiposConsulta as any[]).some(tipo => tipo.nome === encaixeTipo)} className="gap-2 rounded-full">
+              {salvandoEncaixe || isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <UserCheck aria-hidden="true" className="h-4 w-4" />}
+              Criar e fazer check-in
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
   }
 
   // ─── Render ───────────────────────────────────────────
@@ -1226,9 +1301,8 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
             />
           </div>
           <Button
-            ref={encaixeTriggerRef}
             size="sm" className="h-10 shrink-0 gap-1.5 rounded-full bg-primary px-3 text-primary-foreground shadow-sm hover:bg-primary/90 sm:px-4"
-            onClick={(event) => abrirEncaixe(event.currentTarget)}
+            onClick={abrirEncaixe}
             aria-label="Encaixe sem agendamento"
           >
             <UserPlus className="h-4 w-4" />
@@ -1999,88 +2073,6 @@ export default function Recepcao({ onOpenCaixa }: { onOpenCaixa?: () => void } =
         }}
       />
 
-      {/* ─── Encaixe (walk-in) ─── */}
-      <Dialog open={encaixeOpen} onOpenChange={a => { if (!a && !salvandoEncaixe) setEncaixeOpen(false); }}>
-        <DialogContent
-          className="sm:max-w-md"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            requestAnimationFrame(() => encaixeTriggerRef.current?.focus());
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" /> Encaixe sem agendamento
-            </DialogTitle>
-            <DialogDescription>
-              Paciente que chegou sem consulta marcada. Cria o atendimento para
-              agora e faz o check-in na sequência.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="recepcao-encaixe-paciente">Paciente</Label>
-              <PacienteCombobox id="recepcao-encaixe-paciente" value={encaixePacienteId} onChange={(id) => setEncaixePacienteId(id)} />
-              {encaixePacienteId && carregandoPacienteEncaixe && (
-                <p role="status" className="text-xs text-muted-foreground">Carregando os dados do paciente…</p>
-              )}
-              {encaixePacienteId && erroPacienteEncaixe && (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p role="alert" className="text-xs text-destructive">Não foi possível confirmar os dados do paciente.</p>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void recarregarPacienteEncaixe()} disabled={carregandoPacienteEncaixe}>
-                    Tentar novamente
-                  </Button>
-                </div>
-              )}
-              {encaixePacienteId && !carregandoPacienteEncaixe && !erroPacienteEncaixe && !pacienteEncaixe && (
-                <p role="alert" className="text-xs text-destructive">Paciente não encontrado nesta clínica. Selecione novamente.</p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Não encontrou? Cadastre em Pacientes primeiro e volte aqui para o encaixe.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="recepcao-encaixe-medico">Médico</Label>
-              {medicosQuery.isError ? (
-                <ErrorState compact title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
-              ) : <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId} disabled={medicosQuery.isLoading}>
-                <SelectTrigger id="recepcao-encaixe-medico"><SelectValue placeholder="Selecionar médico..." /></SelectTrigger>
-                <SelectContent>
-                  {(medicos as any[]).filter(m => m.ativo !== false).map(m => (
-                    <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="recepcao-encaixe-tipo">Tipo de consulta</Label>
-              {tiposConsultaQuery.isError ? (
-                <ErrorState compact title="Não foi possível carregar os tipos de consulta" error={tiposConsultaQuery.error} onRetry={() => void tiposConsultaQuery.refetch()} />
-              ) : <Select value={encaixeTipo} onValueChange={setEncaixeTipo} disabled={tiposConsultaQuery.isLoading}>
-                <SelectTrigger id="recepcao-encaixe-tipo"><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
-                <SelectContent>
-                  {(tiposConsulta as any[]).map(t => (
-                    <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={salvandoEncaixe} onClick={() => setEncaixeOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleEncaixe}
-              disabled={salvandoEncaixe || carregandoPacienteEncaixe || erroPacienteEncaixe || !pacienteEncaixe || medicosQuery.isLoading || tiposConsultaQuery.isLoading || medicosQuery.isError || tiposConsultaQuery.isError || !encaixePacienteId || !encaixeMedicoId || !encaixeTipo}
-              className="gap-1.5"
-            >
-              {salvandoEncaixe ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
-              Criar e fazer check-in
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

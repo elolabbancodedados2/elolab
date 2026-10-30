@@ -3537,6 +3537,98 @@ test('doctor can complete check-in from the dedicated queue page', async ({ page
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
+test('reception walk-in check-in opens a dedicated protected form', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'recepcao', receptionPopulated: true });
+  await page.route('**/rest/v1/tipos_consulta*', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{ id: 'synthetic-consulta', nome: 'Consulta geral', valor_particular: 180, duracao_minutos: 30, ativo: true }]),
+  }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/recepcao');
+
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Painel de Recepção' })).toBeVisible();
+  await main.getByRole('button', { name: 'Encaixe sem agendamento' }).click();
+  await expect(page).toHaveURL('/recepcao/encaixe');
+  await expect(main.getByRole('heading', { name: 'Encaixe sem agendamento' })).toBeVisible();
+  await expect(main.getByLabel('Paciente')).toBeVisible();
+  await expect(main.getByRole('combobox', { name: 'Médico' })).toBeVisible();
+  await expect(main.getByRole('combobox', { name: 'Tipo de consulta' })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Criar e fazer check-in' })).toBeDisabled();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('recepcao-walk-in-page-mobile.png'), fullPage: true, animations: 'disabled' });
+
+  await main.getByLabel('Paciente').click();
+  await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo');
+  await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
+  await main.getByRole('button', { name: 'Voltar para a recepção' }).click();
+  const discardGuard = page.getByRole('alertdialog');
+  await expect(discardGuard.getByRole('heading', { name: 'Sair sem salvar?' })).toBeVisible();
+  await discardGuard.getByRole('button', { name: 'Descartar e sair' }).click();
+  await expect(page).toHaveURL('/recepcao');
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('reception completes walk-in creation and check-in without a modal', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'recepcao', receptionPopulated: true });
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  let appointmentPayload: Record<string, unknown> | undefined;
+  let checkinPayload: Record<string, unknown> | undefined;
+
+  await page.route('**/rest/v1/tipos_consulta*', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{ id: 'synthetic-consulta', nome: 'Consulta geral', valor_particular: 180, duracao_minutos: 30, ativo: true }]),
+  }));
+  await page.route('**/rest/v1/agendamentos*', async route => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === 'POST') {
+      appointmentPayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'synthetic-walk-in', clinica_id: '00000000-0000-4000-8000-000000000002', paciente_id: '00000000-0000-4000-8000-000000000004', medico_id: '00000000-0000-4000-8000-000000000003', tipo: 'Consulta geral', data: today, hora_inicio: '12:00:00', hora_fim: '12:30:00', status: 'agendado' }),
+      });
+      return;
+    }
+    if (route.request().method() === 'GET' && url.searchParams.get('select') === 'id,hora_inicio,hora_fim,status') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route('**/rest/v1/rpc/realizar_checkin*', async route => {
+    checkinPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fila_id: 'synthetic-fila' }) });
+  });
+  await page.route('**/rest/v1/rpc/criar_cobranca_checkin_atomica*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('created') }));
+  await page.route('**/rest/v1/rpc/confirmar_estado_cobranca_checkin*', route => route.fulfill({ status: 200, contentType: 'application/json', body: 'true' }));
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/recepcao/encaixe');
+  const main = page.locator('#main-content');
+  await expect(main.getByRole('heading', { name: 'Encaixe sem agendamento' })).toBeVisible();
+  await main.getByLabel('Paciente').click();
+  await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo');
+  await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
+  await main.getByRole('combobox', { name: 'Médico' }).click();
+  await page.getByRole('option', { name: 'Dra. Marina Ribeiro' }).click();
+  await main.getByRole('combobox', { name: 'Tipo de consulta' }).click();
+  await page.getByRole('option', { name: /Consulta geral/ }).click();
+  await expect(main.getByRole('button', { name: 'Criar e fazer check-in' })).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath('recepcao-walk-in-page-desktop-ready.png'), fullPage: true, animations: 'disabled' });
+  await main.getByRole('button', { name: 'Criar e fazer check-in' }).click();
+
+  await expect(page).toHaveURL('/recepcao');
+  await expect(page.getByText('Check-in realizado!')).toBeVisible();
+  expect(appointmentPayload).toMatchObject({ paciente_id: '00000000-0000-4000-8000-000000000004', medico_id: '00000000-0000-4000-8000-000000000003', tipo: 'Consulta geral', data: today, status: 'agendado' });
+  expect(checkinPayload).toMatchObject({ p_agendamento_id: 'synthetic-walk-in', p_prioridade: 'normal' });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
 test('Manchester risk choices keep readable contrast when selected', async ({ page }, testInfo) => {
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'enfermagem' });
