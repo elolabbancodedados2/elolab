@@ -35,7 +35,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -65,18 +64,6 @@ function parseMoneyInput(value: string): number | null {
 
 function temPrecisaoDeCentavos(value: number): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
-}
-
-function salvarEstadoLocalCaixa(estado: unknown, userId?: string | null, clinicaId?: string | null): boolean {
-  const registros = [
-    userId ? [`caixa_estado_${userId}`, estado] as const : null,
-    clinicaId ? [`caixa_estado_clinica_${clinicaId}`, estado] as const : null,
-  ].filter(Boolean) as Array<readonly [string, unknown]>;
-  let sucesso = true;
-  for (const [chave, valor] of registros) {
-    try { localStorage.setItem(chave, JSON.stringify(valor)); } catch { sucesso = false; }
-  }
-  return sucesso;
 }
 
 interface Lancamento {
@@ -203,9 +190,6 @@ export default function CaixaDiario() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
   const [editForm, setEditForm] = useState({ descricao: '', valor: '', forma_pagamento: 'dinheiro' as FormaPagamento });
-  const [showDetalhesCaixa, setShowDetalhesCaixa] = useState<CaixaDiarioType | null>(null);
-  const [showReabertura, setShowReabertura] = useState(false);
-  const [motivoReabertura, setMotivoReabertura] = useState('');
 
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | LancamentoTipo>('todos');
 
@@ -241,7 +225,7 @@ export default function CaixaDiario() {
     refetchInterval: 60_000,
   });
 
-  const caixaEventosId = showDetalhesCaixa?.id || caixaHoje?.id;
+  const caixaEventosId = caixaHoje?.id;
   const { data: eventosCaixa = [], isLoading: loadingEventosCaixa, isError: erroEventosCaixa, refetch: recarregarEventosCaixa } = useQuery({
     queryKey: ['caixa-diario-eventos', caixaEventosId],
     queryFn: async (): Promise<CaixaDiarioEvento[]> => {
@@ -303,40 +287,15 @@ export default function CaixaDiario() {
     enabled: !!profile?.clinica_id && activeTab === 'historico',
   });
 
-  // Lançamentos do caixa em detalhe
-  const { data: lancamentosDetalheData, isLoading: loadingLancamentosDetalhe, isError: erroLancamentosDetalhe, refetch: recarregarLancamentosDetalhe } = useQuery({
-    queryKey: ['lancamentos-detalhe', profile?.id ?? null, profile?.clinica_id ?? null, showDetalhesCaixa?.data],
-    queryFn: async (): Promise<{ movimentos: Lancamento[]; excedeuLimite: boolean }> => {
-      if (!showDetalhesCaixa?.data || !profile?.clinica_id) return { movimentos: [], excedeuLimite: false };
-      const rows = await buscarEmBlocos<Lancamento>(
-        () => supabase.rpc('movimentos_caixa_diario', { p_data: showDetalhesCaixa.data })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true }),
-        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
-      );
-      return {
-        movimentos: rows.slice(0, LIMITE_BUSCA_EM_BLOCOS),
-        excedeuLimite: rows.length > LIMITE_BUSCA_EM_BLOCOS,
-      };
-    },
-    enabled: !!showDetalhesCaixa?.data,
-  });
-  const lancamentosDetalhe = lancamentosDetalheData?.movimentos ?? SEM_LANCAMENTOS;
-  const lancamentosDetalheExcederamLimite = Boolean(lancamentosDetalheData?.excedeuLimite);
-
-
-
   // ─── Calculations ───────────────────────────────
   const totais = useMemo(() => {
     return calcularTotaisCaixa(caixaHoje?.valor_abertura || 0, lancamentos);
   }, [lancamentos, caixaHoje]);
 
-  const saldoEsperadoGaveta = useMemo(() => {
-    if (showDetalhesCaixa && showDetalhesCaixa.id !== caixaHoje?.id) {
-      return calcularSaldoGaveta(showDetalhesCaixa.valor_abertura, lancamentosDetalhe);
-    }
-    return calcularSaldoGaveta(caixaHoje?.valor_abertura || 0, lancamentos);
-  }, [showDetalhesCaixa, caixaHoje?.id, caixaHoje?.valor_abertura, lancamentosDetalhe, lancamentos]);
+  const saldoEsperadoGaveta = useMemo(
+    () => calcularSaldoGaveta(caixaHoje?.valor_abertura || 0, lancamentos),
+    [caixaHoje?.valor_abertura, lancamentos],
+  );
 
   const breakdownFormas = useMemo(() => {
     const formas: Record<string, number> = {};
@@ -362,34 +321,6 @@ export default function CaixaDiario() {
     sangria: lancamentos.filter(l => l.tipo === 'sangria').length,
     suprimento: lancamentos.filter(l => l.tipo === 'suprimento').length,
   }), [lancamentos]);
-
-  const reabrirCaixaMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.rpc('reabrir_caixa_diario', {
-        p_motivo: motivoReabertura.trim(),
-      });
-      if (error) throw error;
-      validarResultadoRpcCaixa(data);
-    },
-    onSuccess: () => {
-      const estado = { aberto: true, data: today, valorAbertura: caixaHoje?.valor_abertura || 0, operador: caixaHoje?.operador_abertura };
-      const estadoLocalSalvo = salvarEstadoLocalCaixa(estado, profile?.id, profile?.clinica_id);
-      toast.success('Caixa reaberto', { description: 'O fechamento anterior permanece registrado no histórico.' });
-      if (!estadoLocalSalvo) toast.warning('O caixa foi reaberto, mas a Recepção pode precisar atualizar o estado direto do sistema. Recarregue a tela da Recepção.');
-      setShowReabertura(false);
-      setMotivoReabertura('');
-      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-    },
-    onError: (e: any) => {
-      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      toast.error(e?.message || 'Erro ao reabrir caixa');
-    },
-  });
 
   const deletarLancamentoMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -682,7 +613,7 @@ export default function CaixaDiario() {
                   <FileSpreadsheet className="h-4 w-4" /> CSV
                 </Button>
                 {podeReabrir ? (
-                  <Button variant="outline" className="ml-auto h-10 gap-2 rounded-full" onClick={() => setShowReabertura(true)}>
+                  <Button variant="outline" className="ml-auto h-10 gap-2 rounded-full" onClick={() => navigate('/recepcao/caixa/reabrir', { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'hoje' } })}>
                     <Unlock className="h-4 w-4" /> Reabrir caixa
                   </Button>
                 ) : (
@@ -1079,11 +1010,11 @@ export default function CaixaDiario() {
                     <div key={cx.id}
                       role="button" tabIndex={0}
                       className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer group"
-                      onClick={() => setShowDetalhesCaixa(cx)}
+                      onClick={() => navigate(`/recepcao/caixa/historico/${cx.id}`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } })}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
-                          setShowDetalhesCaixa(cx);
+                          navigate(`/recepcao/caixa/historico/${cx.id}`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } });
                         }
                       }}
                     >
@@ -1160,184 +1091,6 @@ export default function CaixaDiario() {
       </Tabs>
 
       {/* ═══ DIALOGS ═══ */}
-
-      <Dialog
-        open={showReabertura}
-        onOpenChange={(open) => {
-          if (!reabrirCaixaMutation.isPending) {
-            setShowReabertura(open);
-            if (!open) setMotivoReabertura('');
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Unlock className="h-5 w-5 text-warning" /> Reabrir caixa fechado
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              A reabertura fica registrada com seu nome, horário e motivo. O fechamento anterior aparece no histórico.
-            </p>
-            <div className="space-y-1.5">
-              <Label htmlFor="motivo-reabertura-caixa">Motivo da reabertura</Label>
-              <Textarea
-                id="motivo-reabertura-caixa"
-                value={motivoReabertura}
-                onChange={event => setMotivoReabertura(event.target.value)}
-                placeholder="Ex.: caixa fechado por engano; ainda há pagamentos a receber."
-                rows={3}
-                maxLength={500}
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">Mínimo 10 caracteres · {motivoReabertura.trim().length}/500</p>
-            </div>
-            {!podeReabrir && <p className="text-xs text-destructive">A reabertura exige perfil de administrador ou financeiro.</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReabertura(false)} disabled={reabrirCaixaMutation.isPending}>Cancelar</Button>
-            <Button
-              onClick={() => reabrirCaixaMutation.mutate()}
-              disabled={!podeReabrir || motivoReabertura.trim().length < 10 || reabrirCaixaMutation.isPending}
-              className="gap-2"
-            >
-              {reabrirCaixaMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Reabrir caixa
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Detalhes de Caixa Anterior */}
-      <Dialog open={!!showDetalhesCaixa} onOpenChange={(open) => { if (!open) setShowDetalhesCaixa(null); }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5 text-primary" />
-              Caixa — {showDetalhesCaixa ? fmtDate(showDetalhesCaixa.data) : ''}
-            </DialogTitle>
-          </DialogHeader>
-          {showDetalhesCaixa && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">Abertura</p>
-                  <p className="font-bold">{fmt(showDetalhesCaixa.valor_abertura)}</p>
-                  <p className="text-[10px] text-muted-foreground">{showDetalhesCaixa.operador_abertura || '—'}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">Fechamento</p>
-                  <p className="font-bold">{fmt(showDetalhesCaixa.valor_fechamento || 0)}</p>
-                  <p className="text-[10px] text-muted-foreground">{showDetalhesCaixa.operador_fechamento || '—'}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge variant={showDetalhesCaixa.aberto ? 'outline' : 'secondary'} className={cn('mt-1', showDetalhesCaixa.aberto && 'bg-success/10 text-success border-success/20')}>
-                    {showDetalhesCaixa.aberto ? 'Aberto' : 'Fechado'}
-                  </Badge>
-                </div>
-                {showDetalhesCaixa.observacoes && (
-                  <div className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Obs</p>
-                    <p className="text-xs">{showDetalhesCaixa.observacoes}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="h-9 gap-2 rounded-full" disabled={loadingLancamentosDetalhe || erroLancamentosDetalhe} onClick={() => imprimirRelatorioFechamento(showDetalhesCaixa, lancamentosDetalhe)}>
-                  <Printer className="h-4 w-4" /> Relatório de fechamento
-                </Button>
-                <Button variant="ghost" size="sm" className="h-9 gap-2 rounded-full text-muted-foreground" disabled={lancamentosDetalhe.length === 0} onClick={() => exportarCsv(lancamentosDetalhe, showDetalhesCaixa.data)}>
-                  <FileSpreadsheet className="h-4 w-4" /> CSV
-                </Button>
-              </div>
-
-              <Separator />
-              <p className="text-sm font-semibold">Movimentações ({lancamentosDetalhe.length})</p>
-
-              {lancamentosDetalheExcederamLimite && (
-                <div role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs text-warning-foreground">
-                  Este caixa tem mais de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} movimentos. A lista e os totais podem estar incompletos; não feche até conferir todos.
-                </div>
-              )}
-
-              {loadingLancamentosDetalhe && <p className="text-xs text-muted-foreground" role="status">Carregando movimentos…</p>}
-              {erroLancamentosDetalhe && (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 p-3" role="alert">
-                  <span className="text-xs text-destructive">Não foi possível carregar os movimentos deste caixa.</span>
-                  <Button size="sm" variant="outline" onClick={() => void recarregarLancamentosDetalhe()}>Tentar novamente</Button>
-                </div>
-              )}
-              {!loadingLancamentosDetalhe && !erroLancamentosDetalhe && lancamentosDetalhe.length === 0 ? (
-                <p className="text-center text-muted-foreground py-6 text-sm">Nenhuma movimentação neste caixa</p>
-              ) : lancamentosDetalhe.length > 0 && (
-                <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                  {lancamentosDetalhe.map(l => {
-                    const cfg = getTipoConfig(l.tipo);
-                    const valorAssinado = (l.tipo === 'receita' || l.tipo === 'suprimento') ? l.valor : -l.valor;
-                    return (
-                      <div key={l.id} className="flex items-center justify-between p-2.5 rounded-lg border text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className={cn('px-2 py-0.5 rounded text-[10px] font-medium', cfg.bg, cfg.color)}>
-                            {cfg.label}
-                          </div>
-                          <span className="text-foreground">{l.descricao}</span>
-                        </div>
-                        <span className={cn('font-bold tabular-nums', valorAssinado < 0 ? 'text-destructive' : cfg.color)}>
-                          {valorAssinado < 0 ? '−' : '+'}{fmt(Math.abs(l.valor))}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {showDetalhesCaixa.aberto && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/5 p-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Dinheiro esperado na gaveta</p>
-                    <p className="font-semibold tabular-nums">{fmt(saldoEsperadoGaveta)}</p>
-                    {showDetalhesCaixa.data < today && <p className="mt-1 text-xs text-muted-foreground">Este caixa ficou aberto após a virada do dia. Fechar aqui não libera pagamentos para dias anteriores.</p>}
-                  </div>
-                  <Button variant="destructive" className="gap-2" disabled={loadingLancamentosDetalhe || erroLancamentosDetalhe || lancamentosDetalheExcederamLimite}
-                    onClick={() => navigate(`/recepcao/caixa/${showDetalhesCaixa.id}/fechar`, { state: { returnTo: '/recepcao?tab=caixa', cashTab: 'historico' } })}>
-                    <Lock className="h-4 w-4" /> {showDetalhesCaixa.data < today ? 'Regularizar fechamento' : 'Fechar caixa'}
-                  </Button>
-                </div>
-              )}
-              <Separator />
-              <p className="text-sm font-semibold">Histórico de abertura e fechamento</p>
-              {erroEventosCaixa && (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 p-3" role="alert">
-                  <span className="text-xs text-destructive">Não foi possível carregar o histórico deste caixa.</span>
-                  <Button size="sm" variant="outline" onClick={() => void recarregarEventosCaixa()}>Tentar novamente</Button>
-                </div>
-              )}
-              {loadingEventosCaixa && <p className="text-xs text-muted-foreground" role="status">Carregando histórico…</p>}
-              {eventosCaixa.length === 0 && !erroEventosCaixa && !loadingEventosCaixa ? (
-                <p className="text-xs text-muted-foreground">Nenhum evento de abertura, fechamento ou reabertura.</p>
-              ) : eventosCaixa.length > 0 && (
-                <ol className="space-y-2">
-                  {eventosCaixa.map(evento => (
-                    <li key={evento.id} className="border-l-2 border-border pl-3 text-xs">
-                      <div className="flex flex-wrap gap-x-2">
-                        <span className="font-medium">{evento.tipo === 'abertura' ? 'Abertura' : evento.tipo === 'fechamento' ? 'Fechamento' : 'Reabertura'}</span>
-                        <span className="text-muted-foreground">{new Date(evento.created_at).toLocaleString('pt-BR')}</span>
-                        {evento.user_nome && <span className="text-muted-foreground">por {evento.user_nome}</span>}
-                      </div>
-                      {evento.valor_informado !== null && <p className="mt-1 text-muted-foreground">Informado: {fmt(evento.valor_informado)}</p>}
-                      {evento.valor_apurado !== null && <p className="text-muted-foreground">Apurado: {fmt(evento.valor_apurado)}</p>}
-                      {evento.fechamento_anterior_valor !== null && <p className="text-muted-foreground">Fechamento anterior: {fmt(evento.fechamento_anterior_valor)}{evento.fechamento_anterior_operador ? `, por ${evento.fechamento_anterior_operador}` : ''}</p>}
-                      {evento.motivo && <p className="mt-1">Motivo/observações: {evento.motivo}</p>}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Confirm Delete */}
       <AlertDialog open={!!confirmDelete} onOpenChange={(open) => {

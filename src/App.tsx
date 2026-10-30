@@ -39,6 +39,8 @@ const NovoRetornoProntuarioPage = lazy(() => import("@/pages/NovoRetornoProntuar
 const Financeiro = lazy(() => import("@/pages/Financeiro"));
 const AbrirCaixaPage = lazy(() => import("@/pages/AbrirCaixaPage"));
 const FecharCaixaPage = lazy(() => import("@/pages/FecharCaixaPage"));
+const CaixaHistoricoDetalhePage = lazy(() => import("@/pages/CaixaHistoricoDetalhePage"));
+const ReabrirCaixaPage = lazy(() => import("@/pages/ReabrirCaixaPage"));
 const CashOperationPage = lazy(() => import("@/pages/CashOperationPage").then(module => ({ default: module.CashOperationPage })));
 const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module => ({ default: module.CashierSalePage })));
 const Medicos = lazy(() => import("@/pages/Medicos"));
@@ -395,6 +397,8 @@ function AppRoutes() {
                           <Route path="/minha-fila" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico']}><MinhaFilaTarefas /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/encaixe" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><RecepcaoOperacional task="walk-in" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/abrir" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><AbrirCaixaPage /></SupabaseProtectedRoute>} />
+                          <Route path="/recepcao/caixa/reabrir" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ReabrirCaixaPage /></SupabaseProtectedRoute>} />
+                          <Route path="/recepcao/caixa/historico/:caixaId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CaixaHistoricoDetalhePage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/sangria" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="sangria" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/suprimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="suprimento" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/despesa" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="despesa" /></SupabaseProtectedRoute>} />
