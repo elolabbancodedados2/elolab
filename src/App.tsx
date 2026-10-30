@@ -498,6 +498,7 @@ function AppRoutes() {
                           <Route path="/admin/comunicacao" element={<SupabaseProtectedRoute somentePlataforma><PlatformComunicacao /></SupabaseProtectedRoute>} />
                           <Route path="/admin/operacoes" element={<SupabaseProtectedRoute somentePlataforma><PlatformOperacoes /></SupabaseProtectedRoute>} />
                           <Route path="/admin/lgpd" element={<SupabaseProtectedRoute somentePlataforma><PlatformLGPD /></SupabaseProtectedRoute>} />
+                          <Route path="/admin/lgpd/:requestId/decisao" element={<SupabaseProtectedRoute somentePlataforma><PlatformLGPD /></SupabaseProtectedRoute>} />
                           <Route path="/admin/erros" element={<SupabaseProtectedRoute somentePlataforma><PlatformErros /></SupabaseProtectedRoute>} />
                           <Route path="/admin/backups" element={<SupabaseProtectedRoute somentePlataforma><PlatformBackups /></SupabaseProtectedRoute>} />
                           <Route path="/admin/relatorio-executivo" element={<SupabaseProtectedRoute somentePlataforma><PlatformRelatorioExecutivo /></SupabaseProtectedRoute>} />

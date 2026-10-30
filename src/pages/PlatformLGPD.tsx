@@ -1,13 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Clock, Loader2, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, Loader2, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,6 +18,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { cn } from '@/lib/utils';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 
 type RequestStatus = 'pending' | 'fulfilled' | 'denied';
 type AccessRequest = {
@@ -35,6 +37,7 @@ type AccessRequest = {
 };
 type RetentionPolicy = { id: string; categoria: string; retencao_meses: number; base_legal: string; ativo: boolean; updated_at: string };
 type RequestDecision = { request: AccessRequest; status: 'fulfilled' | 'denied'; evidence: string };
+type RequestListState = { caseSearch?: string; statusFilter?: RequestStatus | 'all' };
 
 const STATUS_LABELS: Record<RequestStatus, string> = { pending: 'Pendente', fulfilled: 'Atendida', denied: 'Negada' };
 const REQUEST_TYPE_LABELS: Record<AccessRequest['request_type'], string> = { export: 'Exportação', access: 'Acesso', correction: 'Correção' };
@@ -48,14 +51,24 @@ function dateTime(value: string | null) {
 export default function PlatformLGPD() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { requestId } = useParams();
+  const listState = location.state as RequestListState | null;
   const statusLock = useRef(false);
   const policyLock = useRef(false);
+  const completed = useRef(false);
+  const initializedRequest = useRef<string | null>(null);
+  const baseline = useRef('');
   const [decision, setDecision] = useState<RequestDecision | null>(null);
-  const [caseSearch, setCaseSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all');
+  const [caseSearch, setCaseSearch] = useState(listState?.caseSearch ?? '');
+  const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>(listState?.statusFilter ?? 'all');
   const [categoria, setCategoria] = useState('');
   const [meses, setMeses] = useState('60');
   const [baseLegal, setBaseLegal] = useState('');
+
+  const currentListState = () => ({ caseSearch, statusFilter });
+  const returnToList = () => navigate('/admin/lgpd', { state: currentListState() });
 
   const casos = useQuery({
     queryKey: ['platform-lgpd-cases'],
@@ -79,6 +92,35 @@ export default function PlatformLGPD() {
     },
   });
 
+  const requests = casos.data || [];
+  const selectedRequest = requestId ? requests.find(item => item.id === requestId) ?? null : null;
+
+  useEffect(() => {
+    if (!requestId) {
+      initializedRequest.current = null;
+      baseline.current = '';
+      completed.current = false;
+      setDecision(null);
+      return;
+    }
+    if (!casos.data || initializedRequest.current === requestId) return;
+    initializedRequest.current = requestId;
+    const request = casos.data.find(item => item.id === requestId);
+    if (!request) {
+      setDecision(null);
+      return;
+    }
+    const initialDecision: RequestDecision = { request, status: 'fulfilled', evidence: '' };
+    baseline.current = JSON.stringify(initialDecision);
+    completed.current = false;
+    setDecision(initialDecision);
+  }, [requestId, casos.data]);
+
+  const dirty = Boolean(requestId && decision && baseline.current !== JSON.stringify(decision));
+  const openDecision = (request: AccessRequest) => {
+    navigate(`/admin/lgpd/${encodeURIComponent(request.id)}/decisao`, { state: currentListState() });
+  };
+
   const atualizarStatus = useMutation({
     mutationFn: async (values: RequestDecision) => {
       const { error } = await (supabase as any).rpc('platform_update_lgpd_request', {
@@ -89,9 +131,10 @@ export default function PlatformLGPD() {
       if (error) throw error;
     },
     onSuccess: () => {
-      setDecision(null);
+      completed.current = true;
       toast.success('Decisão registrada com justificativa.');
       void queryClient.invalidateQueries({ queryKey: ['platform-lgpd-cases'] });
+      returnToList();
     },
     onError: (error) => toast.error('Não foi possível atualizar a solicitação.', { description: mensagemDeErro(error) }),
     onSettled: () => { statusLock.current = false; },
@@ -155,7 +198,7 @@ export default function PlatformLGPD() {
     });
   }, [casos.data, caseSearch, statusFilter]);
   const registrarDecisao = () => {
-    if (!decision || !evidenceValid || statusLock.current) return;
+    if (!decision || selectedRequest?.status !== 'pending' || !evidenceValid || statusLock.current) return;
     statusLock.current = true;
     atualizarStatus.mutate(decision);
   };
@@ -164,6 +207,69 @@ export default function PlatformLGPD() {
     policyLock.current = true;
     criarPolitica.mutate();
   };
+
+  if (requestId) {
+    if (casos.isLoading || (selectedRequest && !decision)) {
+      return <main className="mx-auto w-full max-w-4xl space-y-5 pb-36"><PageHeader title="Decisão da solicitação" description="Carregando o registro do titular." icon={<ShieldCheck />} /><Skeleton className="h-72 w-full rounded-xl" /></main>;
+    }
+    if (casos.isError) {
+      return (
+        <main className="mx-auto w-full max-w-4xl space-y-5 pb-24">
+          <PageHeader title="Solicitação indisponível" description="Não foi possível carregar o registro para decisão." icon={<ShieldCheck />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} />
+          <Alert variant="destructive"><AlertTitle>Dados indisponíveis</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{mensagemDeErro(casos.error)}</span><Button variant="outline" size="sm" onClick={() => void casos.refetch()} disabled={casos.isFetching}>Tentar novamente</Button></AlertDescription></Alert>
+        </main>
+      );
+    }
+    if (!selectedRequest || !decision) {
+      return <main className="mx-auto w-full max-w-4xl space-y-5 pb-24"><PageHeader title="Solicitação não encontrada" description="Este registro não aparece entre as solicitações recentes da plataforma." icon={<ShieldCheck />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} /></main>;
+    }
+    const prazo = selectedRequest.prazo_em ? new Date(selectedRequest.prazo_em).getTime() : Number.NaN;
+    const overdue = selectedRequest.status === 'pending' && Number.isFinite(prazo) && prazo < Date.now();
+
+    return (
+      <main className="mx-auto w-full max-w-4xl space-y-6 pb-36 sm:pb-10">
+        <UnsavedChangesGuard dirty={dirty} busy={atualizarStatus.isPending} completed={completed} />
+        <PageHeader title="Registrar decisão" description="Revise o pedido, registre o resultado e deixe a justificativa auditável." icon={<ShieldCheck />} actions={<Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar à lista</Button>} />
+
+        <section aria-label="Contexto da solicitação" className="rounded-xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><h2 className="text-lg font-semibold">{REQUEST_TYPE_LABELS[selectedRequest.request_type]}</h2><p className="mt-1 text-sm text-muted-foreground">Pedido de titular recebido em {dateTime(selectedRequest.requested_at)}.</p></div>
+            <div className="flex flex-wrap gap-2"><Badge variant="secondary">{STATUS_LABELS[selectedRequest.status]}</Badge>{overdue && <Badge variant="destructive">Prazo vencido</Badge>}</div>
+          </div>
+          <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
+            <div><dt className="text-xs text-muted-foreground">Clínica</dt><dd className="mt-1">{selectedRequest.clinica_id ? `${selectedRequest.clinica_id.slice(0, 8)}…` : 'Não identificada'}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Titular</dt><dd className="mt-1">{selectedRequest.paciente_id.slice(0, 8)}…</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Prazo legal</dt><dd className="mt-1">{dateTime(selectedRequest.prazo_em)}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Base legal informada</dt><dd className="mt-1">{selectedRequest.base_legal || 'Pendente de registro'}</dd></div>
+          </dl>
+          <Alert className="mt-4 border-warning/40 bg-warning/10"><AlertTriangle className="h-4 w-4 text-warning" /><AlertTitle>Registro auditável</AlertTitle><AlertDescription>Escreva o resultado da solicitação, sem inserir dados de saúde ou outros detalhes desnecessários. A decisão e a justificativa serão registradas no histórico.</AlertDescription></Alert>
+          {selectedRequest.status !== 'pending' && <Alert variant="destructive" className="mt-4"><AlertTitle>Esta solicitação já foi decidida</AlertTitle><AlertDescription>Atualize a lista antes de prosseguir; uma nova decisão não será enviada.</AlertDescription></Alert>}
+        </section>
+
+        <section aria-label="Decisão e justificativa" className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+          <div className="grid gap-5">
+            <div className="space-y-2">
+              <Label htmlFor="request-decision">Resultado</Label>
+              <Select value={decision.status} disabled={atualizarStatus.isPending || selectedRequest.status !== 'pending'} onValueChange={(value) => setDecision(current => current ? { ...current, status: value as RequestDecision['status'] } : current)}>
+                <SelectTrigger id="request-decision"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="fulfilled">Atendida</SelectItem><SelectItem value="denied">Negada</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="request-evidence">Justificativa e evidência</Label>
+              <Textarea id="request-evidence" value={decision.evidence} maxLength={1000} disabled={atualizarStatus.isPending || selectedRequest.status !== 'pending'} onChange={(event) => setDecision(current => current ? { ...current, evidence: event.target.value } : current)} rows={6} placeholder="Descreva como o pedido foi atendido ou a razão da negativa." aria-invalid={decision.evidence.trim().length > 0 && decision.evidence.trim().length < 20} />
+              <p className="text-xs text-muted-foreground">Mínimo de 20 e máximo de 1.000 caracteres · {decision.evidence.trim().length}/1.000. Não inclua dados de saúde.</p>
+              {decision.evidence.trim().length > 0 && decision.evidence.trim().length < 20 && <p role="alert" className="text-xs text-destructive">A justificativa precisa ter pelo menos 20 caracteres.</p>}
+            </div>
+          </div>
+          <footer className="mt-6 flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={returnToList} disabled={atualizarStatus.isPending}>Cancelar</Button>
+            <Button onClick={registrarDecisao} disabled={!evidenceValid || atualizarStatus.isPending || selectedRequest.status !== 'pending'}>{atualizarStatus.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar decisão</Button>
+          </footer>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-6 pb-10">
@@ -231,7 +337,7 @@ export default function PlatformLGPD() {
                   <Badge variant={caso.status === 'pending' ? vencido ? 'destructive' : 'secondary' : 'outline'} className="rounded-full">{STATUS_LABELS[caso.status] || caso.status}</Badge>
                   <p className="text-xs text-muted-foreground">{caso.status === 'pending' ? caso.base_legal || 'Base legal pendente' : `Atualizada em ${dateTime(caso.updated_at)}`}</p>
                 </div>
-                {caso.status === 'pending' ? <Button className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" onClick={() => setDecision({ request: caso, status: 'fulfilled', evidence: '' })}>Registrar decisão</Button> : <span className="text-xs text-muted-foreground">Responsável: {caso.responsavel_id ? `${caso.responsavel_id.slice(0, 8)}…` : 'não registrado'}</span>}
+                {caso.status === 'pending' ? <Button className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" onClick={() => openDecision(caso)}>Registrar decisão</Button> : <span className="text-xs text-muted-foreground">Responsável: {caso.responsavel_id ? `${caso.responsavel_id.slice(0, 8)}…` : 'não registrado'}</span>}
                 {caso.evidencia && <p className="md:col-span-4 whitespace-pre-wrap rounded-lg bg-[#F3F8FC] p-2 text-xs">Registro: {caso.evidencia}</p>}
               </article>
             );
@@ -267,16 +373,6 @@ export default function PlatformLGPD() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!decision} onOpenChange={(open) => !open && !atualizarStatus.isPending && setDecision(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Registrar decisão da solicitação</DialogTitle><DialogDescription>{decision ? `${REQUEST_TYPE_LABELS[decision.request.request_type]} · titular ${decision.request.paciente_id.slice(0, 8)}…` : ''}. A decisão e a justificativa serão auditadas.</DialogDescription></DialogHeader>
-          {decision && <div className="space-y-4">
-            <div className="space-y-2"><Label htmlFor="request-decision">Decisão</Label><Select value={decision.status} disabled={atualizarStatus.isPending} onValueChange={(value) => setDecision((current) => current ? { ...current, status: value as RequestDecision['status'] } : current)}><SelectTrigger id="request-decision"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fulfilled">Atendida</SelectItem><SelectItem value="denied">Negada</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label htmlFor="request-evidence">Justificativa e evidência (20 a 1.000 caracteres)</Label><Textarea id="request-evidence" value={decision.evidence} maxLength={1000} disabled={atualizarStatus.isPending} onChange={(event) => setDecision((current) => current ? { ...current, evidence: event.target.value } : current)} rows={4} placeholder="Descreva como a solicitação foi atendida ou por que foi negada." /><p className="text-xs text-muted-foreground">{decision.evidence.trim().length}/1.000 caracteres. Evite incluir dados de saúde.</p></div>
-          </div>}
-          <DialogFooter><Button variant="outline" className="min-h-11 rounded-full" onClick={() => setDecision(null)} disabled={atualizarStatus.isPending}>Cancelar</Button><Button className="min-h-11 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={registrarDecisao} disabled={!evidenceValid || atualizarStatus.isPending}>{atualizarStatus.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar decisão</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }
