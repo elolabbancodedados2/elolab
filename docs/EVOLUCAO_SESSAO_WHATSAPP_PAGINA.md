@@ -36,4 +36,4 @@ As respostas de criação e a leitura do QR foram interceptadas no E2E. Nenhuma 
 
 ## Publicação
 
-Pendente de publicação nesta versão do documento.
+Publicado em 30/10/2026 no commit `ea619d0bb926ca2fe3c1b99bcfe545e31fee77fe`, imagem `easypanel/elolab/app:deploy-20261030-ea619d0`. O smoke do container isolado e os domínios `app.elolab.com.br` e `elolab.com.br` responderam `/healthz=ok`; ambos publicaram o SHA integral esperado em `/version.json`. O Swarm ficou em `1/1`. A imagem anterior para rollback é `deploy-20261030-4f716d3`; a fonte anterior está preservada em `code.before-20261030-ea619d0`. O `.env` ativo e sua cópia de rollback mantiveram o mesmo hash, conferido sem leitura ou exposição. Nenhuma migration, chamada real à Evolution API ou alteração de dados foi executada.

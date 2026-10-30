@@ -10,6 +10,7 @@ Pedido do responsável: concluir os fluxos restantes em sequência, validar cada
 - Atestados: criação, consulta e duplicação.
 - Encaminhamentos: criação, consulta e contra-referência.
 - Exames: solicitação, consulta e resultado.
+- Agente IA: criação de sessão de WhatsApp em página própria.
 
 ## Ordem de execução e verificação
 
@@ -116,3 +117,5 @@ Atualização de 30/10/2026: as credenciais manuais das integrações da clínic
 Atualização de 30/10/2026: escopo da exportação e confirmação de entrega de solicitações LGPD da clínica agora usam telas próprias, sem identidade ou evidência na URL. Publicado em `5af4fd6` (`deploy-20261030-5af4fd6`), com Playwright sintético, build, smoke isolado, `/healthz`, SHA público e Swarm 1/1 confirmados. Detalhes: [fluxos LGPD de pacientes](EVOLUCAO_LGPD_PACIENTES_PAGINAS.md). Permanecem abertas a cobertura integral dos dados, exclusão assistida, demais tarefas da sequência e auditoria global.
 
 Atualização de 30/10/2026: reagendamento de consulta e retorno no Portal do Paciente agora usam `/portal-paciente?tela=reagendar`, sem IDs ou código de acesso na URL. Commit `4f716d3`, imagem `deploy-20261030-4f716d3`, Playwright 3/3, Vitest 32/32, build e verificações de acessibilidade, permissões e integração passaram; ambos os domínios, health, SHA, Swarm 1/1 e ambiente foram conferidos. Detalhes: [reagendamento do Portal do Paciente](EVOLUCAO_PORTAL_PACIENTE_REAGENDAMENTO_PAGINAS.md). A auditoria integrada e outras pendências seguem em andamento.
+
+Atualização de 30/10/2026: criação de sessão do WhatsApp agora usa `/agente-ia/sessoes/nova`, com proteção de acesso e plano preservada, validação de nome alinhada à Edge Function e QR continuando no workspace de sessões. Playwright sintético 2/2, Vitest 9/9, TypeScript, build, acessibilidade, permissões e inspeção visual mobile/desktop passaram. Publicado em `ea619d0`, imagem `deploy-20261030-ea619d0`, rollback `deploy-20261030-4f716d3`; os dois domínios, health, SHA e Swarm 1/1 foram confirmados. Outras tarefas do Agente IA e módulos restantes continuam pendentes; esta entrega não conclui a auditoria integral do EloLab. Detalhes: [criação de sessão WhatsApp](EVOLUCAO_SESSAO_WHATSAPP_PAGINA.md).
