@@ -897,3 +897,7 @@ A edição de etapa, próxima ação/bloqueio, responsável e prazo do onboardin
 ## Plataforma — limites de consumo em página própria
 
 A edição de assentos, tokens de IA e notificações agora usa `/admin/consumo/:clinicId/limites`. A tela mostra o consumo atual, valida números inteiros e alerta quando a nova cota fica abaixo do uso observado; a RPC `platform_set_tenant_limits` foi preservada. Playwright 2/2, TypeScript, build e verificações de acessibilidade, permissões, falhas e colunas passaram; captura mobile inspecionada. Publicado no commit `f81a78c`, imagem `deploy-20261030-f81a78c`; health, SHA público e Swarm 1/1 confirmados; rollback `deploy-20261030-8b043c4`. Detalhes: [limites de consumo em página própria](EVOLUCAO_CONSUMO_LIMITES_PAGINA.md).
+
+## Plataforma — atualização de incidentes em página própria
+
+A mudança de status e a justificativa de incidente agora usam `/admin/incidentes/:incidentId/atualizar`, com estado atual, impacto e linha do tempo visíveis. A RPC `platform_update_incident` e a proteção de acesso da plataforma foram preservadas. Playwright 1/1, TypeScript, build e verificações de acessibilidade, permissões, falhas e colunas passaram; captura mobile inspecionada. Publicado no commit `76c94c9`, imagem `deploy-20261030-76c94c9`; health, SHA público e Swarm 1/1 confirmados; rollback `deploy-20261030-f81a78c`. Detalhes: [atualização de incidentes em página própria](EVOLUCAO_INCIDENTES_ATUALIZACAO_PAGINA.md).
