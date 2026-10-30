@@ -1,10 +1,10 @@
 # Portal do Paciente — reagendamento em página própria
 
-**Data:** 30/10/2026  
-**Rota:** `/portal-paciente?tela=reagendar`  
-**Entrega:** commit `4f716d336e335b8a9ca43e12f307a4d10356644b`  
-**Publicação:** `deploy-20261030-4f716d3`  
-**Rollback:** `deploy-20261030-5af4fd6`
+- **Data:** 30/10/2026
+- **Rota:** `/portal-paciente?tela=reagendar`
+- **Entrega:** commit `4f716d336e335b8a9ca43e12f307a4d10356644b`
+- **Publicação:** `deploy-20261030-4f716d3`
+- **Rollback:** `deploy-20261030-5af4fd6`
 
 ## Diagnóstico atual
 
