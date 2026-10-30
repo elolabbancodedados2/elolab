@@ -40,11 +40,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
 import { UsoDoPlano } from '@/components/UsoDoPlano';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { descreverEventoCobranca, type EventoCobrancaAssinatura } from '@/lib/subscriptionBillingHistory';
 import { clearClinicaInfoCache } from '@/lib/pdfGenerator';
 import { IntegracoesClinica } from '@/components/configuracoes/IntegracoesClinica';
 import { AgendamentoOnlineConfig } from '@/components/configuracoes/AgendamentoOnlineConfig';
@@ -185,20 +184,8 @@ export default function Configuracoes() {
   const { plan: assinaturaAtual, planName, planSlug, hasActivePlan, isExempt: isPlanExempt, isTrial, trialEnd, trialDaysLeft, isLoading: loadingPlanoAtual, isError: erroPlanoAtual, error: erroConsultaPlano, refetch: recarregarPlanoAtual } = useUserPlan();
   const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos(!isPlanExempt);
   const navigate = useNavigate();
-  const [showFaturas, setShowFaturas] = useState(false);
   const [showCancelPlan, setShowCancelPlan] = useState(false);
   const cancelPlanLock = useRef(false);
-
-  const { data: faturas, isLoading: loadingFaturas, error: erroFaturas, refetch: recarregarFaturas } = useQuery({
-    queryKey: ['historico_cobranca_assinatura', user?.id],
-    enabled: !!user?.id && showFaturas,
-    // Só a cobrança da assinatura EloLab; o financeiro de pacientes fica no módulo Financeiro.
-    queryFn: async (): Promise<EventoCobrancaAssinatura[]> => {
-      const { data, error } = await supabase.rpc('historico_cobranca_assinatura', { p_limit: 50 });
-      if (error) throw error;
-      return (data || []) as EventoCobrancaAssinatura[];
-    },
-  });
 
   const cancelPlanMutation = useMutation({
     mutationFn: async () => {
@@ -693,9 +680,11 @@ export default function Configuracoes() {
                         <CreditCard className="h-4 w-4" />
                         {textoAcaoPlano(planSlug)}
                       </Button>
-                      <Button variant="outline" className="gap-2 rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white" onClick={() => setShowFaturas(true)}>
+                      <Button variant="outline" asChild className="gap-2 rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white">
+                        <Link to="/configuracoes/plano/faturas">
                         <Receipt className="h-4 w-4" />
-                        Ver Faturas
+                        Ver histórico de faturas
+                        </Link>
                       </Button>
                       {!isTrial && assinaturaAtual?.cobranca_modalidade !== 'pre_pago' && (
                         <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
@@ -709,55 +698,6 @@ export default function Configuracoes() {
             </Card>
 
             {!isPlanExempt && profile?.clinica_id && <UsoDoPlano />}
-
-            {/* Dialog: Faturas */}
-            <Dialog open={showFaturas} onOpenChange={setShowFaturas}>
-              <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Receipt className="h-5 w-5 text-[#1080CA]" /> Histórico de Faturas
-                  </DialogTitle>
-                  <DialogDescription>Tentativas e cobranças da assinatura EloLab, com o estado final de cada uma. Recebimentos de pacientes ficam no Financeiro.</DialogDescription>
-                </DialogHeader>
-                {loadingFaturas ? (
-                  <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-[#1080CA]" /></div>
-                ) : erroFaturas ? (
-                  <ErrorState compact title="Não foi possível carregar as faturas" error={erroFaturas} onRetry={() => void recarregarFaturas()} />
-                ) : !faturas || faturas.length === 0 ? (
-                  <div className="py-8 text-center text-muted-foreground">Nenhuma fatura encontrada ainda.</div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Valor</TableHead>
-                        <TableHead>Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {faturas.map((f) => {
-                        const evento = descreverEventoCobranca(f);
-                        return (
-                          <TableRow key={`${f.origem}-${f.id}`}>
-                            <TableCell className="text-xs">{f.criado_em ? formatDate(f.criado_em, 'short') : '—'}</TableCell>
-                            <TableCell className="text-xs">{evento.tipo}{evento.detalhe && <span className="block text-muted-foreground">{evento.detalhe}</span>}</TableCell>
-                            <TableCell className="text-xs font-semibold">
-                              {f.valor === null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(f.valor))}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={evento.final ? 'outline' : 'secondary'} className="rounded-full">
-                                {evento.estado}{evento.final ? '' : ' · em andamento'}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
-              </DialogContent>
-            </Dialog>
 
             {/* Dialog: Cancel plan */}
             <Dialog open={showCancelPlan} onOpenChange={open => {

@@ -73,3 +73,53 @@ test('configurações encaminha salas e leitos ao workspace operacional', async 
   await page.screenshot({ path: testInfo.outputPath('settings-rooms-workspace-mobile.png'), fullPage: true, animations: 'disabled' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('histórico de faturas da assinatura funciona em página própria', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });
+  const rpcCalls: unknown[] = [];
+  await page.route('http://127.0.0.1:54321/rest/v1/rpc/historico_cobranca_assinatura', async route => {
+    rpcCalls.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+      { id: 'fatura-sintetica', origem: 'fatura_recorrente', referencia: 'ref-1', metodo: 'cartao', valor: 149.9, status: 'approved', detalhe: null, criado_em: '2026-10-29T12:00:00Z', atualizado_em: '2026-10-29T12:00:00Z' },
+    ]) });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/configuracoes?tab=plano');
+  await page.getByRole('link', { name: 'Ver histórico de faturas' }).click();
+  await expect(page).toHaveURL('/configuracoes/plano/faturas');
+  await expect(page.getByRole('heading', { name: 'Histórico de faturas' })).toBeVisible();
+  await expect(page.getByText('Fatura recorrente').first()).toBeVisible();
+  await expect(page.getByText('Pago').first()).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('configuration-billing-history-desktop.png'), animations: 'disabled' });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.getByText('R$ 149,90').last()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('configuration-billing-history-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('link', { name: 'Voltar ao plano' }).click();
+  await expect(page).toHaveURL('/configuracoes?tab=plano');
+  expect(rpcCalls).toEqual([{ p_limit: 50 }]);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
+
+test('histórico de faturas explica a falha e permite tentar novamente', async ({ page }, testInfo) => {
+  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
+  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false });
+  let allowEmptyResponse = false;
+  await page.route('http://127.0.0.1:54321/rest/v1/rpc/historico_cobranca_assinatura', async route => {
+    await route.fulfill(allowEmptyResponse
+      ? { status: 200, contentType: 'application/json', body: '[]' }
+      : { status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'falha sintética' }) });
+  });
+
+  await page.goto('/configuracoes/plano/faturas');
+  await expect(page.getByRole('alert')).toBeVisible();
+  allowEmptyResponse = true;
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByRole('status').getByText('Nenhuma fatura encontrada ainda.')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});

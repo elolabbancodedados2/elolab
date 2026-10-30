@@ -867,3 +867,7 @@ Vitest 3/3 e Playwright 1/1 passaram; TypeScript, build, acessibilidade, permiss
 ### Configurações: gestão de salas no workspace operacional
 
 A aba Salas das Configurações deixou de manter um CRUD duplicado em diálogos e agora encaminha para `/gestao-fluxo?tab=salas`, onde cadastro, ocupação, disponibilidade e encaminhamento já compartilham o mesmo contexto. As rotas de cadastro e edição, permissões e persistência existentes foram preservadas. Commit `57a7425df9fd13ac8b7b9973c7a03bf46fa316aa`, imagem `deploy-20261030-57a7425`; smoke, `/healthz`, SHA público e Swarm 1/1 confirmados. Rollback: `deploy-20261030-8f8cdd0`. Validação e publicação estão registradas em [Salas no workspace próprio](EVOLUCAO_CONFIGURACOES_SALAS_WORKSPACE.md).
+
+## Configurações — histórico de faturas da assinatura em página própria
+
+O histórico de faturas saiu do diálogo alto e foi para `/configuracoes/plano/faturas`, com retorno à aba Plano e uma lista própria para celular. A leitura continua usando `historico_cobranca_assinatura` com limite de 50, sem alterar o checkout, as cobranças ou o financeiro clínico. Playwright 4/4, Vitest 3/3, build e verificações de acessibilidade, permissões, falhas e colunas passaram; capturas de desktop e mobile foram inspecionadas. O typecheck global mantém 10 erros em 7 arquivos fora desta mudança. Detalhes e publicação: [Histórico de faturas em página própria](EVOLUCAO_CONFIGURACOES_FATURAS_PAGINA.md).

@@ -5,12 +5,13 @@ import { descreverEventoCobranca } from '../subscriptionBillingHistory';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 const configuracoes = read('src/pages/Configuracoes.tsx');
+const historico = read('src/pages/ConfiguracaoFaturasPage.tsx');
 const migration = read('supabase/migrations/20261024141000_historico_cobranca_assinatura.sql').replace(/--.*$/gm, '');
 
 describe('histórico de cobrança da assinatura EloLab', () => {
   it('não mistura o financeiro clínico de pacientes no histórico da assinatura', () => {
     expect(configuracoes).not.toContain("from('pagamentos_mercadopago')");
-    expect(configuracoes).toContain("rpc('historico_cobranca_assinatura'");
+    expect(historico).toContain("rpc('historico_cobranca_assinatura'");
     expect(migration).not.toMatch(/pagamentos_mercadopago|lancamentos/);
   });
 
