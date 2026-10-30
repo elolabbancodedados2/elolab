@@ -893,3 +893,7 @@ O roteiro saiu do diálogo e agora usa `/treinamento/:tutorialKey`; a etapa na q
 ## Plataforma — plano de ativação em página própria
 
 A edição de etapa, próxima ação/bloqueio, responsável e prazo do onboarding passou para `/admin/onboarding/:clinicId`. A autorização exclusiva da plataforma e a RPC `platform_update_onboarding` foram preservadas; retorno mantém busca e filtros, e alterações não salvas pedem confirmação. Playwright 2/2, TypeScript, build e verificações estáticas passaram; capturas desktop/mobile foram inspecionadas. Publicado no commit `8b043c4`, imagem `deploy-20261030-8b043c4`; health, SHA público e Swarm 1/1 confirmados; rollback `deploy-20261030-ade77ff4`. Detalhes: [plano de ativação em página própria](EVOLUCAO_ONBOARDING_PLANO_PAGINA.md).
+
+## Plataforma — limites de consumo em página própria
+
+A edição de assentos, tokens de IA e notificações agora usa `/admin/consumo/:clinicId/limites`. A tela mostra o consumo atual, valida números inteiros e alerta quando a nova cota fica abaixo do uso observado; a RPC `platform_set_tenant_limits` foi preservada. Playwright 2/2, TypeScript, build e verificações de acessibilidade, permissões, falhas e colunas passaram; captura mobile inspecionada. Publicado no commit `f81a78c`, imagem `deploy-20261030-f81a78c`; health, SHA público e Swarm 1/1 confirmados; rollback `deploy-20261030-8b043c4`. Detalhes: [limites de consumo em página própria](EVOLUCAO_CONSUMO_LIMITES_PAGINA.md).
