@@ -35,8 +35,8 @@ Histórico e solicitação de autorização ocupavam um diálogo com até 90% da
 - Playwright: 2/2 passaram em 1440 px e 390 px, da ficha à página, envio sintético e retorno com aba preservada. As requisições de paciente verificaram o filtro da clínica e as gravações foram interceptadas.
 - Capturas efetivamente inspecionadas no estado vazio, formulário e ações finais no celular. A área de envio permanece acima da navegação inferior após rolagem; não há transbordamento horizontal nem diálogo aberto.
 - Build de produção, acessibilidade, permissões, falhas silenciosas, colunas do banco e ESLint focal passaram. O ESLint não apresentou avisos novos; os 54 avisos restantes são `any` já existentes em `Pacientes.tsx`.
-- O typecheck global continua acusando 9 erros em 6 páginas financeiras/TISS não alteradas: sete usos de `replaceAll` incompatíveis com `ES2020` e dois casts de retorno JSON.
+- Na validação inicial, o typecheck apontou 9 erros em 6 páginas financeiras/TISS não alteradas. Na reexecução de 30/10/2026 após as entregas mais recentes, `npx tsc --noEmit --pretty false` passou sem erros.
 
 ## Publicação
 
-Commit, imagem, versão pública, rollback e estado do Swarm serão registrados após o deploy. Nenhuma migration ou escrita de produção.
+Publicação: commit `9f987a7f6ccd8cb028e30463f955e64820564944`, imagem `easypanel/elolab/app:deploy-20261030-9f987a7`, rollback `deploy-20261030-7c4a69d`. O container isolado e o domínio público responderam `/healthz=ok`; `/version.json` confirmou o SHA integral e o Swarm concluiu com 1/1 réplica. O código-fonte foi sincronizado no servidor; `.env` foi preservado por comparação de hash, sem leitura ou exposição. Nenhuma migration ou escrita de produção.

@@ -46,6 +46,7 @@ const labelsByPath: Record<string, string> = {
   '/laudos-lab': 'Laudos laboratoriais',
   '/pacientes': 'Pacientes',
   '/pacientes/novo': 'Novo paciente',
+  '/pacientes/duplicidades': 'Revisar duplicidades',
   '/documentos-clinicos/nova-prescricao': 'Nova prescrição',
   '/documentos-clinicos/novo-atestado': 'Emitir atestado',
   '/documentos-clinicos/novo-encaminhamento': 'Novo encaminhamento',

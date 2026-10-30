@@ -41,7 +41,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { EtiquetaPaciente } from '@/components/EtiquetaPaciente';
 import { PatientStats, PatientListTable } from '@/components/patients';
-import { RevisaoDuplicidadesDialog } from '@/components/patients/RevisaoDuplicidadesDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { PatientPhoto, PatientTimeline, VitalSignsChart, AllergyAlert, Cid10Search, ClinicalProtocols, AnexosProntuario, DigitalSignature } from '@/components/clinical';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -200,7 +199,6 @@ export default function Pacientes() {
   const [selectedPacienteUpdatedAt, setSelectedPacienteUpdatedAt] = useState<string | null>(null);
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
-  const [isDuplicidadesOpen, setIsDuplicidadesOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
 
   // Deep-link: /pacientes?paciente=<id>&tab=<financeiro|...>
@@ -1393,7 +1391,12 @@ export default function Pacientes() {
             <Button
               variant="outline"
               size="lg"
-              onClick={() => setIsDuplicidadesOpen(true)}
+              onClick={() => navigate('/pacientes/duplicidades', {
+                state: {
+                  patientReturnTo: `${location.pathname}${location.search}`,
+                  patientReturnState: location.state,
+                },
+              })}
               className="h-11 w-full gap-2 rounded-full border-border/60 px-3 text-sm font-semibold shadow-xs transition-colors hover:border-primary/40 sm:w-auto sm:px-5"
             >
               <GitMerge className="h-4 w-4" />
@@ -2849,8 +2852,6 @@ export default function Pacientes() {
 
       {/* Etiquetas */}
       <EtiquetaPaciente pacientes={pacientesForEtiqueta} open={isEtiquetaOpen} onOpenChange={setIsEtiquetaOpen} />
-      {isAdmin() && <RevisaoDuplicidadesDialog open={isDuplicidadesOpen} onOpenChange={setIsDuplicidadesOpen} onMesclado={atualizarListasPacientes} />}
-
       <Dialog open={!!linkPortalGerado} onOpenChange={(open) => { if (!open) setLinkPortalGerado(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>

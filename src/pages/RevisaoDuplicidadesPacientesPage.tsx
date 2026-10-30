@@ -1,14 +1,17 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, GitMerge, Loader2, UserX } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDate } from '@/lib/formatters';
 import { mensagemDeErro } from '@/lib/erros';
@@ -35,13 +38,25 @@ function valorLegivel(campo: MergeField, valor: unknown): string {
   return String(valor);
 }
 
-interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onMesclado: () => void;
+interface ReturnState {
+  patientReturnTo?: unknown;
+  patientReturnState?: unknown;
 }
 
-export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Props) {
+function destinoSeguro(value: unknown) {
+  if (typeof value === 'string' && value !== '/pacientes/duplicidades' && /^\/pacientes(?:\/[^/?#]+)?(?:\?[^#]*)?$/.test(value)) return value;
+  return '/pacientes';
+}
+
+export default function RevisaoDuplicidadesPacientesPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const pageRef = useRef<HTMLElement>(null);
+  const returnState = location.state as ReturnState | null;
+  const returnTo = destinoSeguro(returnState?.patientReturnTo);
+  const completed = useRef(false);
+  const [confirmAction, setConfirmAction] = useState<'merge' | 'discard-review' | 'mark-different' | null>(null);
   const [limiar, setLimiar] = useState('70');
   const [par, setPar] = useState<DuplicatePair | null>(null);
   const [fichas, setFichas] = useState<[Ficha, Ficha] | null>(null);
@@ -53,10 +68,19 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
   const pares = useQuery({
     queryKey: ['duplicidades-pacientes', limiar],
     queryFn: () => listPatientDuplicates(Number(limiar)),
-    enabled: open,
   });
 
-  const voltar = () => { setPar(null); setFichas(null); setUsarOrigem(new Set()); setMotivo(''); };
+  useEffect(() => {
+    pageRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const voltar = () => {
+    setConfirmAction(null);
+    setPar(null);
+    setFichas(null);
+    setUsarOrigem(new Set());
+    setMotivo('');
+  };
 
   const abrirPar = async (item: DuplicatePair) => {
     setOcupado(true);
@@ -98,6 +122,18 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
   const origem = fichas?.[destinoIndex === 0 ? 1 : 0];
   const diferencas = destino && origem ? diffPatientFields(destino, origem) : [];
   const motivoValido = motivo.trim().length >= 10 && motivo.trim().length <= 500;
+  const destinoInicialIndex = fichas
+    ? (String(fichas[0].created_at ?? '') <= String(fichas[1].created_at ?? '') ? 0 : 1)
+    : 0;
+  const hasDraftChanges = Boolean(par && (
+    motivo.length > 0 || usarOrigem.size > 0 || destinoIndex !== destinoInicialIndex
+  ));
+
+  const confirmarAcao = () => {
+    if (confirmAction === 'merge') void mesclar();
+    if (confirmAction === 'discard-review') voltar();
+    if (confirmAction === 'mark-different' && par) void descartar(par);
+  };
 
   const mesclar = async () => {
     if (!destino || !origem || !motivoValido) return;
@@ -114,7 +150,13 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
         description: `${resultado.agendamentos_movidos ?? 0} compromisso(s) futuro(s) e ${resultado.lista_espera_movida ?? 0} pedido(s) de espera migrados. ${preservados} registro(s) históricos continuam na ficha inativada, com autoria preservada.`,
       });
       voltar();
-      onMesclado();
+      for (const queryKey of [
+        ['busca-pacientes'],
+        ['pacientes-lista-detalhes'],
+        ['paciente-lista-selecionado'],
+        ['paciente-deep-link'],
+        ['pacientes-estatisticas'],
+      ]) void queryClient.invalidateQueries({ queryKey });
       await pares.refetch();
     } catch (error) {
       toast.error(mensagemDeErro(error));
@@ -132,17 +174,16 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
   };
 
   return (
-    <Dialog open={open} onOpenChange={(value) => { if (!value) voltar(); onOpenChange(value); }}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <GitMerge className="h-5 w-5 text-primary" />
-            Revisar cadastros duplicados
-          </DialogTitle>
-          <DialogDescription>
-            Pares prováveis da sua clínica. Nada é mesclado sem revisão: escolha a ficha que fica, compare campo a campo e registre o motivo.
-          </DialogDescription>
-        </DialogHeader>
+    <main ref={pageRef} tabIndex={-1} className="mx-auto w-full max-w-5xl space-y-6 pb-24 outline-none sm:pb-8">
+      <UnsavedChangesGuard dirty={hasDraftChanges} busy={ocupado} completed={completed} />
+      <PageHeader
+        title="Revisar cadastros duplicados"
+        icon={<GitMerge />}
+        description="Pares prováveis da sua clínica. Compare cada ficha e registre o motivo; nenhuma mesclagem acontece sem confirmação."
+        actions={<Button asChild type="button" variant="outline" className="min-h-11 rounded-full">
+          <Link to={returnTo} state={returnState?.patientReturnState}><ArrowLeft className="mr-2 h-4 w-4" />Voltar a pacientes</Link>
+        </Button>}
+      />
 
         {!par && (
           <div className="space-y-3">
@@ -238,23 +279,48 @@ export function RevisaoDuplicidadesDialog({ open, onOpenChange, onMesclado }: Pr
               <p className="text-[11px] text-muted-foreground">Entre 10 e 500 caracteres. Fica na trilha de auditoria.</p>
             </div>
 
-            <DialogFooter className="gap-2 sm:justify-between">
-              <Button variant="outline" className="rounded-full" onClick={voltar} disabled={ocupado}>
+            <div className="flex flex-col gap-2 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Button variant="outline" className="rounded-full" onClick={() => hasDraftChanges ? setConfirmAction('discard-review') : voltar()} disabled={ocupado}>
                 <ArrowLeft className="mr-1 h-4 w-4" /> Voltar
               </Button>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button variant="outline" className="rounded-full" onClick={() => void descartar(par)} disabled={ocupado}>
+                <Button variant="outline" className="rounded-full" onClick={() => hasDraftChanges ? setConfirmAction('mark-different') : void descartar(par)} disabled={ocupado}>
                   <UserX className="mr-1 h-4 w-4" /> São pessoas diferentes
                 </Button>
-                <Button className="rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90" onClick={() => void mesclar()} disabled={ocupado || !motivoValido}>
-                  {ocupado ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <GitMerge className="mr-1 h-4 w-4" />}
+                <Button className="rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90" onClick={() => setConfirmAction('merge')} disabled={ocupado || !motivoValido}>
+                  <GitMerge className="mr-1 h-4 w-4" />
                   Mesclar cadastros
                 </Button>
               </div>
-            </DialogFooter>
+            </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!ocupado && !open) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === 'merge' ? 'Confirmar mesclagem dos cadastros?' : confirmAction === 'mark-different' ? 'Marcar como pessoas diferentes?' : 'Descartar esta revisão?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === 'merge' ? <>
+                {origem && destino ? `${origem.nome} será inativado e suas referências futuras serão transferidas para ${destino.nome}.` : 'Confira a ficha que será inativada e a que permanecerá ativa.'}
+                {' '}O histórico clínico e financeiro será preservado na ficha inativada. Esta ação não pode ser desfeita por esta tela.
+              </> : confirmAction === 'mark-different'
+                ? 'O par será removido desta lista e as alterações de seleção e motivo da revisão serão descartadas.'
+                : 'A seleção de campos e o motivo digitado serão perdidos.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={ocupado}>
+              {confirmAction === 'discard-review' ? 'Continuar preenchendo' : 'Voltar à revisão'}
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={ocupado || (confirmAction === 'merge' && !motivoValido)} onClick={(event) => { event.preventDefault(); confirmarAcao(); }}>
+              {ocupado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : confirmAction === 'merge' ? <GitMerge className="mr-2 h-4 w-4" /> : confirmAction === 'mark-different' ? <UserX className="mr-2 h-4 w-4" /> : <ArrowLeft className="mr-2 h-4 w-4" />}
+              {confirmAction === 'merge' ? 'Confirmar mesclagem' : confirmAction === 'mark-different' ? 'Marcar como diferentes' : 'Descartar revisão'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
   );
 }
