@@ -12,12 +12,12 @@ com migration revisada e testada em ambiente local. Nada aqui altera o módulo f
 | Módulo | Situação hoje | O que falta na tela |
 | --- | --- | --- |
 | Recepção | Fluxo em colunas, lista e Linha do tempo com a hora atual; painel do paciente à direita | Nada pendente na tela |
-| Agenda | Dia, semana, mês, painel de novo agendamento e atalho de bloqueio (gestão de bloqueios já existia) | Encaixe direto no painel |
-| Pacientes | Fichas, lista e painel lateral com alergias, convênio e contato | Saldo e últimas consultas no painel |
-| Atendimento | Prontuário completo, faixa de sinais vitais no topo e atalhos com `/` para receita, exame, atestado e encaminhamento | Puxar os sinais da triagem para a faixa |
+| Agenda | Dia, semana, mês, painel de novo agendamento com Encaixe (hoje, admin e recepção) e atalho de bloqueio | Nada pendente na tela |
+| Pacientes | Fichas, lista e painel lateral com alergias, convênio, contato, saldo em aberto e últimas consultas | Nada pendente na tela |
+| Atendimento | Prontuário completo, atalhos com `/` e faixa de sinais vitais que mostra a triagem do atendimento (com "Usar no prontuário") enquanto a evolução não tem sinais | Nada pendente na tela |
 | Caixa | Formas de pagamento em botões na venda, recibo automático, abas e ações sem repetição | Nada pendente na tela |
-| Convênios e TISS | Lotes, glosas, conciliação | Visão de guias com situação da autorização |
-| Indicadores | Painéis por área | Barra de resumo no padrão do protótipo |
+| Convênios e TISS | Lotes, aba Guias com a situação da autorização, glosas, conciliação | Nada pendente na tela |
+| Indicadores | Painéis por área; Indicadores da clínica com resumo do período e Produtividade em cartões com comparação | Ajuste fino só com referência do protótipo |
 
 ## Funções novas (precisam de banco)
 
