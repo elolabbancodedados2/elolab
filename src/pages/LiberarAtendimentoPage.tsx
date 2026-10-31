@@ -16,6 +16,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { PERFIS_LIBERACAO_EXCEPCIONAL } from '@/lib/filaBloqueio';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type ReleaseType = 'pagamento' | 'triagem';
 type Appointment = {
@@ -105,7 +106,7 @@ async function loadReleaseContext(clinicId: string, appointmentId: string, type:
 
 function appointmentDate(date: string, time: string) {
   const parsed = new Date(`${date}T12:00:00`);
-  const formattedDate = Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString('pt-BR');
+  const formattedDate = Number.isNaN(parsed.getTime()) ? date : formatWithDatePreference(parsed, 'dd/MM/yyyy');
   return `${formattedDate} · ${time.slice(0, 5)}`;
 }
 

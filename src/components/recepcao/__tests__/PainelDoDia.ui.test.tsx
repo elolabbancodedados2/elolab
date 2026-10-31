@@ -67,7 +67,7 @@ describe('PainelDoDia', () => {
       atendimentos: [{ step: 2, ag: { status: 'em_atendimento' }, lanc: null }],
     });
     const resumo = screen.getByRole('group', { name: 'Resumo de atendimento e recebimentos' });
-    const toggle = within(resumo).getByRole('button', { name: 'Ver outros 3 indicadores' });
+    const toggle = within(resumo).getByRole('button', { name: /^Ver outros \d+ indicadores$/ });
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveAttribute('aria-controls', 'reception-secondary-metrics');

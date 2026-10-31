@@ -9,6 +9,7 @@ import { receptionReadiness, type ReceptionPatientSummary } from '@/lib/receptio
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type Field = 'recepcao_cadastro_ok' | 'recepcao_documento_ok' | 'recepcao_convenio_ok';
 
@@ -87,7 +88,7 @@ export function ChecklistRecepcao({ appointment, patient, clinicId, today, onEdi
   };
 
   const auditLabel = appointment.recepcao_checklist_em
-    ? `Conferido ${format(new Date(appointment.recepcao_checklist_em), 'dd/MM HH:mm')}${appointment.recepcao_checklist_por === profile?.id ? ' por você' : ' pela equipe'}`
+    ? `Conferido ${formatWithDatePreference(new Date(appointment.recepcao_checklist_em), 'dd/MM HH:mm')}${appointment.recepcao_checklist_por === profile?.id ? ' por você' : ' pela equipe'}`
     : 'Ainda sem conferência';
 
   return (

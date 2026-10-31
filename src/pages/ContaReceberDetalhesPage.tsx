@@ -16,6 +16,7 @@ import { valorRecebidoDaConta } from '@/lib/contasReceber';
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { CAMPOS_TRILHA, formatarValorTrilha } from '@/lib/trilhaLancamento';
 import { Database } from '@/integrations/supabase/types';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type Account = {
   id: string;
@@ -76,7 +77,7 @@ const STATUS: Record<string, { label: string; className: string }> = {
 };
 
 const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-const dateOnly = (value: string | null) => value ? parseDateOnly(value)!.toLocaleDateString('pt-BR') : '—';
+const dateOnly = (value: string | null) => value ? formatWithDatePreference(parseDateOnly(value)!, 'dd/MM/yyyy') : '—';
 const dateTime = (value: string) => new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short',
 }).format(new Date(value));

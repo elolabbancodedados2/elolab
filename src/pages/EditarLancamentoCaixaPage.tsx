@@ -17,6 +17,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
 type MovementType = 'receita' | 'despesa' | 'sangria' | 'suprimento';
@@ -174,7 +175,7 @@ export default function EditarLancamentoCaixaPage() {
                   saveMutation.mutate({ id: movement.id, descricao: draft.descricao.trim(), valor: parsedValue!, forma_pagamento: draft.forma_pagamento });
                 }}>
                   <dl className="grid gap-3 border-b border-border pb-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                    <div><dt className="text-xs text-muted-foreground">Data</dt><dd className="mt-1 font-medium">{new Date(`${movement.data}T12:00:00`).toLocaleDateString('pt-BR')}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Data</dt><dd className="mt-1 font-medium">{formatWithDatePreference(new Date(`${movement.data}T12:00:00`), 'dd/MM/yyyy')}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Horário</dt><dd className="mt-1 font-medium">{new Date(movement.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Valor atual</dt><dd className="mt-1 font-medium tabular-nums">{money(Number(movement.valor))}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Categoria</dt><dd className="mt-1 font-medium">{movement.categoria || 'Não informada'}</dd></div>

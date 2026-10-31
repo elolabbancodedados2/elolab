@@ -2,6 +2,16 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('src/pages/FaturamentoConvenios.tsx', 'utf8');
+// Criar lote, registrar glosa e conciliar retorno foram movidos para páginas próprias.
+const paginasTiss = [
+  'src/pages/FaturamentoConvenios.tsx',
+  'src/pages/NovoLoteTissPage.tsx',
+  'src/pages/NovaGlosaTissPage.tsx',
+  'src/pages/RecursoGlosaTissPage.tsx',
+  'src/pages/RetornoGlosaTissPage.tsx',
+  'src/pages/RetornoLoteTissPage.tsx',
+].map(path => ({ path, source: readFileSync(path, 'utf8') }));
+const todasAsPaginas = paginasTiss.map(pagina => pagina.source).join('\n');
 
 describe('exportação do lote de convênio', () => {
   it('identifica o arquivo e o controle como resumo operacional, não transmissão TISS', () => {
@@ -11,19 +21,21 @@ describe('exportação do lote de convênio', () => {
   });
 
   it('usa operações do banco para criar, enviar e atualizar sem mutações diretas', () => {
-    expect(source).toMatch(/rpc\('criar_lote_tiss'/);
-    expect(source).toMatch(/rpc\('registrar_envio_lote_tiss'/);
-    expect(source).toMatch(/rpc\('atualizar_glosa_convenio'/);
-    expect(source).not.toMatch(/from\('lotes_tiss'\)\.insert/);
-    expect(source).not.toMatch(/from\('lotes_tiss'\)\.update/);
-    expect(source).not.toMatch(/from\('glosas_convenio'\)\.update/);
+    expect(todasAsPaginas).toMatch(/rpc\('criar_lote_tiss'/);
+    expect(todasAsPaginas).toMatch(/rpc\('registrar_envio_lote_tiss'/);
+    expect(todasAsPaginas).toMatch(/rpc\('atualizar_glosa_convenio'/);
+    expect(todasAsPaginas).not.toMatch(/from\('lotes_tiss'\)\.insert/);
+    expect(todasAsPaginas).not.toMatch(/from\('lotes_tiss'\)\.update/);
+    expect(todasAsPaginas).not.toMatch(/from\('glosas_convenio'\)\.update/);
   });
 
   it('associa rótulos aos campos e nomeia os seletores acessivelmente', () => {
-    expect(source).toMatch(/htmlFor=\{controlId\}/);
-    expect(source).toMatch(/'aria-labelledby': labelId/);
-    expect(source).toMatch(/SelectTrigger aria-label="Convênio"/);
-    expect(source).toMatch(/SelectTrigger aria-label="Lote"/);
-    expect(source).toMatch(/SelectTrigger aria-label="Decisão"/);
+    for (const pagina of paginasTiss) {
+      for (const [, id] of pagina.source.matchAll(/<SelectTrigger[^>]*\bid="([^"]+)"/g)) {
+        expect(pagina.source, `${pagina.path}: seletor ${id} sem rótulo`).toContain(`htmlFor="${id}"`);
+      }
+      const seletoresSemNome = [...pagina.source.matchAll(/<SelectTrigger(?![^>]*\b(?:id|aria-label|aria-labelledby)=)[^>]*>/g)];
+      expect(seletoresSemNome, `${pagina.path}: seletor sem nome acessível`).toEqual([]);
+    }
   });
 });

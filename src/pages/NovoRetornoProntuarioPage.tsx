@@ -18,6 +18,7 @@ import { autorizarLeituraHistoricoPaciente, registrarAcessoProntuario } from '@/
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { toast } from 'sonner';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type Related<T> = T | T[] | null;
 type ReturnContext = {
@@ -246,7 +247,7 @@ export default function NovoRetornoProntuarioPage() {
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Stethoscope className="h-4 w-4" /></span>
               <div className="min-w-0"><p className="text-xs font-medium text-muted-foreground">Profissional responsável</p><p className="truncate text-sm font-semibold text-foreground">{doctorName}</p></div>
             </div>
-            <div className="min-w-0 sm:pl-4"><p className="text-xs font-medium text-muted-foreground">Origem</p><p className="truncate text-sm font-semibold text-foreground">{context.prontuarioId && context.dataProntuario ? `Evolução de ${format(parseDateOnly(context.dataProntuario)!, 'dd/MM/yyyy', { locale: ptBR })}` : 'Solicitação clínica'}</p></div>
+            <div className="min-w-0 sm:pl-4"><p className="text-xs font-medium text-muted-foreground">Origem</p><p className="truncate text-sm font-semibold text-foreground">{context.prontuarioId && context.dataProntuario ? `Evolução de ${formatWithDatePreference(parseDateOnly(context.dataProntuario)!, 'dd/MM/yyyy', { locale: ptBR })}` : 'Solicitação clínica'}</p></div>
           </section>
 
           <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card p-4 sm:p-6" noValidate>

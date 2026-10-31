@@ -12,6 +12,7 @@ import { registrarAcessoProntuario } from '@/lib/prontuarioAudit';
 import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 import { clinicalAttachmentStoragePath, createClinicalAttachmentSignedUrl } from '@/lib/clinicalAttachmentStorage';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type Relation<T> = T | T[] | null;
 type AttachmentContext = {
@@ -65,7 +66,7 @@ function formatFileSize(bytes: number | null) {
 function formatClinicalDate(value: string | null) {
   if (!value) return 'Data não informada';
   const parsed = parseDateOnly(value);
-  return parsed ? format(parsed, 'dd/MM/yyyy', { locale: ptBR }) : value;
+  return parsed ? formatWithDatePreference(parsed, 'dd/MM/yyyy', { locale: ptBR }) : value;
 }
 
 export default function VisualizarAnexoProntuarioPage() {

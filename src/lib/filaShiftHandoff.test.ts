@@ -23,11 +23,13 @@ describe('generateFilaShiftHandoff', () => {
     expect(summary).not.toMatch(/Paciente|CPF|diagnóstico|prontuário/i);
   });
 
-  it('exposes a preview and a copy action in the queue page', () => {
+  it('gera o resumo na fila e abre a página de passagem com prévia e cópia', () => {
     const page = readFileSync('src/pages/Fila.tsx', 'utf8');
+    const passagem = readFileSync('src/pages/FilaPassagemPage.tsx', 'utf8');
     expect(page).toMatch(/generateFilaShiftHandoff/);
-    expect(page).toMatch(/navigator\.clipboard\.writeText/);
     expect(page).toMatch(/Passagem de turno/);
-    expect(page).toMatch(/<Dialog open=\{isHandoffOpen\}/);
+    expect(page).toMatch(/navigate\('\/fila\/passagem'/);
+    expect(passagem).toMatch(/navigator\.clipboard\.writeText/);
+    expect(passagem).toMatch(/aria-label="Resumo operacional da passagem de turno"/);
   });
 });

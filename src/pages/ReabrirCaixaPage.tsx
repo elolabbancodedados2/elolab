@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { mensagemDeErro } from '@/lib/erros';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type CashRecord = {
   id: string;
@@ -143,7 +144,7 @@ export default function ReabrirCaixaPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
-      <PageHeader title="Reabrir caixa fechado" description={`Reabertura do caixa diário · ${new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR')}`} icon={<Unlock />} actions={<Button variant="outline" onClick={back} disabled={reopenMutation.isPending}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao caixa diário</Button>} />
+      <PageHeader title="Reabrir caixa fechado" description={`Reabertura do caixa diário · ${formatWithDatePreference(new Date(`${today}T12:00:00`), 'dd/MM/yyyy')}`} icon={<Unlock />} actions={<Button variant="outline" onClick={back} disabled={reopenMutation.isPending}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao caixa diário</Button>} />
 
       {busy ? <div aria-busy="true" className="space-y-4 rounded-lg border border-border bg-card p-6"><div className="h-5 w-2/5 animate-pulse rounded bg-muted" /><div className="h-24 w-full animate-pulse rounded bg-muted" /></div>
         : cashQuery.error ? <ErrorState title="Não foi possível conferir o estado do caixa" error={cashQuery.error} onRetry={() => void cashQuery.refetch()} />
@@ -155,7 +156,7 @@ export default function ReabrirCaixaPage() {
                   <div className="grid gap-4 border-b border-border pb-4 text-sm sm:grid-cols-3">
                     <div><p className="text-xs text-muted-foreground">Operador da abertura</p><p className="mt-1 font-medium">{cash.operador_abertura || 'Não informado'}</p></div>
                     <div><p className="text-xs text-muted-foreground">Valor de abertura</p><p className="mt-1 font-medium tabular-nums">{Number(cash.valor_abertura).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Estado atual</p><p className="mt-1 font-medium">Fechado · {new Date(`${cash.data}T12:00:00`).toLocaleDateString('pt-BR')}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Estado atual</p><p className="mt-1 font-medium">Fechado · {formatWithDatePreference(new Date(`${cash.data}T12:00:00`), 'dd/MM/yyyy')}</p></div>
                   </div>
                   <p className="text-sm text-muted-foreground">A operação será registrada com seu nome, horário e justificativa. O fechamento anterior continuará no histórico do caixa.</p>
                   <div className="space-y-2">

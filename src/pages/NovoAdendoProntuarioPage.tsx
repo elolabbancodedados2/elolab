@@ -18,6 +18,7 @@ import { registrarAcessoProntuario, registrarAdendoProntuario } from '@/lib/pron
 import { parseDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { toast } from 'sonner';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type TipoAdendo = 'retificacao' | 'complemento' | 'erratum';
 type Relacao<T> = T | T[] | null;
@@ -37,7 +38,7 @@ function relacaoUnica<T>(value: Relacao<T> | undefined): T | null {
 
 function formatarData(data: string) {
   const parsed = parseDateOnly(data);
-  return parsed ? format(parsed, 'dd/MM/yyyy', { locale: ptBR }) : data;
+  return parsed ? formatWithDatePreference(parsed, 'dd/MM/yyyy', { locale: ptBR }) : data;
 }
 
 export default function NovoAdendoProntuarioPage() {
