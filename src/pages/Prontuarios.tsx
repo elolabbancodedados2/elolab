@@ -13,6 +13,7 @@ import {
   Hash, MapPin, Fingerprint, ScrollText, ArrowLeft,
 } from 'lucide-react';
 import { AtalhosDocumentos } from '@/components/clinical/AtalhosDocumentos';
+import { FaixaSinaisVitais } from '@/components/clinical/FaixaSinaisVitais';
 
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -2781,11 +2782,16 @@ export default function Prontuarios() {
             />
           )}
 
-          {!isReadOnly && (currentProntuario.paciente_id || selectedPacienteId) && (
-            <AtalhosDocumentos
-              pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
-              onReceita={() => changeProntuarioSection('prescricao')}
-            />
+          {(currentProntuario.paciente_id || selectedPacienteId) && (
+            <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2">
+              {!isReadOnly && (
+                <AtalhosDocumentos
+                  pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
+                  onReceita={() => changeProntuarioSection('prescricao')}
+                />
+              )}
+              <FaixaSinaisVitais sinais={sinaisVitais as unknown as Record<string, string>} onAbrir={() => changeProntuarioSection('exame')} />
+            </div>
           )}
 
           {/* Scrollable content */}

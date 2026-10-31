@@ -11,11 +11,11 @@ com migration revisada e testada em ambiente local. Nada aqui altera o módulo f
 
 | Módulo | Situação hoje | O que falta na tela |
 | --- | --- | --- |
-| Recepção | Fluxo em colunas e lista | Modo "Linha do tempo" e painel do paciente à direita igual ao protótipo |
+| Recepção | Fluxo em colunas, lista e Linha do tempo com a hora atual; painel do paciente à direita | Nada pendente na tela |
 | Agenda | Dia, semana, mês, painel de novo agendamento e atalho de bloqueio (gestão de bloqueios já existia) | Encaixe direto no painel |
 | Pacientes | Fichas, lista e painel lateral com alergias, convênio e contato | Saldo e últimas consultas no painel |
-| Atendimento | Prontuário completo | Sinais vitais em faixa no topo, comandos com `/` para receita, exame e atestado |
-| Caixa | Novo visual publicado | Formas de pagamento em botões e recibo automático no painel |
+| Atendimento | Prontuário completo, faixa de sinais vitais no topo e atalhos com `/` para receita, exame, atestado e encaminhamento | Puxar os sinais da triagem para a faixa |
+| Caixa | Formas de pagamento em botões na venda, recibo automático, abas e ações sem repetição | Nada pendente na tela |
 | Convênios e TISS | Lotes, glosas, conciliação | Visão de guias com situação da autorização |
 | Indicadores | Painéis por área | Barra de resumo no padrão do protótipo |
 
