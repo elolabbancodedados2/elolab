@@ -197,8 +197,8 @@ export default function PlatformRelatoriosAgendados() {
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   highlight && 'border-transparent bg-gradient-primary text-white',
-                  filter === value && !highlight && 'border-[#1080CA] ring-1 ring-[#1080CA]/30',
-                  filter === value && highlight && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                  filter === value && !highlight && 'border-primary ring-1 ring-primary/30',
+                  filter === value && highlight && 'ring-2 ring-primary/40 ring-offset-2',
                 )}
               >
                 <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : color)}><Icon className="h-5 w-5" /></span>
@@ -262,7 +262,7 @@ export default function PlatformRelatoriosAgendados() {
           </CardContent></Card>
         ) : allSchedules.length ? (
           visibleSchedules.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-[#BFD8EE] p-6 text-center text-sm text-muted-foreground">Nenhum agendamento neste filtro.</p>
+            <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nenhum agendamento neste filtro.</p>
           ) : visibleSchedules.map((schedule) => {
             const recentRuns = runsBySchedule[schedule.id]?.slice(0, 3) || [];
             const isRunning = runNow.isPending && runNow.variables === schedule.id;
@@ -282,7 +282,7 @@ export default function PlatformRelatoriosAgendados() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="font-semibold">{schedule.name}</h2>
                         <Badge variant={schedule.active ? 'default' : 'secondary'} className={cn('rounded-full', schedule.active && 'border-transparent bg-gradient-primary text-white')}>{schedule.active ? 'Ativo' : 'Pausado'}</Badge>
-                        <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{frequencyLabels[schedule.frequency] || schedule.frequency}</Badge>
+                        <Badge variant="outline" className="rounded-full border-border text-primary">{frequencyLabels[schedule.frequency] || schedule.frequency}</Badge>
                       </div>
                       <p className="break-words text-sm text-muted-foreground">{schedule.recipients.join(', ')}</p>
                       <p className="text-xs text-muted-foreground">Próxima execução: {nextRunLabel} · Última tentativa: {dateTime(lastAttemptAt)}</p>
@@ -292,7 +292,7 @@ export default function PlatformRelatoriosAgendados() {
                         {isToggling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : schedule.active ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
                         {schedule.active ? 'Pausar' : 'Reativar'}
                       </Button>
-                      <Button className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:brightness-110" onClick={() => setScheduleToRun(schedule)} disabled={!schedule.active || isRunning || runNow.isPending}>
+                      <Button className="h-9 rounded-full bg-primary text-xs text-white hover:brightness-110" onClick={() => setScheduleToRun(schedule)} disabled={!schedule.active || isRunning || runNow.isPending}>
                         {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                         Executar agora
                       </Button>

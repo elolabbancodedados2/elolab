@@ -243,7 +243,7 @@ export default function PlatformOperacoes() {
 
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2">Catálogo de feature flags{flags.data && <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{flags.data.length}</Badge>}</CardTitle>
+          <CardTitle className="flex flex-wrap items-center gap-2">Catálogo de feature flags{flags.data && <Badge variant="outline" className="rounded-full border-border text-primary">{flags.data.length}</Badge>}</CardTitle>
           <CardDescription>Estas chaves ainda não são consumidas por telas ou permissões do app. O estado é apenas informativo e não libera nem oculta funcionalidades.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -255,7 +255,7 @@ export default function PlatformOperacoes() {
                 <div className="flex flex-wrap items-center gap-2"><b>{flag.nome}</b><span className="text-xs text-muted-foreground">Sem consumidor no app</span></div>
                 <p className="break-all text-xs text-muted-foreground">{flag.chave} · {flag.percentual}% · {flag.destino}</p>
               </div>
-              <Badge variant="outline" className={cn('rounded-full', flag.ativo && 'border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]')}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
+              <Badge variant="outline" className={cn('rounded-full', flag.ativo && 'border-border bg-[#F3F8FC] text-primary')}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
             </div>
           ))}
           {!flags.isLoading && !flags.isError && flags.data?.length === 0 && (

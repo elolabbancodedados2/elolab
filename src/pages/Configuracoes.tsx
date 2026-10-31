@@ -541,7 +541,7 @@ export default function Configuracoes() {
                 </div>
 
                 <Separator />
-                <h3 className="font-semibold text-sm flex items-center gap-2"><Users className="h-4 w-4 text-[#1080CA]" /> Responsável Técnico</h3>
+                <h3 className="font-semibold text-sm flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Responsável Técnico</h3>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="config-clinica-responsavel">Nome do Responsável</Label>
@@ -557,7 +557,7 @@ export default function Configuracoes() {
                 {/* Fica na aba da clínica, e não em Financeiro, porque decide
                     quem entra no consultório — não é ajuste de cobrança. */}
                 <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <Workflow className="h-4 w-4 text-[#1080CA]" /> Fluxo do Atendimento
+                  <Workflow className="h-4 w-4 text-primary" /> Fluxo do Atendimento
                 </h3>
                 <FluxoDoAtendimento />
 
@@ -584,7 +584,7 @@ export default function Configuracoes() {
                   <ErrorState compact title="Não foi possível confirmar seu plano" error={erroConsultaPlano} onRetry={() => void recarregarPlanoAtual()} />
                 ) : isPlanExempt ? (
                   <div className="rounded-xl border border-border/60 bg-muted/40 p-6 text-center">
-                    <Shield className="mx-auto mb-3 h-8 w-8 text-[#1080CA]" />
+                    <Shield className="mx-auto mb-3 h-8 w-8 text-primary" />
                     <p className="font-semibold">Acesso da plataforma</p>
                     <p className="mt-2 text-sm text-muted-foreground">
                       Esta conta administra o EloLab e está isenta dos planos de cliente. Nenhuma assinatura ou cobrança é necessária.
@@ -956,9 +956,9 @@ export default function Configuracoes() {
                   </SettingRow>
                 </div>
                 <AccountSessionsPanel />
-                <div className="mt-6 space-y-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4">
+                <div className="mt-6 space-y-3 rounded-xl border border-border bg-[#F3F8FC] p-4">
                   <div className="flex gap-3">
-                    <Shield className="h-5 w-5 shrink-0 mt-0.5 text-[#1080CA]" />
+                    <Shield className="h-5 w-5 shrink-0 mt-0.5 text-primary" />
                     <div>
                       <p className="font-medium text-sm">Proteções aplicadas pelo sistema</p>
                       <p className="text-xs text-muted-foreground mt-1">

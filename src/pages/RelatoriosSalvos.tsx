@@ -32,7 +32,7 @@ type FiltroRelatorio = 'todos' | 'agendados' | 'favoritos' | 'pausados';
 
 const INDICADORES: { key: FiltroRelatorio; label: string; legenda: string; icon: ElementType; cor: string }[] = [
   { key: 'todos', label: 'Salvos', legenda: 'todos os relatórios', icon: Star, cor: '' },
-  { key: 'agendados', label: 'Agendados', legenda: 'envio automático ativo', icon: CalendarClock, cor: 'bg-[#1080CA]/10 text-[#1080CA]' },
+  { key: 'agendados', label: 'Agendados', legenda: 'envio automático ativo', icon: CalendarClock, cor: 'bg-primary/10 text-primary' },
   { key: 'favoritos', label: 'Favoritos', legenda: 'sem agendamento', icon: SlidersHorizontal, cor: 'bg-info/10 text-info' },
   { key: 'pausados', label: 'Pausados', legenda: 'agendamento suspenso', icon: PauseCircle, cor: 'bg-warning/10 text-warning' },
 ];
@@ -150,10 +150,10 @@ export default function RelatoriosSalvos() {
                 aria-pressed={filtro === key}
                 onClick={() => setFiltro(key)}
                 className={cn(
-                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
-                  filtro === key && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]',
-                  filtro === key && destaque && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                  filtro === key && !destaque && 'border-primary ring-1 ring-primary',
+                  filtro === key && destaque && 'ring-2 ring-primary/40 ring-offset-2',
                 )}
               >
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}>
@@ -206,10 +206,10 @@ export default function RelatoriosSalvos() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold">{it.nome}</h3>
-                      <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{it.dataset}</Badge>
+                      <Badge variant="outline" className="rounded-full border-border text-primary">{it.dataset}</Badge>
                       <Badge variant="secondary" className="rounded-full">{it.frequencia && it.destinatarios?.length ? 'CSV por e-mail' : 'Favorito'}</Badge>
                       {it.frequencia && !it.ativo && <Badge className="rounded-full border-transparent bg-warning/10 text-warning hover:bg-warning/10">Pausado</Badge>}
-                      {it.frequencia && <Badge className="rounded-full border-transparent bg-[#1080CA]/10 text-[#1080CA] hover:bg-[#1080CA]/10">{it.frequencia}</Badge>}
+                      {it.frequencia && <Badge className="rounded-full border-transparent bg-primary/10 text-primary hover:bg-primary/10">{it.frequencia}</Badge>}
                     </div>
                     {it.descricao && <p className="text-sm text-muted-foreground mt-1">{it.descricao}</p>}
                     <div className="text-xs text-muted-foreground mt-2 flex flex-wrap gap-3">

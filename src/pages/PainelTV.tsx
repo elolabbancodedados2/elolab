@@ -799,13 +799,13 @@ export default function PainelTV() {
               ) : (
                 <div className="space-y-3">
                   {emAtendimento.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-[#1080CA]/20 rounded-xl border border-[#5BB4EE]/30">
+                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-primary/20 rounded-xl border border-[#5BB4EE]/30">
                       <div>
                         <p className="text-lg md:text-xl font-semibold">Senha {receptionTicketCode(item.id)}</p>
                         <p className="text-white/60">{getMedicoNome(item.agendamento_id)}</p>
                       </div>
                       <div className="text-right">
-                        <span className="bg-[#1080CA] px-4 py-2 rounded-full text-sm md:text-base font-semibold">
+                        <span className="bg-primary px-4 py-2 rounded-full text-sm md:text-base font-semibold">
                           {getSalaNome(item.sala_id)}
                         </span>
                       </div>
@@ -837,7 +837,7 @@ export default function PainelTV() {
                       className={cn(
                         'flex justify-between items-center p-3 md:p-4 rounded-xl transition-colors',
                         index === 0
-                          ? 'bg-[#1080CA]/25 border border-[#5BB4EE]/50'
+                          ? 'bg-primary/25 border border-[#5BB4EE]/50'
                           : 'bg-white/5 border border-white/5'
                       )}
                     >

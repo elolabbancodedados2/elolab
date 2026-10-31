@@ -751,8 +751,8 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
   const indicadores = [
     { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'disponíveis para atendimento' },
     { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'fora de operação' },
-    { key: 'especialidades' as const, label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'distintas na clínica' },
-    { key: 'todos' as const, label: 'Total', value: medicos.length, icon: Users, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'corpo clínico completo' },
+    { key: 'especialidades' as const, label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'distintas na clínica' },
+    { key: 'todos' as const, label: 'Total', value: medicos.length, icon: Users, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'corpo clínico completo' },
   ];
 
   return (
@@ -790,12 +790,12 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
                 disabled={ind.key === 'especialidades'}
                 onClick={() => { if (ind.key === 'especialidades') return; setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key)); }}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   ind.key !== 'especialidades' && 'hover:-translate-y-0.5 hover:shadow-md',
                   ind.key === 'especialidades' && 'cursor-default',
                   ind.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
+                  ativo && !ind.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && ind.escuro && 'ring-2 ring-primary/60',
                 )}
               >
                 <div className="flex items-start justify-between gap-2 p-4">
@@ -819,7 +819,7 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input aria-label="Buscar médicos por nome, CRM, especialidade ou e-mail" placeholder="Buscar por nome, CRM, especialidade ou e-mail..." value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]" />
+              className="h-10 rounded-full pl-10 focus-visible:ring-primary" />
           </div>
           <Select value={filterEspecialidade} onValueChange={setFilterEspecialidade}>
             <SelectTrigger aria-label="Filtrar médicos por especialidade" title={filterEspecialidade === 'todas' ? 'Todas especialidades' : filterEspecialidade} className="h-10 w-full min-w-0 rounded-full sm:w-56">
@@ -844,13 +844,13 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
         {/* Doctor Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredMedicos.map((medico: any) => (
-            <Card key={medico.id} className={cn('group rounded-2xl border-border/60 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-[#1080CA]/40', !medico.ativo && 'bg-muted/40')}
+            <Card key={medico.id} className={cn('group rounded-2xl border-border/60 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-primary/40', !medico.ativo && 'bg-muted/40')}
               onClick={() => openProfile(medico)}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
-                  <Avatar className={`h-16 w-16 ring-2 ring-[#1080CA]/10 group-hover:ring-[#1080CA]/30 transition-all shadow-md ${!medico.ativo ? 'opacity-70' : ''}`}>
+                  <Avatar className={`h-16 w-16 ring-2 ring-primary/10 group-hover:ring-primary/30 transition-all shadow-md ${!medico.ativo ? 'opacity-70' : ''}`}>
                     {medico.foto_url && <StorageAvatarImage bucket="patient-photos" path={medico.foto_url} alt={medico.nome} />}
-                    <AvatarFallback className="bg-gradient-to-br from-[#1080CA]/20 to-[#1080CA]/5 text-[#1080CA] font-bold text-lg">
+                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-primary font-bold text-lg">
                       {iniciaisMedico(medico.nome, medico.crm)}
                     </AvatarFallback>
                   </Avatar>
@@ -889,7 +889,7 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
 
                 {/* Actions */}
                 <div className="flex items-center justify-between mt-3">
-                  <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs text-[#1080CA] hover:text-[#1080CA] hover:bg-[#1080CA]/10"
+                  <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs text-primary hover:text-primary hover:bg-primary/10"
                     onClick={(e) => { e.stopPropagation(); openProfile(medico); }}>
                     <Eye className="h-3.5 w-3.5" /> Ver Perfil
                   </Button>

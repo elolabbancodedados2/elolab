@@ -323,10 +323,10 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
                 aria-pressed={filtroStatus === key}
                 onClick={() => setFiltroStatus(key)}
                 className={cn(
-                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
-                  filtroStatus === key && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]',
-                  filtroStatus === key && destaque && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                  filtroStatus === key && !destaque && 'border-primary ring-1 ring-primary',
+                  filtroStatus === key && destaque && 'ring-2 ring-primary/40 ring-offset-2',
                 )}
               >
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}>
@@ -346,7 +346,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar tipo..." aria-label="Buscar tipo de consulta" value={search} onChange={e => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+          <Input placeholder="Buscar tipo..." aria-label="Buscar tipo de consulta" value={search} onChange={e => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
         </div>
         {temFiltro && (
           <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
@@ -514,7 +514,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       {precosOpen && recordQuery.data && !recordQuery.isError && <section className="space-y-6 rounded-xl border bg-card p-5 sm:p-8">
           <header className="space-y-2 border-b pb-5">
             <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-[#1080CA]" />
+              <Building2 className="h-5 w-5 text-primary" />
               Preços — {precosTipo?.nome}
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -531,7 +531,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
             <div className="text-center py-8 text-muted-foreground">
               <Building2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
               <p>Nenhum convênio cadastrado.</p>
-              <p className="text-xs">Cadastre convênios primeiro em <Link to="/convenios" className="font-medium text-[#1080CA] underline-offset-2 hover:underline">Operacional → Convênios</Link>.</p>
+              <p className="text-xs">Cadastre convênios primeiro em <Link to="/convenios" className="font-medium text-primary underline-offset-2 hover:underline">Operacional → Convênios</Link>.</p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-border/60">

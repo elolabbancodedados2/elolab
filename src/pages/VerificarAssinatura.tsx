@@ -90,7 +90,7 @@ export default function VerificarAssinatura() {
                 <p className="mt-1 text-xs text-muted-foreground">O conteúdo atual corresponde ao hash registrado no momento da assinatura.</p>
               </div>
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
-                <dt className="text-muted-foreground">Documento</dt><dd><Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">Prontuário #{result.documentReference}</Badge></dd>
+                <dt className="text-muted-foreground">Documento</dt><dd><Badge variant="outline" className="rounded-full border-border text-primary">Prontuário #{result.documentReference}</Badge></dd>
                 <dt className="text-muted-foreground">Assinante</dt><dd className="font-medium">{result.signerName}</dd>
                 <dt className="text-muted-foreground">CRM</dt><dd>{result.signerCRM}</dd>
                 <dt className="text-muted-foreground">Assinado em</dt><dd>{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(result.signedAt))}</dd>

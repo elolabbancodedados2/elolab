@@ -764,14 +764,14 @@ export default function Documentacao() {
                   placeholder="Buscar na documentação..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-9 pr-9 focus-visible:ring-[#1080CA]"
+                  className="h-10 rounded-full pl-9 pr-9 focus-visible:ring-primary"
                 />
                 {searchTerm && (
                   <button
                     type="button"
                     aria-label="Limpar busca"
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -796,7 +796,7 @@ export default function Documentacao() {
                         }}
                         aria-current={ativa ? 'page' : undefined}
                         className={cn(
-                          'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                          'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                           ativa
                             ? 'bg-gradient-primary text-white shadow-sm'
                             : 'text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground'
@@ -805,7 +805,7 @@ export default function Documentacao() {
                         <Icon aria-hidden="true" className={cn('h-4 w-4 shrink-0', ativa ? 'text-white' : section.color)} />
                         <span className="truncate">{section.title}</span>
                         {section.badge && (
-                          <Badge variant="outline" className={cn('ml-auto rounded-full px-1.5 py-0 text-[10px]', ativa ? 'border-white/40 text-white' : 'border-[#BFD8EE] text-[#1080CA]')}>
+                          <Badge variant="outline" className={cn('ml-auto rounded-full px-1.5 py-0 text-[10px]', ativa ? 'border-white/40 text-white' : 'border-border text-primary')}>
                             {section.badge}
                           </Badge>
                         )}
@@ -835,7 +835,7 @@ export default function Documentacao() {
                   </p>
                 </div>
                 {currentSection.badge && (
-                  <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-white text-[#1080CA]">{currentSection.badge}</Badge>
+                  <Badge variant="outline" className="rounded-full border-border bg-white text-primary">{currentSection.badge}</Badge>
                 )}
               </div>
 
@@ -844,7 +844,7 @@ export default function Documentacao() {
                 <Card key={idx} className="rounded-2xl border-border/60 shadow-xs">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
-                      <ChevronRight aria-hidden="true" className="h-4 w-4 text-[#1080CA]" />
+                      <ChevronRight aria-hidden="true" className="h-4 w-4 text-primary" />
                       {item.title}
                     </CardTitle>
                   </CardHeader>
@@ -864,7 +864,7 @@ export default function Documentacao() {
                             >
                               <span className={cn(
                                 'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                                sIdx === 0 ? 'bg-gradient-primary text-white' : 'bg-[#EEF4FA] text-[#1080CA]'
+                                sIdx === 0 ? 'bg-gradient-primary text-white' : 'bg-[#EEF4FA] text-primary'
                               )}>
                                 {sIdx + 1}
                               </span>
@@ -877,7 +877,7 @@ export default function Documentacao() {
 
                     {item.tips && item.tips.length > 0 && (
                       <div className="mt-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-4">
-                        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#1080CA]">
+                        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
                           <Lightbulb aria-hidden="true" className="h-3.5 w-3.5" /> Dicas
                         </p>
                         <ul className="space-y-1.5">
@@ -886,7 +886,7 @@ export default function Documentacao() {
                               key={tIdx}
                               className="text-sm text-muted-foreground flex items-start gap-2"
                             >
-                              <span aria-hidden="true" className="text-[#1080CA] mt-1">•</span>
+                              <span aria-hidden="true" className="text-primary mt-1">•</span>
                               {tip}
                             </li>
                           ))}

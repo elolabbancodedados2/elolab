@@ -165,7 +165,7 @@ export function HealthCheckTab() {
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1080CA]/10"><Database className="h-5 w-5 text-[#1080CA]" /></span>
+                        <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10"><Database className="h-5 w-5 text-primary" /></span>
                         <span className="font-semibold">API de Dados</span>
                       </div>
                       <StatusBadge status={health.database.status} />
@@ -270,7 +270,7 @@ export function IntegracoesTab() {
             <div key={integracao.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/60 p-4 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
               <div className="flex-1">
                 <h3 className="font-semibold flex items-center gap-2">
-                  <Zap aria-hidden="true" className="h-4 w-4 text-[#1080CA]" />
+                  <Zap aria-hidden="true" className="h-4 w-4 text-primary" />
                   {integracao.nome}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">{integracao.detalhe}</p>
@@ -422,7 +422,7 @@ export function DocumentosTemplatesTab() {
             Abrir gerenciador
           </Button>
         </CardHeader>
-        <CardContent><Alert className="rounded-xl border-[#BFD8EE] bg-[#F3F8FC]"><FileText className="h-4 w-4 !text-[#1080CA]" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
+        <CardContent><Alert className="rounded-xl border-border bg-[#F3F8FC]"><FileText className="h-4 w-4 !text-primary" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
       </Card>
     </div>
   );
@@ -563,8 +563,8 @@ export function LGPDAvancadoTab() {
 
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
-      <Alert className="rounded-2xl border-[#BFD8EE] bg-[#F3F8FC]">
-        <Shield className="h-4 w-4 !text-[#1080CA]" />
+      <Alert className="rounded-2xl border-border bg-[#F3F8FC]">
+        <Shield className="h-4 w-4 !text-primary" />
         <AlertDescription className="text-sm text-foreground">
           Esta tela registra informações da clínica e lista solicitações pendentes. Salvar aqui não ativa automaticamente consentimento, retenção, backup, criptografia ou auditoria.
         </AlertDescription>
@@ -692,7 +692,7 @@ export function LGPDAvancadoTab() {
             <Card className="rounded-xl border-border/60 shadow-none">
               <CardContent className="pt-6">
                 <h3 className="font-semibold flex items-center gap-2 mb-2">
-                  <AlertCircle className="h-4 w-4 text-[#1080CA]" />
+                  <AlertCircle className="h-4 w-4 text-primary" />
                   Solicitações pendentes
                 </h3>
                 <ul className="text-sm space-y-1 text-muted-foreground">

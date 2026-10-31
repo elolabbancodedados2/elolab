@@ -214,7 +214,7 @@ export default function RepassesMedicos() {
   const kpis = [
     { key: 'aberto' as const, label: 'Em aberto', value: emAberto, icon: Clock3, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'pendente + aprovado a pagar' },
     { key: 'pendente' as const, label: 'Pendente', value: totais.pendente, icon: AlertTriangle, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: 'aguardando aprovação' },
-    { key: 'aprovado' as const, label: 'Aprovado', value: totais.aprovado, icon: BadgeCheck, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'aguardando pagamento' },
+    { key: 'aprovado' as const, label: 'Aprovado', value: totais.aprovado, icon: BadgeCheck, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'aguardando pagamento' },
     { key: 'pago' as const, label: 'Pago', value: totais.pago, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'já pago na competência' },
   ];
 
@@ -251,10 +251,10 @@ export default function RepassesMedicos() {
             aria-pressed={ativo}
             onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
             className={cn(
-              'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+              'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
               kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-              ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-              ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
+              ativo && !kpi.escuro && 'border-primary/50 ring-1 ring-primary/30',
+              ativo && kpi.escuro && 'ring-2 ring-primary/60',
             )}
           >
             <div className="flex items-start justify-between gap-2 p-4">
@@ -290,7 +290,7 @@ export default function RepassesMedicos() {
             <HandCoins className="h-4 w-4" />
           </span>
           Fechamento
-          <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{repassesFiltrados.length} de {repasses.length}</Badge>
+          <Badge variant="outline" className="rounded-full border-border text-primary">{repassesFiltrados.length} de {repasses.length}</Badge>
         </CardTitle>
         <CardDescription>O pagamento registrado gera uma despesa no Fluxo de Caixa. A transferência ao médico é realizada fora do EloLab.</CardDescription>
       </CardHeader>
@@ -320,7 +320,7 @@ export default function RepassesMedicos() {
                 <TableCell>{r.medicos?.nome || r.medicos?.crm}<p className="text-xs text-muted-foreground">{r.tipo_calculo === 'fixo' ? `${moeda(r.valor_configurado || r.valor_repasse)} fixo` : `${r.percentual}%`}</p></TableCell>
                 <TableCell className="text-right">{moeda(r.valor_base)}</TableCell>
                 <TableCell className="text-right font-medium">{moeda(r.valor_repasse)}</TableCell>
-                <TableCell><Badge variant="outline" className={cn('rounded-full', r.status === 'pago' ? 'border-success/40 bg-success/10 text-success-foreground' : r.status === 'aprovado' ? 'border-[#BFD8EE] bg-[#1080CA]/10 text-[#1080CA]' : 'border-warning/40 bg-warning/10 text-warning-foreground')}>{r.status === 'pago' ? 'Pago' : r.status === 'aprovado' ? 'Aprovado' : 'Pendente'}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
+                <TableCell><Badge variant="outline" className={cn('rounded-full', r.status === 'pago' ? 'border-success/40 bg-success/10 text-success-foreground' : r.status === 'aprovado' ? 'border-border bg-primary/10 text-primary' : 'border-warning/40 bg-warning/10 text-warning-foreground')}>{r.status === 'pago' ? 'Pago' : r.status === 'aprovado' ? 'Aprovado' : 'Pendente'}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
                 <TableCell>
                   {podeAprovarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id)} className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">Aprovar</Button>}
                   {podePagarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => navigate(`/repasses-medicos/${r.id}/pagamento`, { state: { competencia } })} className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"><CheckCircle2 className="h-3.5 w-3.5" />Registrar pagamento</Button>}

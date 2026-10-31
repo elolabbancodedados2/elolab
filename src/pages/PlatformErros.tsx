@@ -205,7 +205,7 @@ export default function PlatformErros() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-0 flex-1 basis-56">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar mensagem, rota ou tipo" aria-label="Buscar mensagem, rota ou tipo" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar mensagem, rota ou tipo" aria-label="Buscar mensagem, rota ou tipo" className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
             </div>
             <Select value={filtro} onValueChange={setFiltro}>
               <SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Filtrar status"><SelectValue /></SelectTrigger>
@@ -235,7 +235,7 @@ export default function PlatformErros() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={erro.status === 'open' ? 'destructive' : 'outline'} className="rounded-full">{statusLabel[erro.status]}</Badge>
-                      <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{grupo.length} ocorrência(s)</Badge>
+                      <Badge variant="outline" className="rounded-full border-border text-primary">{grupo.length} ocorrência(s)</Badge>
                       <span className="text-xs text-muted-foreground">{erro.tipo}</span>
                     </div>
                     <p className="mt-2 break-words text-sm font-medium">{erro.mensagem}</p>

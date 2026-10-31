@@ -210,7 +210,7 @@ export default function Seguranca() {
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <LogOut className="h-5 w-5 text-[#1080CA]" />
+            <LogOut className="h-5 w-5 text-primary" />
             Sessões Ativas
           </CardTitle>
           <CardDescription>

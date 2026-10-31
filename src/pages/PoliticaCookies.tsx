@@ -38,7 +38,7 @@ export default function PoliticaCookies() {
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Política de Cookies</h1>
         </div>
 
-        <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-[#1080CA]">
+        <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-primary">
           <p className="text-xs">Última atualização: {formatDate(new Date(), 'short')}</p>
 
           <section>
@@ -58,7 +58,7 @@ export default function PoliticaCookies() {
               <div key={category.category} className="mb-6">
                 <h3 className="text-base font-medium text-foreground flex items-center gap-2">
                   {category.name}
-                  {category.required && <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[10px] text-[#1080CA]">Obrigatório</Badge>}
+                  {category.required && <Badge variant="outline" className="rounded-full border-border text-[10px] text-primary">Obrigatório</Badge>}
                 </h3>
                 <p className="text-sm mb-2">{category.description}</p>
                 
@@ -108,7 +108,7 @@ export default function PoliticaCookies() {
           <section>
             <h2 className="text-lg font-semibold text-foreground">6. Contato</h2>
             <p>Dúvidas sobre cookies: <strong>privacidade@elolab.com.br</strong></p>
-            <p>Consulte também nossa <Link to="/politica-privacidade" className="text-[#1080CA] hover:underline">Política de Privacidade</Link>.</p>
+            <p>Consulte também nossa <Link to="/politica-privacidade" className="text-primary hover:underline">Política de Privacidade</Link>.</p>
           </section>
           <NavegacaoLegal atual="/politica-cookies" />
         </div>

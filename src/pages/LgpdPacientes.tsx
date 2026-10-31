@@ -342,8 +342,8 @@ export default function LgpdPacientes() {
         )}
       />
 
-      <Alert className="rounded-2xl border-[#BFD8EE] bg-[#F3F8FC]">
-        <AlertTriangle className="h-4 w-4 !text-[#1080CA]" />
+      <Alert className="rounded-2xl border-border bg-[#F3F8FC]">
+        <AlertTriangle className="h-4 w-4 !text-primary" />
         <AlertDescription>
           Cada exportação recebe um protocolo e gera um registro de auditoria da clínica antes de preparar o arquivo JSON para download. Escolha as categorias pedidas pelo titular; o cadastro é sempre incluído. O pedido continua pendente até a clínica confirmar a entrega ao titular. Anexos do prontuário de até 30 MB no total são incluídos no JSON em Base64; arquivos externos e outros documentos vinculados por módulos específicos ainda exigem conferência manual. Armazene o arquivo em local seguro e compartilhe apenas com pessoas autorizadas.
           <span className="mt-2 block font-medium">A exclusão de dados não pode ser concluída por esta tela neste momento. Solicite análise ao suporte antes de confirmar o atendimento ao titular.</span>
@@ -363,7 +363,7 @@ export default function LgpdPacientes() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Digite nome, CPF ou email..."
-              className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+              className="h-10 rounded-full pl-9 focus-visible:ring-primary"
             />
           </div>
 

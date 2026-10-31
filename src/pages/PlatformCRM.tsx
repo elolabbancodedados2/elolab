@@ -212,9 +212,9 @@ export default function PlatformCRM() {
             aria-pressed={filtro === key}
             onClick={() => alternar(key)}
             className={cn(
-              'rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+              'rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
               destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
-              filtro === key && (destaque ? 'ring-2 ring-[#1080CA]/40 ring-offset-2' : 'border-[#1080CA] ring-1 ring-[#1080CA]/40'),
+              filtro === key && (destaque ? 'ring-2 ring-primary/40 ring-offset-2' : 'border-primary ring-1 ring-primary/40'),
             )}
           >
             <div className="flex items-start justify-between gap-3">
@@ -267,7 +267,7 @@ export default function PlatformCRM() {
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar clínica, responsável, e-mail ou telefone"
-                className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                className="h-10 rounded-full pl-9 focus-visible:ring-primary"
               />
             </div>
           </div>
@@ -328,7 +328,7 @@ export default function PlatformCRM() {
                             <div className="text-sm">{c.dono_nome ?? '—'}</div>
                             {c.dono_email && <a
                               href={`mailto:${c.dono_email}`}
-                              className="text-xs text-[#1080CA] hover:underline flex items-center gap-1"
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
                             >
                               <Mail className="h-3 w-3" />{c.dono_email}
                             </a>}
@@ -337,7 +337,7 @@ export default function PlatformCRM() {
                                 href={`https://wa.me/${numeroWhatsApp(c.dono_telefone)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs text-[#1080CA] hover:underline flex items-center gap-1"
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
                               >
                                 <Phone className="h-3 w-3" />{c.dono_telefone}
                               </a>

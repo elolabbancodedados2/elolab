@@ -114,20 +114,20 @@ export default function PlatformHistoricoFinanceiro() {
                   type="button"
                   aria-pressed={eventType === key}
                   onClick={() => setEventType(eventType === key ? 'all' : key)}
-                  className={cn(base, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2', eventType === key && 'border-[#1080CA] ring-1 ring-[#1080CA]/40')}
+                  className={cn(base, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', eventType === key && 'border-primary ring-1 ring-primary/40')}
                 >
                   {conteudo}
                 </button>
               );
             })}
           </section>
-          <Card className="rounded-2xl border-[#BFD8EE] bg-[#F3F8FC] shadow-xs"><CardHeader><CardTitle className="text-base">Período de rastreamento</CardTitle><CardDescription>Eventos anteriores ao marco inicial não são reconstruídos artificialmente. {history.data?.tracking_since ? `Rastreamento desde ${dateTime(history.data.tracking_since)}.` : 'Ainda não há eventos para definir um marco inicial.'}</CardDescription></CardHeader></Card>
+          <Card className="rounded-2xl border-border bg-[#F3F8FC] shadow-xs"><CardHeader><CardTitle className="text-base">Período de rastreamento</CardTitle><CardDescription>Eventos anteriores ao marco inicial não são reconstruídos artificialmente. {history.data?.tracking_since ? `Rastreamento desde ${dateTime(history.data.tracking_since)}.` : 'Ainda não há eventos para definir um marco inicial.'}</CardDescription></CardHeader></Card>
           <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader>
               <CardTitle>Linha do tempo</CardTitle>
               <CardDescription>{visibleEvents.length} de {events.length} eventos carregados; até 500 eventos de assinatura no período escolhido.</CardDescription>
               <div className="flex flex-wrap items-center gap-2 pt-2">
-                <div className="relative w-full min-w-56 flex-1 sm:w-auto"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" value={eventSearch} onChange={(event) => setEventSearch(event.target.value)} placeholder="Buscar clínica, plano ou status" aria-label="Buscar eventos financeiros" /></div>
+                <div className="relative w-full min-w-56 flex-1 sm:w-auto"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-primary" value={eventSearch} onChange={(event) => setEventSearch(event.target.value)} placeholder="Buscar clínica, plano ou status" aria-label="Buscar eventos financeiros" /></div>
                 {(eventSearch.trim() || eventType !== 'all') && <Button variant="outline" className="h-10 rounded-full" onClick={() => { setEventSearch(''); setEventType('all'); }}>Limpar filtros</Button>}
                 <Select value={eventType} onValueChange={setEventType}><SelectTrigger className="h-10 w-full rounded-full sm:w-48" aria-label="Filtrar eventos financeiros por tipo"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os eventos</SelectItem>{Object.entries(eventLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
               </div>

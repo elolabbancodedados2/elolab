@@ -37,14 +37,14 @@ import { getInitialTaskView, taskMatchesAssignee, taskMatchesSearch } from './ta
 // ─── Config ────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; icon: typeof Circle; colorClasses: string }> = {
   pendente: { label: 'Pendente', icon: Circle, colorClasses: 'bg-warning/10 text-warning border-warning/20' },
-  em_andamento: { label: 'Em Andamento', icon: Clock, colorClasses: 'bg-[#1080CA]/10 text-[#1080CA] border-[#1080CA]/20' },
+  em_andamento: { label: 'Em Andamento', icon: Clock, colorClasses: 'bg-primary/10 text-primary border-primary/20' },
   concluida: { label: 'Concluída', icon: CheckCircle2, colorClasses: 'bg-success/10 text-success border-success/20' },
   cancelada: { label: 'Cancelada', icon: AlertTriangle, colorClasses: 'bg-destructive/10 text-destructive border-destructive/20' },
 };
 
 const prioridadeConfig: Record<string, { label: string; dot: string; stripe: string; ordem: number }> = {
   baixa: { label: 'Baixa', dot: 'bg-muted-foreground', stripe: 'border-l-muted-foreground/40', ordem: 3 },
-  media: { label: 'Média', dot: 'bg-[#1080CA]', stripe: 'border-l-[#1080CA]', ordem: 2 },
+  media: { label: 'Média', dot: 'bg-primary', stripe: 'border-l-primary', ordem: 2 },
   alta: { label: 'Alta', dot: 'bg-warning', stripe: 'border-l-warning', ordem: 1 },
   urgente: { label: 'Urgente', dot: 'bg-destructive animate-pulse', stripe: 'border-l-destructive', ordem: 0 },
 };
@@ -129,7 +129,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, tarefa.id) : undefined}
         className={cn(
-          'group rounded-2xl border border-border/60 border-l-4 bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-[#1080CA]/40 hover:shadow-md',
+          'group rounded-2xl border border-border/60 border-l-4 bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md',
           pc.stripe,
           draggable && 'cursor-grab active:cursor-grabbing',
           isDragging && 'opacity-50 scale-[0.98]',
@@ -150,7 +150,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
               canOpenPatient ? <RouterLink
                 to={`/pacientes?paciente=${encodeURIComponent(tarefa.paciente_id)}`}
                 onClick={(event) => event.stopPropagation()}
-                className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs text-[#1080CA] hover:underline"
+                className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs text-primary hover:underline"
               >
                 <User2 className="h-3 w-3" /> {tarefa.paciente.nome}
               </RouterLink> : <span className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground"><User2 className="h-3 w-3" /> {tarefa.paciente.nome}</span>
@@ -168,7 +168,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
                   <User2 className="h-2.5 w-2.5" /> {tarefa.responsavel.nome.split(' ')[0]}
                 </span>
               ) : tarefaAberta(tarefa) && (
-                <button type="button" disabled={updating} onClick={() => onAssumir(tarefa)} aria-label={`Assumir tarefa ${tarefa.titulo}`} className="inline-flex items-center gap-0.5 rounded-full bg-[#1080CA]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#1080CA] hover:bg-[#1080CA]/20">
+                <button type="button" disabled={updating} onClick={() => onAssumir(tarefa)} aria-label={`Assumir tarefa ${tarefa.titulo}`} className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20">
                   <UserPlus className="h-2.5 w-2.5" /> Assumir
                 </button>
               )}
@@ -187,7 +187,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
           </div>
           <div className="flex shrink-0 flex-col">
             {tarefa.status === 'pendente' && (
-              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-[#1080CA]" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })} aria-label={`Iniciar tarefa ${tarefa.titulo}`} title="Iniciar tarefa">
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })} aria-label={`Iniciar tarefa ${tarefa.titulo}`} title="Iniciar tarefa">
                 <Clock className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -197,7 +197,7 @@ function KanbanCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, onDra
               </Button>
             )}
             {!tarefaAberta(tarefa) ? (
-              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-[#1080CA]" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`} title="Reabrir tarefa">
+              <Button size="icon" variant="ghost" className="h-11 w-11 p-0 text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`} title="Reabrir tarefa">
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             ) : (
@@ -229,7 +229,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
   return (
     <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
       <Card className={cn(
-        'group rounded-2xl border-border/60 border-l-4 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1080CA]/40 hover:shadow-md',
+        'group rounded-2xl border-border/60 border-l-4 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md',
         pc.stripe,
         vencida && 'ring-1 ring-destructive/30',
         tarefa.status === 'concluida' && 'opacity-60',
@@ -244,8 +244,8 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
               onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: tarefa.status === 'pendente' ? 'em_andamento' : 'concluida' })}
               className={cn(
                 'mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 transition-all sm:h-8 sm:w-8',
-                'border-border hover:border-[#1080CA] hover:bg-[#1080CA]/5 disabled:cursor-wait disabled:opacity-50',
-                tarefa.status === 'em_andamento' && 'border-[#1080CA] text-[#1080CA]',
+                'border-border hover:border-primary hover:bg-primary/5 disabled:cursor-wait disabled:opacity-50',
+                tarefa.status === 'em_andamento' && 'border-primary text-primary',
               )}
             >
               {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : tarefa.status === 'em_andamento' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
@@ -271,7 +271,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
                 {tarefa.paciente?.nome && (
                   canOpenPatient ? <RouterLink
                     to={`/pacientes?paciente=${encodeURIComponent(tarefa.paciente_id)}`}
-                    className="inline-flex min-h-11 items-center gap-1 text-[#1080CA] hover:underline"
+                    className="inline-flex min-h-11 items-center gap-1 text-primary hover:underline"
                   >
                     <User2 className="h-3 w-3" /> {tarefa.paciente.nome}
                   </RouterLink> : <span className="inline-flex min-h-11 items-center gap-1 text-muted-foreground"><User2 className="h-3 w-3" /> {tarefa.paciente.nome}</span>
@@ -279,7 +279,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
                 {tarefa.responsavel?.nome ? (
                   <span className="flex items-center gap-1"><User2 className="h-3 w-3" />{tarefa.responsavel.nome}</span>
                 ) : tarefaAberta(tarefa) && (
-                  <button type="button" disabled={updating} onClick={() => onAssumir(tarefa)} aria-label={`Assumir tarefa ${tarefa.titulo}`} className="inline-flex min-h-11 items-center gap-1 font-semibold text-[#1080CA] hover:underline">
+                  <button type="button" disabled={updating} onClick={() => onAssumir(tarefa)} aria-label={`Assumir tarefa ${tarefa.titulo}`} className="inline-flex min-h-11 items-center gap-1 font-semibold text-primary hover:underline">
                     <UserPlus className="h-3 w-3" /> Assumir
                   </button>
                 )}
@@ -294,7 +294,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
             </div>
             <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
               {tarefa.status === 'pendente' && (
-                <Button size="sm" variant="ghost" className="h-11 gap-1 text-xs text-[#1080CA]" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })}>
+                <Button size="sm" variant="ghost" className="h-11 gap-1 text-xs text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'em_andamento' })}>
                   <Clock className="h-3 w-3" /> Iniciar
                 </Button>
               )}
@@ -304,7 +304,7 @@ function TarefaCard({ tarefa, hoje, onUpdate, onDelete, onEdit, onAssumir, canOp
                 </Button>
               )}
               {!tarefaAberta(tarefa) ? (
-                <Button size="sm" variant="ghost" className="h-11 gap-1 text-xs text-[#1080CA]" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`}>
+                <Button size="sm" variant="ghost" className="h-11 gap-1 text-xs text-primary" disabled={updating} onClick={() => onUpdate({ id: tarefa.id, expectedUpdatedAt: tarefa.updated_at, status: 'pendente' })} aria-label={`Reabrir tarefa ${tarefa.titulo}`}>
                   <RotateCcw className="h-3 w-3" /> Reabrir
                 </Button>
               ) : (
@@ -678,9 +678,9 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
       {/* Stats */}
       <div role="group" aria-label="Filtrar tarefas por status" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {[
-          { label: 'Total', value: stats.total, icon: ListTodo, iconBg: 'bg-[#1080CA]/10', iconColor: 'text-[#1080CA]', filter: 'all' },
+          { label: 'Total', value: stats.total, icon: ListTodo, iconBg: 'bg-primary/10', iconColor: 'text-primary', filter: 'all' },
           { label: 'Pendentes', value: stats.pendentes, icon: Circle, iconBg: 'bg-warning/10', iconColor: 'text-warning-foreground', filter: 'pendente' },
-          { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, iconBg: 'bg-[#1080CA]/10', iconColor: 'text-[#1080CA]', filter: 'em_andamento' },
+          { label: 'Em Andamento', value: stats.emAndamento, icon: Clock, iconBg: 'bg-primary/10', iconColor: 'text-primary', filter: 'em_andamento' },
           { label: 'Concluídas', value: stats.concluidas, icon: CheckCircle2, iconBg: 'bg-success/10', iconColor: 'text-success', filter: 'concluida' },
           { label: 'Vence hoje', value: stats.hoje, icon: CalendarDays, iconBg: 'bg-warning/10', iconColor: 'text-warning-foreground', filter: 'today' },
           { label: 'Vencidas', value: stats.vencidas, icon: AlertTriangle, iconBg: 'bg-destructive/10', iconColor: 'text-destructive', filter: 'overdue' },
@@ -694,7 +694,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
                 onClick={() => setFilterStatus(s.filter)}
                 className={cn(
                   'flex min-h-[76px] w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md sm:gap-3 sm:px-4',
-                  ativo ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-[#1080CA]/40',
+                  ativo ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-primary/40',
                 )}
               >
                 <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.iconBg, s.iconColor, ativo && 'bg-white/15 text-white')}>
@@ -722,7 +722,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="relative w-full flex-1 sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input ref={searchInputRef} aria-label="Buscar tarefas" aria-keyshortcuts="/ Escape" placeholder="Buscar por tarefa, pessoa ou categoria... ( / )" value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 rounded-full pl-10 focus-visible:ring-[#1080CA]" />
+            <Input ref={searchInputRef} aria-label="Buscar tarefas" aria-keyshortcuts="/ Escape" placeholder="Buscar por tarefa, pessoa ou categoria... ( / )" value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 rounded-full pl-10 focus-visible:ring-primary" />
           </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger aria-label="Filtrar tarefas por status" className="h-11 w-full rounded-full sm:w-[180px]"><SelectValue /></SelectTrigger>
@@ -765,7 +765,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
                 onClick={() => setFiltroRapido(ativo ? 'none' : key)}
                 className={cn(
                   'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition',
-                  ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-background text-foreground hover:border-[#1080CA]/40 hover:text-[#1080CA]',
+                  ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-background text-foreground hover:border-primary/40 hover:text-primary',
                 )}
               >
                 <Icon className="h-3.5 w-3.5" /> {label}
@@ -836,7 +836,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
                 key={col.key}
                 className={cn(
                   'min-h-[340px] rounded-[22px] border border-border/60 bg-muted/40 p-3 transition-colors sm:min-h-[400px]',
-                  draggedTaskId && 'border-dashed border-[#1080CA]/50',
+                  draggedTaskId && 'border-dashed border-primary/50',
                 )}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, col.key)}

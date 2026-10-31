@@ -44,16 +44,16 @@ const planConfig: Record<string, {
 }> = {
   'elolab-max': {
     icon: <Crown className="h-7 w-7" />,
-    gradient: 'from-[#1080CA]/5 via-transparent to-transparent',
-    iconBg: 'bg-[#1080CA]/10 text-[#1080CA]',
+    gradient: 'from-primary/5 via-transparent to-transparent',
+    iconBg: 'bg-primary/10 text-primary',
     borderAccent: 'border-[#DCE6F2] hover:border-[#9CC7EC]',
     btnClass: '',
   },
   'elolab-ultra': {
     icon: <Sparkles className="h-7 w-7" />,
-    gradient: 'from-[#1080CA]/10 via-transparent to-transparent',
+    gradient: 'from-primary/10 via-transparent to-transparent',
     iconBg: 'bg-gradient-primary text-white',
-    borderAccent: 'border-[#BFD8EE] hover:border-[#1080CA]/60',
+    borderAccent: 'border-border hover:border-primary/60',
     btnClass: 'bg-gradient-primary text-white hover:brightness-110 shadow-[0_4px_12px_rgba(16,128,202,0.35)] border-0 rounded-full',
   },
 };
@@ -143,7 +143,7 @@ export default function Planos() {
     return (
       <div className="mx-auto max-w-2xl py-16">
         <div className="rounded-2xl border border-border/60 bg-card p-8 text-center shadow-xs">
-          <Shield className="mx-auto mb-4 h-10 w-10 text-[#1080CA]" />
+          <Shield className="mx-auto mb-4 h-10 w-10 text-primary" />
           <h1 className="text-2xl font-semibold">Acesso da plataforma</h1>
           <p className="mt-3 text-muted-foreground">
             Esta conta administra o EloLab e também pode acessar o app. Ela é isenta dos planos de cliente e não gera cobranças de assinatura.
@@ -180,7 +180,7 @@ export default function Planos() {
           </p>
         </div>
         {!hasActivePlan && elegibilidadeTesteConhecida && planos.some((plano) => Number(plano.trial_dias) > 0) && (
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#BFD8EE] bg-[#F3F8FC] px-4 py-2.5 text-sm font-medium text-[#1080CA]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-[#F3F8FC] px-4 py-2.5 text-sm font-medium text-primary">
             <Gift className="h-4 w-4" />
             {temTesteElegivel
               ? 'Há um teste grátis disponível para esta conta'
@@ -192,7 +192,7 @@ export default function Planos() {
       {hasActivePlan && <AvisoAlteracaoPlano />}
 
       {loadingBilling && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] px-4 py-3 text-sm text-[#1080CA]">
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-[#F3F8FC] px-4 py-3 text-sm text-primary">
           <Clock className="h-4 w-4" /> Confirmando a forma de cobrança da sua assinatura…
         </div>
       )}
@@ -205,7 +205,7 @@ export default function Planos() {
         </div>
       )}
       {pedidoAberto && (
-        <div role="status" className="flex flex-col gap-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-border bg-[#F3F8FC] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <span>Há um pagamento pendente para {planos?.find((plano) => plano.slug === pedidoAberto.plano_slug)?.nome ?? 'um plano'}. Conclua ou cancele esse pedido antes de escolher outro plano.</span>
           <Button type="button" size="sm" className="shrink-0 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
             Continuar pagamento
@@ -215,7 +215,7 @@ export default function Planos() {
 
       {/* Trial Banner */}
       {isTrial && trialEnd && (
-        <div className="rounded-2xl border border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)] p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="rounded-2xl border border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)] p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white">
               <Clock className="h-5 w-5" />
@@ -241,7 +241,7 @@ export default function Planos() {
 
       {/* Período pré-pago (Pix) */}
       {prePago && prePagoFim && (
-        <div className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${diasParaVencer !== null && diasParaVencer <= 7 ? 'border-warning/40 bg-warning/5' : 'border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]'}`}>
+        <div className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${diasParaVencer !== null && diasParaVencer <= 7 ? 'border-warning/40 bg-warning/5' : 'border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]'}`}>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white">
               <Clock className="h-5 w-5" />
@@ -320,7 +320,7 @@ export default function Planos() {
                 </div>
                 {!hasActivePlan && podeOferecerTrial && (
                   <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-                    <Gift className="h-3.5 w-3.5 text-[#1080CA]" />
+                    <Gift className="h-3.5 w-3.5 text-primary" />
                     {trialDias} dias grátis no cartão; depois, {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(plano.valor)} por {rotuloFrequencia(plano.frequencia)}
                   </p>
                 )}
@@ -341,7 +341,7 @@ export default function Planos() {
                       <li key={feature} className="flex items-start gap-3 text-sm">
                         <div className={cn(
                           'mt-0.5 shrink-0 rounded-full p-0.5',
-                          isCurrentPlan ? 'bg-white/20 text-white' : isPremium ? 'bg-success/10 text-success' : 'bg-[#1080CA]/10 text-[#1080CA]',
+                          isCurrentPlan ? 'bg-white/20 text-white' : isPremium ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary',
                         )}>
                           <Check className="h-3.5 w-3.5" strokeWidth={3} />
                         </div>
@@ -416,15 +416,15 @@ export default function Planos() {
       {/* Trust bar */}
       <div className="flex flex-wrap items-center justify-center gap-6 pt-4 text-sm text-muted-foreground">
         <a href="/politica-privacidade" className="flex items-center gap-2 underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Shield className="h-4 w-4 text-[#1080CA]" />
+          <Shield className="h-4 w-4 text-primary" />
           <span>Política de privacidade</span>
         </a>
         <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-[#1080CA]" />
+          <Clock className="h-4 w-4 text-primary" />
           <span>Cancelamento online pelo app</span>
         </div>
         <div className="flex items-center gap-2">
-          <CreditCard className="h-4 w-4 text-[#1080CA]" />
+          <CreditCard className="h-4 w-4 text-primary" />
           <span>Pagamento processado pelo Mercado Pago</span>
         </div>
       </div>

@@ -44,7 +44,7 @@ export function ConciliacaoConvenioPorLote({ clinicaId, lotes }: { clinicaId: st
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
           <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Scale className="h-4 w-4" /></span>
           Conciliação por lote
-          <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{divergentes} com diferença</Badge>
+          <Badge variant="outline" className="rounded-full border-border text-primary">{divergentes} com diferença</Badge>
         </CardTitle>
         <CardDescription>Compara o total recebido informado no retorno de cada lote com os lançamentos vinculados no financeiro. Nenhum lançamento é criado nesta tela; use “Atualizar retorno” no lote para conciliar a diferença conscientemente.</CardDescription>
       </CardHeader>

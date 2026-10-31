@@ -61,7 +61,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
 
 const ROLE_COLORS: Record<AppRole, string> = {
   admin: 'border-destructive/30 bg-destructive/10 text-destructive',
-  medico: 'border-[#BFD8EE] bg-[#F3F8FC] text-[#1080CA]',
+  medico: 'border-border bg-[#F3F8FC] text-primary',
   recepcao: 'border-success/30 bg-success/10 text-success',
   enfermagem: 'border-info/30 bg-info/10 text-info',
   financeiro: 'border-warning/30 bg-warning/10 text-warning',
@@ -303,7 +303,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
             { key: 'todos' as FiltroConta, icon: Users, label: 'Contas', caption: 'cadastradas na plataforma', color: 'text-white', surface: 'bg-white/20', destaque: true },
             { key: 'online' as FiltroConta, icon: Circle, label: 'Ativas agora', caption: 'acesso nos últimos 15 min', color: 'text-success', surface: 'bg-success/10', destaque: false },
             { key: 'bloqueados' as FiltroConta, icon: UserX, label: 'Bloqueadas', caption: 'login impedido', color: 'text-destructive', surface: 'bg-destructive/10', destaque: false },
-            { key: 'admins' as FiltroConta, icon: Shield, label: 'Administradores', caption: 'com função de admin', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', destaque: false },
+            { key: 'admins' as FiltroConta, icon: Shield, label: 'Administradores', caption: 'com função de admin', color: 'text-primary', surface: 'bg-primary/10', destaque: false },
             { key: 'nunca' as FiltroConta, icon: UserRoundX, label: 'Nunca acessaram', caption: 'convite sem primeiro login', color: 'text-warning', surface: 'bg-warning/10', destaque: false },
           ]).map((k) => {
             const Icon = k.icon;
@@ -315,10 +315,10 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
                 aria-pressed={ativo}
                 onClick={() => setFiltro(ativo ? 'todos' : k.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   k.destaque && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !k.destaque && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && k.destaque && 'ring-2 ring-[#1080CA]/60',
+                  ativo && !k.destaque && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && k.destaque && 'ring-2 ring-primary/60',
                 )}
               >
                 <div className="flex min-h-[88px] items-center gap-3 p-3">
@@ -350,7 +350,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                 <div className="relative w-full sm:w-80">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input aria-label="Buscar usuários" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar nome, e-mail, telefone ou função" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+                  <Input aria-label="Buscar usuários" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar nome, e-mail, telefone ou função" className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
                 </div>
                 {temFiltro && (
                   <Button variant="ghost" size="sm" className="h-10 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
@@ -407,7 +407,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
                               </div>
                               <span className="font-medium">{usuario.nome}</span>
                               {usuario.id === currentUser?.id && (
-                                <Badge variant="outline" className="rounded-full border-[#BFD8EE] px-1.5 py-0 text-[10px] text-[#1080CA]">Você</Badge>
+                                <Badge variant="outline" className="rounded-full border-border px-1.5 py-0 text-[10px] text-primary">Você</Badge>
                               )}
                             </div>
                           </TableCell>

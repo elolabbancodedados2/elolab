@@ -98,7 +98,7 @@ export default function AgenteIA() {
 
   const indicadores = [
     { key: 'conversations', label: 'Aguardando atendimento', value: aguardandoHumano, icon: Clock, escuro: true, color: '', bg: '' },
-    { key: 'sessions', label: 'Sessões conectadas', value: sessoesConectadas, icon: Smartphone, escuro: false, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
+    { key: 'sessions', label: 'Sessões conectadas', value: sessoesConectadas, icon: Smartphone, escuro: false, color: 'text-primary', bg: 'bg-primary/10' },
     { key: 'conversations', label: 'Conversas ativas', value: conversasAtivas, icon: MessageSquare, escuro: false, color: 'text-success', bg: 'bg-success/10' },
     { key: 'agents', label: 'Agentes configurados', value: agentesConfigurados, icon: Users, escuro: false, color: 'text-muted-foreground', bg: 'bg-muted' },
   ];
@@ -154,10 +154,10 @@ export default function AgenteIA() {
                 aria-pressed={isActive}
                 onClick={() => setActiveTab(indicator.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
                   indicator.escuro && 'border-transparent bg-gradient-primary text-white',
-                  !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
-                  indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                  !indicator.escuro && isActive && 'ring-2 ring-primary',
+                  indicator.escuro && isActive && 'ring-2 ring-primary',
                 )}
               >
                 <div className="flex items-center gap-3">

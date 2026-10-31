@@ -15,12 +15,12 @@ export function PatientSearchResult({ paciente, selecionado, detalhe, onSelect }
       type="button"
       aria-pressed={selecionado}
       onClick={() => onSelect(paciente.id)}
-      className={`flex w-full items-center gap-2.5 border-b border-[#DCE6F2] border-l-2 px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1080CA] ${
-        selecionado ? 'border-l-[#1080CA] bg-[#EEF4FA]' : 'border-l-transparent hover:bg-[#F3F8FC]'
+      className={`flex w-full items-center gap-2.5 border-b border-[#DCE6F2] border-l-2 px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+        selecionado ? 'border-l-primary bg-[#EEF4FA]' : 'border-l-transparent hover:bg-[#F3F8FC]'
       }`}
     >
       <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-        selecionado ? 'bg-gradient-primary text-white' : 'bg-[#1080CA]/10 text-[#1080CA]'
+        selecionado ? 'bg-gradient-primary text-white' : 'bg-primary/10 text-primary'
       }`}>
         {nome.slice(0, 2).toUpperCase()}
       </span>

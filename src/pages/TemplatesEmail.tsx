@@ -601,7 +601,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
   const indicadores: { key: StatusFilter; icon: typeof Mail; label: string; caption: string; count: number; color: string; surface: string; escuro?: boolean }[] = [
     { key: 'todos', icon: Mail, label: 'Modelos', caption: 'cadastrados na clínica', count: stats.total, color: 'text-white', surface: 'bg-white/15', escuro: true },
     { key: 'ativos', icon: CheckCircle2, label: 'Ativos', caption: 'enviando mensagens', count: stats.ativos, color: 'text-success', surface: 'bg-success/10' },
-    { key: 'inativos', icon: CircleSlash, label: 'Inativos', caption: 'pausados', count: stats.inativos, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
+    { key: 'inativos', icon: CircleSlash, label: 'Inativos', caption: 'pausados', count: stats.inativos, color: 'text-primary', surface: 'bg-primary/10' },
     { key: 'pendencias', icon: AlertTriangle, label: 'Com pendência', caption: 'variáveis sem valor', count: stats.pendencias, color: 'text-warning', surface: 'bg-warning/10' },
   ];
 
@@ -641,10 +641,10 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
                 aria-pressed={ativo}
                 onClick={() => setStatusFilter(ativo && ind.key !== 'todos' ? 'todos' : ind.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   ind.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
+                  ativo && !ind.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && ind.escuro && 'ring-2 ring-primary/60',
                 )}
               >
                 <div className="flex min-h-[88px] items-center gap-3 p-3">
@@ -675,7 +675,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
               onChange={event => setSearch(event.target.value)}
               placeholder="Buscar nome, assunto ou categoria..."
               aria-label="Buscar modelos de e-mail"
-              className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+              className="h-10 rounded-full pl-9 focus-visible:ring-primary"
             />
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -730,7 +730,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
                 <Layers className="h-4 w-4" />
               </span>
               <h2 id={`email-grupo-${grupo.key}`} className="text-base font-semibold text-foreground">{grupo.label}</h2>
-              <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{grupo.items.length}</Badge>
+              <Badge variant="outline" className="h-5 rounded-full border-border bg-white text-xs tabular-nums text-primary">{grupo.items.length}</Badge>
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {grupo.items.map(({ template, preview }) => (
@@ -752,7 +752,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
                       </Button>}
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[11px] text-[#1080CA]">{CATEGORIAS.find(c => c.value === template.categoria)?.label || template.categoria}</Badge>
+                      <Badge variant="outline" className="rounded-full border-border text-[11px] text-primary">{CATEGORIAS.find(c => c.value === template.categoria)?.label || template.categoria}</Badge>
                       <Badge variant="outline" className={cn('rounded-full text-[10px]', template.ativo ? 'border-success/30 bg-success/10 text-success' : 'border-border/60 text-muted-foreground')}>{template.ativo ? 'Ativo' : 'Inativo'}</Badge>
                     </div>
                   </CardHeader>
@@ -763,7 +763,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
                     </p>}
                     {template.conteudo && (
                       <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
-                        <summary className="cursor-pointer font-medium text-[#1080CA]">Ver conteúdo</summary>
+                        <summary className="cursor-pointer font-medium text-primary">Ver conteúdo</summary>
                         <div className="prose prose-sm mt-2 max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(preview.renderedContent) }} />
                       </details>
                     )}

@@ -371,9 +371,9 @@ export default function PlatformOnboarding() {
               aria-pressed={ativo}
               onClick={onClick}
               className={cn(
-                'rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                'rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
                 destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
-                ativo && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]/40',
+                ativo && !destaque && 'border-primary ring-1 ring-primary/40',
               )}
             >
               <div className="flex items-start justify-between gap-3">
@@ -393,7 +393,7 @@ export default function PlatformOnboarding() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-full min-w-56 flex-1 sm:w-auto">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica, responsável ou próxima ação" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" aria-label="Buscar onboarding" />
+            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica, responsável ou próxima ação" className="h-10 rounded-full pl-9 focus-visible:ring-primary" aria-label="Buscar onboarding" />
           </div>
           <Select value={stageFilter} onValueChange={setStageFilter}>
             <SelectTrigger className="h-10 w-full rounded-full sm:w-48" aria-label="Filtrar etapa"><SelectValue /></SelectTrigger>
@@ -422,7 +422,7 @@ export default function PlatformOnboarding() {
                   <Badge variant={item.stage === 'blocked' ? 'destructive' : item.stage === 'completed' ? 'outline' : 'secondary'} className={cn('rounded-full', item.stage === 'completed' && 'border-success/30 bg-success/10 text-success')}>
                     {stages.find(option => option.value === item.stage)?.label || item.stage}
                   </Badge>
-                  <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" onClick={() => openEditor(item)}>Atualizar plano</Button>
+                  <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-white hover:bg-primary hover:brightness-110" onClick={() => openEditor(item)}>Atualizar plano</Button>
                 </div>
               </div>
             </CardHeader>
@@ -439,7 +439,7 @@ export default function PlatformOnboarding() {
                   [`Equipe (${item.team_size})`, item.team_size > 1],
                   ['Primeiro uso', item.has_activity],
                 ] as Array<[string, boolean]>).map(([label, done]) => (
-                  <Badge key={label} variant={done ? 'outline' : 'secondary'} className={cn('rounded-full', done && 'border-[#BFD8EE] text-[#1080CA]')}>{done ? '✓' : '○'} {label}</Badge>
+                  <Badge key={label} variant={done ? 'outline' : 'secondary'} className={cn('rounded-full', done && 'border-border text-primary')}>{done ? '✓' : '○'} {label}</Badge>
                 ))}
               </div>
             </CardContent>

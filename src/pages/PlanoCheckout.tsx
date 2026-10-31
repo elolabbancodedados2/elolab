@@ -612,7 +612,7 @@ export default function PlanoCheckout() {
   }
   if (!plano) {
     return (
-      <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-[#BFD8EE] bg-[#F3F8FC] p-8 text-center">
+      <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-border bg-[#F3F8FC] p-8 text-center">
         <h1 className="font-semibold">Plano não encontrado</h1>
         <p className="mt-1 text-sm text-muted-foreground">O link pode estar desatualizado. Escolha um dos planos disponíveis.</p>
         <Button asChild className="mt-4 rounded-full" variant="outline"><Link to="/planos">Ver planos</Link></Button>

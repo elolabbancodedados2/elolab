@@ -311,7 +311,7 @@ export default function AceitarConvite() {
         <Logo className="relative z-10 mb-6" />
         <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
           <CardContent className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-[#1080CA]" aria-label="Verificando convite" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" aria-label="Verificando convite" />
           </CardContent>
         </Card>
       </div>
@@ -400,7 +400,7 @@ export default function AceitarConvite() {
                   {invitation.roles.map(role => (
                     <span
                       key={role}
-                      className="rounded-full border border-[#BFD8EE] bg-[#F3F8FC] px-3 py-1 text-sm text-[#1080CA]"
+                      className="rounded-full border border-border bg-[#F3F8FC] px-3 py-1 text-sm text-primary"
                     >
                       {roleLabels[role] || role}
                     </span>

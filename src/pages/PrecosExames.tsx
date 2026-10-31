@@ -460,7 +460,7 @@ function PrecosInternos({ task }: { task?: PriceTask }) {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+          <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
         </div>
         <Button onClick={() => navigation.open('/precos-servicos/exames/particular/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Exame
@@ -786,7 +786,7 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
         </div>
         <Select value={filterConvenio} onValueChange={setFilterConvenio}>
           <SelectTrigger aria-label="Filtrar por convênio" className="h-10 w-[200px] rounded-full"><SelectValue /></SelectTrigger>

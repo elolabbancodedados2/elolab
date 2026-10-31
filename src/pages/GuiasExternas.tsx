@@ -34,9 +34,9 @@ function formatarDataHoraSaoPaulo(value?: string | null, longo = false): string 
 }
 const STATUS_LABEL: Record<string, { label: string; variant: any; badge: string }> = {
   recebida: { label: 'Recebida', variant: 'secondary', badge: 'border-warning/40 bg-warning/10 text-warning-foreground' },
-  em_analise: { label: 'Em análise', variant: 'default', badge: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]' },
+  em_analise: { label: 'Em análise', variant: 'default', badge: 'border-primary/30 bg-primary/10 text-primary' },
   agendada: { label: 'Agendada', variant: 'default', badge: 'border-info/30 bg-info/10 text-info' },
-  encaminhada_fila: { label: 'Na fila', variant: 'default', badge: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]' },
+  encaminhada_fila: { label: 'Na fila', variant: 'default', badge: 'border-primary/30 bg-primary/10 text-primary' },
   finalizada: { label: 'Finalizada', variant: 'outline', badge: 'border-success/30 bg-success/10 text-success' },
   cancelada: { label: 'Cancelada', variant: 'destructive', badge: 'border-border bg-muted text-muted-foreground' },
 };
@@ -204,8 +204,8 @@ export default function GuiasExternas() {
               label: 'Em análise',
               caption: 'sendo avaliadas',
               value: counts.em_analise,
-              color: 'text-[#1080CA]',
-              surface: 'bg-[#1080CA]/10',
+              color: 'text-primary',
+              surface: 'bg-primary/10',
               escuro: false,
             },
             {
@@ -238,10 +238,10 @@ export default function GuiasExternas() {
                 aria-pressed={ativo}
                 onClick={() => toggleFiltro(s.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && s.escuro && 'ring-2 ring-primary/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -264,14 +264,14 @@ export default function GuiasExternas() {
 
       {/* Hero card — guia mais urgente */}
       {guiaMaisUrgente && (
-        <div className="rounded-2xl border border-[#1080CA]/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+        <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
               <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
                 <AlertTriangle className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-wide font-semibold text-[#1080CA]">Mais urgente · aguardando ação</p>
+                <p className="text-[11px] uppercase tracking-wide font-semibold text-primary">Mais urgente · aguardando ação</p>
                 <p className="text-lg font-bold text-foreground truncate">{guiaMaisUrgente.paciente_nome}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   {guiaMaisUrgente.medico_externo_nome && <span>Dr. {guiaMaisUrgente.medico_externo_nome}</span>}
@@ -291,7 +291,7 @@ export default function GuiasExternas() {
                     asChild
                     size="sm"
                     variant="outline"
-                    className="h-9 gap-1.5 rounded-full text-xs border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10"
+                    className="h-9 gap-1.5 rounded-full text-xs border-primary/30 text-primary hover:bg-primary/10"
                   >
                     <a href={waLink} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${guiaMaisUrgente.paciente_nome} via WhatsApp`}>
                       <Phone className="h-3.5 w-3.5" /> WhatsApp
@@ -320,7 +320,7 @@ export default function GuiasExternas() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Paciente, médico, convênio..."
-            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+            className="h-10 rounded-full pl-9 focus-visible:ring-primary"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -334,7 +334,7 @@ export default function GuiasExternas() {
                 'h-8 rounded-full border px-3 text-xs transition-all',
                 filterStatus === f.key
                   ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-                  : 'border-border/60 bg-card text-muted-foreground hover:border-[#1080CA]/40 hover:text-foreground',
+                  : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
               )}
             >
               {f.label}
@@ -467,7 +467,7 @@ export default function GuiasExternas() {
                                 asChild
                                 size="sm"
                                 variant="ghost"
-                                className="h-9 rounded-full px-2 text-xs text-[#1080CA] hover:bg-[#1080CA]/10"
+                                className="h-9 rounded-full px-2 text-xs text-primary hover:bg-primary/10"
                               >
                                 <a
                                   href={waLink}

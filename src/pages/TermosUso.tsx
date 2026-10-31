@@ -26,12 +26,12 @@ export default function TermosUso() {
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Termos de Uso</h1>
         </div>
 
-        <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-[#1080CA]">
+        <div className="prose prose-sm max-w-none space-y-6 rounded-2xl border border-[#DCE6F2] bg-card p-5 text-muted-foreground shadow-[0_8px_24px_rgba(16,128,202,0.06)] sm:p-8 prose-a:text-primary">
           <p className="text-xs">Última atualização: 7 de outubro de 2026</p>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. Aceitação dos Termos</h2>
-            <p>Ao acessar e utilizar o sistema EloLab, você concorda com estes Termos de Uso, com a <Link to="/politica-privacidade" className="text-[#1080CA] hover:underline">Política de Privacidade</Link> e com a <Link to="/politica-cookies" className="text-[#1080CA] hover:underline">Política de Cookies</Link>. Se não concordar, descontinue o uso imediatamente.</p>
+            <p>Ao acessar e utilizar o sistema EloLab, você concorda com estes Termos de Uso, com a <Link to="/politica-privacidade" className="text-primary hover:underline">Política de Privacidade</Link> e com a <Link to="/politica-cookies" className="text-primary hover:underline">Política de Cookies</Link>. Se não concordar, descontinue o uso imediatamente.</p>
           </section>
 
           <section>

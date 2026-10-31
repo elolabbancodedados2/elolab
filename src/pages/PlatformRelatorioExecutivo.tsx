@@ -160,7 +160,7 @@ export default function PlatformRelatorioExecutivo() {
                     {d.top_clients.map((client, index) => (
                       <tr key={client.clinica_id} className="border-t border-border/60 hover:bg-muted/40">
                         <td className="px-3 py-2">
-                          <Link to={`/admin/crm?busca=${encodeURIComponent(client.clinica_nome)}`} className="flex items-center gap-2 font-medium hover:text-[#1080CA]">
+                          <Link to={`/admin/crm?busca=${encodeURIComponent(client.clinica_nome)}`} className="flex items-center gap-2 font-medium hover:text-primary">
                             <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold', index === 0 ? 'bg-gradient-primary text-white' : 'bg-muted')}>{index + 1}</span>
                             {client.clinica_nome}
                           </Link>
@@ -199,7 +199,7 @@ function Metric({ icon: Icon, label, value, detail, href, alert = false, highlig
         highlight && 'border-transparent bg-gradient-primary text-white',
         alert && !highlight && 'border-warning/40',
       )}>
-        <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : alert ? 'bg-warning/10 text-warning' : 'bg-[#1080CA]/10 text-[#1080CA]')}><Icon className="h-5 w-5" /></span>
+        <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : alert ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary')}><Icon className="h-5 w-5" /></span>
         <p className={cn('mt-3 text-xs font-medium', highlight ? 'text-white/80' : 'text-muted-foreground')}>{label}</p>
         <p className={cn('mt-1 break-words text-2xl font-bold tracking-tight tabular-nums', alert && !highlight && 'text-warning')}>{value}</p>
         <p className={cn('text-[11px]', highlight ? 'text-white/70' : 'text-muted-foreground')}>{detail}</p>
@@ -216,7 +216,7 @@ function Section({ icon: Icon, title, href, linkLabel, children }: { icon: typeo
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-2">
         {children}
-        <Link to={href} className="mt-auto inline-flex items-center gap-1 pt-2 text-xs font-medium text-[#1080CA] hover:underline">{linkLabel}<ArrowRight className="h-3.5 w-3.5" /></Link>
+        <Link to={href} className="mt-auto inline-flex items-center gap-1 pt-2 text-xs font-medium text-primary hover:underline">{linkLabel}<ArrowRight className="h-3.5 w-3.5" /></Link>
       </CardContent>
     </Card>
   );

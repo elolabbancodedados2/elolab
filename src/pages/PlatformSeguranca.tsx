@@ -145,7 +145,7 @@ export default function PlatformSeguranca() {
           const content = (
             <Card className={cn('h-full rounded-2xl border-border/60 shadow-xs transition-all', href && 'group-hover:-translate-y-0.5 group-hover:shadow-md', main && 'border-transparent bg-gradient-primary text-white')}>
               <CardContent className="space-y-2 p-4">
-                <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', main ? 'bg-white/20 text-white' : 'bg-[#1080CA]/10 text-[#1080CA]')}><Icon className="h-5 w-5" /></span>
+                <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', main ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary')}><Icon className="h-5 w-5" /></span>
                 <p className="text-2xl font-bold tabular-nums">{metrics[key] ?? 0}</p>
                 <p className={cn('text-[11px] leading-tight', main ? 'text-white/75' : 'text-muted-foreground')}>{label}</p>
               </CardContent>
@@ -196,7 +196,7 @@ export default function PlatformSeguranca() {
         <CardHeader>
           <CardTitle>Ações sensíveis recentes</CardTitle>
           <CardDescription>{visibleActions.length} de {actions.length} eventos exibidos. A busca cobre os até 100 eventos mais recentes em módulos administrativos e de acesso assistido.</CardDescription>
-          <div className="relative pt-2"><Search aria-hidden="true" className="absolute left-3 top-5 h-4 w-4 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" value={actionSearch} onChange={(event) => setActionSearch(event.target.value)} placeholder="Buscar ação, módulo, pessoa ou registro" aria-label="Buscar ações sensíveis" /></div>
+          <div className="relative pt-2"><Search aria-hidden="true" className="absolute left-3 top-5 h-4 w-4 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-primary" value={actionSearch} onChange={(event) => setActionSearch(event.target.value)} placeholder="Buscar ação, módulo, pessoa ou registro" aria-label="Buscar ações sensíveis" /></div>
         </CardHeader>
         <CardContent className="space-y-2">
           {visibleActions.map(action => (

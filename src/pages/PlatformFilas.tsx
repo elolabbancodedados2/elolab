@@ -106,7 +106,7 @@ export default function PlatformFilas() {
   const stats: Array<{ label: string; value?: number; icon: typeof Bell; cor: string; filtro?: Filtro }> = [
     { label: 'Notificações com erro', value: metrics.notifications_failed, icon: BellOff, cor: 'bg-white/20 text-white', filtro: 'notif_erro' },
     { label: 'Notificações pendentes', value: metrics.notifications_pending, icon: Bell, cor: 'bg-warning/10 text-warning', filtro: 'notif_pendente' },
-    { label: 'Webhooks pendentes', value: metrics.webhooks_pending, icon: Clock3, cor: 'bg-[#1080CA]/10 text-[#1080CA]', filtro: 'webhook_pendente' },
+    { label: 'Webhooks pendentes', value: metrics.webhooks_pending, icon: Clock3, cor: 'bg-primary/10 text-primary', filtro: 'webhook_pendente' },
     { label: 'Falhas webhook 24h', value: metrics.webhooks_failed_24h, icon: AlertTriangle, cor: 'bg-destructive/10 text-destructive' },
   ];
   const emptyState = (message: string) => (
@@ -160,7 +160,7 @@ export default function PlatformFilas() {
               const className = cn(
                 'flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs',
                 i === 0 && 'border-transparent bg-gradient-primary text-white',
-                alvo && filtro === alvo && 'ring-2 ring-[#1080CA]/40',
+                alvo && filtro === alvo && 'ring-2 ring-primary/40',
               );
               return alvo ? (
                 <button key={label} type="button" aria-pressed={filtro === alvo} onClick={() => setFiltro(filtro === alvo ? 'todos' : alvo)} className={cn(className, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>{content}</button>
@@ -171,7 +171,7 @@ export default function PlatformFilas() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-0 flex-1 basis-60 sm:max-w-lg">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica, tipo, evento ou erro" aria-label="Buscar em notificações e webhooks" />
+              <Input className="h-10 rounded-full pl-9 focus-visible:ring-primary" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica, tipo, evento ou erro" aria-label="Buscar em notificações e webhooks" />
             </div>
             {hasFilter && <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={clearFilters}>Limpar filtros</Button>}
             <span className="ml-auto text-xs tabular-nums text-muted-foreground">{shown} de {allNotifications.length + allWebhooks.length}</span>
@@ -195,7 +195,7 @@ export default function PlatformFilas() {
                     </div>
                     <div className="flex gap-2">
                       <Badge variant={status.variant} className="rounded-full">{status.label}</Badge>
-                      {item.status === 'erro' && <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:brightness-110" disabled={busyJob !== null} onClick={() => void retry('notification', item.id)}><RotateCcw className={`mr-1 h-3 w-3 ${busyJob === jobKey ? 'animate-spin' : ''}`} />Reprocessar</Button>}
+                      {item.status === 'erro' && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-white hover:brightness-110" disabled={busyJob !== null} onClick={() => void retry('notification', item.id)}><RotateCcw className={`mr-1 h-3 w-3 ${busyJob === jobKey ? 'animate-spin' : ''}`} />Reprocessar</Button>}
                     </div>
                   </div>
                 );
@@ -221,7 +221,7 @@ export default function PlatformFilas() {
                     </div>
                     <div className="flex gap-2">
                       <Badge variant={item.processado ? 'outline' : item.erro_mensagem ? 'destructive' : 'secondary'} className={cn('rounded-full', item.processado && 'border-success/30 text-success')}>{item.processado ? 'Processado' : item.erro_mensagem ? 'Falhou' : 'Pendente'}</Badge>
-                      {!item.processado && <Button size="sm" className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:brightness-110" disabled={busyJob !== null} onClick={() => void retry('mercadopago', item.id)}><RotateCcw className={`mr-1 h-3 w-3 ${busyJob === jobKey ? 'animate-spin' : ''}`} />Reprocessar</Button>}
+                      {!item.processado && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-white hover:brightness-110" disabled={busyJob !== null} onClick={() => void retry('mercadopago', item.id)}><RotateCcw className={`mr-1 h-3 w-3 ${busyJob === jobKey ? 'animate-spin' : ''}`} />Reprocessar</Button>}
                     </div>
                   </div>
                 );

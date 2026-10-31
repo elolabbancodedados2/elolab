@@ -517,7 +517,7 @@ export default function CaixaDiario() {
                 <Button onClick={() => navigate('/recepcao/caixa/sangria', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-warning/30 text-warning-foreground hover:bg-warning/10">
                   <ArrowDownToLine className="h-4 w-4" /> Sangria
                 </Button>
-                <Button onClick={() => navigate('/recepcao/caixa/suprimento', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                <Button onClick={() => navigate('/recepcao/caixa/suprimento', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} variant="outline" className="h-11 gap-2 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
                   <ArrowUpFromLine className="h-4 w-4" /> Suprimento
                 </Button>
                 <Button onClick={() => imprimirRelatorioFechamento(caixaHoje, lancamentos)} variant="ghost" className="h-11 gap-2 rounded-full text-muted-foreground" title="Relatório parcial do caixa">
@@ -566,7 +566,7 @@ export default function CaixaDiario() {
               { key: 'receita', label: 'Receitas', caption: `${contagemPorTipo.receita} lançamento${contagemPorTipo.receita === 1 ? '' : 's'}`, value: totais.receita, icon: TrendingUp, color: 'text-success', surface: 'bg-success/10', escuro: false },
               { key: 'despesa', label: 'Despesas', caption: `${contagemPorTipo.despesa} saída${contagemPorTipo.despesa === 1 ? '' : 's'}`, value: totais.despesa, icon: TrendingDown, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
               { key: 'sangria', label: 'Sangrias', caption: `${contagemPorTipo.sangria} retirada${contagemPorTipo.sangria === 1 ? '' : 's'}`, value: totais.sangria, icon: ArrowDownToLine, color: 'text-warning-foreground', surface: 'bg-warning/10', escuro: false },
-              { key: 'suprimento', label: 'Suprimentos', caption: `${contagemPorTipo.suprimento} reposição${contagemPorTipo.suprimento === 1 ? '' : 's'}`, value: totais.suprimento, icon: ArrowUpFromLine, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+              { key: 'suprimento', label: 'Suprimentos', caption: `${contagemPorTipo.suprimento} reposição${contagemPorTipo.suprimento === 1 ? '' : 's'}`, value: totais.suprimento, icon: ArrowUpFromLine, color: 'text-primary', surface: 'bg-primary/10', escuro: false },
               {
                 key: 'todos',
                 label: totais.final < 0 ? 'Saldo negativo' : 'Saldo do dia',
@@ -596,21 +596,19 @@ export default function CaixaDiario() {
                         }
                       }}
                       className={cn(
-                        'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         card.escuro && 'border-transparent bg-gradient-primary text-white',
-                        ativo && !card.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                        ativo && card.escuro && 'ring-2 ring-[#1080CA]/60',
+                        ativo && !card.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                        ativo && card.escuro && 'ring-2 ring-primary/60',
                       )}
                     >
-                      <div className="flex min-h-[96px] items-center gap-3 p-3">
-                        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', card.surface)}>
-                          <Icon aria-hidden="true" className={cn('h-5 w-5', card.color)} />
+                      <div className="flex min-h-[88px] items-start gap-3 p-3">
+                        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', card.escuro ? 'bg-white/15' : 'bg-secondary')}>
+                          <Icon aria-hidden="true" className={cn('h-4 w-4', card.escuro ? 'text-white' : 'text-foreground')} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <h3 className={cn('truncate text-xs font-semibold', card.escuro ? 'text-white/80' : 'text-foreground')}>{card.label}</h3>
-                            <span className={cn('text-2xl font-bold tabular-nums', card.color)}>{fmt(card.value)}</span>
-                          </div>
+                          <h3 className={cn('truncate text-xs font-semibold', card.escuro ? 'text-white/80' : 'text-muted-foreground')}>{card.label}</h3>
+                          <span className={cn('block truncate text-xl font-bold tabular-nums', card.escuro ? 'text-white' : card.key === 'despesa' || card.key === 'sangria' ? 'text-destructive' : 'text-foreground')}>{fmt(card.value)}</span>
                           <p className={cn('truncate text-[11px]', card.escuro ? 'text-white/60' : 'text-muted-foreground')}>{card.caption}</p>
                         </div>
                       </div>
@@ -623,14 +621,14 @@ export default function CaixaDiario() {
 
           {/* Payment Breakdown */}
           {caixaHoje && totais.receita > 0 && (
-            <Card className="rounded-2xl border-[#1080CA]/20 shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
+            <Card className="rounded-2xl border-primary/20 shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2.5">
                   <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
                     <BarChart3 className="h-4 w-4" />
                   </span>
                   <CardTitle className="text-base font-semibold">Receitas por forma de pagamento</CardTitle>
-                  <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{Object.keys(breakdownFormas).length}</Badge>
+                  <Badge variant="outline" className="h-5 rounded-full border-border bg-white text-xs tabular-nums text-primary">{Object.keys(breakdownFormas).length}</Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -647,7 +645,7 @@ export default function CaixaDiario() {
                           <p className="text-xs text-muted-foreground capitalize">{FORMA_LABELS[forma] || forma}</p>
                           <p className="text-sm font-bold tabular-nums">{fmt(valor)}</p>
                         </div>
-                        <Badge variant="outline" className="rounded-full text-[10px] border-[#BFD8EE] text-[#1080CA]">{pct}%</Badge>
+                        <Badge variant="outline" className="rounded-full text-[10px] border-border text-primary">{pct}%</Badge>
                       </div>
                     );
                   })}
@@ -680,7 +678,7 @@ export default function CaixaDiario() {
                           onClick={() => setTipoFiltro(valor)}
                           className={cn(
                             'inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs font-semibold transition',
-                            tipoFiltro === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-muted-foreground hover:border-[#1080CA]/40 hover:text-foreground',
+                            tipoFiltro === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                           )}
                         >
                           {rotulo} <span className={cn('tabular-nums', tipoFiltro === valor ? 'text-white/70' : 'text-muted-foreground/70')}>{total}</span>
@@ -689,7 +687,7 @@ export default function CaixaDiario() {
                     </div>
                     <div className="relative">
                       <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input className="h-10 w-full rounded-full pl-9 text-sm focus-visible:ring-[#1080CA] sm:w-56" placeholder="Buscar movimentações..." aria-label="Buscar movimentações do caixa" value={searchTerm}
+                      <Input className="h-10 w-full rounded-full pl-9 text-sm focus-visible:ring-primary sm:w-56" placeholder="Buscar movimentações..." aria-label="Buscar movimentações do caixa" value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)} />
                     </div>
                     <Button variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => exportarCsv(lancamentosFiltrados, caixaHoje.data)} disabled={lancamentosFiltrados.length === 0} title="Exportar as movimentações filtradas em CSV">
@@ -720,7 +718,7 @@ export default function CaixaDiario() {
                         : 'Registre receitas, despesas ou sangrias'}
                     </p>
                     {tipoFiltro !== 'todos' && (
-                      <button type="button" onClick={() => setTipoFiltro('todos')} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium text-muted-foreground transition hover:border-[#1080CA]/40 hover:text-foreground">
+                      <button type="button" onClick={() => setTipoFiltro('todos')} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground">
                         <X className="h-3.5 w-3.5" /> Limpar filtro
                       </button>
                     )}
