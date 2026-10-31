@@ -403,21 +403,17 @@ test('admin dashboard puts the agenda and clinic priorities ahead of monthly ind
     await page.setViewportSize(viewport);
     await page.goto('/dashboard');
 
-    const dashboard = page.locator('[data-testid="admin-dashboard-overview"]');
-    await expect(dashboard.getByRole('heading', { name: 'Visão da clínica' })).toBeVisible();
-    await expect(dashboard.getByRole('heading', { name: 'Resumo de hoje' })).toBeVisible();
+    // Tela de Início aprovada em 30/10/2026: branco gelo, preto nos destaques, cor só em pendências.
+    const dashboard = page.locator('[data-testid="inicio-painel"]');
+    await expect(dashboard.getByRole('heading', { name: 'Início', exact: true })).toBeVisible();
+    await expect(dashboard.getByRole('heading', { name: 'Na sala de espera' })).toBeVisible();
     await expect(dashboard.getByRole('heading', { name: 'Agenda de hoje' })).toBeVisible();
     await expect(dashboard.getByRole('heading', { name: 'Precisa de atenção' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(dashboard.locator('.bg-gradient-primary')).toHaveCount(0);
     await expect(dashboard.locator('[style*="linear-gradient"]')).toHaveCount(0);
-    const confirmedStatus = dashboard.getByRole('region', { name: 'Agenda de hoje' }).getByText('Confirmado').first();
-    const confirmedStatusStyle = await confirmedStatus.evaluate(element => ({
-      backgroundImage: getComputedStyle(element).backgroundImage,
-      backgroundColor: getComputedStyle(element).backgroundColor,
-    }));
-    expect(confirmedStatusStyle.backgroundImage).toBe('none');
-    expect(confirmedStatusStyle.backgroundColor).toBe('rgb(20, 86, 192)');
+    const primeiraAcao = dashboard.getByRole('navigation', { name: 'Ações rápidas' }).getByRole('link').first().locator('span').first();
+    expect(await primeiraAcao.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(17, 18, 20)');
     await page.screenshot({ path: testInfo.outputPath(`admin-dashboard-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
     if (viewport.width === 375) {
       await dashboard.getByRole('heading', { name: 'Agenda de hoje' }).scrollIntoViewIfNeeded();
@@ -447,7 +443,7 @@ test('admin dashboard pauses partial metrics on an agenda error and recovers on 
 
   allowAgendaRequests = true;
   await error.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.locator('[data-testid="admin-dashboard-overview"]')).toBeVisible();
+  await expect(page.locator('[data-testid="inicio-painel"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Agenda de hoje' })).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

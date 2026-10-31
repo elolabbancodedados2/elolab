@@ -117,49 +117,49 @@
   :root {
     --button-ripple-color: rgba(17, 17, 17, 0.06);
 
-    /* EloLab: jade profundo, papel quente e coral de ação. */
-    --brand: 171 62% 27%;
+    /* EloLab app: branco gelo nos fundos, preto nos destaques, cor só para estado (aprovado em 30/10/2026). */
+    --brand: 220 8% 7%;
     --brand-foreground: 0 0% 100%;
-    --brand-light: 154 37% 91%;
-    --brand-hover: 171 62% 22%;
-    --brand-glow: 171 55% 38%;
-    --brand-dark: 172 48% 16%;
+    --brand-light: 214 26% 94%;
+    --brand-hover: 220 7% 18%;
+    --brand-glow: 220 7% 25%;
+    --brand-dark: 220 8% 7%;
 
-    /* Primary — jade profundo da marca. */
-    --primary: 171 62% 27%;
+    /* Primary — preto: botões principais, item ativo e foco. */
+    --primary: 220 8% 7%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 171 55% 38%;
+    --primary-glow: 220 7% 25%;
 
-    /* Coral identifica ações em destaque; texto escuro preserva contraste. */
-    --highlight: 15 88% 61%;
-    --highlight-foreground: 172 48% 16%;
+    /* Destaque também em preto; o app não usa cor decorativa. */
+    --highlight: 220 8% 7%;
+    --highlight-foreground: 0 0% 100%;
 
     /* Success — mantém o significado semântico, não muda */
     --success: 158 61% 29%;
     --success-foreground: 0 0% 100%;
 
-    /* Papel quente e tinta verde-escura da nova identidade. */
-    --background: 45 30% 97%;
-    --foreground: 172 34% 15%;
+    /* Branco gelo no fundo e tinta quase preta. */
+    --background: 210 33% 98%;
+    --foreground: 220 8% 7%;
 
     /* Cards — branco puro para contrastar com o fundo gelo */
     --card: 0 0% 100%;
-    --card-foreground: 172 34% 15%;
+    --card-foreground: 220 8% 7%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 172 34% 15%;
+    --popover-foreground: 220 8% 7%;
 
     /* Secondary */
-    --secondary: 150 20% 94%;
-    --secondary-foreground: 172 34% 15%;
+    --secondary: 214 26% 94%;
+    --secondary-foreground: 220 8% 7%;
 
     /* Muted */
-    --muted: 148 18% 94%;
-    --muted-foreground: 170 13% 39%;
+    --muted: 214 26% 94%;
+    --muted-foreground: 217 6% 46%;
 
     /* Accent */
-    --accent: 153 35% 91%;
-    --accent-foreground: 172 48% 16%;
+    --accent: 210 23% 96%;
+    --accent-foreground: 220 8% 7%;
 
     /* Destructive — mantém o significado semântico, não muda */
     --destructive: 0 72% 48%;
@@ -174,18 +174,18 @@
     --info-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 153 17% 86%;
-    --input: 153 16% 80%;
-    --ring: 171 62% 27%;
+    --border: 213 24% 91%;
+    --input: 215 16% 85%;
+    --ring: 220 8% 7%;
 
     --radius: 0.875rem;
 
-    /* Shadows — sombras tonalizadas para acompanhar o jade. */
-    --shadow-xs: 0 1px 2px 0 hsl(172 32% 15% / 0.04);
-    --shadow-sm: 0 1px 3px 0 hsl(172 32% 15% / 0.06), 0 1px 2px -1px hsl(172 32% 15% / 0.04);
-    --shadow-md: 0 6px 16px -6px hsl(172 32% 15% / 0.12), 0 2px 4px -2px hsl(172 32% 15% / 0.05);
-    --shadow-lg: 0 16px 32px -12px hsl(172 32% 15% / 0.18), 0 4px 8px -4px hsl(172 32% 15% / 0.06);
-    --shadow-xl: 0 28px 56px -16px hsl(172 32% 15% / 0.22), 0 8px 16px -6px hsl(172 32% 15% / 0.07);
+    /* Shadows — neutras e discretas. */
+    --shadow-xs: 0 1px 2px 0 hsl(220 8% 7% / 0.04);
+    --shadow-sm: 0 1px 3px 0 hsl(220 8% 7% / 0.06), 0 1px 2px -1px hsl(220 8% 7% / 0.04);
+    --shadow-md: 0 6px 16px -6px hsl(220 8% 7% / 0.10), 0 2px 4px -2px hsl(220 8% 7% / 0.05);
+    --shadow-lg: 0 16px 32px -12px hsl(220 8% 7% / 0.14), 0 4px 8px -4px hsl(220 8% 7% / 0.06);
+    --shadow-xl: 0 28px 56px -16px hsl(220 8% 7% / 0.18), 0 8px 16px -6px hsl(220 8% 7% / 0.07);
     --shadow-glow: var(--shadow-sm);
     --shadow-glow-success: var(--shadow-sm);
 
@@ -197,24 +197,24 @@
     --gradient-sidebar: hsl(var(--sidebar-background));
     --gradient-surface: hsl(var(--background));
 
-    /* Navegação profunda, com estados em jade claro. */
-    --sidebar-background: 172 48% 16%;
-    --sidebar-foreground: 148 35% 94%;
-    --sidebar-primary: 155 54% 72%;
-    --sidebar-primary-foreground: 172 48% 16%;
-    --sidebar-accent: 171 34% 24%;
-    --sidebar-accent-foreground: 148 35% 96%;
-    --sidebar-border: 171 28% 27%;
-    --sidebar-ring: 155 54% 72%;
-    --sidebar-muted: 171 22% 35%;
+    /* Menu lateral em branco gelo; item ativo em preto. */
+    --sidebar-background: 210 33% 98%;
+    --sidebar-foreground: 220 7% 25%;
+    --sidebar-primary: 220 8% 7%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 26% 94%;
+    --sidebar-accent-foreground: 220 8% 7%;
+    --sidebar-border: 213 24% 91%;
+    --sidebar-ring: 220 8% 7%;
+    --sidebar-muted: 218 7% 69%;
 
-    /* Charts */
-    --chart-1: 171 62% 27%;
-    --chart-2: 15 88% 61%;
-    --chart-3: 265 42% 56%;
-    --chart-4: 190 50% 44%;
-    --chart-5: 42 78% 56%;
-    --chart-6: 148 35% 55%;
+    /* Charts — tons de cinza com o preto como série principal. */
+    --chart-1: 220 8% 7%;
+    --chart-2: 219 6% 57%;
+    --chart-3: 218 8% 80%;
+    --chart-4: 220 7% 25%;
+    --chart-5: 218 7% 69%;
+    --chart-6: 217 6% 46%;
   }
 
 }

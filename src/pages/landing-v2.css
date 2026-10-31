@@ -1,3 +1,53 @@
+/* Página inicial pública: mantém as cores anteriores; o visual branco gelo e preto vale só para o app. */
+.landing-v2 {
+  --brand: 171 62% 27%;
+  --brand-foreground: 0 0% 100%;
+  --brand-light: 154 37% 91%;
+  --brand-hover: 171 62% 22%;
+  --brand-glow: 171 55% 38%;
+  --brand-dark: 172 48% 16%;
+  --primary: 171 62% 27%;
+  --primary-foreground: 0 0% 100%;
+  --primary-glow: 171 55% 38%;
+  --highlight: 15 88% 61%;
+  --highlight-foreground: 172 48% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 172 34% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 172 34% 15%;
+  --secondary: 150 20% 94%;
+  --secondary-foreground: 172 34% 15%;
+  --muted: 148 18% 94%;
+  --muted-foreground: 170 13% 39%;
+  --accent: 153 35% 91%;
+  --accent-foreground: 172 48% 16%;
+  --border: 153 17% 86%;
+  --input: 153 16% 80%;
+  --ring: 171 62% 27%;
+  --shadow-xs: 0 1px 2px 0 hsl(172 32% 15% / 0.04);
+  --shadow-sm: 0 1px 3px 0 hsl(172 32% 15% / 0.06), 0 1px 2px -1px hsl(172 32% 15% / 0.04);
+  --shadow-md: 0 6px 16px -6px hsl(172 32% 15% / 0.12), 0 2px 4px -2px hsl(172 32% 15% / 0.05);
+  --shadow-lg: 0 16px 32px -12px hsl(172 32% 15% / 0.18), 0 4px 8px -4px hsl(172 32% 15% / 0.06);
+  --shadow-xl: 0 28px 56px -16px hsl(172 32% 15% / 0.22), 0 8px 16px -6px hsl(172 32% 15% / 0.07);
+  --shadow-glow: var(--shadow-sm);
+  --shadow-glow-success: var(--shadow-sm);
+  --sidebar-background: 172 48% 16%;
+  --sidebar-foreground: 148 35% 94%;
+  --sidebar-primary: 155 54% 72%;
+  --sidebar-primary-foreground: 172 48% 16%;
+  --sidebar-accent: 171 34% 24%;
+  --sidebar-accent-foreground: 148 35% 96%;
+  --sidebar-border: 171 28% 27%;
+  --sidebar-ring: 155 54% 72%;
+  --sidebar-muted: 171 22% 35%;
+  --chart-1: 171 62% 27%;
+  --chart-2: 15 88% 61%;
+  --chart-3: 265 42% 56%;
+  --chart-4: 190 50% 44%;
+  --chart-5: 42 78% 56%;
+  --chart-6: 148 35% 55%;
+}
+
 .landing-v2 {
   --background: 216 55% 98%;
   --foreground: 217 54% 20%;
