@@ -138,7 +138,7 @@ test('reception cannot access price tasks directly', async ({ page }, info) => {
   await expect(page.getByRole('heading', { name: 'Acesso Negado', exact: true })).toBeVisible();
 });
 
-test('new particular price preserves other rows and returns to the cash price tab', async ({ page }, info) => {
+test('new particular price preserves other rows and returns to the price table tab', async ({ page }, info) => {
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false });
   await mock(page);
   let writes = 0;
@@ -148,7 +148,7 @@ test('new particular price preserves other rows and returns to the cash price ta
     writes++;
     return route.fulfill({ json: [{ id: 'config-qa' }] });
   });
-  await page.goto('/recepcao?tab=caixa');
+  await page.goto('/precos-servicos');
   await page.getByRole('tab', { name: 'Tabela de Preços', exact: true }).click();
   await page.getByRole('button', { name: 'Novo Exame', exact: true }).click();
   await expect(page).toHaveURL('/precos-servicos/exames/particular/novo');
@@ -158,7 +158,7 @@ test('new particular price preserves other rows and returns to the cash price ta
   await expect(page.getByRole('listbox')).toHaveCount(0);
   await page.getByLabel('Valor Particular (R$) *').fill('75');
   await page.getByRole('button', { name: 'Cadastrar Exame', exact: true }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/precos-servicos');
   await expect(page.getByRole('tab', { name: 'Tabela de Preços', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(writes).toBe(1);
 });

@@ -83,7 +83,7 @@ test('cash closing is a protected page, requires a reason for differences and re
   await expect(page.getByLabel('Dinheiro contado na gaveta (R$)')).toHaveValue('130,00');
   await expect(page.getByLabel(/Observações/)).toHaveValue('Diferença de troco');
   await confirm.click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({ p_caixa_id: cashId, p_valor_contado: 130, p_observacoes: 'Diferença de troco' });
   expect(payloads[1]).toMatchObject(payloads[0]);
@@ -147,7 +147,7 @@ test('cash closing keeps older registers distinct and allows a balanced count wi
   await expect(page.getByLabel(/Observações/)).toBeVisible();
   await expect(page.getByLabel(/Observações/)).toHaveValue('');
   await confirm.click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(1);
   expect(payloads[0]).toMatchObject({ p_caixa_id: cashId, p_valor_contado: 70, p_observacoes: null });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

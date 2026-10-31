@@ -19,7 +19,7 @@ for (const width of [1440, 768, 390]) {
     await page.goto('/gestao-fluxo?tab=espera&origem=qa');
     await page.getByRole('button', { name: 'Adicionar à Lista', exact: true }).click();
     await expect(page).toHaveURL('/gestao-fluxo/espera/nova');
-    await expect(page.getByRole('heading', { name: 'Adicionar à Lista de Espera', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Adicionar à lista de espera', exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath(`waiting-create-${width}.png`) });
     await fillRequest(page);

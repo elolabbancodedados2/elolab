@@ -99,7 +99,7 @@ test('finance can change a price with recovery but cannot edit consultation type
   await expect(page.getByRole('status').filter({ hasText: 'Somente administradores' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Criar', exact: true })).toHaveCount(0);
 });
-test('consultation type editing preserves saved colors and returns to its cash tab', async ({ page }, info) => {
+test('consultation type editing preserves saved colors and returns to its prices tab', async ({ page }, info) => {
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false });
   await mock(page);
   let updated = false;
@@ -111,12 +111,12 @@ test('consultation type editing preserves saved colors and returns to its cash t
     updated = true;
     return route.fulfill({ json: [{ id }] });
   });
-  await page.goto('/recepcao?tab=caixa');
+  await page.goto('/precos-servicos?tab=tipos');
   await page.getByRole('tab', { name: 'Tipos de Consulta', exact: true }).click();
   await page.getByRole('button', { name: 'Editar Consulta QA', exact: true }).click();
   await page.getByLabel('Nome *', { exact: true }).fill('Consulta QA revisada');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/precos-servicos?tab=tipos');
   await expect(page.getByRole('tab', { name: 'Tipos de Consulta', exact: true })).toHaveAttribute('data-state', 'active');
   await expect(page.getByRole('heading', { name: 'Tipos & Preços de Consulta', exact: true })).toBeVisible();
   expect(updated).toBe(true);

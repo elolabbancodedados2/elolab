@@ -32,7 +32,7 @@ test('cash opening has a protected page and retains the counted amount after an 
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/recepcao?tab=caixa');
+  await page.goto('/caixa-diario');
   await page.getByRole('button', { name: 'Abrir Caixa' }).first().click();
   await expect(page).toHaveURL('/recepcao/caixa/abrir');
   await expect(page.getByRole('heading', { name: 'Abrir caixa' })).toBeVisible();
@@ -62,7 +62,7 @@ test('cash opening has a protected page and retains the counted amount after an 
   await expect(page.getByText('Falha sintética ao abrir o caixa')).toBeVisible();
   await expect(page.getByLabel('Valor inicial em caixa (R$)')).toHaveValue('100,00');
   await page.getByRole('button', { name: 'Confirmar abertura' }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   await expect(page.getByRole('button', { name: 'Nova Venda' }).first()).toBeVisible();
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({ p_valor_abertura: 100 });

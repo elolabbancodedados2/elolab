@@ -48,7 +48,11 @@ test('admin solo vincula o perfil médico à mesma conta e grava disponibilidade
   await page.goto('/equipe?aba=medicos');
   await expect(page.getByText('Ana Médica QA')).toBeVisible();
   await page.getByRole('button', { name: 'Editar médico Ana Médica QA' }).click();
-  await expect(page.getByRole('heading', { name: 'Horários de Disponibilidade — Ana Médica QA' })).toBeVisible();
+  // A disponibilidade saiu da ficha de edição e ganhou página própria.
+  await page.getByRole('button', { name: 'Gerenciar disponibilidade', exact: true }).click();
+  await expect(page).toHaveURL(/\/equipe\/medicos\/[^/]+\/disponibilidade$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Disponibilidade do profissional' })).toBeVisible();
+  await expect(page.locator('#main-content').getByText('Dr(a). Ana Médica QA', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Adicionar novo horário' }).click();
   await page.getByLabel('Dia da semana').selectOption('1');

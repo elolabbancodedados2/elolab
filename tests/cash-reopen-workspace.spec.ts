@@ -55,7 +55,7 @@ test('cash reopening is an audited page, retains its reason on failure, and retr
   await expect(page.getByText('Falha sintética ao reabrir o caixa')).toBeVisible();
   await expect(page.getByLabel(/Motivo da reabertura/)).toHaveValue('Correção de lançamento após conferência.');
   await action.click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({ p_motivo: 'Correção de lançamento após conferência.' });
   expect(payloads[1]).toMatchObject(payloads[0]);
@@ -82,7 +82,7 @@ test('cash reopening recognizes a committed RPC when the response is lost', asyn
   await page.goto('/recepcao/caixa/reabrir');
   await page.getByLabel(/Motivo da reabertura/).fill('A reabertura foi registrada.');
   await page.getByRole('button', { name: 'Confirmar reabertura' }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(attempts).toBe(1);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

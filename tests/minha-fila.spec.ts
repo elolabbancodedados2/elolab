@@ -29,17 +29,19 @@ test('fila pessoal respeita o escopo da clínica, responsável e permite conclui
         const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
         return sum + linear * [0.2126, 0.7152, 0.0722][index];
       }, 0);
-      return { backgroundImage: style.backgroundImage, luminance };
+      return { backgroundImage: style.backgroundImage, luminance, borderWidth: parseFloat(style.borderTopWidth) };
     });
     expect(nextTaskSurface.backgroundImage).toBe('none');
-    expect(nextTaskSurface.luminance).toBeLessThan(0.1);
+    // Destaque claro com borda, no padrão do protótipo aprovado (sem bloco escuro).
+    expect(nextTaskSurface.luminance).toBeGreaterThan(0.8);
+    expect(nextTaskSurface.borderWidth).toBeGreaterThan(0);
     await expect(main.getByRole('navigation', { name: 'Ir para seção da fila' }).getByRole('button')).toHaveCount(5);
     await expect.poll(() => main.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/personal-tasks-${viewport.name}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/minha-fila');
-  await page.getByRole('button', { name: /Conta Online/ }).click();
+  await page.getByRole('button', { name: /^Perfil de / }).click();
   await expect(page.getByText('Clinic QA synthetic · Recepção')).toBeVisible();
   await page.keyboard.press('Escape');
   expect(synthetic.requests.some((entry) => entry.startsWith('GET /rest/v1/clinicas?')

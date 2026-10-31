@@ -55,7 +55,7 @@ test('sale lives on its own page and retries a committed sale with the same idem
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/recepcao?tab=caixa');
+  await page.goto('/caixa-diario');
   await page.getByRole('button', { name: 'Nova Venda' }).first().click();
   await expect(page).toHaveURL('/recepcao/caixa/venda');
   await expect(page.getByRole('heading', { name: 'Ponto de venda' })).toBeVisible();
@@ -89,7 +89,7 @@ test('sale lives on its own page and retries a committed sale with the same idem
   await expect(page.getByRole('alert')).toContainText('Falha sintética após confirmação da venda');
   await expect(page.getByRole('list', { name: 'Itens da venda' }).getByText('Consulta geral QA')).toBeVisible();
   await finalize.click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({
     p_descricao: 'Consulta geral QA', p_valor_cobrado: 85, p_valor_pago: 80,

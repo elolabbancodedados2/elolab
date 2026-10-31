@@ -64,7 +64,7 @@ test('cash movement editing uses a dedicated responsive page and retries the sam
   await expect(value).toHaveValue('251,45');
   await expect(page).toHaveURL(`/recepcao/caixa/lancamentos/${movementId}/editar`);
   await page.getByRole('button', { name: 'Salvar alterações' }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({ descricao: 'Compra de material de escritório', valor: 251.45, forma_pagamento: 'pix' });
   expect(payloads[1]).toMatchObject(payloads[0]);
@@ -96,7 +96,7 @@ test('cash movement edit protects unsaved changes and blocks linked receipts', a
   await expect(page.getByLabel('Descrição')).toHaveValue('Compra alterada QA');
   await page.getByRole('button', { name: 'Voltar ao caixa diário' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   await page.goto(`/recepcao/caixa/lancamentos/${receiptId}/editar`);
   await expect(page.getByRole('heading', { name: 'Lançamento não disponível para edição' })).toBeVisible();
   await expect(page.getByLabel('Descrição')).toHaveCount(0);

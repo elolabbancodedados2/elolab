@@ -155,7 +155,8 @@
 
     /* Muted */
     --muted: 214 26% 94%;
-    --muted-foreground: 217 6% 46%;
+    /* 42% mantém contraste AA (4,5:1) também sobre --muted, não só sobre o fundo. */
+    --muted-foreground: 217 6% 42%;
 
     /* Accent */
     --accent: 210 23% 96%;

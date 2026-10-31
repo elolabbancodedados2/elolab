@@ -92,7 +92,7 @@ test('agenda somente com canal ativo, destinatario da lista e confirmacao de Bra
   await expect.poll(() => preflights.length).toBeGreaterThan(0);
   expect(preflights[0]).toMatchObject({ action: 'preflight', dataset: 'lancamentos' });
   await expect(page.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' })).toBeVisible();
-  const save = page.getByRole('button', { name: 'Salvar relatório' });
+  const save = page.locator('#main-content').getByRole('button', { name: 'Salvar relatório' });
   await page.getByRole('checkbox', { name: 'Destinatário Financeiro QA (financeiro@qa.invalid)' }).check();
   await expect(save).toBeDisabled();
   await page.getByRole('checkbox', { name: 'Confirmo o fuso horário de Brasília' }).check();
@@ -125,7 +125,7 @@ test('bloqueia agenda quando o canal de e-mail nao esta ativo', async ({ page },
   await page.getByRole('combobox', { name: 'Frequencia de envio' }).click();
   await page.getByRole('option', { name: 'Diária' }).click();
   await expect(page.getByRole('alert')).toContainText('canal de e-mail está sem configuração válida ou indisponível');
-  await expect(page.getByRole('button', { name: 'Salvar relatório' })).toBeDisabled();
+  await expect(page.locator('#main-content').getByRole('button', { name: 'Salvar relatório' })).toBeDisabled();
   expect(writes).toBe(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
@@ -143,7 +143,7 @@ test('retorna ao construtor preservando os filtros em memória', async ({ page }
   await page.screenshot({ path: 'test-results/relatorio-salvar-desktop.png', fullPage: true });
   const originalViewport = page.viewportSize();
   await page.setViewportSize({ width: 390, height: 844 });
-  const saveAction = page.getByRole('button', { name: 'Salvar relatório' });
+  const saveAction = page.locator('#main-content').getByRole('button', { name: 'Salvar relatório' });
   await saveAction.scrollIntoViewIfNeeded();
   await expect(saveAction).toBeInViewport();
   await page.screenshot({ path: 'test-results/relatorio-salvar-mobile-action.png' });
