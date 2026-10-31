@@ -198,7 +198,7 @@ function PedidosWorkspace({ task }: { task?: PedidoTask }) {
   if (task) return <div className="space-y-5 pb-24 lg:pb-8">
     <UnsavedChangesGuard dirty={task === 'new' && dirty} busy={criarPedido.isPending} completed={completed} />
     <Button asChild variant="outline"><Link to="/laboratorio?aba=pedidos" state={listState}>Voltar aos pedidos</Link></Button>
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader title={task === 'new' ? 'Novo pedido laboratorial' : 'Histórico do pedido'} icon={<ClipboardList />} description={task === 'new' ? 'Identifique o paciente e reúna os exames solicitados. Confira os dados antes de registrar.' : 'Acompanhe os eventos e os exames vinculados a esta solicitação.'} />
       {task === 'new' ? <>
         {medicosQuery.isError && <ErrorState title="Não foi possível carregar os solicitantes" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />}

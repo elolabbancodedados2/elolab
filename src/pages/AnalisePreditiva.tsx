@@ -274,7 +274,7 @@ export default function AnalisePreditiva() {
       {/* Indicadores */}
       <section role="group" aria-label="Resumo do risco de faltas" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {([
-          { key: 'alto', icon: Siren, label: 'Alto risco', value: stats.altoRisco, caption: 'confirmar primeiro', color: 'text-white', surface: 'bg-white/15', escuro: true, filtro: 'alto' as const },
+          { key: 'alto', icon: Siren, label: 'Alto risco', value: stats.altoRisco, caption: 'confirmar primeiro', color: 'text-foreground', surface: 'bg-secondary', escuro: false, filtro: 'alto' as const },
           { key: 'medio', icon: AlertTriangle, label: 'Risco médio', value: stats.medioRisco, caption: 'vale um lembrete', color: 'text-warning', surface: 'bg-warning/10', escuro: false, filtro: 'medio' as const },
           { key: 'baixo', icon: CheckCircle2, label: 'Baixo risco', value: stats.baixoRisco, caption: 'tendem a comparecer', color: 'text-success', surface: 'bg-success/10', escuro: false, filtro: 'baixo' as const },
           { key: 'todos', icon: Users, label: 'Total', value: stats.total, caption: 'consultas com previsão', color: 'text-primary', surface: 'bg-primary/10', escuro: false, filtro: 'todos' as const },

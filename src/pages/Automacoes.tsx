@@ -517,7 +517,7 @@ export default function Automacoes() {
       <section aria-label="Indicadores de automações e mensagens">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {[
-            { key: 'fila', label: 'Na fila de envio', value: filaPendenteCount, icon: ListChecks, escuro: true, color: '', bg: '' },
+            { key: 'fila', label: 'Na fila de envio', value: filaPendenteCount, icon: ListChecks, escuro: false, color: '', bg: '' },
             { key: 'automacoes', label: 'Automações ativas', value: automacoesAtivasCount, icon: Bot, escuro: false, color: 'text-primary', bg: 'bg-primary/10' },
             { key: 'logs', label: 'Falhas nos logs', value: logsComErroCount, icon: AlertTriangle, escuro: false, color: 'text-warning', bg: 'bg-warning/10' },
             { key: 'erros-app', label: 'Erros do navegador', value: errosAppCount, icon: XCircle, escuro: false, color: 'text-destructive', bg: 'bg-destructive/10' },

@@ -658,7 +658,7 @@ export default function MapaColeta() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-6">
           {([
-            { key: 'pendente' as FiltroRapido, icon: Clock, label: 'Pendentes', caption: 'aguardando coleta', color: 'text-white', surface: 'bg-white/15', escuro: true },
+            { key: 'pendente' as FiltroRapido, icon: Clock, label: 'Pendentes', caption: 'aguardando coleta', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
             { key: 'recoleta' as FiltroRapido, icon: RotateCcw, label: 'Recoleta', caption: 'nova amostra necessária', color: 'text-destructive', surface: 'bg-destructive/10', escuro: false },
             { key: 'coletados' as FiltroRapido, icon: CheckCircle2, label: 'Coletados', caption: 'aguardando ou em análise', color: 'text-success', surface: 'bg-success/10', escuro: false },
             { key: 'urgente' as FiltroRapido, icon: Zap, label: 'Urgentes', caption: 'pendentes com prioridade', color: 'text-warning-foreground', surface: 'bg-warning/10', escuro: false },

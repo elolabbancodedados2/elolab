@@ -97,7 +97,7 @@ export default function AgenteIA() {
   const agentesConfigurados = agents.length;
 
   const indicadores = [
-    { key: 'conversations', label: 'Aguardando atendimento', value: aguardandoHumano, icon: Clock, escuro: true, color: '', bg: '' },
+    { key: 'conversations', label: 'Aguardando atendimento', value: aguardandoHumano, icon: Clock, escuro: false, color: '', bg: '' },
     { key: 'sessions', label: 'Sessões conectadas', value: sessoesConectadas, icon: Smartphone, escuro: false, color: 'text-primary', bg: 'bg-primary/10' },
     { key: 'conversations', label: 'Conversas ativas', value: conversasAtivas, icon: MessageSquare, escuro: false, color: 'text-success', bg: 'bg-success/10' },
     { key: 'agents', label: 'Agentes configurados', value: agentesConfigurados, icon: Users, escuro: false, color: 'text-muted-foreground', bg: 'bg-muted' },

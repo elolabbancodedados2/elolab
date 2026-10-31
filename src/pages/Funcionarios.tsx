@@ -596,7 +596,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
     : `${funcionarios.length} funcionário(s) · ${totalAtivos} ativo(s)${totalSemPermissao > 0 ? ` · ${totalSemPermissao} sem permissão` : ''}`;
 
   const indicadores = [
-    { key: 'sem_permissao' as const, label: 'Sem permissão', value: totalSemPermissao, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'ativos sem acesso definido' },
+    { key: 'sem_permissao' as const, label: 'Sem permissão', value: totalSemPermissao, icon: ShieldCheck, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'ativos sem acesso definido' },
     { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: CheckCircle, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'com acesso liberado' },
     { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'sem acesso ao sistema' },
     { key: 'todos' as const, label: 'Total', value: funcionarios.length, icon: Users, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'toda a equipe' },

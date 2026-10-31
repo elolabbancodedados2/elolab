@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
@@ -67,7 +68,9 @@ export function BarraStatus() {
           {profile.role && papeis[profile.role] ? ` · ${papeis[profile.role]}` : ''}
         </span>
       )}
-      <span className="ml-auto flex h-full items-center gap-1.5 border-l border-border px-3">
+      {/* No computador, os links legais ficam aqui em vez de um rodapé no meio de cada tela. */}
+      <Link to="/politica-privacidade" className="ml-auto flex h-full items-center border-l border-border px-3 hover:text-foreground">Privacidade e LGPD</Link>
+      <span className="flex h-full items-center gap-1.5 border-l border-border px-3">
         <kbd className={tecla}>Ctrl</kbd><kbd className={tecla}>K</kbd> buscar
       </span>
       <span className="flex h-full items-center border-l border-border px-3 tabular-nums text-foreground">{hora}</span>

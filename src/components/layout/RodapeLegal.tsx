@@ -20,7 +20,7 @@ const PAGINAS = [
 
 export function RodapeLegal() {
   return (
-    <footer className="mt-10 border-t pt-5 pb-2">
+    <footer className="mt-10 border-t pt-5 pb-2 lg:hidden">
       <nav
         aria-label="Links legais"
         className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
