@@ -2,20 +2,19 @@
 name: EloLab
 description: Plataforma clínica com leitura clara, identidade azul clínica e operação confiável.
 colors:
-  primary: "#1456C0"
-  brand-dark: "#0B2346"
-  accent-cyan: "#06B6D4"
-  background: "#F5F8FC"
-  foreground: "#172B4D"
+  primary: "#111214"
+  brand-dark: "#111214"
+  background: "#F7F9FB"
+  foreground: "#111214"
   card: "hsl(0 0% 100%)"
-  secondary: "#EAF2FF"
-  muted-foreground: "#61748B"
-  border: "#DFE7F0"
+  secondary: "#EEF1F5"
+  muted-foreground: "#6E737B"
+  border: "#E3E8EE"
   success: "hsl(152 69% 30%)"
   warning: "hsl(34 92% 42%)"
   destructive: "hsl(0 72% 48%)"
   info: "hsl(220 85% 52%)"
-  sidebar: "#0B2346"
+  sidebar: "#F7F9FB"
 typography:
   display:
     fontFamily: "Manrope, DM Sans, Inter, system-ui, sans-serif"
@@ -69,7 +68,7 @@ components:
 
 **Creative North Star: clínica precisa, clara e confiável.**
 
-EloLab usa azul primário para ações e foco, navy para estrutura e ciano para destaques funcionais pontuais. A interface prioriza leitura rápida e previsível durante o atendimento, sem tirar destaque de dados clínicos ou estados de segurança.
+O app EloLab usa branco gelo nos fundos, quadros brancos e preto nos botões, no item ativo e no foco. Cor aparece só para estado: vermelho para erro ou pendência, âmbar para atenção, verde para sucesso. Visual aprovado em 30/10/2026; a página inicial pública mantém as cores anteriores em `landing-v2.css`. A interface prioriza leitura rápida e previsível durante o atendimento, sem tirar destaque de dados clínicos ou estados de segurança.
 
 O sistema migra por módulo para Manrope nos títulos e DM Sans nos textos e controles. A barra global, o Dashboard e a Agenda já seguem essa tipografia; os demais módulos preservam Inter até passarem pela revisão. Cabeçalhos compactos, listas operacionais e formulários mantêm a densidade necessária para o trabalho diário. Superfícies são claras e neutras; cores semânticas continuam reservadas ao significado dos estados. Gradientes decorativos não fazem parte da identidade cromática.
 
@@ -77,8 +76,8 @@ A iconografia dos módulos migrados usa Phosphor Icons, com peso regular no repo
 
 **Key Characteristics:**
 
-- Identidade azul clínica com navy estrutural e ciano funcional.
-- Navegação estruturada em azul-noite e conteúdo em superfícies claras.
+- Branco gelo nos fundos e preto nos destaques; pouca cor.
+- Menu lateral em branco gelo com item ativo em preto.
 - Hierarquia compacta, consistente e voltada à leitura operacional.
 - Estados clínicos e financeiros mantêm cores semânticas próprias.
 
@@ -88,25 +87,23 @@ A paleta usa os tokens cromáticos EloLab abaixo e mantém estados semânticos s
 
 ### Primary
 
-- **Azul primário** (`#1456C0`): ações principais, seleção e foco.
-- **Navy** (`#0B2346`): navegação estrutural e superfícies escuras.
-- **Ciano** (`#06B6D4`): destaque funcional pontual; usar texto escuro quando aplicado como fundo.
+- **Preto** (`#111214`): ações principais, item ativo do menu, foco e série principal dos gráficos.
 
 ### Secondary
 
-- Ciano não substitui cores semânticas de sucesso, atenção, erro ou informação.
+- Tons de cinza (`#3B3E44`, `#6E737B`, `#A9ADB4`, `#C9CCD1`) separam séries e etapas sem usar cor.
 
 ### Neutral
 
-- **Fundo da interface** (`#F5F8FC`): plano geral das páginas.
-- **Texto principal** (`#172B4D`): títulos, dados e conteúdo.
+- **Fundo da interface** (`#F7F9FB`, branco gelo): plano geral das páginas e menu lateral.
+- **Texto principal** (`#111214`): títulos, dados e conteúdo.
 - **Superfície** (`#FFFFFF`): cartões, campos e painéis elevados.
-- **Superfície selecionada** (`#EAF2FF`): regiões ativas e filtros selecionados.
-- **Texto auxiliar** (`#61748B`): metadados e descrições.
-- **Borda** (`#DFE7F0`): contornos, separadores e limites de campo.
+- **Superfície selecionada** (`#EEF1F5`): regiões ativas, filtros e etiquetas neutras.
+- **Texto auxiliar** (`#6E737B`): metadados e descrições.
+- **Borda** (`#E3E8EE`): contornos, separadores e limites de campo.
 ### Named Rules
 
-**A Regra do Significado.** Azul identifica ação primária e foco; navy estrutura; ciano destaca estados ou dados somente quando tiver função. Verde, âmbar e vermelho continuam reservados a sucesso, atenção e erro. Não use cor semântica como decoração.
+**A Regra do Significado.** Preto identifica ação primária, seleção e foco; o resto é branco gelo e cinza. Verde, âmbar e vermelho continuam reservados a sucesso, atenção e erro. Não use cor semântica como decoração.
 
 ## Typography
 
