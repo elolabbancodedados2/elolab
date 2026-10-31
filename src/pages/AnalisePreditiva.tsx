@@ -330,7 +330,7 @@ export default function AnalisePreditiva() {
         const semContato = !maiorRisco.telefone && !maiorRisco.email;
         const enviando = enviandoLembreteId === maiorRisco.agendamento_id;
         return (
-          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
@@ -387,7 +387,7 @@ export default function AnalisePreditiva() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs tabular-nums text-muted-foreground">{predicoesFiltradas.length} de {predicoes.length}</span>
                 <Select value={filtroRisco} onValueChange={setFiltroRisco}>
-                  <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="h-10 w-full rounded-full border-[#DCE6F2] bg-white text-foreground sm:w-44">
+                  <SelectTrigger aria-label="Filtrar agendamentos por nível de risco de falta" className="h-10 w-full rounded-full border-border bg-white text-foreground sm:w-44">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -447,7 +447,7 @@ export default function AnalisePreditiva() {
             <div className="overflow-hidden rounded-xl border border-border/60">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-[#F3F8FC] hover:bg-[#F3F8FC]">
+                  <TableRow className="bg-secondary hover:bg-secondary">
                     <TableHead className="w-12">#</TableHead>
                     <TableHead>Paciente</TableHead>
                     <TableHead className="hidden md:table-cell">Consulta</TableHead>
@@ -546,7 +546,7 @@ export default function AnalisePreditiva() {
       </Card>
 
       {/* Como funciona */}
-      <Card className="rounded-2xl border-[#DCE6F2] bg-[#F3F8FC] shadow-none">
+      <Card className="rounded-2xl border-border bg-secondary shadow-none">
         <CardContent className="pt-4 pb-4">
           <div className="flex gap-3">
             <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">

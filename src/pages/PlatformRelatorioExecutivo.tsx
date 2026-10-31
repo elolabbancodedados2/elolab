@@ -153,7 +153,7 @@ export default function PlatformRelatorioExecutivo() {
             {d?.top_clients.length ? (
               <div className="overflow-x-auto rounded-xl border border-border/60">
                 <table className="w-full min-w-[640px] text-sm">
-                  <thead className="bg-[#F3F8FC] text-left text-xs text-muted-foreground">
+                  <thead className="bg-secondary text-left text-xs text-muted-foreground">
                     <tr><th className="px-3 py-2 font-medium">Clínica</th><th className="px-3 py-2 font-medium">Plano</th><th className="px-3 py-2 text-right font-medium">Receita mensal</th><th className="px-3 py-2 text-right font-medium">Pacientes</th><th className="px-3 py-2 text-right font-medium">Agendamentos</th><th className="px-3 py-2 font-medium">Uso</th></tr>
                   </thead>
                   <tbody>
@@ -223,5 +223,5 @@ function Section({ icon: Icon, title, href, linkLabel, children }: { icon: typeo
 }
 
 function Line({ label, value, alert = false }: { label: string; value: string | number; alert?: boolean }) {
-  return <div className="flex items-center justify-between rounded-xl bg-[#F3F8FC] px-3 py-2 text-sm"><span>{label}</span><strong className={cn('tabular-nums', alert && 'text-destructive')}>{value}</strong></div>;
+  return <div className="flex items-center justify-between rounded-xl bg-secondary px-3 py-2 text-sm"><span>{label}</span><strong className={cn('tabular-nums', alert && 'text-destructive')}>{value}</strong></div>;
 }

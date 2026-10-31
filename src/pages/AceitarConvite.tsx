@@ -307,9 +307,9 @@ export default function AceitarConvite() {
           backgroundPosition: 'center',
         }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-[#F3F8FC]/95 to-white/90 backdrop-blur-[2px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-secondary/95 to-white/90 backdrop-blur-[2px]" />
         <Logo className="relative z-10 mb-6" />
-        <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
+        <Card className="relative z-10 w-full max-w-md rounded-2xl border-border bg-card/95 shadow-[0_8px_24px_rgba(16,17,19,0.06)] backdrop-blur-sm">
           <CardContent className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" aria-label="Verificando convite" />
           </CardContent>
@@ -328,9 +328,9 @@ export default function AceitarConvite() {
           backgroundPosition: 'center',
         }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-[#F3F8FC]/95 to-white/90 backdrop-blur-[2px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-secondary/95 to-white/90 backdrop-blur-[2px]" />
         <Logo className="relative z-10 mb-6" />
-        <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
+        <Card className="relative z-10 w-full max-w-md rounded-2xl border-border bg-card/95 shadow-[0_8px_24px_rgba(16,17,19,0.06)] backdrop-blur-sm">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
               <XCircle className="h-8 w-8" aria-hidden="true" />
@@ -353,9 +353,9 @@ export default function AceitarConvite() {
         backgroundPosition: 'center',
       }}
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-[#F3F8FC]/95 to-white/90 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-secondary/95 to-white/90 backdrop-blur-[2px]" />
       <Logo className="relative z-10 mb-6" />
-      <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
+      <Card className="relative z-10 w-full max-w-md rounded-2xl border-border bg-card/95 shadow-[0_8px_24px_rgba(16,17,19,0.06)] backdrop-blur-sm">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
             <CheckCircle className="h-7 w-7" aria-hidden="true" />
@@ -388,7 +388,7 @@ export default function AceitarConvite() {
                 <Input
                   value={invitation?.email || ''}
                   disabled
-                  className="h-11 rounded-xl bg-[#F3F8FC] pl-10"
+                  className="h-11 rounded-xl bg-secondary pl-10"
                 />
               </div>
             </div>
@@ -400,7 +400,7 @@ export default function AceitarConvite() {
                   {invitation.roles.map(role => (
                     <span
                       key={role}
-                      className="rounded-full border border-border bg-[#F3F8FC] px-3 py-1 text-sm text-primary"
+                      className="rounded-full border border-border bg-secondary px-3 py-1 text-sm text-primary"
                     >
                       {roleLabels[role] || role}
                     </span>

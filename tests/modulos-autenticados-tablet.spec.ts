@@ -3,7 +3,10 @@ import { installSyntheticClinic } from './helpers/syntheticClinic';
 import { PROTECTED_ROUTES } from './helpers/protectedRoutes';
 
 test.use({ serviceWorkers: 'block' });
-test.describe.configure({ retries: 0 });
+test.describe.configure({ retries: 0, mode: 'parallel' });
+
+// Lotes de rotas: cada teste cabe no tempo limite e os lotes rodam em paralelo.
+const LOTE = 15;
 
 const CANONICAL_PATHS: Record<string, string> = {
   '/atestados': '/documentos-clinicos',
@@ -21,8 +24,10 @@ const CANONICAL_PATHS: Record<string, string> = {
   '/templates-email': '/todos-templates',
 };
 
-test('all protected routes fit tablet width with synthetic data', async ({ page }) => {
-  test.setTimeout(180_000);
+for (let inicio = 0; inicio < PROTECTED_ROUTES.length; inicio += LOTE) {
+const lote = PROTECTED_ROUTES.slice(inicio, inicio + LOTE);
+test(`protected routes fit tablet width with synthetic data (${inicio + 1}-${inicio + lote.length})`, async ({ page }) => {
+  test.setTimeout(120_000);
   const synthetic = await installSyntheticClinic(page);
   const failures: string[] = [];
   const pageErrors: string[] = [];
@@ -31,8 +36,7 @@ test('all protected routes fit tablet width with synthetic data', async ({ page 
   await page.goto('/dashboard');
   await expect(page.locator('#main-content')).toBeVisible({ timeout: 5_000 });
 
-  for (const [index, route] of PROTECTED_ROUTES.entries()) {
-    if (index % 20 === 0) console.log(`Tablet routes checked: ${index}/${PROTECTED_ROUTES.length}`);
+  for (const route of lote) {
     const errorCount = pageErrors.length;
     await page.goto(route);
     const content = route === '/painel-tv' ? page.locator('body') : page.locator('#main-content');
@@ -57,3 +61,4 @@ test('all protected routes fit tablet width with synthetic data', async ({ page 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
   expect(failures, failures.join('\n')).toEqual([]);
 });
+}

@@ -786,7 +786,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                     const whatsapp = linkWhatsApp(atestado.pacientes?.telefone, mensagemWhatsApp(atestado));
                     const vigente = afastamentoVigente(atestado, today);
                     return (
-                      <TableRow key={atestado.id} className="transition-colors hover:bg-[#F3F8FC]/70">
+                      <TableRow key={atestado.id} className="transition-colors hover:bg-secondary/70">
                         <TableCell className="tabular-nums">{atestado.data_emissao ? format(parseDateOnly(atestado.data_emissao)!, 'dd/MM/yyyy') : '—'}</TableCell>
                         <TableCell><Badge variant="outline" className={cn('rounded-full', getTipoBadge(atestado.tipo))}>{getTipoLabel(atestado.tipo)}</Badge></TableCell>
                         <TableCell className="font-medium">

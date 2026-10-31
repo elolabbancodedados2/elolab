@@ -35,11 +35,15 @@ async function authenticateFinance(
   appOrigin: string,
   accountsPopulated = false,
 ) {
+  // Com contas populadas, fixa o dia 15: vencimentos de "amanhã" não podem cair no mês seguinte.
+  const today = accountsPopulated ? `${currentClinicMonth()}-15` : undefined;
+  if (today) await page.clock.install({ time: new Date(`${today}T10:00:00-03:00`) });
   return installSyntheticClinic(page, {
     role: 'financeiro',
     platformAdmin: false,
     accountsPopulated,
     appOrigin,
+    today,
   });
 }
 
@@ -351,7 +355,7 @@ test('painel financeiro mantém resumo operacional com dados sintéticos em desk
   await expect(page.getByRole('button', { name: 'Em aberto', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText(/Manutenção preventiva dos equipamentos de diagnóstico/).first()).toBeVisible();
   await expect(page.getByText('Material de escritório quitado')).toHaveCount(0);
-  await expect(page.getByText('1 de 2', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('2 de 3', { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('contas-pagar-month-desktop.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

@@ -242,7 +242,7 @@ export default function PlatformIA() {
             <CardDescription>A publicação atualiza a configuração e grava a nova versão do prompt na mesma transação.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-secondary p-4">
               <div>
                 <Label htmlFor="ai-enabled">Assistente de IA habilitado</Label>
                 <p className="mt-1 text-xs text-muted-foreground">Desativar bloqueia novas chamadas do assistente clínico.</p>
@@ -312,7 +312,7 @@ export default function PlatformIA() {
           ) : versions.data?.length ? versions.data.map((version) => {
             const current = version.versao === config.data?.versao;
             return (
-              <div key={version.id} className={cn('flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3', current && 'border-border bg-[#F3F8FC]')}>
+              <div key={version.id} className={cn('flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3', current && 'border-border bg-secondary')}>
                 <div>
                   <p className="flex flex-wrap items-center gap-2 font-medium">Versão {version.versao} · {version.modelo}{current && <Badge className="rounded-full border-transparent bg-gradient-primary text-white">Em uso</Badge>}</p>
                   <p className="text-xs text-muted-foreground">Publicada em {formatDate(version.created_at)}</p>

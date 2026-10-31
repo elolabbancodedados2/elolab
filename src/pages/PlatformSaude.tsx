@@ -215,7 +215,7 @@ export default function PlatformSaude() {
             <ErrorState compact title="Não foi possível executar o diagnóstico das integrações" error={integracoes.error} onRetry={() => void atualizarDiagnostico()} />
           ) : integracoes.data?.checks?.length ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {integracoes.data.checks.map(check => <div key={check.id} className={cn('rounded-xl border border-border/60 bg-[#F3F8FC]/60 p-3', check.status === 'error' && 'border-destructive/40 bg-destructive/5')}><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{check.nome}</p><Badge variant={check.status === 'error' ? 'destructive' : 'outline'} className={cn('rounded-full', check.status === 'ok' && 'text-success border-success/30', check.status === 'warning' && 'text-warning border-warning/30')}>{check.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{check.detalhe}</p>{check.latencia_ms != null && <p className="mt-1 text-[10px] text-muted-foreground">{check.latencia_ms} ms</p>}</div>)}
+              {integracoes.data.checks.map(check => <div key={check.id} className={cn('rounded-xl border border-border/60 bg-secondary/60 p-3', check.status === 'error' && 'border-destructive/40 bg-destructive/5')}><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{check.nome}</p><Badge variant={check.status === 'error' ? 'destructive' : 'outline'} className={cn('rounded-full', check.status === 'ok' && 'text-success border-success/30', check.status === 'warning' && 'text-warning border-warning/30')}>{check.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{check.detalhe}</p>{check.latencia_ms != null && <p className="mt-1 text-[10px] text-muted-foreground">{check.latencia_ms} ms</p>}</div>)}
             </div>
           ) : (
             <p className="py-4 text-sm text-muted-foreground">A verificação não retornou serviços para exibir.</p>
@@ -385,7 +385,7 @@ function PilulaFiltro({ ativo, onClick, children }: { ativo: boolean; onClick: (
       onClick={onClick}
       className={cn(
         'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
       )}
     >
       {children}

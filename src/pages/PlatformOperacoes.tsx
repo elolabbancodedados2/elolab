@@ -255,7 +255,7 @@ export default function PlatformOperacoes() {
                 <div className="flex flex-wrap items-center gap-2"><b>{flag.nome}</b><span className="text-xs text-muted-foreground">Sem consumidor no app</span></div>
                 <p className="break-all text-xs text-muted-foreground">{flag.chave} · {flag.percentual}% · {flag.destino}</p>
               </div>
-              <Badge variant="outline" className={cn('rounded-full', flag.ativo && 'border-border bg-[#F3F8FC] text-primary')}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
+              <Badge variant="outline" className={cn('rounded-full', flag.ativo && 'border-border bg-secondary text-primary')}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
             </div>
           ))}
           {!flags.isLoading && !flags.isError && flags.data?.length === 0 && (

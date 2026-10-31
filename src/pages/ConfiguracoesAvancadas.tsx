@@ -267,7 +267,7 @@ export function IntegracoesTab() {
         <CardContent className="space-y-4">
           {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{mensagemDeErro(error)}</AlertDescription></Alert>}
           {integracoes.map(integracao => (
-            <div key={integracao.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/60 p-4 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
+            <div key={integracao.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/60 p-4 transition-colors hover:border-[#9CC7EC] hover:bg-secondary">
               <div className="flex-1">
                 <h3 className="font-semibold flex items-center gap-2">
                   <Zap aria-hidden="true" className="h-4 w-4 text-primary" />
@@ -376,7 +376,7 @@ export function EspecialidadesTab() {
         <CardContent>
           {especialidadesQuery.isError ? <ErrorState compact title="Não foi possível carregar as especialidades" error={especialidadesQuery.error} onRetry={() => void especialidadesQuery.refetch()} /> : especialidadesQuery.isLoading ? <div className="py-8 text-center text-sm text-muted-foreground">Carregando especialidades…</div> : especialidades.length === 0 ? <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground"><span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground"><Stethoscope className="h-6 w-6" /></span><p className="font-medium text-foreground">Nenhuma especialidade cadastrada.</p><p>Use "Nova Especialidade" para cadastrar a primeira.</p></div> : <div className="space-y-3">
             {especialidades.map(esp => (
-              <div key={esp.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
+              <div key={esp.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#9CC7EC] hover:bg-secondary">
                 <div>
                   <h3 className="font-semibold">{esp.nome}</h3>
                   <p className="text-sm text-muted-foreground">{esp.descricao}</p>
@@ -422,7 +422,7 @@ export function DocumentosTemplatesTab() {
             Abrir gerenciador
           </Button>
         </CardHeader>
-        <CardContent><Alert className="rounded-xl border-border bg-[#F3F8FC]"><FileText className="h-4 w-4 !text-primary" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
+        <CardContent><Alert className="rounded-xl border-border bg-secondary"><FileText className="h-4 w-4 !text-primary" /><AlertDescription>Os templates reais de prontuário, prescrição, atestado e e-mail ficam no gerenciador unificado. Alterações feitas lá são persistidas e usadas nos documentos clínicos.</AlertDescription></Alert></CardContent>
       </Card>
     </div>
   );
@@ -563,7 +563,7 @@ export function LGPDAvancadoTab() {
 
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
-      <Alert className="rounded-2xl border-border bg-[#F3F8FC]">
+      <Alert className="rounded-2xl border-border bg-secondary">
         <Shield className="h-4 w-4 !text-primary" />
         <AlertDescription className="text-sm text-foreground">
           Esta tela registra informações da clínica e lista solicitações pendentes. Salvar aqui não ativa automaticamente consentimento, retenção, backup, criptografia ou auditoria.

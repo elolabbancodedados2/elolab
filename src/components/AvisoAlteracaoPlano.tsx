@@ -36,7 +36,7 @@ export function AvisoAlteracaoPlano() {
   if (!avisos?.length) return null;
 
   return (
-    <div role="status" className="space-y-3 rounded-xl border border-border bg-[#F3F8FC] p-4 text-sm">
+    <div role="status" className="space-y-3 rounded-xl border border-border bg-secondary p-4 text-sm">
       {avisos.map((aviso) => {
         const limites = Object.keys(aviso.campos).some((campo) => campo !== 'valor');
         return (

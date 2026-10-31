@@ -593,7 +593,7 @@ export default function Configuracoes() {
                 ) : !hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
-                    <Button className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => navigate('/planos')}>
+                    <Button className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={() => navigate('/planos')}>
                       <CreditCard className="h-4 w-4" />
                       Escolher Plano
                     </Button>
@@ -956,7 +956,7 @@ export default function Configuracoes() {
                   </SettingRow>
                 </div>
                 <AccountSessionsPanel />
-                <div className="mt-6 space-y-3 rounded-xl border border-border bg-[#F3F8FC] p-4">
+                <div className="mt-6 space-y-3 rounded-xl border border-border bg-secondary p-4">
                   <div className="flex gap-3">
                     <Shield className="h-5 w-5 shrink-0 mt-0.5 text-primary" />
                     <div>

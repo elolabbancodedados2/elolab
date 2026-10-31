@@ -202,7 +202,7 @@ export default function PainelAdmin() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Solicitações em aberto</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.abertos}</p></div><Headset className="h-5 w-5 text-primary" /></div>
               <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Fora do prazo de resposta</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.sla_vencido}</p></div><Badge variant={data.support.sla_vencido ? 'destructive' : 'outline'} className="rounded-full">{data.support.sla_vencido ? 'Prioridade' : 'Em dia'}</Badge></div>
-              <Button asChild className="w-full rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"><Link to="/admin/suporte">Abrir central de suporte<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+              <Button asChild className="w-full rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110"><Link to="/admin/suporte">Abrir central de suporte<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
             </CardContent>
           </Card>
         </div>

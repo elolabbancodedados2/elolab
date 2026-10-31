@@ -762,7 +762,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
                       Modelo ativo com variáveis sem suporte para esta categoria: {preview.missingVariables.map(variable => `{{${variable}}}`).join(', ')}.
                     </p>}
                     {template.conteudo && (
-                      <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
+                      <details className="rounded-xl border border-border/60 bg-secondary p-2.5 text-xs">
                         <summary className="cursor-pointer font-medium text-primary">Ver conteúdo</summary>
                         <div className="prose prose-sm mt-2 max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(preview.renderedContent) }} />
                       </details>

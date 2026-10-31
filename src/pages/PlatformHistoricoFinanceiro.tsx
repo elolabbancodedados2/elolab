@@ -121,7 +121,7 @@ export default function PlatformHistoricoFinanceiro() {
               );
             })}
           </section>
-          <Card className="rounded-2xl border-border bg-[#F3F8FC] shadow-xs"><CardHeader><CardTitle className="text-base">Período de rastreamento</CardTitle><CardDescription>Eventos anteriores ao marco inicial não são reconstruídos artificialmente. {history.data?.tracking_since ? `Rastreamento desde ${dateTime(history.data.tracking_since)}.` : 'Ainda não há eventos para definir um marco inicial.'}</CardDescription></CardHeader></Card>
+          <Card className="rounded-2xl border-border bg-secondary shadow-xs"><CardHeader><CardTitle className="text-base">Período de rastreamento</CardTitle><CardDescription>Eventos anteriores ao marco inicial não são reconstruídos artificialmente. {history.data?.tracking_since ? `Rastreamento desde ${dateTime(history.data.tracking_since)}.` : 'Ainda não há eventos para definir um marco inicial.'}</CardDescription></CardHeader></Card>
           <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader>
               <CardTitle>Linha do tempo</CardTitle>
@@ -135,7 +135,7 @@ export default function PlatformHistoricoFinanceiro() {
             <CardContent className="space-y-2">
               {visibleEvents.map((event) => {
                 const delta = Number(event.mrr_delta || 0);
-                return <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
+                return <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-[#9CC7EC] hover:bg-secondary">
                   <div><p className="font-medium">{event.clinica_nome || 'Clínica não vinculada'}</p><p className="text-xs text-muted-foreground">{eventLabels[event.event_type] || event.event_type} · {event.old_plan_slug || event.old_status || '—'} → {event.new_plan_slug || event.new_status || '—'} · {dateTime(event.occurred_at)}</p><p className="text-xs text-muted-foreground">{sourceLabels[event.source] || event.source}</p></div>
                   <div className="flex items-center gap-2">{delta !== 0 && (delta > 0 ? <ArrowUpRight className="h-4 w-4 text-success" /> : <ArrowDownRight className="h-4 w-4 text-destructive" />)}<Badge variant={delta < 0 ? 'destructive' : 'outline'} className={cn('rounded-full tabular-nums', delta > 0 && 'border-success/30 bg-success/10 text-success')}>{delta > 0 ? '+' : ''}{currency(delta)}</Badge></div>
                 </article>;

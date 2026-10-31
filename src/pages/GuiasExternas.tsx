@@ -264,7 +264,7 @@ export default function GuiasExternas() {
 
       {/* Hero card — guia mais urgente */}
       {guiaMaisUrgente && (
-        <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+        <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
               <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
@@ -428,7 +428,7 @@ export default function GuiasExternas() {
                       `Olá, ${g.paciente_nome}! Entramos em contato sobre sua guia de exames.`,
                     );
                     return (
-                      <TableRow key={g.id} className="hover:bg-[#F3F8FC]/60">
+                      <TableRow key={g.id} className="hover:bg-secondary/60">
                         <TableCell>
                           <p className="font-medium">{g.paciente_nome}</p>
                           {g.paciente_cpf && <p className="text-xs text-muted-foreground">{g.paciente_cpf}</p>}

@@ -338,7 +338,7 @@ export default function PlatformLGPD() {
                   <p className="text-xs text-muted-foreground">{caso.status === 'pending' ? caso.base_legal || 'Base legal pendente' : `Atualizada em ${dateTime(caso.updated_at)}`}</p>
                 </div>
                 {caso.status === 'pending' ? <Button className="h-9 rounded-full bg-primary text-xs text-white hover:bg-primary hover:brightness-110" onClick={() => openDecision(caso)}>Registrar decisão</Button> : <span className="text-xs text-muted-foreground">Responsável: {caso.responsavel_id ? `${caso.responsavel_id.slice(0, 8)}…` : 'não registrado'}</span>}
-                {caso.evidencia && <p className="md:col-span-4 whitespace-pre-wrap rounded-lg bg-[#F3F8FC] p-2 text-xs">Registro: {caso.evidencia}</p>}
+                {caso.evidencia && <p className="md:col-span-4 whitespace-pre-wrap rounded-lg bg-secondary p-2 text-xs">Registro: {caso.evidencia}</p>}
               </article>
             );
           }) : (
@@ -356,7 +356,7 @@ export default function PlatformLGPD() {
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader><CardTitle>Políticas de retenção</CardTitle><CardDescription>Defina categoria, prazo de 1 a 360 meses e a base legal aplicável.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 rounded-xl bg-[#F3F8FC] p-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_9rem_minmax(16rem,2fr)_auto] lg:items-end">
+          <div className="grid gap-3 rounded-xl bg-secondary p-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_9rem_minmax(16rem,2fr)_auto] lg:items-end">
             <div className="space-y-2"><Label htmlFor="retention-category">Categoria</Label><Input id="retention-category" className="bg-card" value={categoria} maxLength={100} disabled={criarPolitica.isPending} onChange={(event) => setCategoria(event.target.value)} placeholder="Categoria" /></div>
             <div className="space-y-2"><Label htmlFor="retention-months">Meses</Label><Input id="retention-months" className="bg-card" type="number" min={1} max={360} step={1} value={meses} disabled={criarPolitica.isPending} onChange={(event) => setMeses(event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="retention-legal">Base legal</Label><Input id="retention-legal" className="bg-card" value={baseLegal} maxLength={1000} disabled={criarPolitica.isPending} onChange={(event) => setBaseLegal(event.target.value)} placeholder="Base legal e finalidade da retenção" /></div>

@@ -59,7 +59,8 @@ export default function HigieneSalas() {
       const { data, error } = await supabase.functions.invoke('higiene-salas', { body: { action: 'list' } });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      return data as Data;
+      // Resposta parcial (versão antiga da função) não pode derrubar a tela.
+      return { ...EMPTY, ...data, rooms: Array.isArray(data?.rooms) ? data.rooms : [], checklists: Array.isArray(data?.checklists) ? data.checklists : [], executions: Array.isArray(data?.executions) ? data.executions : [], reviews: Array.isArray(data?.reviews) ? data.reviews : [] } as Data;
     },
     refetchInterval: 30_000,
   });

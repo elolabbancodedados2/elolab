@@ -243,7 +243,7 @@ export default function PlatformErros() {
                   </div>
                   {erro.status === 'open' && <div className="flex gap-2">
                     <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={atualizandoGrupo !== null} onClick={() => atualizarGrupo(grupo, 'ignored')}>Ignorar</Button>
-                    <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" disabled={atualizandoGrupo !== null} onClick={() => atualizarGrupo(grupo, 'resolved')}>{atualizandoGrupo === `${erro.fingerprint || erro.id}:open` ? <RefreshCw className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}Resolver</Button>
+                    <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" disabled={atualizandoGrupo !== null} onClick={() => atualizarGrupo(grupo, 'resolved')}>{atualizandoGrupo === `${erro.fingerprint || erro.id}:open` ? <RefreshCw className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}Resolver</Button>
                   </div>}
                 </div>
               </div>

@@ -308,7 +308,7 @@ export default function PlatformRelatoriosAgendados() {
                     ) : recentRuns.length ? (
                       <ul className="space-y-2">
                         {recentRuns.map((run) => (
-                          <li key={run.id} className="flex flex-col gap-2 rounded-xl bg-[#F3F8FC] p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <li key={run.id} className="flex flex-col gap-2 rounded-xl bg-secondary p-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge variant={run.status === 'success' ? 'outline' : 'destructive'} className={cn('rounded-full', run.status === 'success' && 'border-success/40 text-success')}>{run.status === 'success' ? 'Enviado' : 'Falhou'}</Badge>
                               <span className="text-xs text-muted-foreground">{dateTime(run.created_at)} · {run.recipients_count} destinatário(s)</span>

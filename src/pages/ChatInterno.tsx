@@ -676,22 +676,22 @@ export default function ChatInterno() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs supports-[height:100dvh]:h-[calc(100dvh-3.5rem)]">
       {/* Header */}
-      <div className="bg-gradient-primary px-5 py-4 sm:px-6">
+      <div className="border-b border-border bg-card px-5 py-4 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20 text-white">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary text-foreground">
               <MessageSquare className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-white">Chat interno</h1>
-              <p className="text-sm text-white/60 truncate">
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Chat interno</h1>
+              <p className="text-sm text-muted-foreground truncate">
                 Comunicação da equipe • {teamMembers.filter(m => isOnline(m.ultimo_acesso)).length} online
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {totalNaoLidas > 0 && (
-              <Badge className="rounded-full bg-primary text-white">
+              <Badge className="rounded-full bg-primary text-primary-foreground">
                 {totalNaoLidas} não lidas
               </Badge>
             )}
@@ -699,7 +699,7 @@ export default function ChatInterno() {
               variant="ghost"
               size="icon"
               aria-label="Atualizar chat"
-              className="rounded-full text-white/80 hover:bg-white/15 hover:text-white"
+              className="rounded-full text-muted-foreground hover:text-foreground"
               onClick={() => { void recarregar(); void teamQuery.refetch(); void funcionariosQuery.refetch(); }}
               disabled={isRefreshing}
             >
@@ -724,7 +724,7 @@ export default function ChatInterno() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
-          'min-h-0 w-full md:w-80 border-r border-border/60 bg-[#F3F8FC] flex-shrink-0',
+          'min-h-0 w-full md:w-80 border-r border-border/60 bg-secondary flex-shrink-0',
           conversaAtiva ? 'hidden md:flex md:flex-col' : 'flex flex-col',
         )}>
           <ChatSidebar

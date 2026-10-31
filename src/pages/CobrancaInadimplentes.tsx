@@ -295,7 +295,7 @@ export default function CobrancaInadimplentes() {
         const whatsapp = linkWhatsApp(destaque.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), valorFormatado, destaque.dias));
         const vencimento = parseDateOnly(destaque.data_vencimento);
         return (
-          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">

@@ -488,7 +488,7 @@ export default function PlatformClinicas() {
                 onClick={() => setFiltroStatus(valor)}
                 className={cn(
                   'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                  filtroStatus === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                  filtroStatus === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                 )}
               >
                 {rotulo}

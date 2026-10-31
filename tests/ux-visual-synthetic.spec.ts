@@ -4336,7 +4336,10 @@ test('cashier page header and navigation fit desktop browser widths', async ({ p
 
 test('populated financial accounts show status, balance and row actions on desktop', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  // Dia 15 fixo: vencimentos de "amanhã" não podem cair no mês seguinte.
+  const today = `${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).format(new Date())}-15`;
+  await page.clock.install({ time: new Date(`${today}T10:00:00-03:00`) });
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true, today });
   const longRevenue = 'Procedimento ambulatorial de complexidade intermediária com descrição longa para revisar truncamento e leitura da lista';
   const longExpense = 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal';
 
@@ -4376,10 +4379,12 @@ test('populated financial accounts show status, balance and row actions on deskt
     await revenueDescription.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`contas-receber-populated-${viewport.width}.png`), animations: 'disabled' });
     await page.getByRole('button', { name: 'Receber saldo' }).first().click();
-    const receiveDialog = page.getByRole('dialog');
-    await expect(receiveDialog).toContainText('Registre o recebimento com o caixa do dia aberto.');
-    await page.keyboard.press('Escape');
-    await expect(receiveDialog).toBeHidden();
+    // O recebimento virou página própria, com volta para a lista.
+    const receivePage = page.getByTestId('receivable-payment-page');
+    await expect(page).toHaveURL(/\/contas\/receber\/[^/]+\/recebimento$/);
+    await expect(receivePage.getByRole('heading', { name: 'Confirmar Recebimento' })).toBeVisible();
+    await receivePage.getByRole('button', { name: 'Voltar às contas a receber' }).click();
+    await expect(receivePage).toHaveCount(0);
 
     await page.goto('/contas?tab=pagar');
     const overduePartialRow = page.getByRole('row').filter({ hasText: longExpense });
@@ -4395,11 +4400,11 @@ test('populated financial accounts show status, balance and row actions on deskt
     await overduePartialRow.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`contas-pagar-populated-${viewport.width}.png`), animations: 'disabled' });
     await overduePartialRow.getByRole('button', { name: /Pagar saldo/ }).click();
-    const paymentDialog = page.getByRole('dialog');
-    await expect(paymentDialog).toContainText('Confirmar Pagamento');
-    await expect(paymentDialog).toContainText('Registre o pagamento desta conta.');
-    await page.keyboard.press('Escape');
-    await expect(paymentDialog).toBeHidden();
+    // O pagamento também abre em página própria.
+    await expect(page).toHaveURL(/\/contas\/pagar\/[^/]+\/pagamento$/);
+    await expect(page.getByRole('heading', { name: 'Registrar pagamento da conta' })).toBeVisible();
+    await page.getByRole('button', { name: 'Voltar às contas a pagar' }).click();
+    await expect(page).toHaveURL(/\/contas/);
   }
 
   const pointReads = synthetic.writes.filter((write) => write.includes('/functions/v1/mercadopago-point'));

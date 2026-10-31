@@ -5,12 +5,15 @@ import { PROTECTED_ROUTES } from './helpers/protectedRoutes';
 test.use({ serviceWorkers: 'block' });
 
 test.describe('Auditoria autenticada de todas as rotas em desktop', () => {
-  test.describe.configure({ retries: 0 });
+  test.describe.configure({ retries: 0, mode: 'parallel' });
 
-  test('rotas de clínica, plataforma e aliases renderizam sem falhas', async ({ page }) => {
-    test.setTimeout(360_000);
+  // Lotes de rotas: cada teste cabe no tempo limite e os lotes rodam em paralelo.
+  const LOTE = 15;
+  for (let inicio = 0; inicio < PROTECTED_ROUTES.length; inicio += LOTE) {
+  const routes = PROTECTED_ROUTES.slice(inicio, inicio + LOTE);
+  test(`rotas de clínica, plataforma e aliases renderizam sem falhas (${inicio + 1}-${inicio + routes.length})`, async ({ page }) => {
+    test.setTimeout(150_000);
     const synthetic = await installSyntheticClinic(page);
-    const routes = PROTECTED_ROUTES;
     const failures: string[] = [];
     const viewports = [{ width: 1440, height: 900 }, { width: 1280, height: 800 }];
 
@@ -22,8 +25,7 @@ test.describe('Auditoria autenticada de todas as rotas em desktop', () => {
       await page.goto('/dashboard');
       await expect(page.locator('#main-content')).toBeVisible({ timeout: 5_000 });
 
-      for (const [index, route] of routes.entries()) {
-        if (index % 10 === 0) console.log(`${viewport.width}px — rotas verificadas: ${index}/${routes.length}`);
+      for (const route of routes) {
         const previousErrorCount = pageErrors.length;
         await page.goto(route);
         const content = route === '/painel-tv' ? page.locator('body') : page.locator('#main-content');
@@ -49,6 +51,7 @@ test.describe('Auditoria autenticada de todas as rotas em desktop', () => {
     expect(synthetic.assertAllWritesAreMocked()).toBe(true);
     expect(failures, failures.join('\n')).toEqual([]);
   });
+  }
 
   test('accessibility preferences change the tablet interface and save only to the synthetic backend', async ({ page }) => {
     test.setTimeout(30_000);

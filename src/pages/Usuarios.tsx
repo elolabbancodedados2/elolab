@@ -61,7 +61,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
 
 const ROLE_COLORS: Record<AppRole, string> = {
   admin: 'border-destructive/30 bg-destructive/10 text-destructive',
-  medico: 'border-border bg-[#F3F8FC] text-primary',
+  medico: 'border-border bg-secondary text-primary',
   recepcao: 'border-success/30 bg-success/10 text-success',
   enfermagem: 'border-info/30 bg-info/10 text-info',
   financeiro: 'border-warning/30 bg-warning/10 text-warning',
@@ -504,7 +504,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
                   {Object.entries(ROLE_LABELS).map(([key, label]) => {
                     const role = key as AppRole;
                     const checked = formData.roles?.includes(role) || false;
-                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#DCE6F2] px-3 hover:border-[#9CC7EC]">
+                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-xl border border-border px-3 hover:border-[#9CC7EC]">
                       <Checkbox checked={checked} onCheckedChange={(value) => setFormData((current) => ({
                         ...current,
                         roles: value === true

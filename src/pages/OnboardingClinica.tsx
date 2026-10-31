@@ -120,7 +120,7 @@ export default function OnboardingClinica() {
           </Button>
         </>}
       />
-      <Card className="rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+      <Card className="rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
         <CardContent className="pt-6">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Primeiros passos</p>
           <div className="mb-2 flex items-center justify-between gap-3 text-sm">
@@ -163,7 +163,7 @@ export default function OnboardingClinica() {
               <div className="min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
                   <CardTitle className="text-base">{step.key === 'whatsapp' ? title : `${overview.steps.slice(0, index + 1).filter((item) => item.key !== 'whatsapp').length}. ${title}`}</CardTitle>
-                  <Badge variant="outline" className={`rounded-full ${step.complete ? 'border-success/40 bg-success/10 text-success' : step.key === 'whatsapp' ? 'border-[#DCE6F2] text-muted-foreground' : 'border-border text-primary'}`}>{step.complete ? 'Concluída' : step.key === 'whatsapp' ? 'Opcional' : 'Pendente'}</Badge>
+                  <Badge variant="outline" className={`rounded-full ${step.complete ? 'border-success/40 bg-success/10 text-success' : step.key === 'whatsapp' ? 'border-border text-muted-foreground' : 'border-border text-primary'}`}>{step.complete ? 'Concluída' : step.key === 'whatsapp' ? 'Opcional' : 'Pendente'}</Badge>
                 </div>
                 <CardDescription>{description}</CardDescription>
               </div>
