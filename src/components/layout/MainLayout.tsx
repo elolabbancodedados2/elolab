@@ -18,6 +18,7 @@ import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 import { MobileTabBar } from './MobileTabBar';
 import { UpgradeNotice } from './UpgradeNotice';
+import { BarraStatus } from './BarraStatus';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -89,6 +90,7 @@ export function MainLayout() {
         </div>
       </div>
 
+      <BarraStatus />
       <ChatPanel />
       <OfflineIndicator />
     </div>
