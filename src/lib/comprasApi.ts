@@ -47,3 +47,29 @@ export function mensagemErroCompras(erro: unknown, padrao = 'Não foi possível 
   if (/failed to fetch|networkerror/i.test(mensagem)) return 'Sem conexão com o servidor. Verifique sua internet e tente novamente.';
   return ERRO_TECNICO.test(mensagem) ? padrao : mensagem;
 }
+
+/**
+ * Itens do estoque que já estão sendo comprados: em cotação aberta ou em
+ * pedido emitido que ainda não foi recebido.
+ */
+export async function buscarEstoqueEmCompra(clinicaId: string): Promise<Set<string>> {
+  const [cotacoes, pedidos] = await Promise.all([
+    supabase.from('cotacao_itens')
+      .select('estoque_id, cotacoes_compra!inner(status)')
+      .eq('clinica_id', clinicaId)
+      .eq('cotacoes_compra.status', 'aberta')
+      .not('estoque_id', 'is', null),
+    supabase.from('pedido_compra_itens')
+      .select('estoque_id, pedidos_compra!inner(status)')
+      .eq('clinica_id', clinicaId)
+      .eq('pedidos_compra.status', 'emitido')
+      .not('estoque_id', 'is', null),
+  ]);
+  if (cotacoes.error) throw cotacoes.error;
+  if (pedidos.error) throw pedidos.error;
+  const ids = new Set<string>();
+  for (const linha of [...(cotacoes.data ?? []), ...(pedidos.data ?? [])] as Array<{ estoque_id: string | null }>) {
+    if (linha.estoque_id) ids.add(linha.estoque_id);
+  }
+  return ids;
+}

@@ -99,6 +99,24 @@ describe('apoio das compras', () => {
     ]);
   });
 
+  it('usa o ponto de pedido quando ele é maior que o mínimo', () => {
+    expect(itensParaCotar([
+      { id: 'a', nome: 'Seringa', quantidade: 8, quantidade_minima: 5, ponto_pedido: 10, quantidade_maxima: 30 },
+      { id: 'b', nome: 'Máscara', quantidade: 11, quantidade_minima: 5, ponto_pedido: 10 },
+    ])).toEqual([{ estoque_id: 'a', descricao: 'Seringa', unidade: null, quantidade: 22 }]);
+  });
+
+  it('não cota de novo itens já em cotação aberta ou pedido não recebido', () => {
+    const estoque = [
+      { id: 'a', nome: 'Luva', quantidade: 2, quantidade_minima: 10 },
+      { id: 'b', nome: 'Gaze', quantidade: 1, quantidade_minima: 5 },
+      { id: 'c', nome: 'Álcool', quantidade: 0, quantidade_minima: 3 },
+    ];
+    const emCompra = new Set(['a', 'c', 'outro']);
+    expect(itensParaCotar(estoque, emCompra).map(i => i.estoque_id)).toEqual(['b']);
+    expect(itensParaCotar(estoque).length - itensParaCotar(estoque, emCompra).length).toBe(2);
+  });
+
   it('lê preços em formato brasileiro e rejeita texto inválido', () => {
     expect(lerPreco('12,50')).toBe(12.5);
     expect(lerPreco('1.234,56')).toBe(1234.56);
