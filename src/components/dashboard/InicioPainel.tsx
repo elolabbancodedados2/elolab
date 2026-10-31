@@ -215,7 +215,7 @@ export function InicioPainel({
           {agenda.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[#D3D8DF] p-4 text-sm text-[#6E737B]">
               Nenhuma consulta agendada para hoje.{' '}
-              <Link to="/agenda" className="font-semibold text-[#111214] underline underline-offset-4">Agendar consulta</Link>
+              <Link to="/agenda/nova" className="font-semibold text-[#111214] underline underline-offset-4">Agendar consulta</Link>
             </div>
           ) : (
             <ul className="divide-y divide-[#EEF1F5]">

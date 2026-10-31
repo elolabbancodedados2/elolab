@@ -885,10 +885,10 @@ function AdminDashboard() {
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2.5">
                   <Button asChild className="h-10 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
-                    <Link to="/agenda"><CalendarPlus className="h-4 w-4" />Novo atendimento<ArrowRight className="h-4 w-4" /></Link>
+                    <Link to="/agenda/nova"><CalendarPlus className="h-4 w-4" />Novo atendimento<ArrowRight className="h-4 w-4" /></Link>
                   </Button>
                   <Button asChild variant="outline" className="h-10 border-border bg-card/80 text-foreground hover:bg-card">
-                    <Link to="/pacientes"><UserPlus className="h-4 w-4" />Cadastrar paciente</Link>
+                    <Link to="/pacientes/novo"><UserPlus className="h-4 w-4" />Cadastrar paciente</Link>
                   </Button>
                   <Button asChild variant="ghost" className="h-10 gap-2 text-primary hover:bg-primary/5">
                     <Link to="/tour-inicial"><Sparkles className="h-4 w-4" />Conhecer o EloLab</Link>
@@ -1026,7 +1026,7 @@ function AdminDashboard() {
             ]}
             desempenho={{ percentual: stats.taxaFinalizacao, descricao: `${stats.consultasFinalizadas} de ${stats.totalHoje} consultas finalizadas hoje` }}
             fluxoFinanceiro={stats.monthlyChartData.some((item) => (Number.isFinite(item.receitas) && item.receitas !== 0) || (Number.isFinite(item.despesas) && item.despesas !== 0)) ? stats.monthlyChartData : []}
-            acoes={[{ label: 'Agendar consulta', href: '/agenda', icon: 'calendar' }, { label: 'Novo paciente', href: '/pacientes', icon: 'patient' }, { label: 'Abrir fila', href: '/fila', icon: 'queue' }, { label: 'Prontuários', href: '/prontuarios', icon: 'document' }]}
+            acoes={[{ label: 'Agendar consulta', href: '/agenda/nova', icon: 'calendar' }, { label: 'Novo paciente', href: '/pacientes/novo', icon: 'patient' }, { label: 'Abrir fila', href: '/fila', icon: 'queue' }, { label: 'Prontuários', href: '/prontuarios', icon: 'document' }]}
             confirmacoesAmanha={confirmacoesAmanha}
             ocupacaoSemana={agendamentosQuery.isError ? [] : ocupacaoSemana}
             falhas={falhas}

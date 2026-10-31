@@ -29,7 +29,7 @@ describe('InicioPainel', () => {
 
     const agenda = screen.getByRole('region', { name: 'Agenda de hoje' });
     expect(within(agenda).getByText(/Nenhuma consulta agendada para hoje/)).toBeInTheDocument();
-    expect(within(agenda).getByRole('link', { name: 'Agendar consulta' })).toHaveAttribute('href', '/agenda');
+    expect(within(agenda).getByRole('link', { name: 'Agendar consulta' })).toHaveAttribute('href', '/agenda/nova');
   });
 
   it('mostra a sala de espera e atualiza a fila', () => {
