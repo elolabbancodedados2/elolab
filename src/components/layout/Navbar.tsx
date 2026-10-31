@@ -28,7 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ContextualHelp } from '@/components/ContextualHelp';
 import { toast } from 'sonner';
 import { BarraHorario } from './BarraHorario';
-import logoHorizontalWhite from '@/assets/elolab-logo-identidade-dark.png';
+import logoHorizontalWhite from '@/assets/elolab-logo-identidade.png';
 import logoMark from '@/assets/elolab-symbol-identidade.png';
 import { getNavigationMode } from '@/config/sidebarMenu';
 
@@ -186,7 +186,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   return (
     <>
     <KeyboardShortcutsDialog />
-    <header data-elo-font-preview="shell" className="sticky top-0 z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-background/15 bg-foreground px-2 pt-[env(safe-area-inset-top)] text-background shadow-sm sm:gap-3 sm:px-4 md:px-5">
+    <header data-elo-font-preview="shell" className="navbar-gelo sticky top-0 z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-background/15 bg-foreground px-2 pt-[env(safe-area-inset-top)] text-background shadow-sm sm:gap-3 sm:px-4 md:px-5">
       {/* Left: Hamburger */}
       <Button
         variant="ghost"
