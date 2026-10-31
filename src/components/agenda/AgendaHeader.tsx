@@ -104,14 +104,27 @@ export function AgendaHeader(p: Props) {
     .map(([iso]) => parseISO(iso));
 
   return (
-    <div className="flex flex-col gap-3 rounded-[24px] border border-border/60 bg-card p-3 shadow-xs sm:gap-4 sm:p-5">
-      {/* Linha 1: título + navegação de data | ações principais */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-3 py-3 shadow-xs sm:px-4">
+      {/* Linha 1 (protótipo aprovado): título e visualização | data e ações */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-xl font-extrabold tracking-[-0.03em] text-foreground sm:text-[26px]">{label}</h1>
+            <h1 className="truncate text-xl font-extrabold tracking-[-0.02em] text-foreground sm:text-2xl">{label}</h1>
             {isToday && <Badge className="shrink-0 border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary">HOJE</Badge>}
           </div>
+          <div role="group" aria-label="Visualização da agenda" className="flex shrink-0 items-center gap-0.5 self-start rounded-full border border-border bg-muted/70 p-1">
+          <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'daily' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
+            <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
+          </Button>
+          <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'weekly' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
+            <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
+          </Button>
+          <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'monthly' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
+            <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
+          </Button>
+        </div>
+        </div>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
           <div className="flex w-full items-center rounded-full border border-border bg-card p-0.5 shadow-xs sm:w-auto sm:shrink-0">
             <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full sm:h-9 sm:w-9" onClick={() => nav(-1)} aria-label="Anterior">
               <ChevronLeft className="h-4 w-4" />
@@ -162,9 +175,7 @@ export function AgendaHeader(p: Props) {
               </>
             )}
           </div>
-        </div>
-
-        <div className="flex w-full items-center gap-2 lg:w-auto lg:justify-end">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <Button variant="outline" size="sm" onClick={p.onToggleWaiting} aria-label={`Alternar lista de espera${p.waitingCount ? `, ${p.waitingCount} pacientes` : ''}`} className={cn('hidden h-10 lg:inline-flex', pill)}>
             <Users2 className="h-4 w-4 md:mr-1.5" />
             <span className="hidden md:inline">Espera</span>
@@ -203,22 +214,11 @@ export function AgendaHeader(p: Props) {
             <Plus className="mr-1.5 h-4 w-4" /> <span className="whitespace-nowrap">Nova consulta</span>
           </Button>
         </div>
+        </div>
       </div>
 
-      {/* Linha 2: visualização + busca + filtros | totais */}
-      <div className="flex flex-col gap-2 2xl:flex-row 2xl:items-center">
-        <div role="group" aria-label="Visualização da agenda" className="flex shrink-0 items-center gap-0.5 self-start rounded-full border border-border bg-muted/70 p-1">
-          <Button aria-pressed={p.view === 'daily'} variant={p.view === 'daily' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'daily' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('daily')} aria-label="Visualização diária">
-            <List className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Dia</span>
-          </Button>
-          <Button aria-pressed={p.view === 'weekly'} variant={p.view === 'weekly' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'weekly' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('weekly')} aria-label="Visualização semanal">
-            <LayoutGrid className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Semana</span>
-          </Button>
-          <Button aria-pressed={p.view === 'monthly'} variant={p.view === 'monthly' ? 'default' : 'ghost'} size="sm" className={cn('h-9 rounded-full px-3', p.view === 'monthly' && 'bg-foreground text-background shadow-sm hover:bg-foreground/90')} onClick={() => p.onViewChange('monthly')} aria-label="Visualização mensal">
-            <CalendarDays className="h-3.5 w-3.5 md:mr-1" /> <span className="hidden md:inline">Mês</span>
-          </Button>
-        </div>
-
+      {/* Linha 2: busca e filtros | totais e legenda */}
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <div className="relative w-full min-w-0 sm:min-w-[240px] sm:max-w-sm sm:flex-1">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -305,28 +305,34 @@ export function AgendaHeader(p: Props) {
             }}>Limpar filtros</Button>
           )}
         </div>
-
-        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto px-1 pb-1 text-xs 2xl:w-auto 2xl:shrink-0 2xl:overflow-visible 2xl:pb-0">
+        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 text-xs sm:ml-auto">
           <Stat label="Total" value={p.totals.total} active={p.statusFilter.length === 0} onClick={() => toggleTotal('total')} />
           <Stat label="Conf." value={p.totals.confirmados} tone="success" active={sameFilter(p.statusFilter, TOTAL_FILTERS.confirmados)} onClick={() => toggleTotal('confirmados')} />
           <Stat label="Aguard." value={p.totals.aguardando} tone="warning" active={sameFilter(p.statusFilter, TOTAL_FILTERS.aguardando)} onClick={() => toggleTotal('aguardando')} />
           <Stat label="Canc." value={p.totals.cancelados} tone="destructive" active={sameFilter(p.statusFilter, TOTAL_FILTERS.cancelados)} onClick={() => toggleTotal('cancelados')} />
         </div>
+        {p.legend && p.legend.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-9 shrink-0 rounded-full px-3 text-xs text-muted-foreground">Legenda</Button>
+            </PopoverTrigger>
+            <PopoverContent data-elo-font-preview="agenda" align="end" className="w-64 rounded-xl p-3">
+              <ul aria-label="Legenda de cores da agenda" className="grid gap-1.5 text-xs text-muted-foreground">
+                {p.legend.map(item => (
+                  <li key={`${item.label}-${item.color}`} className="inline-flex items-center gap-2">
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: item.color }} />
+                    {item.label}
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
-
-      {p.legend && p.legend.length > 0 && (
-        <ul aria-label="Legenda de cores da agenda" className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-0.5 text-[11px] text-muted-foreground">
-          {p.legend.map(item => (
-            <li key={`${item.label}-${item.color}`} className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: item.color }} />
-              {item.label}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
+
 
 function Stat({ label, value, tone, active, onClick }: { label: string; value: number; tone?: 'success' | 'warning' | 'destructive'; active?: boolean; onClick: () => void }) {
   return (
