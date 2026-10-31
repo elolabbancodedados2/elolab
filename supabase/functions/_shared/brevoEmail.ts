@@ -85,7 +85,7 @@ function brandedFooter(): string {
   return `
           </td></tr>
           <tr><td style="padding:18px 28px;border-top:1px solid #e8edf2;font-family:Arial,Helvetica,sans-serif;color:#64748b;font-size:12px;line-height:1.5">
-            Mensagem autom?tica do EloLab. Em caso de d?vida, acesse o suporte pelo aplicativo.
+            Mensagem automática do EloLab. Em caso de dúvida, acesse o suporte pelo aplicativo.
           </td></tr>
         </table>
         <p style="margin:14px 0 0;font-family:Arial,Helvetica,sans-serif;color:#64748b;font-size:11px">EloLab · Gestão clínica com cuidado</p>
@@ -122,7 +122,10 @@ export async function sendBrevoEmail(input: BrevoEmailInput): Promise<Response> 
   const recipients = Array.isArray(input.to) ? input.to : [input.to];
   const payload: Record<string, unknown> = {
     sender: { name: input.senderName || 'EloLab', email: DEFAULT_SENDER },
-    to: recipients.map((recipient) => typeof recipient === 'string' ? { email: recipient } : recipient),
+    to: recipients.map((recipient) => typeof recipient === 'string' ? { email: recipient } : {
+      email: recipient.email,
+      ...(recipient.name?.trim() ? { name: recipient.name.trim() } : {}),
+    }),
     subject: input.subject,
     htmlContent: rendered.html,
     textContent: rendered.text,
