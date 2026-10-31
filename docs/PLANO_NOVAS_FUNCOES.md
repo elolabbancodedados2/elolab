@@ -12,8 +12,8 @@ com migration revisada e testada em ambiente local. Nada aqui altera o módulo f
 | Módulo | Situação hoje | O que falta na tela |
 | --- | --- | --- |
 | Recepção | Fluxo em colunas e lista | Modo "Linha do tempo" e painel do paciente à direita igual ao protótipo |
-| Agenda | Dia, semana, mês, painel de novo agendamento | Encaixe e bloqueio de horário direto no painel |
-| Pacientes | Fichas e lista | Painel lateral com alergias, convênio, saldo e últimas consultas |
+| Agenda | Dia, semana, mês, painel de novo agendamento e atalho de bloqueio (gestão de bloqueios já existia) | Encaixe direto no painel |
+| Pacientes | Fichas, lista e painel lateral com alergias, convênio e contato | Saldo e últimas consultas no painel |
 | Atendimento | Prontuário completo | Sinais vitais em faixa no topo, comandos com `/` para receita, exame e atestado |
 | Caixa | Novo visual publicado | Formas de pagamento em botões e recibo automático no painel |
 | Convênios e TISS | Lotes, glosas, conciliação | Visão de guias com situação da autorização |
@@ -35,9 +35,7 @@ Ordem sugerida por valor para a clínica e risco baixo:
 4. **Especialidades**
    - Odontograma (dentes, faces, procedimentos planejados e realizados) e fotos clínicas com marcação de pontos (dermatologia).
    - Tabelas: `odontograma_registros`, `fotos_clinicas` (arquivo no storage com a mesma regra de acesso do prontuário).
-5. **Agenda: bloqueios de horário**
-   - Já há migration de bloqueio; falta tela para bloquear período por profissional e mostrar o bloqueio hachurado na grade.
-6. **Configurações: matriz de permissões**
+5. **Configurações: matriz de permissões**
    - Já existem permissões no banco; falta a tela em matriz (perfil × módulo) do protótipo.
 
 ## Como cada função será entregue
