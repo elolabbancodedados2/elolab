@@ -36,10 +36,10 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
       className={({ isActive }) => {
         const itemIsActive = isItemActive(isActive);
         return cn(
-          'group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
+          'group relative flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-colors duration-150',
           'text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
           itemIsActive && !item.external && 'font-semibold',
-          itemIsActive && !item.external && 'bg-card text-sidebar-accent-foreground shadow-xs ring-1 ring-sidebar-border',
+          itemIsActive && !item.external && 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground',
           collapsed && 'justify-center px-2',
           !collapsed && 'ml-1'
         );
@@ -52,9 +52,9 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
           <div
             aria-hidden="true"
             tabIndex={-1}
-            className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150', isActive && !item.external && 'text-sidebar-primary')}
+            className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors duration-150', isActive && !item.external && 'text-sidebar-primary-foreground')}
           >
-            <Icon weight={isActive ? 'fill' : 'regular'} className="h-[18px] w-[18px] shrink-0 transition-colors duration-200" />
+            <Icon weight={isActive ? 'fill' : 'regular'} className="h-4 w-4 shrink-0 transition-colors duration-200" />
           </div>
 
           {/* Label */}
@@ -74,7 +74,7 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
                 'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold tabular-nums ring-1',
                 typeof item.badge === 'number'
                   ? isActive
-                    ? 'min-w-[18px] bg-sidebar-primary text-sidebar-primary-foreground ring-transparent'
+                    ? 'min-w-[18px] bg-white/20 text-sidebar-primary-foreground ring-transparent'
                     : 'min-w-[18px] bg-sidebar-muted text-sidebar-foreground ring-transparent'
                   : 'bg-sidebar-muted text-sidebar-foreground/80 ring-sidebar-border uppercase tracking-wide'
               )}

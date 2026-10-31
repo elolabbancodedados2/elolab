@@ -744,6 +744,12 @@ html[data-text-size='large'] {
 /* ─── Títulos de página (redesign) ───
    Muitas telas montam o próprio <h1> com um ícone na frente. Esta regra deixa
    o ícone igual ao do PageHeader: superfície neutra e cor primária. */
+/* O conteúdo recebe foco ao trocar de tela (leitores de tela); o contorno não aparece para quem vê. */
+#main-content:focus,
+#main-content:focus-visible {
+  outline: none;
+}
+
 #main-content h1 {
   letter-spacing: -0.03em;
 }
