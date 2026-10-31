@@ -202,7 +202,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Horários e agenda online', icon: CalendarRange, href: '/configuracoes?tab=horarios', roles: ['admin'] },
       { label: 'Integrações disponíveis', icon: Settings2, href: '/configuracoes?tab=integracoes', roles: ['admin'] },
       { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
-      { label: 'Especialidades, documentos e mais', icon: Settings2, href: '/configuracoes-avancadas', roles: ['admin'] },
+      { label: 'Configurações avançadas', icon: Settings2, href: '/configuracoes-avancadas', roles: ['admin'] },
       { label: 'Plano e assinatura', icon: CreditCard, href: '/planos', roles: ['admin'] },
     ],
   },

@@ -466,7 +466,7 @@ export default function Configuracoes() {
               {isCloudSynced ? 'Sincronizado' : 'Local'}
             </Badge>
             <Button asChild variant="outline" size="sm" className="rounded-full">
-              <Link to="/configuracoes-avancadas">Especialidades, documentos e mais</Link>
+              <Link to="/configuracoes-avancadas">Configurações avançadas</Link>
             </Button>
           </>
         }
