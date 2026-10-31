@@ -32,6 +32,7 @@ import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { ehMovimentoDoCaixa, origemExternaDoMovimento } from '@/lib/origemMovimentoCaixa';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -296,6 +297,11 @@ export default function CaixaDiario() {
   const deletarLancamentoMutation = useMutation({
     mutationFn: async (id: string) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
+      // Só exclui o que o próprio caixa lançou; repasse, convênio e baixas são corrigidos na tela de origem.
+      const movimento = lancamentos.find(l => l.id === id);
+      if (!movimento || !ehMovimentoDoCaixa(movimento)) {
+        throw new Error('Este lançamento veio de outro módulo e deve ser corrigido na tela de origem.');
+      }
       const { data, error } = await supabase.from('lancamentos').delete()
         .eq('id', id).eq('clinica_id', profile.clinica_id).select('id');
       if (error) throw error;
@@ -777,7 +783,25 @@ export default function CaixaDiario() {
                                         </Button>
                                       </>
                                     )}
-                                    {l.tipo !== 'receita' && !l.origem_pagamento && (
+                                    {l.tipo !== 'receita' && !ehMovimentoDoCaixa(l) && (() => {
+                                      const origem = origemExternaDoMovimento(l);
+                                      if (!origem) return null;
+                                      const etiqueta = (
+                                        <Badge variant="outline" className="rounded-full text-xs font-normal text-muted-foreground">
+                                          {origem.rotulo}
+                                        </Badge>
+                                      );
+                                      return origem.rota ? (
+                                        <Button variant="ghost" size="sm" className="h-9 gap-1 rounded-full px-2 text-xs"
+                                          title={`${origem.descricao}. Corrija na tela de origem.`}
+                                          aria-label={`${origem.descricao}: abrir ${origem.rotulo}`}
+                                          onClick={() => navigate(origem.rota!)}>
+                                          {etiqueta}
+                                          <ChevronRight className="h-3.5 w-3.5" />
+                                        </Button>
+                                      ) : <span title={origem.descricao}>{etiqueta}</span>;
+                                    })()}
+                                    {ehMovimentoDoCaixa(l) && (
                                       <>
                                         <Button variant="ghost" size="icon" aria-label="Excluir lançamento" className="h-9 w-9 rounded-full text-destructive hover:text-destructive"
                                           onClick={() => setConfirmDelete(l.id)}>

@@ -13,7 +13,7 @@ test('cash movement editing uses a dedicated responsive page and retries the sam
   const movementId = '00000000-0000-4000-9000-000000000085';
   const movement = {
     id: movementId, tipo: 'despesa', descricao: 'Material de escritório QA', valor: 250,
-    forma_pagamento: 'dinheiro', categoria: 'administrativo', data: today,
+    forma_pagamento: 'dinheiro', categoria: 'Material de escritório', data: today,
     created_at: `${today}T14:00:00-03:00`, origem_pagamento: false,
   };
   const payloads: Record<string, unknown>[] = [];
@@ -75,16 +75,19 @@ test('cash movement edit protects unsaved changes and blocks linked receipts', a
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'financeiro' });
   const movementId = '00000000-0000-4000-9000-000000000086';
   const receiptId = '00000000-0000-4000-9000-000000000087';
+  const payoutId = '00000000-0000-4000-9000-000000000088';
   const movement = {
     id: movementId, tipo: 'despesa', descricao: 'Compra QA', valor: 25,
-    forma_pagamento: 'pix', categoria: 'administrativo', data: todaySaoPaulo(),
+    forma_pagamento: 'pix', categoria: 'Material de escritório', data: todaySaoPaulo(),
     created_at: `${todaySaoPaulo()}T10:00:00-03:00`, origem_pagamento: false,
   };
   await page.route('**/rest/v1/rpc/movimentos_caixa_diario**', route => {
     const url = new URL(route.request().url());
     const id = url.searchParams.get('id')?.replace('eq.', '');
     const linkedReceipt = { ...movement, id: receiptId, tipo: 'receita', origem_pagamento: true };
-    return route.fulfill({ status: 200, json: id === receiptId ? linkedReceipt : movement });
+    const doctorPayout = { ...movement, id: payoutId, descricao: 'Repasse médico — Dra. QA', categoria: 'honorario_medico' };
+    const json = id === receiptId ? linkedReceipt : id === payoutId ? doctorPayout : movement;
+    return route.fulfill({ status: 200, json });
   });
   await page.goto(`/recepcao/caixa/lancamentos/${movementId}/editar`);
   await page.getByLabel('Descrição').fill('Compra alterada QA');
@@ -101,5 +104,10 @@ test('cash movement edit protects unsaved changes and blocks linked receipts', a
   await expect(page.getByRole('heading', { name: 'Lançamento não disponível para edição' })).toBeVisible();
   await expect(page.getByLabel('Descrição')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Salvar alterações' })).toHaveCount(0);
+  await page.goto(`/recepcao/caixa/lancamentos/${payoutId}/editar`);
+  await expect(page.getByRole('heading', { name: 'Lançamento não disponível para edição' })).toBeVisible();
+  await expect(page.getByText('veio de outro módulo (pagamento de repasse médico)')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Abrir Repasse' })).toBeVisible();
+  await expect(page.getByLabel('Valor (R$)')).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
