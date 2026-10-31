@@ -1,4 +1,19 @@
+import { appointmentStartHasPassed } from '@/lib/dateOnly';
+
 export type FaixaRiscoFalta = 'alto' | 'medio' | 'baixo';
+
+/**
+ * Mantém só as consultas que ainda não começaram (horário de São Paulo).
+ * Uma consulta de hoje cujo horário já passou não é mais "risco de falta":
+ * ou o paciente veio, ou a falta já aconteceu.
+ */
+export function consultasAindaPorVir<T extends { data_agendamento?: string | null; hora_inicio?: string | null }>(
+  consultas: T[],
+  agora: Date = new Date(),
+): T[] {
+  return consultas.filter(consulta => !!consulta.data_agendamento
+    && !appointmentStartHasPassed(consulta.data_agendamento, consulta.hora_inicio ?? '', agora));
+}
 
 export function formatarIndiceRisco(probabilidade: number): number {
   const valorFinito = Number.isFinite(probabilidade) ? probabilidade : 0;
