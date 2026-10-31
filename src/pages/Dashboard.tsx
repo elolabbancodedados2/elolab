@@ -1,7 +1,7 @@
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { DoctorDashboard } from '@/components/dashboard/DoctorDashboard';
-import { AdminDashboardOverview } from '@/components/dashboard/AdminDashboardOverview';
+import { InicioPainel } from '@/components/dashboard/InicioPainel';
 import { formatAppointmentStatus, isAppointmentClosed, isAppointmentCompleted } from '@/components/dashboard/appointmentStatus';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -983,7 +983,7 @@ function AdminDashboard() {
 
           </>
                 ) : (
-          <AdminDashboardOverview
+          <InicioPainel
             nome={firstName}
             saudacao={saudacao}
             dataLabel={hojeFormatado}
