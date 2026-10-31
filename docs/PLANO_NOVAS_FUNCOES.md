@@ -34,9 +34,11 @@ Ordem sugerida por valor para a clínica e risco baixo:
    - RPCs: `gerar_pedidos_da_cotacao` (menor preço por item, um pedido por fornecedor, fecha a cotação) e `receber_pedido_compra` (entrada no estoque por `registrar_movimentacao_estoque`, uma única vez).
    - Tela `/compras` com abas Cotações, Pedidos e Fornecedores; no Estoque, atalho Compras e `Cotar itens em falta`.
    - Falta: aplicar a migration no ambiente local, prova visual e aprovação do responsável para produção.
-3. **Relacionamento: campanhas e NPS**
-   - Já existem dados de NPS; falta `campanhas` (público, mensagem com variáveis, canal, agenda de envio) e resultado por campanha.
-   - Telas: NPS do período com distribuição, lista de pacientes sem retorno, envio em lote pelo WhatsApp já integrado.
+3. **Relacionamento: campanhas e NPS** (entregue em 31/10/2026; migration pendente de aplicação)
+   - Migration `20261031122000_campanhas_relacionamento.sql`, ainda não aplicada: tabela `campanhas` com RLS (admin e recepção editam rascunhos), RPCs `previa_publico_campanha`, `disparar_campanha` (só admin, até 2.000 destinatários), `cancelar_campanha`, `resultado_campanhas` e `listar_pacientes_sem_retorno`.
+   - O disparo grava uma linha por paciente em `notification_queue` (`status` pendente, `dedupe_key` `campanha:<id>:<paciente>`), processada pela `process-notification-queue`, que passou a conferir preferência de canal e janela de contato também para campanhas.
+   - Tela `/relacionamento` (Campanhas e NPS): NPS do período com distribuição, evolução mensal, NPS por profissional e comentários; campanhas com prévia do público e da mensagem; pacientes sem retorno.
+   - Falta: aplicar a migration em ambiente local, prova visual com a clínica sintética e publicar a edge function alterada.
 4. **Especialidades**
    - Odontograma (dentes, faces, procedimentos planejados e realizados) e fotos clínicas com marcação de pontos (dermatologia).
    - Tabelas: `odontograma_registros`, `fotos_clinicas` (arquivo no storage com a mesma regra de acesso do prontuário).

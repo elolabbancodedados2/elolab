@@ -17,6 +17,7 @@ import {
   FlaskConical,
   DoorOpen,
   MessageCircle,
+  HeartHandshake,
   FolderKanban,
   Sparkles,
   BotMessageSquare,
@@ -174,6 +175,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Chat interno', icon: MessageCircle, href: '/chat' },
       { label: 'Mensagens e lembretes a pacientes', icon: Bell, href: '/automacoes?tab=fila', roles: ['admin'], planFeature: 'automacoes' },
+      { label: 'Campanhas e NPS', icon: HeartHandshake, href: '/relacionamento', roles: ['admin', 'recepcao'] },
       { label: 'Automações da clínica', icon: Sparkles, href: '/automacoes', roles: ['admin'], exact: true, planFeature: 'automacoes' },
       { label: 'Atendente de IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'], planFeature: 'agente_ia' },
     ],

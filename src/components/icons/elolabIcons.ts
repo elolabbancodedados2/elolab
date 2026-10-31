@@ -47,6 +47,7 @@ export { FoldersIcon as FolderKanban } from '@phosphor-icons/react/dist/csr/Fold
 export { GaugeIcon as Gauge } from '@phosphor-icons/react/dist/csr/Gauge';
 export { GearIcon as Settings } from '@phosphor-icons/react/dist/csr/Gear';
 export { HandCoinsIcon as HandCoins } from '@phosphor-icons/react/dist/csr/HandCoins';
+export { HandHeartIcon as HeartHandshake } from '@phosphor-icons/react/dist/csr/HandHeart';
 export { HeartbeatIcon as HeartPulse } from '@phosphor-icons/react/dist/csr/Heartbeat';
 export { HouseIcon as Home } from '@phosphor-icons/react/dist/csr/House';
 export { KeyboardIcon as Keyboard } from '@phosphor-icons/react/dist/csr/Keyboard';

@@ -3,7 +3,7 @@ import { clinicaAdminDoChamador, cronForbidden, cronOrUserOk, cronSecretOk } fro
 import { corsPadrao } from '../_shared/cors.ts';
 import { consumoNotificacoes } from '../_shared/limitesClinica.ts';
 import { checkNotificationSendLimits } from '../_shared/notificationRateLimit.ts';
-import { canaisDeLembrete, dentroDaJanelaDeContato } from '../_shared/notificationDeliveryPolicy.ts';
+import { canaisDeLembrete, dentroDaJanelaDeContato, mensagemDeCampanha } from '../_shared/notificationDeliveryPolicy.ts';
 import { sendBrandedBrevoRequest } from '../_shared/brevoEmail.ts';
 import { normalizeWhatsAppPhone, notificationHtml } from '../_shared/patientJourneyDelivery.ts';
 
@@ -100,7 +100,8 @@ Deno.serve(async (req) => {
         const dadosExtras = notif.dados_extras || {}
         const lembreteDeConsulta = dadosExtras.tipo_notificacao === 'confirmacao_agendamento'
           || ['24h', '24h_whatsapp', '2h', '2h_whatsapp'].includes(String(dadosExtras.tipo_lembrete || ''))
-        if (lembreteDeConsulta) {
+        // Campanhas também revalidam preferência e janela no envio, porque podem ficar agendadas.
+        if (lembreteDeConsulta || mensagemDeCampanha(dadosExtras)) {
           if (!notif.destinatario_id || !notif.clinica_id) throw new Error('Não foi possível confirmar as preferências do destinatário.')
           const { data: paciente, error: patientError } = await supabase.from('pacientes')
             .select('email, telefone, preferencia_canal_lembrete, horario_contato_inicio, horario_contato_fim, fuso_horario_contato')

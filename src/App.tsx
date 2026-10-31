@@ -91,6 +91,7 @@ const DrePlanoContas = lazy(() => import("@/pages/DrePlanoContas"));
 const ClinicalTemplateEditor = lazy(() => import("@/pages/ClinicalTemplateEditor"));
 const Encaminhamentos = lazy(() => import("@/pages/Encaminhamentos"));
 const Automacoes = lazy(() => import("@/pages/Automacoes"));
+const Relacionamento = lazy(() => import("@/pages/Relacionamento"));
 const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const Planos = lazy(() => import("@/pages/Planos"));
@@ -504,6 +505,7 @@ function AppRoutes() {
                           <Route path="/configuracoes/importar-dados" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ImportarDadosClinicaPage /></SupabaseProtectedRoute>} />
                           <Route path="/onboarding" element={<SupabaseProtectedRoute allowedRoles={['admin']}><OnboardingClinica /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
+                          <Route path="/relacionamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Relacionamento /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanFeatureGuard feature="automacoes" requiredPlan="EloLab Pro"><Automacoes /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/templates-email" element={<Navigate to="/todos-templates?tab=email" replace />} />
                           <Route path="/agente-ia/sessoes/nova" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />

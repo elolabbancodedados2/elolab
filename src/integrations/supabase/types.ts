@@ -427,6 +427,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"campanhas": {
+                  Row: {
+                    "agendada_para": string | null,"canal": string,"cancelada_em": string | null,"clinica_id": string,"created_at": string,"criado_por": string | null,"disparada_em": string | null,"disparada_por": string | null,"id": string,"mensagem": string,"nome": string,"publico": string,"publico_dias": number,"status": string,"total_destinatarios": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "agendada_para"?: string | null,"canal"?: string,"cancelada_em"?: string | null,"clinica_id"?: string,"created_at"?: string,"criado_por"?: string | null,"disparada_em"?: string | null,"disparada_por"?: string | null,"id"?: string,"mensagem": string,"nome": string,"publico"?: string,"publico_dias"?: number,"status"?: string,"total_destinatarios"?: number,"updated_at"?: string
+                  }
+                  Update: {
+                    "agendada_para"?: string | null,"canal"?: string,"cancelada_em"?: string | null,"clinica_id"?: string,"created_at"?: string,"criado_por"?: string | null,"disparada_em"?: string | null,"disparada_por"?: string | null,"id"?: string,"mensagem"?: string,"nome"?: string,"publico"?: string,"publico_dias"?: number,"status"?: string,"total_destinatarios"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "campanhas_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"chat_conversations": {
                   Row: {
                     "clinica_id": string | null,"created_at": string | null,"id": string,"participante_1_id": string,"participante_2_id": string,"preview": string | null,"ultima_mensagem_em": string | null,"updated_at": string | null
@@ -4620,6 +4640,25 @@ isOneToOne: false
                 }
           }
           Functions: {
+"previa_publico_campanha":
+{ Args: { "p_canal": string,"p_dias": number,"p_publico": string }; Returns: Json
+                           },
+"disparar_campanha":
+{ Args: { "p_campanha_id": string }; Returns: Json
+                           },
+"cancelar_campanha":
+{ Args: { "p_campanha_id": string }; Returns: Json
+                           },
+"resultado_campanhas":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "campanha_id": string,"cancelado": number,"enviado": number,"enviando": number,"erro": number,"incerto": number,"pendente": number
+            }[]
+                           },
+"listar_pacientes_sem_retorno":
+{ Args: { "p_dias"?: number,"p_limite"?: number }; Returns: {
+              "dias_sem_consulta": number,"nome": string,"paciente_id": string,"telefone_final": string,"tem_email": boolean,"ultima_consulta": string
+            }[]
+                           },
             "abrir_caixa_diario":
 { Args: { "p_valor_abertura": number }; Returns: Json
                            },
