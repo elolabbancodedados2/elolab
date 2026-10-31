@@ -194,9 +194,9 @@ export default function GuiasExternas() {
               label: 'Aguardando',
               caption: 'recebidas sem ação',
               value: counts.recebida,
-              color: 'text-white',
-              surface: 'bg-white/15',
-              escuro: true,
+              color: 'text-foreground',
+              surface: 'bg-secondary',
+              escuro: false,
             },
             {
               key: 'em_analise' as FiltroStatus,

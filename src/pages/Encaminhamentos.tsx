@@ -352,7 +352,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
       {/* Indicadores (filtram a lista por status) */}
       <section role="group" aria-label="Resumo dos encaminhamentos" className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {([
-          { key: 'pendente', icon: Clock, label: 'Pendentes', value: stats.pendentes, caption: 'aguardando início', color: 'text-white', surface: 'bg-white/15', escuro: true },
+          { key: 'pendente', icon: Clock, label: 'Pendentes', value: stats.pendentes, caption: 'aguardando início', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
           { key: 'em_andamento', icon: Stethoscope, label: 'Em andamento', value: stats.emAndamento, caption: 'em atendimento', color: 'text-info', surface: 'bg-info/10', escuro: false },
           { key: 'concluido', icon: CheckCircle2, label: 'Concluídos', value: stats.concluidos, caption: `${stats.comContraRef} com contra-ref.`, color: 'text-success', surface: 'bg-success/10', escuro: false },
           { key: 'todos', icon: ArrowRightLeft, label: 'Total', value: stats.total, caption: 'todos os status', color: 'text-foreground', surface: 'bg-muted', escuro: false },

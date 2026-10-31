@@ -205,7 +205,7 @@ export default function CobrancaInadimplentes() {
     },
     {
       key: 'atraso30' as FiltroIndicador, label: 'Saldo em aberto', value: totalDevido, icon: DollarSign,
-      color: 'text-white', surface: 'bg-white/15', escuro: true,
+      color: 'text-foreground', surface: 'bg-secondary', escuro: false,
       caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} com +30 dias de atraso` : 'nenhum acima de 30 dias', money: true,
     },
     {

@@ -281,7 +281,7 @@ export function ConvitesList() {
   };
 
   const INDICADORES: Array<{ chave: InviteStatus | 'todos'; label: string; value: number; icon: typeof Mail; color: string; surface: string; escuro: boolean; caption: string }> = [
-    { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'aguardando aceite' },
+    { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'aguardando aceite' },
     { chave: 'aceito', label: 'Aceitos', value: aceitos, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'acesso liberado' },
     { chave: 'expirado', label: 'Expirados', value: expirados, icon: XCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false, caption: 'link vencido' },
     { chave: 'todos', label: 'Total', value: invites.length, icon: Mail, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'todos os convites' },

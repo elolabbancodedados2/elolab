@@ -625,7 +625,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
       {/* Indicadores por tipo (filtram a lista) */}
       <section role="group" aria-label="Resumo por tipo de documento" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {([
-          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-white', surface: 'bg-white/15', escuro: true },
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
           ...TIPOS_ATESTADO.map(tipo => ({
             key: tipo.value,
             icon: tipo.icon,

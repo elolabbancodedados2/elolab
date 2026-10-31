@@ -573,9 +573,9 @@ export default function CaixaDiario() {
                 caption: isOpen ? 'resultado financeiro' : diferencaFechamento === null ? 'caixa encerrado' : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} ${fmt(Math.abs(diferencaFechamento))}`,
                 value: totais.final,
                 icon: DollarSign,
-                color: 'text-white',
-                surface: 'bg-white/15',
-                escuro: true,
+                color: 'text-foreground',
+                surface: 'bg-secondary',
+                escuro: false,
               },
             ];
             return (

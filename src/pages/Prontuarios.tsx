@@ -268,7 +268,6 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
       {/* Header strip */}
       <div className="rounded-[24px] overflow-hidden border border-border/60 bg-card shadow-xs">
         <div className="relative overflow-hidden bg-brand-dark p-5 text-white">
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-highlight/40 blur-3xl" />
           <div className="relative flex items-start gap-4">
             <PatientPhoto
               pacienteId={paciente.id}
@@ -2354,7 +2353,6 @@ export default function Prontuarios() {
             <Card><CardContent className="space-y-3 py-6"><Skeleton className="h-8 w-48" /><Skeleton className="h-24" /></CardContent></Card>
           ) : !selectedPaciente ? (
             <Card className="relative overflow-hidden rounded-[24px] border-dashed border-border/70">
-              <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
               <CardContent className="relative flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground lg:py-20">
                 <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-glow">
                   <FileText className="h-7 w-7" />

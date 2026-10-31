@@ -749,7 +749,7 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
     : `${medicos.length} médico(s) · ${totalAtivos} ativo(s) · ${especialidades.length} especialidade(s)`;
 
   const indicadores = [
-    { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'disponíveis para atendimento' },
+    { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: ShieldCheck, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'disponíveis para atendimento' },
     { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'fora de operação' },
     { key: 'especialidades' as const, label: 'Especialidades', value: especialidades.length, icon: Heart, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'distintas na clínica' },
     { key: 'todos' as const, label: 'Total', value: medicos.length, icon: Users, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'corpo clínico completo' },

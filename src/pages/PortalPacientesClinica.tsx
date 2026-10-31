@@ -65,7 +65,7 @@ export default function PortalPacientesClinica() {
     : null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader
         title="Acesso ao portal do paciente"
         description="Gere um link individual e privado para cada paciente consultar as informações liberadas pela clínica."

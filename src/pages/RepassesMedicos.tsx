@@ -212,7 +212,7 @@ export default function RepassesMedicos() {
   const atualizarTudo = () => { void medicosQuery.refetch(); void repassesQuery.refetch(); };
 
   const kpis = [
-    { key: 'aberto' as const, label: 'Em aberto', value: emAberto, icon: Clock3, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'pendente + aprovado a pagar' },
+    { key: 'aberto' as const, label: 'Em aberto', value: emAberto, icon: Clock3, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'pendente + aprovado a pagar' },
     { key: 'pendente' as const, label: 'Pendente', value: totais.pendente, icon: AlertTriangle, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: 'aguardando aprovação' },
     { key: 'aprovado' as const, label: 'Aprovado', value: totais.aprovado, icon: BadgeCheck, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'aguardando pagamento' },
     { key: 'pago' as const, label: 'Pago', value: totais.pago, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'já pago na competência' },

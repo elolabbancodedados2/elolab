@@ -322,7 +322,7 @@ export default function LaudosLab() {
               label: 'Pendentes',
               value: totalPendentes,
               icon: Clock,
-              escuro: true,
+              escuro: false,
               color: 'text-primary',
               surface: 'bg-primary/10',
               caption: 'aguardando laudo',

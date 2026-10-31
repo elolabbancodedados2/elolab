@@ -776,7 +776,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     },
     {
       id: 'atendimento', label: 'Em atendimento', value: emAtendimentoJornada.length,
-      icon: Play, color: 'text-primary-foreground', surface: 'bg-primary-foreground/15', escuro: true,
+      icon: Play, color: 'text-foreground', surface: 'bg-secondary', escuro: false,
       elapsed: maiorEspera(emAtendimentoJornada, item => item.updated_at || item.created_at),
       overdue: 0,
       caption: 'com profissional',

@@ -36,22 +36,9 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <Card className={cn("relative overflow-hidden border-dashed p-8 md:p-12", className)}>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-highlight/15 blur-3xl"
-      />
       <div className="relative flex flex-col items-center justify-center text-center space-y-6">
-        <div className="relative">
-          <div className="h-20 w-20 rounded-3xl bg-primary shadow-glow flex items-center justify-center rotate-[-4deg]">
-            <Icon className="h-9 w-9 text-white rotate-[4deg]" />
-          </div>
-          <div className="absolute -right-2 -bottom-2 h-7 w-7 rounded-full bg-highlight text-highlight-foreground ring-4 ring-card flex items-center justify-center">
-            <span className="text-xs font-black">+</span>
-          </div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
+          <Icon aria-hidden="true" className="h-6 w-6" />
         </div>
         <div className="space-y-2 max-w-md">
           <h2 className="text-xl font-semibold font-display">{title}</h2>

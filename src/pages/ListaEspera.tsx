@@ -380,7 +380,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
       {/* Indicadores */}
       <section role="group" aria-label="Resumo da lista de espera" className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {([
-          { key: 'aguardando', icon: Clock, label: 'Aguardando', value: aguardando.length, caption: 'ainda sem contato', color: 'text-white', surface: 'bg-white/15', escuro: true },
+          { key: 'aguardando', icon: Clock, label: 'Aguardando', value: aguardando.length, caption: 'ainda sem contato', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
           { key: 'notificado', icon: Phone, label: 'Notificados', value: lista.filter(i => i.status === 'notificado').length, caption: 'aguardando resposta', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
           { key: 'confirmado', icon: CheckCircle, label: 'Confirmados', value: lista.filter(i => i.status === 'confirmado').length, caption: 'prontos para agendar', color: 'text-success', surface: 'bg-success/10', escuro: false },
           { key: 'agendado', icon: CalendarPlus, label: 'Agendados', value: lista.filter(i => i.status === 'agendado').length, caption: `${lista.length} no total`, color: 'text-foreground', surface: 'bg-muted', escuro: false },

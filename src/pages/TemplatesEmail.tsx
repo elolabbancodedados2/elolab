@@ -379,7 +379,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
     return <div className="space-y-5 pb-24 lg:pb-8">
       <UnsavedChangesGuard dirty={dirty} busy={busy} completed={completed} />
       <Button asChild variant="outline"><Link to="/todos-templates?tab=email" state={listState}>Voltar aos modelos de e-mail</Link></Button>
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="w-full space-y-6">
         <PageHeader title={title} icon={<Mail />} description={task === 'history' ? 'Versões registradas pelo banco, com autoria e conteúdo preservados.' : 'Configure e revise a mensagem. As prévias usam exemplos sintéticos, sem dados de pacientes reais.'} />
         {templatesQuery.isError && <ErrorState title="Não foi possível carregar o modelo de e-mail" error={templatesQuery.error} onRetry={() => void templatesQuery.refetch()} />}
         {!ready && templatesQuery.isLoading ? <Skeleton className="h-80" /> : !ready && !templatesQuery.isError ? <p role="status" className="rounded-xl border bg-card p-6">Modelo indisponível nesta clínica. Volte à lista e escolha um modelo existente.</p> : null}
@@ -599,7 +599,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
   }
 
   const indicadores: { key: StatusFilter; icon: typeof Mail; label: string; caption: string; count: number; color: string; surface: string; escuro?: boolean }[] = [
-    { key: 'todos', icon: Mail, label: 'Modelos', caption: 'cadastrados na clínica', count: stats.total, color: 'text-white', surface: 'bg-white/15', escuro: true },
+    { key: 'todos', icon: Mail, label: 'Modelos', caption: 'cadastrados na clínica', count: stats.total, color: 'text-foreground', surface: 'bg-secondary', escuro: false },
     { key: 'ativos', icon: CheckCircle2, label: 'Ativos', caption: 'enviando mensagens', count: stats.ativos, color: 'text-success', surface: 'bg-success/10' },
     { key: 'inativos', icon: CircleSlash, label: 'Inativos', caption: 'pausados', count: stats.inativos, color: 'text-primary', surface: 'bg-primary/10' },
     { key: 'pendencias', icon: AlertTriangle, label: 'Com pendência', caption: 'variáveis sem valor', count: stats.pendencias, color: 'text-warning', surface: 'bg-warning/10' },
