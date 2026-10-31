@@ -1,9 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, CalendarCheck2, CalendarDays, Check, Clock3, Loader2, Stethoscope, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarCheck2, CalendarDays, Check, Clock3, FileText, Loader2, Stethoscope, UserRound } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,16 @@ type AppointmentContext = {
 
 const RETORNO_OPCOES = [7, 15, 30, 60, 90, 180] as const;
 const ROTAS_DE_RETORNO = ['/fila', '/recepcao', '/agenda'];
+const STATUS_ROTULO: Record<string, string> = {
+  em_atendimento: 'Em atendimento',
+  finalizado: 'Já finalizado',
+  atendimento_finalizado: 'Já finalizado',
+  aguardando: 'Aguardando',
+  confirmado: 'Confirmado',
+  agendado: 'Agendado',
+  faltou: 'Faltou',
+  cancelado: 'Cancelado',
+};
 
 function relacaoUnica<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
@@ -62,6 +72,7 @@ export default function FinalizarAtendimento() {
   const origem = searchParams.get('origem') ?? 'fila';
   const [retornoSelecionado, setRetornoSelecionado] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [semEvolucaoConfirmado, setSemEvolucaoConfirmado] = useState(false);
   const submitLock = useRef(false);
   const paginaConcluida = useRef(false);
   const navigationState = location.state as { returnTo?: unknown } | null;
@@ -77,6 +88,7 @@ export default function FinalizarAtendimento() {
 
   useEffect(() => {
     setRetornoSelecionado('');
+    setSemEvolucaoConfirmado(false);
     paginaConcluida.current = false;
   }, [agendamentoId]);
 
@@ -117,6 +129,26 @@ export default function FinalizarAtendimento() {
     },
   });
 
+  // Só médico e admin leem prontuários; para os demais perfis o aviso não aparece.
+  const podeVerEvolucao = Boolean(profile?.roles?.some(role => role === 'medico' || role === 'admin'));
+  const evolucaoQuery = useQuery({
+    queryKey: ['atendimento-finalizacao-evolucao', clinicaId, agendamentoId],
+    enabled: Boolean(clinicaId && agendamentoId && podeVerEvolucao),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('id, assinado')
+        .eq('clinica_id', clinicaId!)
+        .eq('agendamento_id', agendamentoId)
+        .limit(5);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const evolucoes = evolucaoQuery.data;
+  const semEvolucao = podeVerEvolucao && !!evolucoes && evolucoes.length === 0;
+  const evolucaoEmRascunho = podeVerEvolucao && !!evolucoes?.length && !evolucoes.some(e => e.assinado);
+
   const appointment = appointmentQuery.data;
   const patient = relacaoUnica(appointment?.pacientes);
   const doctor = relacaoUnica(appointment?.medicos);
@@ -131,6 +163,7 @@ export default function FinalizarAtendimento() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitLock.current || !appointment || !clinicaId || !retornoSelecionado) return;
+    if (semEvolucao && !semEvolucaoConfirmado) return;
     if (appointment.status !== 'em_atendimento') {
       toast.error('Este atendimento mudou de estado', { description: 'Atualize a fila e confira o registro antes de tentar novamente.' });
       return;
@@ -240,7 +273,7 @@ export default function FinalizarAtendimento() {
                     <p className="mt-1 text-sm text-muted-foreground">Confirme o registro antes de concluir.</p>
                   </div>
                   <Badge variant={appointment.status === 'em_atendimento' ? 'default' : 'secondary'}>
-                    {appointment.status === 'em_atendimento' ? 'Em atendimento' : 'Já finalizado'}
+                    {STATUS_ROTULO[appointment.status] ?? appointment.status}
                   </Badge>
                 </div>
               </CardHeader>
@@ -306,13 +339,40 @@ export default function FinalizarAtendimento() {
                     )}
                   </div>
 
+                  {semEvolucao && statusFinalizavel && (
+                    <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-3 text-sm">
+                      <p className="flex items-start gap-2 font-medium text-foreground">
+                        <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                        Nenhuma evolução registrada para este atendimento.
+                      </p>
+                      <Link
+                        to={`/prontuarios/atendimento?paciente=${appointment.paciente_id}&agendamento=${appointment.id}`}
+                        className="inline-block font-medium underline underline-offset-2"
+                      >
+                        Abrir o prontuário
+                      </Link>
+                      <label className="flex min-h-11 cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-foreground"
+                          checked={semEvolucaoConfirmado}
+                          onChange={event => setSemEvolucaoConfirmado(event.target.checked)}
+                        />
+                        Finalizar mesmo sem evolução
+                      </label>
+                    </div>
+                  )}
+                  {evolucaoEmRascunho && statusFinalizavel && (
+                    <p className="text-xs leading-5 text-muted-foreground">A evolução deste atendimento ainda não foi assinada.</p>
+                  )}
+
                   {!queueQuery.data && !queueQuery.isLoading && (
                     <p className="text-xs leading-5 text-muted-foreground">Este atendimento não tem uma entrada ativa na fila; a finalização será registrada no agendamento.</p>
                   )}
 
                   <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 -mx-4 flex flex-col-reverse gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-0">
                     <Button type="button" variant="outline" onClick={() => navigate(returnTo)} disabled={salvando}>Voltar</Button>
-                    <Button type="submit" disabled={!retornoSelecionado || salvando || !statusFinalizavel}>
+                    <Button type="submit" disabled={!retornoSelecionado || salvando || !statusFinalizavel || (semEvolucao && !semEvolucaoConfirmado)}>
                       {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                       {salvando ? 'Finalizando…' : 'Confirmar finalização'}
                     </Button>

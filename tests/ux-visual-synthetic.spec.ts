@@ -465,6 +465,7 @@ test('reception preserves the return decision when finalizing an old visit fails
   await finalizationPage.getByText('30 dias', { exact: true }).click();
   await expect(finalizationPage.getByText(/Retorno previsto:/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-finalization-retry-1280.png'), animations: 'disabled' });
+  await finalizationPage.getByRole('checkbox', { name: 'Finalizar mesmo sem evolução' }).check();
   await finalizationPage.getByRole('button', { name: 'Confirmar finalização' }).click();
   await expect(page.getByText('Não foi possível finalizar o atendimento')).toBeVisible();
   await expect(finalizationPage.getByRole('radio', { name: '30 dias' })).toBeChecked();
@@ -2318,7 +2319,11 @@ test('reception check-in keeps context through queue triage and applies the clin
   await expect(finalizationMain.getByRole('heading', { name: 'Finalizar atendimento' })).toBeVisible();
   await finalizationMain.getByText('30 dias', { exact: true }).click();
   await expect(finalizationMain.getByText(/Retorno previsto:/)).toBeVisible();
+  // A evolução foi descartada no prontuário: a finalização avisa e pede confirmação explícita.
+  await expect(finalizationMain.getByText('Nenhuma evolução registrada para este atendimento.')).toBeVisible();
+  await expect(finalizationMain.getByRole('button', { name: 'Confirmar finalização' })).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath('reception-queue-finalization-1280.png'), fullPage: true, animations: 'disabled' });
+  await finalizationMain.getByRole('checkbox', { name: 'Finalizar mesmo sem evolução' }).check();
   await finalizationMain.getByRole('button', { name: 'Confirmar finalização' }).click();
 
   await expect(page).toHaveURL('/fila');
