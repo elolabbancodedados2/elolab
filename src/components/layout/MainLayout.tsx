@@ -17,7 +17,6 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 import { MobileTabBar } from './MobileTabBar';
-import { UpgradeNotice } from './UpgradeNotice';
 import { BarraStatus } from './BarraStatus';
 
 export function MainLayout() {
@@ -56,7 +55,6 @@ export function MainLayout() {
 
         {/* Main Content */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <UpgradeNotice />
           <ImpersonationBanner />
           <main
             id="main-content"
