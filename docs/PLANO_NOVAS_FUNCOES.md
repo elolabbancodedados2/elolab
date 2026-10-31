@@ -23,9 +23,11 @@ com migration revisada e testada em ambiente local. Nada aqui altera o módulo f
 
 Ordem sugerida por valor para a clínica e risco baixo:
 
-1. **Financeiro gerencial: DRE e plano de contas**
-   - Tabelas: `plano_contas` (código, nome, tipo, pai), vínculo opcional da categoria de despesa a uma conta.
-   - Telas: DRE por competência com níveis, comparação com mês anterior, regras de rateio por centro de custo (já existe `centro_custo`).
+1. **Financeiro gerencial: DRE e plano de contas** — entregue em 31/10/2026; **migration pendente de aplicação**
+   - Migration `supabase/migrations/20261031120000_plano_contas_dre.sql` (não aplicada): tabelas `plano_contas` (código único por clínica, nome, natureza, grupo da DRE, conta pai, ativo) e `plano_contas_categorias` (liga categoria + natureza de `lancamentos` a uma conta), RLS por clínica (leitura com acesso financeiro, escrita só admin e financeiro), triggers de mesma clínica e RPC `criar_plano_contas_padrao()`. `lancamentos` só é lido.
+   - Tela `/financeiro/dre` (menu Financeiro → "DRE e plano de contas"): DRE gerencial em cascata por competência com contas expansíveis, mês anterior, variação, margem sobre a receita líquida, aviso de lançamentos sem conta e exportação CSV; plano de contas em árvore (criar, editar, desativar, plano padrão); vínculo das categorias às contas.
+   - Lógica pura e testes em `src/lib/dre.ts`; teste de render em `src/pages/__tests__/DrePlanoContas.test.tsx`.
+   - Fica para depois: rateio por centro de custo (`centro_custo`).
 2. **Estoque e compras: cotação e pedido**
    - Tabelas: `cotacoes_compra`, `cotacao_itens`, `pedidos_compra`, usando `fornecedores` que já existe.
    - Telas: comparação de preços por fornecedor com o melhor destacado, pedido gerado a partir da cotação, entrada no estoque ao receber.

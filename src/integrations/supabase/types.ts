@@ -2492,6 +2492,60 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"plano_contas": {
+                  Row: {
+                    "ativo": boolean,"clinica_id": string,"codigo": string,"created_at": string,"grupo_dre": string,"id": string,"natureza": string,"nome": string,"pai_id": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "ativo"?: boolean,"clinica_id": string,"codigo": string,"created_at"?: string,"grupo_dre": string,"id"?: string,"natureza": string,"nome": string,"pai_id"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "ativo"?: boolean,"clinica_id"?: string,"codigo"?: string,"created_at"?: string,"grupo_dre"?: string,"id"?: string,"natureza"?: string,"nome"?: string,"pai_id"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "plano_contas_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    },
+                    {
+      foreignKeyName: "plano_contas_pai_id_fkey"
+      columns: ["pai_id"]
+isOneToOne: false
+      referencedRelation: "plano_contas"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"plano_contas_categorias": {
+                  Row: {
+                    "categoria": string,"clinica_id": string,"conta_id": string,"created_at": string,"id": string,"natureza": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "categoria": string,"clinica_id": string,"conta_id": string,"created_at"?: string,"id"?: string,"natureza": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "categoria"?: string,"clinica_id"?: string,"conta_id"?: string,"created_at"?: string,"id"?: string,"natureza"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "plano_contas_categorias_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    },
+                    {
+      foreignKeyName: "plano_contas_categorias_conta_id_fkey"
+      columns: ["conta_id"]
+isOneToOne: false
+      referencedRelation: "plano_contas"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"planos": {
                   Row: {
                     "ativo": boolean | null,"created_at": string | null,"descricao": string | null,"destaque": boolean | null,"features": NonNullable<Json>,"frequencia": string,"id": string,"max_funcionarios_total": number,"max_medicos": number,"max_recepcao": number,"max_storage_mb": number,"nome": string,"ordem": number | null,"slug": string,"trial_dias": number | null,"updated_at": string | null,"valor": number
@@ -4655,6 +4709,9 @@ isOneToOne: false
                            },
 "criar_pedido_laboratorio":
 { Args: { "p_convenio_id": string,"p_exames": Json,"p_indicacao_clinica": string,"p_medico_solicitante_id": string,"p_paciente_id": string,"p_prioridade": string }; Returns: string
+                           },
+"criar_plano_contas_padrao":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "current_clinica_id":
 { Args: Record<PropertyKey, never>; Returns: string

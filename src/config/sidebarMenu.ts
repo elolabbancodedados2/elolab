@@ -144,7 +144,8 @@ export const menuGroups: MenuGroup[] = [
     icon: WalletCards,
     roles: ['admin', 'financeiro'],
     items: [
-      { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro' },
+      { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro', exact: true },
+      { label: 'DRE e plano de contas', icon: FileBarChart, href: '/financeiro/dre' },
       { label: 'Caixa e fluxo de caixa', icon: PiggyBank, href: '/fluxo-caixa' },
       { label: 'Contas a receber e a pagar', icon: BadgeDollarSign, href: '/contas' },
       { label: 'Cobrança de inadimplentes', icon: BadgeDollarSign, href: '/cobranca-inadimplentes' },
