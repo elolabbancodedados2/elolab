@@ -812,9 +812,10 @@ function AbaFornecedores({ clinicaId, podeGerir, query }: {
         nome: form.nome.trim(), cnpj: cnpjDigitos || null, contato: form.contato.trim() || null,
         telefone: form.telefone.trim() || null, email: form.email.trim() || null,
       };
-      const { error } = editando === 'novo'
-        ? await supabase.from('fornecedores').insert({ ...dados, clinica_id: clinicaId })
-        : await supabase.from('fornecedores').update(dados).eq('id', editando!).eq('clinica_id', clinicaId);
+      const escrita = editando === 'novo'
+        ? supabase.from('fornecedores').insert({ ...dados, clinica_id: clinicaId })
+        : supabase.from('fornecedores').update(dados).eq('id', editando!).eq('clinica_id', clinicaId);
+      const { error } = await escrita;
       if (error) {
         if (error.code === '23505') throw new Error('Já existe um fornecedor com este CNPJ.');
         throw error;

@@ -562,9 +562,10 @@ function DialogConta({ form: inicial, contas, clinicaId, onFechar, onSalvo }: {
         grupo_dre: form.grupo_dre,
         pai_id: form.pai_id,
       };
-      const { error } = form.id
-        ? await supabase.from('plano_contas').update(dados).eq('id', form.id).eq('clinica_id', clinicaId)
-        : await supabase.from('plano_contas').insert({ ...dados, clinica_id: clinicaId });
+      const escrita = form.id
+        ? supabase.from('plano_contas').update(dados).eq('id', form.id).eq('clinica_id', clinicaId)
+        : supabase.from('plano_contas').insert({ ...dados, clinica_id: clinicaId });
+      const { error } = await escrita;
       if (error) throw error;
     },
     onSuccess: () => { toast.success(editando ? 'Conta atualizada.' : 'Conta criada.'); onSalvo(); },
