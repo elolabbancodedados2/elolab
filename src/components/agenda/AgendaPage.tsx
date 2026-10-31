@@ -18,6 +18,7 @@ import { DailyMultiDoctorView } from './views/DailyMultiDoctorView';
 import { WeeklyView } from './views/WeeklyView';
 import { MonthlyView } from './views/MonthlyView';
 import { WaitingListSidebar } from './WaitingListSidebar';
+import { PainelNovoAgendamento } from './PainelNovoAgendamento';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -950,6 +951,14 @@ export function AgendaPage() {
         isLoading={waitingQuery.isLoading}
         error={waitingQuery.error}
         onRetry={() => void waitingQuery.refetch()}
+        topo={(
+          <PainelNovoAgendamento
+            date={activeDate}
+            diasComConsulta={diasComConsulta}
+            onDateChange={handleDateChange}
+            onNovoAgendamento={() => setDialogState({ open: true, initial: { data: activeDate } })}
+          />
+        )}
       />
 
 
