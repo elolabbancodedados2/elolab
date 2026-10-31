@@ -37,6 +37,7 @@ import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, toDateOnly, to
 import { valorRealizado } from '@/lib/lancamentos';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { linkWhatsApp } from '@/lib/whatsapp';
+import { datasDeNascimentoQueFazemAniversario } from '@/lib/aniversarios';
 import { formatarEspera, minutosDeEspera } from '@/lib/filaEspera';
 import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
 import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
@@ -547,8 +548,7 @@ function AdminDashboard() {
     queryFn: async () => {
       // A coluna é `date`, então filtramos pela lista de datas possíveis
       // (mesmo dia/mês em cada ano) em vez de um LIKE sobre texto.
-      const mesDia = hoje.slice(5);
-      const datas = Array.from({ length: 111 }, (_, i) => `${anoHoje - i}-${mesDia}`);
+      const datas = datasDeNascimentoQueFazemAniversario(hoje);
       const { data, error } = await supabase
         .from('pacientes')
         .select('id, nome, telefone')
