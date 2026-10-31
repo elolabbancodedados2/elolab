@@ -162,7 +162,9 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
         data: today,
         clinica_id: profile.clinica_id,
       };
-      if (operation === 'despesa') payload.data_pagamento = new Date().toISOString();
+      // Data civil de São Paulo: em UTC, depois das 21h a despesa caía no dia seguinte
+      // (recusada pelo caixa fechado, ou fora do caixa e do mês corretos).
+      if (operation === 'despesa') payload.data_pagamento = today;
       await insertMovementOnce(payload);
       return { type: operation };
     },
