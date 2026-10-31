@@ -682,7 +682,7 @@ export default function Automacoes() {
                       <TableRow>
                         <TableCell colSpan={7} className="py-10 text-center">
                           <div className="flex flex-col items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                               <History className="h-6 w-6" />
                             </div>
                             <p className="text-muted-foreground">Nenhum log de execução encontrado</p>
@@ -797,7 +797,7 @@ export default function Automacoes() {
               <TableBody>{filaFiltrada.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="py-10 text-center">
                   <div className="flex flex-col items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                       <ListChecks className="h-6 w-6" />
                     </div>
                     <p className="text-muted-foreground">{filaTemFiltro ? 'Nenhum envio corresponde à busca ou ao filtro selecionado' : 'Nenhum envio na fila'}</p>
@@ -829,7 +829,7 @@ export default function Automacoes() {
               <TableBody>{clientErrors.length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="py-10 text-center">
                   <div className="flex flex-col items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                       <AlertTriangle className="h-6 w-6" />
                     </div>
                     <p className="text-muted-foreground">Nenhum erro capturado</p>

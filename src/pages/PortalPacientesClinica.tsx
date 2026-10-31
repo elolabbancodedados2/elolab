@@ -80,7 +80,7 @@ export default function PortalPacientesClinica() {
       <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <div className="flex items-start gap-3">
-            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <Link2 className="h-5 w-5" />
             </span>
             <div className="min-w-0">

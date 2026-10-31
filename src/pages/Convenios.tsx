@@ -855,7 +855,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                 {filteredConvenios.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
-                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                         <Building2 className="h-7 w-7" />
                       </span>
                       <p className="font-medium text-foreground">{totalConvenios === 0 ? 'Nenhum convênio cadastrado ainda' : 'Nenhum convênio corresponde à busca'}</p>

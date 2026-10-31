@@ -386,7 +386,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       ) : filtered.length === 0 ? (
         <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <Search className="h-7 w-7" />
             </span>
             <p className="font-bold text-foreground">Nenhum tipo encontrado</p>

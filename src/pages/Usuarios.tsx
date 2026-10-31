@@ -378,7 +378,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
                     <TableRow>
                       <TableCell colSpan={6} className="py-10">
                         <div className="flex flex-col items-center gap-3 text-center">
-                          <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                          <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                             <Users className="h-7 w-7" />
                           </span>
                           <p className="font-medium text-foreground">{temFiltro ? 'Nenhum usuário corresponde à busca.' : 'Nenhum usuário encontrado'}</p>

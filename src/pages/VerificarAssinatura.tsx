@@ -60,7 +60,7 @@ export default function VerificarAssinatura() {
       </div>
       <Card className="mx-auto max-w-xl rounded-2xl border-[#DCE6F2] shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
         <CardHeader className="text-center">
-          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
             <FileCheck2 className="h-7 w-7" aria-hidden="true" />
           </span>
           <CardTitle>Verificação de assinatura</CardTitle>

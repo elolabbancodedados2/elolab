@@ -388,7 +388,7 @@ export function ConvitesList() {
       <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
-            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
               <Mail className="h-4 w-4" />
             </span>
             Convites enviados

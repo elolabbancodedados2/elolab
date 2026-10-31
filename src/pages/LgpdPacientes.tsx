@@ -374,7 +374,7 @@ export default function LgpdPacientes() {
             )}
             {!isLoading && !isDebouncing && !error && !searchTerm && pacientes.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-8 text-center">
-                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <Users className="h-6 w-6" />
                 </span>
                 <p className="max-w-sm text-sm text-muted-foreground">

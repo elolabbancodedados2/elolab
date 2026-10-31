@@ -480,7 +480,7 @@ export default function Configuracoes() {
         <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-1 sm:px-1 lg:overflow-visible">
           <TabsList aria-label="Seções das configurações" className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 rounded-2xl bg-muted/60 p-1.5 lg:w-full lg:flex-wrap">
             {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-11 shrink-0 gap-2 rounded-xl px-3 text-xs data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <TabsTrigger key={tab.value} value={tab.value} title={tab.label} className="min-h-11 shrink-0 gap-2 rounded-xl px-3 text-xs data-[state=active]:shadow-sm">
                 <tab.icon aria-hidden="true" className="h-4 w-4" />
                 <span>{tab.label}</span>
               </TabsTrigger>
@@ -493,7 +493,7 @@ export default function Configuracoes() {
           <div>
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Building className="h-4 w-4" /></span>Dados da Clínica</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><Building className="h-4 w-4" /></span>Dados da Clínica</CardTitle>
                 <CardDescription>Informações cadastrais completas</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -574,7 +574,7 @@ export default function Configuracoes() {
             {/* Plano Atual */}
             <Card className={cn('rounded-2xl shadow-xs', hasActivePlan && !isPlanExempt ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60')}>
               <CardHeader>
-                <CardTitle className={cn('flex items-center gap-2', hasActivePlan && !isPlanExempt ? 'text-white' : '')}><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
+                <CardTitle className={cn('flex items-center gap-2', hasActivePlan && !isPlanExempt ? 'text-white' : '')}><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
                 <CardDescription className={hasActivePlan && !isPlanExempt ? 'text-white/70' : ''}>Visualize e gerencie sua subscrição</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -731,7 +731,7 @@ export default function Configuracoes() {
           <div>
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Clock className="h-4 w-4" /></span>Horários de Funcionamento</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><Clock className="h-4 w-4" /></span>Horários de Funcionamento</CardTitle>
                 <CardDescription>
                   Horário geral da clínica, exibido no link público. Os horários disponíveis para marcar dependem da agenda de cada profissional.{' '}
                   <Button variant="link" asChild className="h-auto p-0 align-baseline"><Link to="/equipe">Configurar disponibilidade da equipe</Link></Button>
@@ -834,7 +834,7 @@ export default function Configuracoes() {
           <div>
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><DollarSign className="h-4 w-4" /></span>Operação financeira</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><DollarSign className="h-4 w-4" /></span>Operação financeira</CardTitle>
                 <CardDescription>Configure preços e acompanhe cobranças nos módulos que usam esses dados.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
@@ -881,7 +881,7 @@ export default function Configuracoes() {
           <div>
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Bell className="h-4 w-4" /></span>Notificações</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><Bell className="h-4 w-4" /></span>Notificações</CardTitle>
                 <CardDescription>Gerencie lembretes e mensagens automáticas da clínica</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -902,7 +902,7 @@ export default function Configuracoes() {
           <div>
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Printer className="h-4 w-4" /></span>Impressão e Receituário</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><Printer className="h-4 w-4" /></span>Impressão e Receituário</CardTitle>
                 <CardDescription>Personalize os elementos exibidos no receituário médico em PDF.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -938,7 +938,7 @@ export default function Configuracoes() {
           <div>
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Shield className="h-4 w-4" /></span>Segurança e Privacidade</CardTitle>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><Shield className="h-4 w-4" /></span>Segurança e Privacidade</CardTitle>
                 <CardDescription>Configurações de segurança do sistema</CardDescription>
               </CardHeader>
               <CardContent>

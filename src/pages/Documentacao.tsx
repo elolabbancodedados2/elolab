@@ -825,7 +825,7 @@ export default function Documentacao() {
             <div key={currentSection.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
               {/* Section Header */}
               <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-4 sm:p-5">
-                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                   <currentSection.icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -916,7 +916,7 @@ export default function Documentacao() {
           {!currentSection && (
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <Search className="h-7 w-7" />
                 </span>
                 <p className="font-medium text-foreground">Nenhum conteúdo corresponde à busca. Tente outro termo.</p>

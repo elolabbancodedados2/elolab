@@ -333,7 +333,7 @@ export default function AnalisePreditiva() {
           <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <Siren className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
@@ -549,7 +549,7 @@ export default function AnalisePreditiva() {
       <Card className="rounded-2xl border-[#DCE6F2] bg-[#F3F8FC] shadow-none">
         <CardContent className="pt-4 pb-4">
           <div className="flex gap-3">
-            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white">
+            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
               <TrendingUp className="h-4 w-4" />
             </span>
             <div className="text-sm text-foreground">
