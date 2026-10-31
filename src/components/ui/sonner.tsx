@@ -10,6 +10,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // No desktop, à esquerda sobre a barra lateral: os botões de salvar ficam à direita e não podem ser cobertos.
+      position="bottom-left"
       mobileOffset={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
       toastOptions={{
         classNames: {
