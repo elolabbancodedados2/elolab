@@ -399,7 +399,7 @@ export default function CaixaDiario() {
 
   if (loadingCaixa || (!!caixaHoje?.data && loadingLanc)) {
     return (
-      <div className="space-y-6 p-4 md:p-6">
+      <div className="space-y-6">
         <Skeleton className="h-10 w-48" />
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-28" />)}
@@ -423,7 +423,7 @@ export default function CaixaDiario() {
   const podeReabrir = Boolean(profile?.roles?.some(role => role === 'admin' || role === 'financeiro'));
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6">
       {/* ─── Header ─── */}
       <PageHeader
         title="Caixa Diário"
@@ -501,7 +501,7 @@ export default function CaixaDiario() {
             </div>
           )}
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 empty:hidden">
             {/* Sem caixa aberto, o botão do cabeçalho e o do aviso abaixo já levam à abertura. */}
             {!caixaHoje ? null : isOpen ? (
               <>

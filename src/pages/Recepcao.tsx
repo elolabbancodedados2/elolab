@@ -1,5 +1,5 @@
 import { formatCurrency } from '@/lib/formatters';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { printReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,7 +34,7 @@ import {
   Timer, Phone, XCircle, Receipt, Eye, CalendarPlus, FileText,
   FlaskConical, RotateCcw, ClipboardCheck, ClipboardList, Lock as LockIcon, LockOpen, Activity,
   UserPlus, DoorOpen, MessageCircle, UserX, ArrowUpDown, Hourglass, Link2, Printer,
-  LayoutGrid, List, Mail, CalendarDays, MoreHorizontal,
+  LayoutGrid, List, Mail, CalendarClock, CalendarDays, MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -165,7 +165,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }, []);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
-  const [viewMode, setViewMode] = useState<'fluxo' | 'lista'>('fluxo');
+  const [viewMode, setViewMode] = useState<'fluxo' | 'linha' | 'lista'>('fluxo');
   const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
   const [medicoFiltro, setMedicoFiltro] = useState('todos');
   const [ordenacao, setOrdenacao] = useState<'horario' | 'espera'>('horario');
@@ -693,6 +693,32 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      const [h, m] = horaDaClinica(new Date(now)).split(':').map(Number);
      return h * 60 + m;
    }, [now]);
+
+   const statusFor = (item: any) => {
+     const appointmentMinutes = minutosDaHora(item.ag.hora_inicio);
+     const late = item.step === 0 && appointmentMinutes !== null && appointmentMinutes < minutosAgora;
+     const text = item.ag.status === 'faltou'
+       ? 'Não compareceu'
+       : late
+         ? `Atrasado ${minutosAgora - (appointmentMinutes ?? 0)} min`
+         : item.step === 0
+           ? item.fila ? 'Chegou agora' : 'No horário'
+           : item.step === 1
+             ? 'Aguardando balcão'
+             : item.step === 2
+               ? item.ag.status === 'em_atendimento' ? 'Em consulta' : 'Aguardando chamada'
+               : item.step === 3
+                 ? 'Consulta finalizada'
+                 : 'Atendido';
+     return { late, text };
+   };
+
+   // Linha do tempo do protótipo aprovado em 30/10/2026: o dia em ordem de horário, com a hora atual marcada.
+   const linhaDoTempo = useMemo(
+     () => [...filtered].sort((a, b) => (a.ag.hora_inicio || '').localeCompare(b.ag.hora_inicio || '')),
+     [filtered],
+   );
+   const indiceAgora = linhaDoTempo.findIndex(item => (minutosDaHora(item.ag.hora_inicio) ?? 0) > minutosAgora);
 
    async function handleMarcarFalta(agId: string) {
      if (!profile?.clinica_id) return;
@@ -1492,26 +1518,16 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           { label: 'Aguardando check-in', value: stats.aguardando, icon: Clock, tone: stats.aguardando > 0 ? 'text-warning-foreground' : 'text-muted-foreground' },
         ].map(metric => (
           <Card key={metric.label} className="rounded-lg border-border/80 shadow-none">
-            <CardContent className="flex min-h-[4.75rem] items-center justify-between gap-3 p-3 sm:p-4">
+            <CardContent className="flex min-h-[3.5rem] items-center justify-between gap-3 px-3 py-2 sm:min-h-[4.75rem] sm:p-4">
               <div className="min-w-0">
                 <p className="truncate text-xs font-medium text-muted-foreground">{metric.label}</p>
-                <p className={cn('mt-1 text-2xl font-semibold tabular-nums leading-none', metric.tone)}>{metric.value}</p>
+                <p className={cn('mt-1 text-xl font-semibold tabular-nums leading-none sm:text-2xl', metric.tone)}>{metric.value}</p>
               </div>
               <metric.icon aria-hidden="true" className={cn('size-5 shrink-0', metric.tone)} />
             </CardContent>
           </Card>
         ))}
       </div>
-
-      <details className="group rounded-lg border border-border/70 bg-card">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium marker:hidden">
-          <span>Atendimentos em aberto de outros dias</span>
-          <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
-        </summary>
-        <div className="border-t border-border/70 p-3">
-          <AtendimentosEmAberto onFinalizar={agendamentoId => abrirFinalizacao(agendamentoId, 'atendimentos-abertos')} />
-        </div>
-      </details>
 
       {/* Search + Tabs */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -1538,10 +1554,10 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
             <span className="hidden sm:inline">Encaixe sem agendamento</span>
           </Button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap lg:flex-wrap">
           <Select value={medicoFiltro} onValueChange={setMedicoFiltro}>
-            <SelectTrigger aria-label="Filtrar por médico" className="h-10 w-[calc(50%_-_0.25rem)] rounded-full sm:w-[190px]">
-              <Stethoscope className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <SelectTrigger aria-label="Filtrar por médico" className="h-10 min-w-0 flex-1 rounded-full sm:w-[190px] sm:flex-none">
+              <Stethoscope className="mr-1.5 hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" />
               <SelectValue placeholder="Todos os médicos" />
             </SelectTrigger>
             <SelectContent>
@@ -1552,8 +1568,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
             </SelectContent>
           </Select>
           <Select value={ordenacao} onValueChange={(v) => setOrdenacao(v as 'horario' | 'espera')}>
-            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 w-[calc(50%_-_0.25rem)] rounded-full sm:w-[170px]">
-              <ArrowUpDown className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 min-w-0 flex-1 rounded-full sm:w-[170px] sm:flex-none">
+              <ArrowUpDown className="mr-1.5 hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1572,12 +1588,15 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
               <Hourglass className="h-3.5 w-3.5" /> Espera média {esperaMediaMin} min
             </span>
           )}
-          <div role="group" aria-label="Modo de visualização" className="flex h-10 items-center gap-1 rounded-full border border-border bg-card p-1">
-            <Button type="button" size="sm" variant={viewMode === 'fluxo' ? 'default' : 'ghost'} aria-pressed={viewMode === 'fluxo'} onClick={() => setViewMode('fluxo')} className="h-8 rounded-full px-3">
-              <LayoutGrid aria-hidden="true" data-icon="inline-start" />Fluxo
+          <div role="group" aria-label="Modo de visualização" className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-border bg-card p-1">
+            <Button type="button" size="sm" variant={viewMode === 'fluxo' ? 'default' : 'ghost'} aria-pressed={viewMode === 'fluxo'} onClick={() => setViewMode('fluxo')} title="Fluxo" className="h-8 rounded-full px-2.5 2xl:px-3">
+              <LayoutGrid aria-hidden="true" data-icon="inline-start" /><span className="sr-only 2xl:not-sr-only">Fluxo</span>
             </Button>
-            <Button type="button" size="sm" variant={viewMode === 'lista' ? 'default' : 'ghost'} aria-pressed={viewMode === 'lista'} onClick={() => setViewMode('lista')} className="h-8 rounded-full px-3">
-              <List aria-hidden="true" data-icon="inline-start" />Lista
+            <Button type="button" size="sm" variant={viewMode === 'lista' ? 'default' : 'ghost'} aria-pressed={viewMode === 'lista'} onClick={() => setViewMode('lista')} title="Lista" className="h-8 rounded-full px-2.5 2xl:px-3">
+              <List aria-hidden="true" data-icon="inline-start" /><span className="sr-only 2xl:not-sr-only">Lista</span>
+            </Button>
+            <Button type="button" size="sm" variant={viewMode === 'linha' ? 'default' : 'ghost'} aria-pressed={viewMode === 'linha'} onClick={() => setViewMode('linha')} title="Linha do tempo" className="h-8 rounded-full px-2.5 2xl:px-3">
+              <CalendarClock aria-hidden="true" data-icon="inline-start" /><span className="sr-only 2xl:not-sr-only">Linha do tempo</span>
             </Button>
           </div>
         </div>
@@ -1585,14 +1604,14 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
 
       <section aria-label="Fluxo da recepção" className="space-y-3">
         <div className="flex min-w-0 flex-col gap-2">
-          <div role="group" aria-label="Filtrar por etapa do atendimento" className="flex min-w-0 overflow-x-auto rounded-lg border border-border/80 bg-card">
+          <div role="group" aria-label="Filtrar por etapa do atendimento" className="hidden min-w-0 overflow-x-auto sm:flex rounded-lg border border-border/80 bg-card">
             {workflowStages.map((stage, index) => (
-              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => setActiveTab(stage.id)} className={cn('relative h-auto min-h-[3.75rem] min-w-[190px] flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-2 text-left last:border-r-0', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
+              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-[150px] flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-full border', activeTab === stage.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted text-muted-foreground')}>
+                  <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border sm:size-8', activeTab === stage.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted text-muted-foreground')}>
                     <stage.icon aria-hidden="true" className="size-4" />
                   </span>
-                  <span className="min-w-0"><span className="block truncate text-xs font-semibold">{stage.title}</span><span className="block truncate text-[10px] text-muted-foreground">{stage.subtitle}</span></span>
+                  <span className="min-w-0"><span className="block truncate text-xs font-semibold">{stage.title}</span><span className="hidden truncate text-[10px] text-muted-foreground sm:block">{stage.subtitle}</span></span>
                 </span>
                 <Badge variant={activeTab === stage.id ? 'default' : 'outline'} className="shrink-0 tabular-nums">{stage.count}</Badge>
                 {index < workflowStages.length - 1 && <ChevronRight aria-hidden="true" className="absolute -right-2 top-1/2 z-10 size-3 -translate-y-1/2 text-muted-foreground/50" />}
@@ -1656,8 +1675,47 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                 />
               </CardContent>
             </Card>
-          ) : viewMode === 'fluxo' ? (
+          ) : viewMode !== 'lista' ? (
             <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              {viewMode === 'linha' ? (
+                <ol aria-label="Linha do tempo da recepção" className="relative min-w-0 rounded-lg border border-border/80 bg-card p-3 before:absolute before:bottom-5 before:left-[5.5rem] before:top-5 before:w-px before:bg-border">
+                  {linhaDoTempo.map((item, index) => {
+                    const patientName = item.pac?.nome_social || item.pac?.nome || 'Paciente';
+                    const { late, text } = statusFor(item);
+                    const selected = selectedReceptionEntry?.ag.id === item.ag.id;
+                    const action = boardActionFor(item);
+                    const feito = item.step === 4 || item.ag.status === 'faltou';
+                    return (
+                      <Fragment key={item.ag.id}>
+                        {index === indiceAgora && (
+                          <li aria-label={`Agora, ${horaDaClinica(new Date(now))}`} className="relative grid grid-cols-[3.5rem_1.5rem_minmax(0,1fr)] items-center gap-2 py-1">
+                            <span className="text-right text-[11px] font-semibold uppercase tracking-wide text-foreground">Agora</span>
+                            <span aria-hidden="true" className="relative z-10 mx-auto size-3 rounded-full bg-foreground ring-4 ring-card" />
+                            <span aria-hidden="true" className="h-px bg-foreground/60" />
+                          </li>
+                        )}
+                        <li data-testid="reception-timeline-item" className="relative grid grid-cols-[3.5rem_1.5rem_minmax(0,1fr)] items-center gap-2">
+                          <span className={cn('text-right text-sm font-semibold tabular-nums', feito ? 'text-muted-foreground' : 'text-foreground')}>{item.ag.hora_inicio?.slice(0, 5) || '—'}</span>
+                          <span aria-hidden="true" className={cn('relative z-10 mx-auto size-2.5 rounded-full ring-4 ring-card', late || item.ag.status === 'faltou' ? 'bg-destructive' : feito ? 'bg-muted-foreground/50' : 'bg-foreground')} />
+                          <div className={cn('flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border px-2.5 py-2 transition-colors sm:flex-nowrap', selected ? 'border-foreground/25 bg-muted/50' : 'border-transparent hover:bg-muted/40')}>
+                            <button type="button" onClick={() => setSelectedAgendamentoId(item.ag.id)} aria-pressed={selected} aria-label={`Selecionar ${patientName}`} className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <span className={cn('block truncate text-sm font-semibold', feito ? 'text-muted-foreground' : 'text-foreground')}>{patientName}</span>
+                              <span className="block truncate text-xs text-muted-foreground">{item.ag.tipo || 'Consulta'}{item.med?.nome ? ` · ${item.med.nome}` : ''}{item.sala?.nome ? ` · ${item.sala.nome}` : ''}</span>
+                            </button>
+                            {item.fila?.horario_chegada && item.step < 3 && <EsperaIndicador desde={item.fila.horario_chegada} className="text-[11px] font-medium" />}
+                            <Badge variant={late || item.ag.status === 'faltou' ? 'destructive' : item.step === 4 ? 'secondary' : 'outline'} className="shrink-0 px-1.5 text-[10px]">{text}</Badge>
+                            {action && (
+                              <Button type="button" size="sm" variant={feito ? 'outline' : 'default'} onClick={action.run} disabled={isProcessing} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-[11px]">
+                                <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
+                              </Button>
+                            )}
+                          </div>
+                        </li>
+                      </Fragment>
+                    );
+                  })}
+                </ol>
+              ) : (
               <div className={cn('grid min-w-0 gap-2.5', boardColumns.length === 4 ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1')}>
                 {boardColumns.map(stage => (
                   <section key={stage.id} aria-label={`${stage.title}: ${stage.count} pacientes`} className="min-w-0 overflow-hidden rounded-lg border border-border/80 bg-muted/20">
@@ -1679,23 +1737,11 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                       ) : stage.items.map(item => {
                         const patientName = item.pac?.nome_social || item.pac?.nome || 'Paciente';
                         const initials = patientName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'PA';
-                        const appointmentMinutes = minutosDaHora(item.ag.hora_inicio);
-                        const late = item.step === 0 && appointmentMinutes !== null && appointmentMinutes < minutosAgora;
+                        const { late, text: statusText } = statusFor(item);
                         const selected = selectedReceptionEntry?.ag.id === item.ag.id;
                         const action = boardActionFor(item);
-                        const statusText = item.ag.status === 'faltou'
-                          ? 'Não compareceu'
-                          : late
-                            ? `Atrasado ${minutosAgora - (appointmentMinutes ?? 0)} min`
-                            : item.step === 0
-                              ? item.fila ? 'Chegou agora' : 'No horário'
-                              : item.step === 1
-                                ? 'Aguardando balcão'
-                                : item.step === 2
-                                  ? item.ag.status === 'em_atendimento' ? 'Em consulta' : 'Aguardando chamada'
-                                  : item.step === 3
-                                    ? 'Consulta finalizada'
-                                    : 'Atendido';
+                        const temAlergia = Array.isArray(item.pac?.alergias) ? item.pac.alergias.length > 0 : Boolean(item.pac?.alergias);
+                        const temDetalhes = Boolean(item.sala?.nome || (item.fila?.horario_chegada && item.step < 3) || (item.fila?.prioridade && item.fila.prioridade !== 'normal') || temAlergia);
                         return (
                           <Card key={item.ag.id} data-testid="reception-appointment-card" className={cn('rounded-md border-border/80 bg-card shadow-none transition-colors', selected && 'border-primary ring-1 ring-primary/30')}>
                             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 p-2.5 pb-1">
@@ -1704,9 +1750,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                   {statusText}
                                 </Badge>
                             </CardHeader>
-                            <CardContent className="space-y-2.5 p-2.5 pt-1">
+                            <CardContent className="space-y-1.5 p-2.5 pt-1">
                               <button type="button" onClick={() => setSelectedAgendamentoId(item.ag.id)} aria-pressed={selected} aria-label={`Selecionar ${patientName}`} className="flex w-full min-w-0 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                                <Avatar className="size-9 shrink-0 border border-border/70">
+                                <Avatar className="size-8 shrink-0 border border-border/70">
                                   <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{initials}</AvatarFallback>
                                 </Avatar>
                                 <span className="min-w-0 flex-1">
@@ -1715,14 +1761,14 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                 </span>
                                 <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                               </button>
-                              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/70 pt-2 text-[10px] text-muted-foreground">
+                              {temDetalhes && <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/70 pt-1.5 text-[10px] text-muted-foreground">
                                 {item.sala?.nome && <span className="inline-flex min-w-0 items-center gap-1"><DoorOpen aria-hidden="true" className="size-3 shrink-0" /><span className="truncate">{item.sala.nome}</span></span>}
                                 {item.fila?.horario_chegada && item.step < 3 && <EsperaIndicador desde={item.fila.horario_chegada} className="text-[10px] font-medium" />}
                                 {item.fila?.prioridade && item.fila.prioridade !== 'normal' && <Badge variant={item.fila.prioridade === 'urgente' ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[9px]">{item.fila.prioridade === 'urgente' ? 'Urgente' : 'Preferencial'}</Badge>}
-                                {item.pac?.alergias && (Array.isArray(item.pac.alergias) ? item.pac.alergias.length > 0 : Boolean(item.pac.alergias)) && <Badge variant="destructive" className="px-1.5 py-0 text-[9px]">Alergia</Badge>}
-                              </div>
+                                {temAlergia && <Badge variant="destructive" className="px-1.5 py-0 text-[9px]">Alergia</Badge>}
+                              </div>}
                             </CardContent>
-                            {action && <CardFooter className="p-2.5 pt-0"><Button type="button" size="sm" onClick={action.run} disabled={isProcessing} className="h-8 w-full justify-center gap-1.5 rounded-md px-2 text-[11px]">
+                            {action && <CardFooter className="p-2.5 pt-0"><Button type="button" size="sm" onClick={action.run} disabled={isProcessing} className="h-7 w-full justify-center gap-1.5 rounded-md px-2 text-[11px]">
                                 <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
                             </Button></CardFooter>}
                           </Card>
@@ -1730,8 +1776,10 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                       })}
                     </div>
                   </section>
+
                 ))}
               </div>
+              )}
 
               <aside aria-label="Paciente selecionado" className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm lg:sticky lg:top-20 lg:self-start">
                 {selectedReceptionEntry ? (
@@ -2237,6 +2285,15 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           )}
         </div>
       </section>
+      <details className="group rounded-lg border border-border/70 bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium marker:hidden">
+          <span>Atendimentos em aberto de outros dias</span>
+          <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+        </summary>
+        <div className="border-t border-border/70 p-3">
+          <AtendimentosEmAberto onFinalizar={agendamentoId => abrirFinalizacao(agendamentoId, 'atendimentos-abertos')} />
+        </div>
+      </details>
       {/* Confirmation Dialog for Destructive Actions */}
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
         <AlertDialogContent>
