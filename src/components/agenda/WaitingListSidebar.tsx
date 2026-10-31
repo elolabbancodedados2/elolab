@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,8 @@ interface Props {
   isLoading?: boolean;
   error?: unknown;
   onRetry?: () => void;
+  /** Conteúdo exibido acima da lista de espera quando o painel está aberto. */
+  topo?: ReactNode;
 }
 
 function WaitingCard({ item }: { item: Item }) {
@@ -82,15 +85,16 @@ function WaitingCard({ item }: { item: Item }) {
   );
 }
 
-export function WaitingListSidebar({ open, onToggle, items, isLoading = false, error, onRetry }: Props) {
+export function WaitingListSidebar({ open, onToggle, items, isLoading = false, error, onRetry, topo }: Props) {
   return (
     <div
       className={cn(
-        'hidden shrink-0 border-l border-border bg-card/60 backdrop-blur transition-all duration-300 lg:block',
-        open ? 'lg:w-72' : 'lg:w-11'
+        'hidden shrink-0 border-l border-border bg-card transition-all duration-300 lg:block',
+        open ? 'lg:w-80' : 'lg:w-11'
       )}
     >
       <div className="sticky top-0">
+        {open && topo}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
           {open && (
             <div className="flex items-center gap-2 text-sm font-semibold">
