@@ -2,6 +2,14 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { installSyntheticClinic } from './helpers/syntheticClinic';
 
+// Mês corrente (ou seguinte) no texto do app, para os testes não dependerem do dia em que rodam.
+function rotuloMes(deslocamento: number, separador: string) {
+  const hoje = new Date();
+  const alvo = new Date(hoje.getFullYear(), hoje.getMonth() + deslocamento, 1);
+  const mes = alvo.toLocaleDateString('pt-BR', { month: 'long' });
+  return new RegExp(`${mes}${separador}${alvo.getFullYear()}`, 'i');
+}
+
 test.use({ serviceWorkers: 'block' });
 
 test('patient registry puts lookup and the patient list ahead of secondary actions', async ({ page }, testInfo) => {
@@ -3205,17 +3213,17 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         const month = main.getByText(/de \d{4}/).first();
         await expect(month).toBeVisible();
         await main.getByRole('button', { name: 'Próximo mês' }).click();
-        await expect(month).not.toHaveText(/outubro de 2026/i);
+        await expect(month).not.toHaveText(rotuloMes(0, ' de '));
         await main.getByRole('button', { name: 'Mês anterior' }).click();
-        await expect(month).toHaveText(/outubro de 2026/i);
+        await expect(month).toHaveText(rotuloMes(0, ' de '));
       }
       if (path === '/financeiro') {
         await expect(main.getByRole('heading', { name: 'Painel Financeiro' })).toBeVisible();
         await main.getByRole('button', { name: 'Próximo mês' }).click();
         // Espera o mês seguinte aparecer antes de voltar, para não encadear cliques sobre o período anterior.
-        await expect(main.getByText(/novembro 2026/i).first()).toBeVisible();
+        await expect(main.getByText(rotuloMes(1, ' ')).first()).toBeVisible();
         await main.getByRole('button', { name: 'Mês anterior' }).click();
-        await expect(main.getByText(/outubro 2026/i).first()).toBeVisible();
+        await expect(main.getByText(rotuloMes(0, ' ')).first()).toBeVisible();
       }
       if (path === '/analytics') {
         await expect(main.getByRole('heading', { name: 'Ainda não há dados neste período' })).toBeVisible();
@@ -3937,7 +3945,10 @@ test('reception first fold keeps a filled synthetic queue visible at desktop wid
     const summary = main.getByRole('group', { name: 'Resumo da recepção' });
     const summaryColumns = await summary.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
     expect(summaryColumns).toBe(4);
-    const thirdPatient = main.getByRole('button', { name: 'Selecionar Carla Oliveira' });
+    // O Fluxo empilha os cartões por etapa; a visão compacta do dia é a Linha do tempo.
+    await main.getByRole('button', { name: 'Linha do tempo' }).click();
+    const timeline = main.getByRole('list', { name: 'Linha do tempo da recepção' });
+    const thirdPatient = timeline.getByRole('button', { name: 'Selecionar Carla Oliveira' });
     await expect(thirdPatient).toBeVisible();
     const thirdPatientBox = await thirdPatient.boundingBox();
     expect(thirdPatientBox).not.toBeNull();
