@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Search, Edit, Package, AlertTriangle, ArrowDown, ArrowUp, Loader2,
   Barcode, Pill, Building2, ShieldAlert, TrendingDown,
-  History, BarChart3, Trash2, RefreshCw, X,
+  History, BarChart3, Trash2, RefreshCw, X, ShoppingCart,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,8 @@ import {
 } from 'recharts';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { classifyAbcItem } from '@/lib/abcClassification';
+import { itensParaCotar } from '@/lib/compras';
+import { criarCotacao, mensagemErroCompras } from '@/lib/comprasApi';
 
 const CATEGORIAS = ['medicamentos', 'materiais_hospitalares', 'epis', 'escritorio', 'limpeza', 'outros'];
 const UNIDADES = ['unidade', 'comprimido', 'caixa', 'frasco', 'ampola', 'pacote', 'litro', 'kg', 'ml'];
@@ -143,6 +145,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
   const saveLock = useRef(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [criandoCotacao, setCriandoCotacao] = useState(false);
 
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
@@ -492,6 +495,23 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
     return null;
   }, [estoque, expiryAlerts, daysUntilValidity]);
 
+  const cotarItensEmFalta = async () => {
+    if (!profile?.clinica_id || criandoCotacao) return;
+    const itens = itensParaCotar(estoque as any[]);
+    if (itens.length === 0) { toast.info('Nenhum item em estoque baixo para cotar.'); return; }
+    setCriandoCotacao(true);
+    try {
+      const hojeFormatado = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+      const id = await criarCotacao({ clinicaId: profile.clinica_id, titulo: `Itens em falta · ${hojeFormatado}`, itens });
+      toast.success(`Cotação criada com ${plural(itens.length, 'item', 'itens')}.`);
+      navigate(`/compras?aba=cotacoes&cotacao=${id}`);
+    } catch (error) {
+      toast.error(mensagemErroCompras(error, 'Não foi possível criar a cotação.'));
+    } finally {
+      setCriandoCotacao(false);
+    }
+  };
+
   const isMedicamento = formData.categoria === 'medicamentos';
   const timelineItem = (estoque as any[]).find(p => p.id === timelineItemId);
   const produtoSelecionado = (estoque as any[]).find(p => p.id === selectedId);
@@ -574,6 +594,14 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
           <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void estoqueQuery.refetch()} disabled={estoqueQuery.isFetching} aria-label="Atualizar estoque" title="Atualizar estoque">
             <RefreshCw className={cn('h-4 w-4', estoqueQuery.isFetching && 'animate-spin')} />
           </Button>
+          <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => navigate('/compras')}>
+            <ShoppingCart className="h-4 w-4" />Compras
+          </Button>
+          {stats.critico > 0 && (
+            <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => void cotarItensEmFalta()} disabled={criandoCotacao}>
+              {criandoCotacao ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Cotar itens em falta
+            </Button>
+          )}
           <Button onClick={handleNew} className="shrink-0 gap-2"><Plus className="h-4 w-4" />Novo item</Button>
         </>}
       />

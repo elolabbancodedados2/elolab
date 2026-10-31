@@ -53,3 +53,14 @@ export function dentroDaJanelaDeContato(
     return false;
   }
 }
+
+/**
+ * Mensagem de campanha de relacionamento (disparar_campanha). Assim como os
+ * lembretes de consulta, ela pode aguardar na fila e precisa ter preferência de
+ * canal e janela de contato do paciente conferidas no momento do envio.
+ */
+export function mensagemDeCampanha(dadosExtras: Record<string, unknown> | null | undefined): boolean {
+  return dadosExtras?.tipo === 'campanha'
+    && typeof dadosExtras.campanha_id === 'string'
+    && dadosExtras.campanha_id.length > 0;
+}

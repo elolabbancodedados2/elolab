@@ -17,6 +17,7 @@ import {
   FlaskConical,
   DoorOpen,
   MessageCircle,
+  HeartHandshake,
   FolderKanban,
   Sparkles,
   BotMessageSquare,
@@ -39,6 +40,7 @@ import {
   Bell,
   MessageSquarePlus,
   Wrench,
+  ShoppingCart,
 } from '@/components/icons/elolabIcons';
 import type { EloLabIcon } from '@/components/icons/elolabIcons';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
@@ -144,7 +146,8 @@ export const menuGroups: MenuGroup[] = [
     icon: WalletCards,
     roles: ['admin', 'financeiro'],
     items: [
-      { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro' },
+      { label: 'Visão financeira', icon: CircleDollarSign, href: '/financeiro', exact: true },
+      { label: 'DRE e plano de contas', icon: FileBarChart, href: '/financeiro/dre' },
       { label: 'Caixa e fluxo de caixa', icon: PiggyBank, href: '/fluxo-caixa' },
       { label: 'Contas a receber e a pagar', icon: BadgeDollarSign, href: '/contas' },
       { label: 'Cobrança de inadimplentes', icon: BadgeDollarSign, href: '/cobranca-inadimplentes' },
@@ -161,6 +164,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
       { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
+      { label: 'Compras', icon: ShoppingCart, href: '/compras', roles: ['admin', 'enfermagem', 'financeiro'] },
       { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
     ],
@@ -171,6 +175,7 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Chat interno', icon: MessageCircle, href: '/chat' },
       { label: 'Mensagens e lembretes a pacientes', icon: Bell, href: '/automacoes?tab=fila', roles: ['admin'], planFeature: 'automacoes' },
+      { label: 'Campanhas e NPS', icon: HeartHandshake, href: '/relacionamento', roles: ['admin', 'recepcao'] },
       { label: 'Automações da clínica', icon: Sparkles, href: '/automacoes', roles: ['admin'], exact: true, planFeature: 'automacoes' },
       { label: 'Atendente de IA', icon: BotMessageSquare, href: '/agente-ia', roles: ['admin'], planFeature: 'agente_ia' },
     ],

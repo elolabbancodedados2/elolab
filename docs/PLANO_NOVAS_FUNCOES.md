@@ -23,15 +23,22 @@ com migration revisada e testada em ambiente local. Nada aqui altera o módulo f
 
 Ordem sugerida por valor para a clínica e risco baixo:
 
-1. **Financeiro gerencial: DRE e plano de contas**
-   - Tabelas: `plano_contas` (código, nome, tipo, pai), vínculo opcional da categoria de despesa a uma conta.
-   - Telas: DRE por competência com níveis, comparação com mês anterior, regras de rateio por centro de custo (já existe `centro_custo`).
-2. **Estoque e compras: cotação e pedido**
-   - Tabelas: `cotacoes_compra`, `cotacao_itens`, `pedidos_compra`, usando `fornecedores` que já existe.
-   - Telas: comparação de preços por fornecedor com o melhor destacado, pedido gerado a partir da cotação, entrada no estoque ao receber.
-3. **Relacionamento: campanhas e NPS**
-   - Já existem dados de NPS; falta `campanhas` (público, mensagem com variáveis, canal, agenda de envio) e resultado por campanha.
-   - Telas: NPS do período com distribuição, lista de pacientes sem retorno, envio em lote pelo WhatsApp já integrado.
+1. **Financeiro gerencial: DRE e plano de contas** — entregue em 31/10/2026; **migration pendente de aplicação**
+   - Migration `supabase/migrations/20261031120000_plano_contas_dre.sql` (não aplicada): tabelas `plano_contas` (código único por clínica, nome, natureza, grupo da DRE, conta pai, ativo) e `plano_contas_categorias` (liga categoria + natureza de `lancamentos` a uma conta), RLS por clínica (leitura com acesso financeiro, escrita só admin e financeiro), triggers de mesma clínica e RPC `criar_plano_contas_padrao()`. `lancamentos` só é lido.
+   - Tela `/financeiro/dre` (menu Financeiro → "DRE e plano de contas"): DRE gerencial em cascata por competência com contas expansíveis, mês anterior, variação, margem sobre a receita líquida, aviso de lançamentos sem conta e exportação CSV; plano de contas em árvore (criar, editar, desativar, plano padrão); vínculo das categorias às contas.
+   - Lógica pura e testes em `src/lib/dre.ts`; teste de render em `src/pages/__tests__/DrePlanoContas.test.tsx`.
+   - Fica para depois: rateio por centro de custo (`centro_custo`).
+2. **Estoque e compras: fornecedores, cotação e pedido** — entregue em 31/10/2026; migration pendente de aplicação.
+   - Correção do levantamento: não existia tabela de fornecedores (só o texto livre `estoque.fornecedor`). A tabela `fornecedores` foi criada agora.
+   - Migration `20261031121000_compras_cotacoes_pedidos.sql`: `fornecedores`, `cotacoes_compra`, `cotacao_itens`, `cotacao_propostas`, `pedidos_compra`, `pedido_compra_itens`, com RLS por clínica (leitura para admin, enfermagem e financeiro; escrita para admin e enfermagem) e triggers que impedem vínculos entre clínicas.
+   - RPCs: `gerar_pedidos_da_cotacao` (menor preço por item, um pedido por fornecedor, fecha a cotação) e `receber_pedido_compra` (entrada no estoque por `registrar_movimentacao_estoque`, uma única vez).
+   - Tela `/compras` com abas Cotações, Pedidos e Fornecedores; no Estoque, atalho Compras e `Cotar itens em falta`.
+   - Falta: aplicar a migration no ambiente local, prova visual e aprovação do responsável para produção.
+3. **Relacionamento: campanhas e NPS** (entregue em 31/10/2026; migration pendente de aplicação)
+   - Migration `20261031122000_campanhas_relacionamento.sql`, ainda não aplicada: tabela `campanhas` com RLS (admin e recepção editam rascunhos), RPCs `previa_publico_campanha`, `disparar_campanha` (só admin, até 2.000 destinatários), `cancelar_campanha`, `resultado_campanhas` e `listar_pacientes_sem_retorno`.
+   - O disparo grava uma linha por paciente em `notification_queue` (`status` pendente, `dedupe_key` `campanha:<id>:<paciente>`), processada pela `process-notification-queue`, que passou a conferir preferência de canal e janela de contato também para campanhas.
+   - Tela `/relacionamento` (Campanhas e NPS): NPS do período com distribuição, evolução mensal, NPS por profissional e comentários; campanhas com prévia do público e da mensagem; pacientes sem retorno.
+   - Falta: aplicar a migration em ambiente local, prova visual com a clínica sintética e publicar a edge function alterada.
 4. **Especialidades**
    - Odontograma (dentes, faces, procedimentos planejados e realizados) e fotos clínicas com marcação de pontos (dermatologia).
    - Tabelas: `odontograma_registros`, `fotos_clinicas` (arquivo no storage com a mesma regra de acesso do prontuário).

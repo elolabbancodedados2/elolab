@@ -47,6 +47,7 @@ export { FoldersIcon as FolderKanban } from '@phosphor-icons/react/dist/csr/Fold
 export { GaugeIcon as Gauge } from '@phosphor-icons/react/dist/csr/Gauge';
 export { GearIcon as Settings } from '@phosphor-icons/react/dist/csr/Gear';
 export { HandCoinsIcon as HandCoins } from '@phosphor-icons/react/dist/csr/HandCoins';
+export { HandHeartIcon as HeartHandshake } from '@phosphor-icons/react/dist/csr/HandHeart';
 export { HeartbeatIcon as HeartPulse } from '@phosphor-icons/react/dist/csr/Heartbeat';
 export { HouseIcon as Home } from '@phosphor-icons/react/dist/csr/House';
 export { KeyboardIcon as Keyboard } from '@phosphor-icons/react/dist/csr/Keyboard';
@@ -76,6 +77,7 @@ export { PrinterIcon as Printer } from '@phosphor-icons/react/dist/csr/Printer';
 export { ProhibitIcon as Ban } from '@phosphor-icons/react/dist/csr/Prohibit';
 export { PushPinIcon as Pin } from '@phosphor-icons/react/dist/csr/PushPin';
 export { ReceiptIcon as Receipt } from '@phosphor-icons/react/dist/csr/Receipt';
+export { ShoppingCartIcon as ShoppingCart } from '@phosphor-icons/react/dist/csr/ShoppingCart';
 export { PulseIcon as Activity, PulseIcon as ActivitySquare } from '@phosphor-icons/react/dist/csr/Pulse';
 export { QuestionIcon as CircleHelp } from '@phosphor-icons/react/dist/csr/Question';
 export { RobotIcon as BotMessageSquare } from '@phosphor-icons/react/dist/csr/Robot';

@@ -57,6 +57,7 @@ const CashOperationPage = lazy(() => import("@/pages/CashOperationPage").then(mo
 const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module => ({ default: module.CashierSalePage })));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
+const Compras = lazy(() => import("@/pages/Compras"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
 const SalvarRelatorio = lazy(() => import("@/pages/SalvarRelatorioPage"));
 const RelatoriosSalvos = lazy(() => import("@/pages/RelatoriosSalvos"));
@@ -86,9 +87,11 @@ const HigieneSalas = lazy(() => import("@/pages/HigieneSalas"));
 const PatrimonioEquipamentos = lazy(() => import("@/pages/PatrimonioEquipamentos"));
 const ListaEspera = lazy(() => import("@/pages/ListaEspera"));
 const FluxoCaixa = lazy(() => import("@/pages/FluxoCaixa"));
+const DrePlanoContas = lazy(() => import("@/pages/DrePlanoContas"));
 const ClinicalTemplateEditor = lazy(() => import("@/pages/ClinicalTemplateEditor"));
 const Encaminhamentos = lazy(() => import("@/pages/Encaminhamentos"));
 const Automacoes = lazy(() => import("@/pages/Automacoes"));
+const Relacionamento = lazy(() => import("@/pages/Relacionamento"));
 const AgenteIA = lazy(() => import("@/pages/AgenteIA"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const Planos = lazy(() => import("@/pages/Planos"));
@@ -409,6 +412,7 @@ function AppRoutes() {
                           <Route path="/estoque/:itemId/saida" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="exit" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="history" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque /></SupabaseProtectedRoute>} />
+                          <Route path="/compras" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem', 'financeiro']}><Compras /></SupabaseProtectedRoute>} />
                           <Route path="/convenios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios /></SupabaseProtectedRoute>} />
                           <Route path="/convenios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/convenios/:agreementId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><Convenios /></SupabaseProtectedRoute>} />
@@ -455,6 +459,7 @@ function AppRoutes() {
                           <Route path="/caixa-diario" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CaixaDiario /></SupabaseProtectedRoute>} />
                           <Route path="/caixa" element={<Navigate to="/caixa-diario" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />
+                          <Route path="/financeiro/dre" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><DrePlanoContas /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/estorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberEstorno /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/detalhes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberDetalhesPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/recebimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
@@ -500,6 +505,7 @@ function AppRoutes() {
                           <Route path="/configuracoes/importar-dados" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ImportarDadosClinicaPage /></SupabaseProtectedRoute>} />
                           <Route path="/onboarding" element={<SupabaseProtectedRoute allowedRoles={['admin']}><OnboardingClinica /></SupabaseProtectedRoute>} />
                           <Route path="/configuracoes-avancadas" element={<SupabaseProtectedRoute allowedRoles={['admin']}><ConfiguracoesAvancadas /></SupabaseProtectedRoute>} />
+                          <Route path="/relacionamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao']}><Relacionamento /></SupabaseProtectedRoute>} />
                           <Route path="/automacoes" element={<SupabaseProtectedRoute allowedRoles={['admin']}><PlanFeatureGuard feature="automacoes" requiredPlan="EloLab Pro"><Automacoes /></PlanFeatureGuard></SupabaseProtectedRoute>} />
                           <Route path="/templates-email" element={<Navigate to="/todos-templates?tab=email" replace />} />
                           <Route path="/agente-ia/sessoes/nova" element={<SupabaseProtectedRoute allowedRoles={['admin']}><AgenteIA /></SupabaseProtectedRoute>} />
