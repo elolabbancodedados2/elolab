@@ -15,7 +15,7 @@ export default function BoasVindasClinica() {
           initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.65, ease: 'easeOut' }} />
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.45 }}>
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md" aria-hidden="true"><Sparkles className="h-7 w-7" /></div>
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground" aria-hidden="true"><Sparkles className="h-7 w-7" /></div>
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Sua clínica começa aqui</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Bem-vindo{profile?.nome ? `, ${profile.nome.split(' ')[0]}` : ''}.</h1>
           <p className="mx-auto mt-3 max-w-xl text-muted-foreground">Seu espaço EloLab está pronto. Vamos configurar os detalhes essenciais para sua equipe começar a atender com confiança.</p>

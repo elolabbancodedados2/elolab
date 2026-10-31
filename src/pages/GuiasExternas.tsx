@@ -267,7 +267,7 @@ export default function GuiasExternas() {
         <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
-              <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <AlertTriangle className="h-5 w-5" />
               </span>
               <div className="min-w-0">
@@ -376,7 +376,7 @@ export default function GuiasExternas() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground">
-              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                 <FileText className="h-7 w-7" />
               </span>
               <p className="font-medium text-foreground">

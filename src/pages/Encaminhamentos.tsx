@@ -582,7 +582,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                 {filteredEncaminhamentos.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
-                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                         <ArrowRightLeft className="h-7 w-7" />
                       </span>
                       <p className="font-semibold text-foreground">{encaminhamentos.length === 0 ? 'Nenhum encaminhamento registrado' : 'Nenhum resultado para esses filtros'}</p>

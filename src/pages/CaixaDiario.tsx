@@ -624,7 +624,7 @@ export default function CaixaDiario() {
             <Card className="rounded-2xl border-primary/20 shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                     <BarChart3 className="h-4 w-4" />
                   </span>
                   <CardTitle className="text-base font-semibold">Receitas por forma de pagamento</CardTitle>
@@ -708,7 +708,7 @@ export default function CaixaDiario() {
                   </div>
                 ) : lancamentosFiltrados.length === 0 ? (
                   <div className="flex flex-col items-center py-12 text-center">
-                    <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                    <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                       <Receipt className="h-7 w-7" />
                     </span>
                     <p className="font-medium text-foreground">Nenhuma movimentação{tipoFiltro !== 'todos' ? ' neste filtro' : ''}</p>
@@ -818,7 +818,7 @@ export default function CaixaDiario() {
           {!isOpen && !caixaHoje && (
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className="flex flex-col items-center py-16 text-center">
-                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <DollarSign className="h-7 w-7" />
                 </span>
                 <h3 className="text-lg font-semibold text-foreground mb-1">Caixa não aberto hoje</h3>

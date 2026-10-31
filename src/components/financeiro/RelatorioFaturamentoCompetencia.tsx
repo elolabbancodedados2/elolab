@@ -45,7 +45,7 @@ export function RelatorioFaturamentoCompetencia({ lotes, glosas, convenios }: Pr
   return <Card className="rounded-2xl border-border/60 shadow-xs">
     <CardHeader>
       <CardTitle className="flex items-center gap-2 text-base font-semibold">
-        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><FileBarChart className="h-4 w-4" /></span>
+        <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><FileBarChart className="h-4 w-4" /></span>
         Faturamento por competência
       </CardTitle>
       <CardDescription>Totais calculados a partir dos lotes listados abaixo. A exportação inclui os filtros e cada lote usado, para conferência.</CardDescription>

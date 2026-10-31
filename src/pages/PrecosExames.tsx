@@ -490,7 +490,7 @@ function PrecosInternos({ task }: { task?: PriceTask }) {
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="py-10 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-md">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                       <DollarSign className="h-5 w-5" />
                     </div>
                     <span>{precos.length === 0 ? 'Nenhum exame cadastrado. Clique em “Novo Exame” para começar.' : <>Nenhum exame encontrado para esta busca. <Button variant="link" className="h-auto p-0" onClick={() => setSearch('')}>Limpar busca</Button></>}</span>
@@ -828,7 +828,7 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
               ) : filtered?.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="py-10 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-md">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                       <Building2 className="h-5 w-5" />
                     </div>
                     <span>{precos.length === 0 ? 'Nenhum preço cadastrado. Clique em “Novo Preço” para começar.' : <>Nenhum preço encontrado com estes filtros. <Button variant="link" className="h-auto p-0" onClick={() => { setSearch(''); setFilterConvenio('all'); }}>Limpar busca e convênio</Button></>}</span>
@@ -973,10 +973,10 @@ function PrecosExamesList() {
 
       <Tabs defaultValue={location.state?.examPriceTab === 'convenio' ? 'convenio' : 'particular'} className="space-y-4">
         <TabsList className="rounded-xl border border-border/60 bg-[#F3F8FC] p-1 text-muted-foreground">
-          <TabsTrigger value="particular" className="gap-1.5 rounded-lg data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
+          <TabsTrigger value="particular" className="gap-1.5 rounded-lg">
             <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno
           </TabsTrigger>
-          <TabsTrigger value="convenio" className="gap-1.5 rounded-lg data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
+          <TabsTrigger value="convenio" className="gap-1.5 rounded-lg">
             <Building2 className="h-3.5 w-3.5" /> Por Convênio
           </TabsTrigger>
         </TabsList>

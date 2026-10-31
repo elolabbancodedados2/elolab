@@ -29,11 +29,11 @@ export default function Contas() {
         return next;
       })} className="w-full">
         <TabsList className="mx-auto grid w-full max-w-sm grid-cols-2 rounded-full border border-border/60 bg-muted/40 p-1 shadow-xs">
-          <TabsTrigger value="receber" className="gap-2 rounded-full data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="receber" className="gap-2 rounded-full data-[state=active]:shadow-sm">
             <BadgeDollarSign className="h-4 w-4" />
             A Receber
           </TabsTrigger>
-          <TabsTrigger value="pagar" className="gap-2 rounded-full data-[state=active]:bg-gradient-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="pagar" className="gap-2 rounded-full data-[state=active]:shadow-sm">
             <CreditCard className="h-4 w-4" />
             A Pagar
           </TabsTrigger>

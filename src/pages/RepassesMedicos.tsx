@@ -274,7 +274,7 @@ export default function RepassesMedicos() {
     <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
             <HandCoins className="h-4 w-4" />
           </span>
           Regra por médico
@@ -286,7 +286,7 @@ export default function RepassesMedicos() {
     <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
             <HandCoins className="h-4 w-4" />
           </span>
           Fechamento
@@ -298,7 +298,7 @@ export default function RepassesMedicos() {
         {repassesAtingiramLimite && <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros. Os totais podem não incluir todos os repasses.</p></div>}
         {repassesQuery.isLoading ? <p>Carregando…</p> : repasses.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <HandCoins className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Nenhum repasse nesta competência</p>
@@ -306,7 +306,7 @@ export default function RepassesMedicos() {
           </div>
         ) : repassesFiltrados.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <HandCoins className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Nenhum repasse corresponde ao filtro selecionado</p>

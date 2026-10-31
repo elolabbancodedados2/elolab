@@ -703,7 +703,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
       ) : templates.length === 0 ? (
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <Mail className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Nenhum modelo de e-mail cadastrado</p>
@@ -714,7 +714,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
       ) : filtered.length === 0 ? (
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <Search className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Nenhum modelo corresponde aos filtros</p>
@@ -726,7 +726,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
         grupos.map(grupo => (
           <section key={grupo.key} aria-labelledby={`email-grupo-${grupo.key}`} className="space-y-3">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-sm">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <Layers className="h-4 w-4" />
               </span>
               <h2 id={`email-grupo-${grupo.key}`} className="text-base font-semibold text-foreground">{grupo.label}</h2>

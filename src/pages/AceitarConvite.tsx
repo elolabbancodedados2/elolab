@@ -357,7 +357,7 @@ export default function AceitarConvite() {
       <Logo className="relative z-10 mb-6" />
       <Card className="relative z-10 w-full max-w-md rounded-2xl border-[#DCE6F2] bg-card/95 shadow-[0_8px_24px_rgba(16,128,202,0.10)] backdrop-blur-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
             <CheckCircle className="h-7 w-7" aria-hidden="true" />
           </div>
           <CardTitle>Bem-vindo(a) à Equipe!</CardTitle>

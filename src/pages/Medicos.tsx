@@ -922,7 +922,7 @@ function MedicosWorkspace({ task }: { task?: DoctorTask }) {
         {filteredMedicos.length === 0 && (
           <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
             <CardContent className="text-center py-16">
-              <span aria-hidden="true" className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+              <span aria-hidden="true" className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                 <Stethoscope className="h-8 w-8" />
               </span>
               <h3 className="text-lg font-semibold text-foreground">Nenhum médico encontrado</h3>

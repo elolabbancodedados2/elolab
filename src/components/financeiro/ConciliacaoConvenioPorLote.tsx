@@ -42,7 +42,7 @@ export function ConciliacaoConvenioPorLote({ clinicaId, lotes }: { clinicaId: st
     <Card className="rounded-2xl border-border/60 shadow-xs">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white"><Scale className="h-4 w-4" /></span>
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><Scale className="h-4 w-4" /></span>
           Conciliação por lote
           <Badge variant="outline" className="rounded-full border-border text-primary">{divergentes} com diferença</Badge>
         </CardTitle>

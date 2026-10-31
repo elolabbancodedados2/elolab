@@ -20,7 +20,7 @@ export default function PoliticaPrivacidade() {
         </div>
 
         <div className="mb-6 flex items-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
             <Shield className="h-6 w-6" aria-hidden="true" />
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Política de Privacidade</h1>

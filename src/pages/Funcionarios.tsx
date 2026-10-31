@@ -666,7 +666,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
         <CardHeader>
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-white">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <Users className="h-4 w-4" />
               </span>
               Equipe

@@ -282,7 +282,7 @@ export function IntegracoesTab() {
 
           {!error && integracoes.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground">
-              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Code className="h-6 w-6" /></span>
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground"><Code className="h-6 w-6" /></span>
               <p>{isLoading ? 'Verificando integrações...' : 'Nenhuma integração encontrada'}</p>
             </div>
           )}
@@ -374,7 +374,7 @@ export function EspecialidadesTab() {
           </Button>
         </CardHeader>
         <CardContent>
-          {especialidadesQuery.isError ? <ErrorState compact title="Não foi possível carregar as especialidades" error={especialidadesQuery.error} onRetry={() => void especialidadesQuery.refetch()} /> : especialidadesQuery.isLoading ? <div className="py-8 text-center text-sm text-muted-foreground">Carregando especialidades…</div> : especialidades.length === 0 ? <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground"><span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Stethoscope className="h-6 w-6" /></span><p className="font-medium text-foreground">Nenhuma especialidade cadastrada.</p><p>Use "Nova Especialidade" para cadastrar a primeira.</p></div> : <div className="space-y-3">
+          {especialidadesQuery.isError ? <ErrorState compact title="Não foi possível carregar as especialidades" error={especialidadesQuery.error} onRetry={() => void especialidadesQuery.refetch()} /> : especialidadesQuery.isLoading ? <div className="py-8 text-center text-sm text-muted-foreground">Carregando especialidades…</div> : especialidades.length === 0 ? <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground"><span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground"><Stethoscope className="h-6 w-6" /></span><p className="font-medium text-foreground">Nenhuma especialidade cadastrada.</p><p>Use "Nova Especialidade" para cadastrar a primeira.</p></div> : <div className="space-y-3">
             {especialidades.map(esp => (
               <div key={esp.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#9CC7EC] hover:bg-[#F3F8FC]">
                 <div>

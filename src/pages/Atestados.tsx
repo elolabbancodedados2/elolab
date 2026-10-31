@@ -755,7 +755,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                 {filteredAtestados.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
-                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                         <FileText className="h-7 w-7" />
                       </span>
                       <p className="font-semibold text-foreground">{atestados.length === 0 ? 'Nenhum atestado encontrado' : 'Nenhum resultado para esses filtros'}</p>
