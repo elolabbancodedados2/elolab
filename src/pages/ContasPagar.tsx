@@ -303,7 +303,7 @@ export default function ContasPagar() {
     });
   };
 
-  if (!isCreationPage && contasQuery.isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  if (!isCreationPage && contasQuery.isLoading) return <div className="space-y-6" data-testid="contas-pagar-carregando" aria-busy="true"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
   if (!isCreationPage && contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
 
   return (

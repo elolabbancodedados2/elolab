@@ -164,10 +164,14 @@ test('payables keep a loading state visible until the accounts arrive', async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/contas?tab=pagar');
   const main = page.locator('#main-content');
-  await expect(main.locator('.animate-pulse').first()).toBeVisible();
-  expect(leituras).toBeGreaterThan(0);
+  // A leitura é disparada depois do lazy load da tela; o fallback do lazy
+  // também usa .animate-pulse, por isso o alvo é o esqueleto da própria tela.
+  await expect.poll(() => leituras, { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect(main.getByTestId('contas-pagar-carregando')).toBeVisible();
+  await expect(main.getByText('Nenhuma conta cadastrada', { exact: true })).toHaveCount(0);
   liberarResposta();
   await expect(main.getByText('Nenhuma conta cadastrada', { exact: true })).toBeVisible();
+  await expect(main.getByTestId('contas-pagar-carregando')).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

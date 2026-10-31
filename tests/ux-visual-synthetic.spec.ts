@@ -1467,6 +1467,9 @@ test('doctor starts a called appointment and opens the same patient in a new pro
 });
 
 test('doctor reopens the prontuario already linked to an active queue appointment', async ({ page }, testInfo) => {
+  // Long journey (queue, prontuario, lab states, exam request); 30 s is too tight
+  // when several workers share the dev server.
+  test.setTimeout(90_000);
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'medico', queuePopulated: true });
   const appointmentId = '00000000-0000-4000-9000-000000000012';
@@ -1478,6 +1481,10 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   const requestedLabResultFilters: string[] = [];
   let labReadsBeforeHistoryAudit = 0;
   let labResultMode: 'loading' | 'success' | 'empty' | 'error' = 'success';
+  // Lab reads in 'loading' mode are held until the test sees the loading state,
+  // instead of relying on a fixed delay being long enough to observe it.
+  let labLoadingGate: Promise<void> = Promise.resolve();
+  let releaseLabLoading = () => {};
   const syntheticExames: Array<Record<string, unknown>> = [];
   const syntheticColetas: Array<Record<string, unknown>> = [];
   const coletaInsertPayloads: Array<Record<string, unknown>> = [];
@@ -1540,15 +1547,16 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
     const requestUrl = new URL(route.request().url());
     requestedLabResultFilters.push(requestUrl.searchParams.toString());
     if (!historyAccesses.includes('historico')) labReadsBeforeHistoryAudit += 1;
-    if (labResultMode === 'loading') await new Promise(resolve => setTimeout(resolve, 500));
-    if (labResultMode === 'error') {
+    const mode = labResultMode;
+    if (mode === 'loading') await labLoadingGate;
+    if (mode === 'error') {
       await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'SYNTHETIC_FAILURE', message: 'Falha simulada na leitura do laboratório' }) });
       return;
     }
     const authorizedRelease = requestUrl.searchParams.get('liberado') === 'eq.true'
       && requestUrl.searchParams.get('clinica_id') === 'eq.00000000-0000-4000-8000-000000000002'
       && requestUrl.searchParams.get('paciente_id') === `eq.${patientId}`;
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authorizedRelease && labResultMode !== 'empty' ? [{
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authorizedRelease && mode !== 'empty' ? [{
       id: 'synthetic-result-release-1', parametro: 'Hemoglobina', resultado: '13,8', unidade: 'g/dL',
       critico: false, numero_versao: 1, data_liberacao: '2026-10-29T10:30:00-03:00',
       valor_referencia_min: 12, valor_referencia_max: 16, valor_referencia_texto: null, coleta_id: 'synthetic-collection-release-1',
@@ -1623,7 +1631,7 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await expect(page.getByText('13,8 g/dL')).toBeVisible();
   await expect(page.getByText('Amostra QA-1042')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Abrir laudo' })).toHaveAttribute('href', '/laudos-lab?coleta=synthetic-collection-release-1');
-  expect(requestedLabResultFilters.some(filters => filters.includes('liberado=eq.true') && filters.includes(`paciente_id=eq.${patientId}`) && filters.includes('clinica_id=eq.00000000-0000-4000-8000-000000000002'))).toBe(true);
+  await expect.poll(() => requestedLabResultFilters.some(filters => filters.includes('liberado=eq.true') && filters.includes(`paciente_id=eq.${patientId}`) && filters.includes('clinica_id=eq.00000000-0000-4000-8000-000000000002'))).toBe(true);
   expect(labReadsBeforeHistoryAudit).toBe(0);
   const releasedResult = page.getByRole('listitem').filter({ hasText: 'Hemoglobina' });
   await releasedResult.scrollIntoViewIfNeeded();
@@ -1635,10 +1643,12 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('prontuario-resultados-laboratorio-liberados-375.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 1280, height: 800 });
+  labLoadingGate = new Promise<void>(resolve => { releaseLabLoading = resolve; });
   labResultMode = 'loading';
   await page.getByRole('tab', { name: 'Evoluções' }).click();
   await page.getByRole('tab', { name: 'Solicitações' }).click();
   await expect(page.getByRole('status', { name: 'Carregando registros relacionados' })).toBeVisible();
+  releaseLabLoading();
   await expect(page.getByText('Hemoglobina', { exact: true })).toBeVisible();
   labResultMode = 'empty';
   await page.getByRole('tab', { name: 'Evoluções' }).click();
@@ -1654,9 +1664,10 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await page.getByRole('tab', { name: 'Evoluções' }).click();
   await page.getByRole('button', { name: /Abrir evolução de/ }).click();
   await expect(dialog).toBeVisible();
+  // The access RPCs fire asynchronously after the evolution opens.
+  await expect.poll(() => historyAccesses.at(-1)).toBe('prontuario');
   expect(historyAccesses).toContain('historico');
   expect(historyAccesses).toContain('prontuario');
-  expect(historyAccesses.at(-1)).toBe('prontuario');
   await page.screenshot({ path: testInfo.outputPath('fila-atendimento-prontuario-existente-1280.png'), animations: 'disabled' });
 
   await dialog.getByRole('button', { name: 'Solicitar Exame' }).click();
@@ -2624,17 +2635,23 @@ test('LGPD export is audited before download and fails closed when audit insert 
   // Failure path: audit registration fails; patient data export must stop before
   // any downloadable result can be produced.
   auditMode = 'failure';
-  const noDownload = Promise.race([
-    page.waitForEvent('download', { timeout: 1000 }).then(() => false).catch(() => true),
-  ]);
+  const downloadsDuringFailure: string[] = [];
+  const recordDownload = (download: { suggestedFilename(): string }) => { downloadsDuringFailure.push(download.suggestedFilename()); };
+  page.on('download', recordDownload);
   await main.getByRole('button', { name: 'Exportar' }).click();
   const exportDialog = page.getByTestId('lgpd-export-page');
   await expect(exportDialog).toBeVisible();
   await page.locator('#main-content').getByRole('button', { name: 'Gerar arquivo JSON' }).click();
-  expect(await noDownload).toBe(true);
+  // Wait for the audit attempt itself instead of a fixed download window: on a
+  // slow run the window could close before the export even started.
+  await expect.poll(() => auditWrites.filter(write => write.method === 'POST').length, { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect(page.getByText(/Não foi possível registrar o pedido de exportação; o arquivo não foi gerado/)).toBeVisible();
+  await expect(page.locator('#main-content').getByRole('button', { name: 'Gerar arquivo JSON' })).toBeEnabled();
+  page.off('download', recordDownload);
+  expect(downloadsDuringFailure).toEqual([]);
   expect(exportedPatientReads).toEqual(['*']); // only the patient row lookup precedes audit registration
   expect(bulkPatientDataReads).toEqual([]);
-  expect(auditWrites.some(write => write.method === 'POST')).toBe(true);
+  expect(auditWrites.filter(write => write.method === 'PATCH')).toEqual([]);
 
   // A new page uses the success audit stub, proving both the request record
   // and fulfilled state are written before the JSON download is emitted.
