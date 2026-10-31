@@ -111,3 +111,44 @@ export function validarLoteTiss(entrada: {
 }
 
 export const bloqueiaEnvio = (pendencias: ReadonlyArray<PendenciaLote>) => pendencias.some((p) => p.gravidade === 'erro');
+
+export type SituacaoAutorizacaoGuia =
+  | 'autorizada' | 'pendente' | 'negada' | 'vencida' | 'divergente' | 'sem_autorizacao' | 'dispensada';
+
+export interface ResultadoAutorizacaoGuia {
+  situacao: SituacaoAutorizacaoGuia;
+  numero: string | null;
+  validade: string | null;
+  detalhe: string;
+}
+
+/**
+ * Situação da autorização de uma guia para a visão geral de guias, com a mesma
+ * régua de `validarLoteTiss`: consulta sem autorização é dispensada; vínculo
+ * com outro convênio, paciente ou tipo de serviço é divergência.
+ */
+export function situacaoAutorizacaoGuia(
+  guia: GuiaLote,
+  convenioDoLote: string | null,
+  autorizacoes: ReadonlyMap<string, AutorizacaoValidacao>,
+): ResultadoAutorizacaoGuia {
+  if (!guia.autorizacao_id) {
+    return normalizar(guia.tipo_servico) === 'consulta'
+      ? { situacao: 'dispensada', numero: null, validade: null, detalhe: 'Consulta sem autorização prévia' }
+      : { situacao: 'sem_autorizacao', numero: null, validade: null, detalhe: 'Nenhuma autorização vinculada' };
+  }
+  const a = autorizacoes.get(guia.autorizacao_id);
+  if (!a) return { situacao: 'divergente', numero: null, validade: null, detalhe: 'Autorização não encontrada nesta clínica' };
+  const base = { numero: a.numero_autorizacao, validade: a.data_expiracao };
+  if (a.status === 'negada') return { ...base, situacao: 'negada', detalhe: 'Negada pela operadora' };
+  if (a.status === 'expirada' || (a.data_expiracao && a.data_expiracao < guia.data_atendimento)) {
+    return { ...base, situacao: 'vencida', detalhe: 'Atendimento após a validade' };
+  }
+  if ((convenioDoLote && a.convenio_id !== convenioDoLote)
+    || (guia.paciente_id && a.paciente_id !== guia.paciente_id)
+    || normalizar(a.tipo_servico) !== normalizar(guia.tipo_servico)) {
+    return { ...base, situacao: 'divergente', detalhe: 'Convênio, paciente ou serviço diferente da guia' };
+  }
+  if (a.status !== 'autorizada') return { ...base, situacao: 'pendente', detalhe: 'Aguardando a operadora' };
+  return { ...base, situacao: 'autorizada', detalhe: 'Autorizada' };
+}

@@ -2299,9 +2299,16 @@ test('reception check-in keeps context through queue triage and applies the clin
   await expect(prontuarioWorkspace.getByText('Ana Souza', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(startPayload).toEqual({ p_agendamento_id: appointmentId, p_fila_id: queueId });
+  const faixaTriagem = prontuarioWorkspace.getByRole('button', { name: /^Triagem \d{2}:\d{2}: PA 120\/80 mmHg/ });
+  await expect(faixaTriagem).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-queue-clinical-handoff-1280.png'), animations: 'disabled' });
+  await prontuarioWorkspace.getByRole('button', { name: 'Usar no prontuário' }).click();
+  await expect(prontuarioWorkspace.getByRole('button', { name: /^Sinais vitais: PA 120\/80 mmHg/ })).toBeVisible();
+  await expect(prontuarioWorkspace.getByRole('button', { name: 'Usar no prontuário' })).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Fila e triagem', exact: true }).click();
+  // Copiar a triagem conta como alteração do prontuário; sair pede confirmação.
+  await page.getByRole('alertdialog', { name: 'Alterações não salvas' }).getByRole('button', { name: 'Descartar' }).click();
   await expect(page).toHaveURL('/fila');
   const activeQueueCard = page.locator('#main-content').getByTestId('fila-card').filter({ hasText: 'Ana Souza' });
   await expect(activeQueueCard.getByText('Em Atendimento')).toBeVisible();
