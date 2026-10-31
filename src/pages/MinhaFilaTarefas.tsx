@@ -189,12 +189,12 @@ export default function MinhaFilaTarefas() {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
-            <section aria-labelledby="fila-proxima-title" className="rounded-2xl bg-brand-dark p-6 text-white">
+            <section aria-labelledby="fila-proxima-title" className="rounded-2xl border border-border bg-card p-6 text-foreground">
               <div className="relative">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 id="fila-proxima-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/70">Próxima tarefa</h2>
+                  <h2 id="fila-proxima-title" className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Próxima tarefa</h2>
                   {proxima && (
-                    <span className={cn('rounded-full px-3 py-1 text-[11px] font-bold', groups.overdue.includes(proxima) ? 'bg-destructive text-destructive-foreground' : 'bg-white/10 text-white')}>
+                    <span className={cn('rounded-full px-3 py-1 text-[11px] font-bold', groups.overdue.includes(proxima) ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-foreground')}>
                       {groups.overdue.includes(proxima) ? 'Atrasada' : groups.today.includes(proxima) ? 'Para hoje' : prioridadeInfo[proxima.prioridade]?.label ?? 'Próxima'}
                     </span>
                   )}
@@ -202,31 +202,31 @@ export default function MinhaFilaTarefas() {
                 {proxima ? (
                   <>
                     <p className="mt-4 text-2xl font-bold leading-tight sm:text-[28px]">{proxima.titulo}</p>
-                    {proxima.descricao && <p className="mt-2 max-w-xl text-sm text-white/65">{proxima.descricao}</p>}
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/60">
-                      {proxima.data_vencimento && <span className="inline-flex items-center gap-1"><CalendarClock aria-hidden="true" className="h-3.5 w-3.5 text-white" /> Prazo {format(parseDateOnly(proxima.data_vencimento), 'dd/MM/yyyy')}</span>}
+                    {proxima.descricao && <p className="mt-2 max-w-xl text-sm text-muted-foreground">{proxima.descricao}</p>}
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {proxima.data_vencimento && <span className="inline-flex items-center gap-1"><CalendarClock aria-hidden="true" className="h-3.5 w-3.5 text-foreground" /> Prazo {format(parseDateOnly(proxima.data_vencimento), 'dd/MM/yyyy')}</span>}
                       {proxima.categoria && <span>{proxima.categoria}</span>}
                       <span>{statusLabel[proxima.status] ?? proxima.status}</span>
                     </div>
                     <div className="mt-5 flex flex-wrap gap-2">
                       {proxima.status === 'pendente' && (
-                        <Button type="button" disabled={atualizar.isPending} onClick={() => iniciar(proxima)} aria-label={`Iniciar próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full border border-white/25 bg-white/10 px-5 text-white hover:bg-white/20">
+                        <Button type="button" disabled={atualizar.isPending} onClick={() => iniciar(proxima)} aria-label={`Iniciar próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full border border-border bg-secondary px-5 text-foreground hover:bg-secondary">
                           <Play aria-hidden="true" className="h-4 w-4" /> Iniciar
                         </Button>
                       )}
-                      <Button type="button" disabled={atualizar.isPending} onClick={() => concluir(proxima)} aria-label={`Concluir próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full bg-white px-5 text-primary hover:bg-white/90">
+                      <Button type="button" disabled={atualizar.isPending} onClick={() => concluir(proxima)} aria-label={`Concluir próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full bg-primary px-5 text-primary-foreground hover:bg-primary/90">
                         {atualizar.isPending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Check aria-hidden="true" className="h-4 w-4" />} Concluir
                       </Button>
-                      <Button type="button" variant="ghost" disabled={atualizar.isPending} onClick={() => adiar(proxima)} aria-label={`Adiar próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full px-4 text-white/80 hover:bg-white/10 hover:text-white">
+                      <Button type="button" variant="ghost" disabled={atualizar.isPending} onClick={() => adiar(proxima)} aria-label={`Adiar próxima tarefa: ${proxima.titulo}`} className="h-11 gap-2 rounded-full px-4 text-muted-foreground hover:bg-secondary hover:text-foreground">
                         <CalendarPlus aria-hidden="true" className="h-4 w-4" /> Adiar para amanhã
                       </Button>
                     </div>
                   </>
                 ) : (
                   <div className="mt-5">
-                    <Sparkles aria-hidden="true" className="h-8 w-8 text-white" />
+                    <Sparkles aria-hidden="true" className="h-8 w-8 text-foreground" />
                     <p className="mt-3 text-xl font-bold">Nada pendente na sua fila</p>
-                    <p className="mt-1 text-sm text-white/65">Tudo o que estava atribuído a você já foi resolvido.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Tudo o que estava atribuído a você já foi resolvido.</p>
                   </div>
                 )}
               </div>
