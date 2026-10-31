@@ -9,8 +9,8 @@ const ALIASES = [
   ['/salas', '/gestao-fluxo', ''],
   ['/templates', '/todos-templates', ''],
   ['/lista-espera', '/gestao-fluxo', 'tab=espera'],
-  ['/caixa', '/recepcao', 'tab=caixa'],
-  ['/caixa-diario', '/recepcao', 'tab=caixa'],
+  ['/caixa', '/caixa-diario', ''],
+  ['/recepcao?tab=caixa', '/caixa-diario', ''],
   ['/contas-receber', '/contas', 'tab=receber'],
   ['/contas-pagar', '/contas', 'tab=pagar'],
   ['/pagamentos', '/contas', 'tab=receber'],
@@ -33,8 +33,8 @@ test('legacy paths use canonical routes and preserve the intended tab', async ({
     const url = new URL(page.url());
     expect(url.search.slice(1), `${legacy} query`).toBe(expectedQuery);
     await expect(page.locator('#main-content h1').first(), `${legacy} resolves to ${canonical}`).toBeVisible({ timeout: 8_000 });
-    if (legacy === '/caixa' || legacy === '/caixa-diario') {
-      await expect(page.getByRole('tab', { name: /Caixa Diário/ })).toHaveAttribute('data-state', 'active');
+    if (canonical === '/caixa-diario') {
+      await expect(page.getByRole('heading', { level: 1, name: 'Caixa Diário' })).toBeVisible();
     }
   }
 });

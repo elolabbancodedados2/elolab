@@ -46,7 +46,7 @@ test('cashier history uses the header success treatment for every open status', 
 
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
-    await page.goto('/recepcao?tab=caixa');
+    await page.goto('/caixa-diario');
     const main = page.locator('#main-content');
     await main.getByRole('tab', { name: 'Histórico', exact: true }).click();
 
@@ -58,14 +58,14 @@ test('cashier history uses the header success treatment for every open status', 
     await expectNoHorizontalOverflow(page);
     await page.screenshot({ path: testInfo.outputPath(`caixa-historico-aberto-${viewport.width}.png`), animations: 'disabled' });
 
+    // O detalhe do caixa deixou de ser diálogo e virou página própria.
     await listBadge.click();
-    const dialog = page.getByRole('dialog');
-    const dialogBadge = dialog.getByText('Aberto', { exact: true });
-    await expect(dialogBadge).toHaveClass(/bg-success\/10/);
-    await expect(dialogBadge).toHaveClass(/text-success/);
-    await expect(dialogBadge).not.toHaveClass(/bg-primary/);
+    await expect(page).toHaveURL('/recepcao/caixa/historico/00000000-0000-4000-9000-000000000081');
+    const detailBadge = main.getByText('Aberto', { exact: true });
+    await expect(detailBadge).toHaveClass(/bg-success\/10/);
+    await expect(detailBadge).toHaveClass(/text-success/);
+    await expect(detailBadge).not.toHaveClass(/bg-primary/);
     await page.screenshot({ path: testInfo.outputPath(`caixa-detalhe-aberto-${viewport.width}.png`), animations: 'disabled' });
-    await page.keyboard.press('Escape');
   }
 
   expect(synthetic.writes.filter((write) => !write.includes('/rpc/'))).toEqual([]);

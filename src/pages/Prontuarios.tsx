@@ -961,7 +961,13 @@ export default function Prontuarios() {
   }, [telaProntuario]);
   const routeOpenedRef = useRef(false);
   const routeKeyRef = useRef<string | null>(null);
-  const [contextoAgendamento, setContextoAgendamento] = useState<ContextoAgendamentoProntuario | null>(null);
+  // Abrir a evolução troca o pathname e remonta a tela; o contexto do
+  // agendamento segue no state da navegação para não sumir no caminho.
+  const contextoAgendamentoDaRota = (() => {
+    const contexto = (location.state as { contextoAgendamento?: ContextoAgendamentoProntuario } | null)?.contextoAgendamento;
+    return contexto && contexto.id === routeAgendamentoId ? contexto : null;
+  })();
+  const [contextoAgendamento, setContextoAgendamento] = useState<ContextoAgendamentoProntuario | null>(contextoAgendamentoDaRota);
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
   const [pendingPatientContextChange, setPendingPatientContextChange] = useState<{
     pacienteId: string;
@@ -1002,7 +1008,7 @@ export default function Prontuarios() {
   useEffect(() => {
     navigationAllowedRef.current = false;
   }, [location.pathname, location.search]);
-  const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string) => {
+  const navigateToEvolucao = useCallback((params: URLSearchParams, pacienteId: string, contexto: ContextoAgendamentoProntuario | null = null) => {
     const secaoAtual = searchParams.get('secao');
     if (secaoAtual && !params.has('secao')) params.set('secao', secaoAtual);
     if (telaProntuario === 'protocolos' || telaProntuario === 'relatorio-alta' || telaProntuario === 'alertas-medicamentos' || telaProntuario === 'anexo-portal' || telaProntuario === 'assinatura-eletronica') {
@@ -1013,7 +1019,7 @@ export default function Prontuarios() {
     const returnTo = isEvolucaoWorkspace && typeof routeState?.returnTo === 'string'
       ? routeState.returnTo
       : `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`;
-    navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo } });
+    navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo, ...(contexto ? { contextoAgendamento: contexto } : {}) } });
   }, [isEvolucaoWorkspace, location.state, navigate, routeAnexoId, searchParams, telaProntuario]);
   const returnFromEvolucao = useCallback(() => {
     const routeState = location.state as { returnTo?: unknown } | null;
@@ -1300,7 +1306,7 @@ export default function Prontuarios() {
       const params = new URLSearchParams({ paciente: prontuario.paciente_id, prontuario: prontuario.id });
       if (secaoProntuarioParam) params.set('secao', secaoProntuarioParam);
       if (contextoDoAgendamento?.id) params.set('agendamento', contextoDoAgendamento.id);
-      navigateToEvolucao(params, prontuario.paciente_id);
+      navigateToEvolucao(params, prontuario.paciente_id, contextoDoAgendamento);
       toast.warning('Prontuário aberto em modo de leitura.', {
         description: 'As prescrições não carregaram. Recarregue essa seção antes de editar para evitar substituir dados que não foram exibidos.',
         duration: 9000,
@@ -1316,7 +1322,7 @@ export default function Prontuarios() {
     const params = new URLSearchParams({ paciente: prontuario.paciente_id, prontuario: prontuario.id });
     if (secaoProntuarioParam) params.set('secao', secaoProntuarioParam);
     if (contextoDoAgendamento?.id) params.set('agendamento', contextoDoAgendamento.id);
-    navigateToEvolucao(params, prontuario.paciente_id);
+    navigateToEvolucao(params, prontuario.paciente_id, contextoDoAgendamento);
     // Registro de acesso ao prontuário — CFM Res. 1.821/2007.
     //
     // Isto vivia num `try { ... } catch { /* silent */ }`, e o supabase-js não
@@ -1335,7 +1341,7 @@ export default function Prontuarios() {
     if (routeKeyRef.current !== routeKey) {
       routeKeyRef.current = routeKey;
       routeOpenedRef.current = false;
-      if (routeAgendamentoId) setContextoAgendamento(null);
+      if (routeAgendamentoId) setContextoAgendamento(atual => (atual?.id === routeAgendamentoId ? atual : null));
     }
   }, [location.pathname, routePacienteId, routeAgendamentoId, routeProntuarioId, routeNovaEvolucao]);
 
@@ -1366,14 +1372,14 @@ export default function Prontuarios() {
       voltarParaLista();
       return;
     }
-    void handleViewProntuarioRef.current(record);
+    void handleViewProntuarioRef.current(record, record.agendamento_id === contextoAgendamentoDaRota?.id ? contextoAgendamentoDaRota : null);
   }, [
     isProntuarioOpen, location.pathname,
     routeProntuarioId, routePacienteId, selectedPacienteId, selectedPaciente, telaProntuario,
     pacienteSelecionadoQuery.isLoading, pacienteSelecionadoQuery.isError,
     loadingProntuarios, loadingMedicos, erroProntuarios, erroMedicos,
     historicoAuditadoPacienteId, erroHistorico, user?.clinica_id,
-    pacienteProntuarios, navigate, secaoProntuario,
+    pacienteProntuarios, navigate, secaoProntuario, contextoAgendamentoDaRota,
   ]);
 
   useEffect(() => {

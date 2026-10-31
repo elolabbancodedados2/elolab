@@ -48,7 +48,7 @@ test('cash withdrawal opens a page and keeps its reason and idempotency key afte
   const payloads = await installMovementWrites(page, true);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/recepcao?tab=caixa');
+  await page.goto('/caixa-diario');
   await page.getByRole('button', { name: 'Sangria', exact: true }).click();
   await expect(page).toHaveURL('/recepcao/caixa/sangria');
   await expect(page.getByRole('heading', { name: 'Registrar sangria' })).toBeVisible();
@@ -78,7 +78,7 @@ test('cash withdrawal opens a page and keeps its reason and idempotency key afte
   await expect(page.getByLabel('Valor da retirada (R$)')).toHaveValue('32,50');
   await expect(page.getByLabel('Motivo da retirada')).toHaveValue('Troco para o balcão');
   await confirm.click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({
     tipo: 'sangria', valor: 32.5, descricao: 'Sangria — Troco para o balcão', forma_pagamento: 'dinheiro', status: 'pago',
@@ -97,7 +97,7 @@ test('cash replenishment stays on its own page and preserves the optional descri
   await page.getByLabel('Valor do suprimento (R$)').fill('25,00');
   await expect(page.getByRole('button', { name: 'Adicionar suprimento' })).toBeEnabled();
   await page.getByRole('button', { name: 'Adicionar suprimento' }).click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(1);
   expect(payloads[0]).toMatchObject({ tipo: 'suprimento', valor: 25, descricao: 'Suprimento de Caixa', forma_pagamento: 'dinheiro', status: 'pago' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
@@ -117,7 +117,7 @@ test('cash expense preserves category and payment method on its own page', async
   await page.getByRole('option', { name: 'Limpeza' }).click();
   await page.getByLabel('Forma de pagamento').click();
   await page.getByRole('option', { name: 'PIX', exact: true }).click();
-  const confirm = page.getByRole('button', { name: 'Registrar despesa' });
+  const confirm = page.locator('#main-content').getByRole('button', { name: 'Registrar despesa' });
   await expect(confirm).toBeEnabled();
   await page.screenshot({ path: testInfo.outputPath('cash-expense-mobile.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -125,7 +125,7 @@ test('cash expense preserves category and payment method on its own page', async
   await expect(page.getByRole('heading', { name: 'Registrar despesa' })).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('cash-expense-desktop.png'), fullPage: true, animations: 'disabled' });
   await confirm.click();
-  await expect(page).toHaveURL('/recepcao?tab=caixa');
+  await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(1);
   expect(payloads[0]).toMatchObject({ tipo: 'despesa', valor: 60.9, descricao: 'Material de limpeza', categoria: 'Limpeza', forma_pagamento: 'pix', status: 'pago' });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
@@ -139,6 +139,6 @@ test('cash movement pages do not accept an inaccessible or closed register', asy
 
   await page.goto('/recepcao/caixa/despesa');
   await expect(page.getByRole('heading', { name: 'Caixa não disponível para movimentos' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Registrar despesa' })).toHaveCount(0);
+  await expect(page.locator('#main-content').getByRole('button', { name: 'Registrar despesa' })).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

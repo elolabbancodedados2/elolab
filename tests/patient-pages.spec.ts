@@ -56,7 +56,7 @@ test('patient detail has its own address, accepts legacy links and preserves loo
   await page.goto('/pacientes');
   const search = page.getByRole('textbox', { name: 'Buscar pacientes por nome, CPF, telefone ou e-mail' });
   await search.fill('Pessoa');
-  await page.getByRole('button', { name: 'Ver detalhes de Pessoa Exemplo QA', exact: true }).click();
+  await page.getByRole('complementary', { name: 'Resumo de Pessoa Exemplo QA' }).getByRole('button', { name: 'Abrir ficha', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}$`));
   await expect(page.getByRole('heading', { name: 'Ficha do Paciente', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);

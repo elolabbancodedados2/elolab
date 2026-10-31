@@ -59,7 +59,7 @@ test('glosa registration uses a dedicated page and retries with the same idempot
   await page.getByLabel('Valor glosado (R$)').fill('125');
   await page.getByLabel('Motivo informado pela operadora').fill('Procedimento sem autorização prévia no demonstrativo.');
   await page.screenshot({ path: 'test-results/tiss-glosa-page-desktop.png', fullPage: true });
-  await page.getByRole('button', { name: 'Registrar glosa' }).click();
+  await page.locator('#main-content').getByRole('button', { name: 'Registrar glosa' }).click();
   await expect(page.getByRole('alert')).toContainText('Falha sintética ao registrar a glosa');
   await expect(page.getByLabel('Código da glosa')).toHaveValue('G-42');
   await expect(page.getByLabel('Valor glosado (R$)')).toHaveValue('125');
@@ -91,7 +91,7 @@ test('glosa amount cannot exceed the remaining batch balance', async ({ page }) 
   await page.getByLabel('Código da glosa').fill('G-43');
   await page.getByLabel('Valor glosado (R$)').fill('50.01');
   await page.getByLabel('Motivo informado pela operadora').fill('Valor excede o saldo restante do lote.');
-  await expect(page.getByRole('button', { name: 'Registrar glosa' })).toBeDisabled();
+  await expect(page.locator('#main-content').getByRole('button', { name: 'Registrar glosa' })).toBeDisabled();
   expect(calls).toBe(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
@@ -100,7 +100,7 @@ test('glosa form keeps its save action reachable on mobile', async ({ page }) =>
   const { synthetic } = await installGlosaContext(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/faturamento-convenios/glosas/nova');
-  const salvar = page.getByRole('button', { name: 'Registrar glosa' });
+  const salvar = page.locator('#main-content').getByRole('button', { name: 'Registrar glosa' });
   await salvar.scrollIntoViewIfNeeded();
   await expect(salvar).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

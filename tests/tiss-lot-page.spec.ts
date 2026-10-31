@@ -48,7 +48,7 @@ test('TISS lot creation uses its own page and preserves the form after an uncert
   await expect(page).toHaveURL('/faturamento-convenios/lotes/novo');
   await expect(page.getByRole('heading', { name: 'Novo lote TISS' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByLabel('Convênio').click();
+  await page.locator('#main-content').getByLabel('Convênio').click();
   await page.getByRole('option', { name: 'Convênio QA' }).click();
   await page.getByLabel('Número do lote').fill('QA-2026-100');
   await page.getByLabel('Quantidade de guias').fill('4');
@@ -78,7 +78,7 @@ test('TISS lot page fits a mobile viewport and keeps the primary action reachabl
   const { synthetic } = await installTissContext(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/faturamento-convenios/lotes/novo');
-  await page.getByLabel('Convênio').click();
+  await page.locator('#main-content').getByLabel('Convênio').click();
   await page.getByRole('option', { name: 'Convênio QA' }).click();
   await page.getByLabel('Número do lote').fill('QA-MOBILE-1');
   await page.getByLabel('Quantidade de guias').fill('1');
@@ -104,7 +104,7 @@ test('TISS lot creation rejects a duplicate before calling the creation RPC', as
   });
 
   await page.goto('/faturamento-convenios/lotes/novo');
-  await page.getByLabel('Convênio').click();
+  await page.locator('#main-content').getByLabel('Convênio').click();
   await page.getByRole('option', { name: 'Convênio QA' }).click();
   await page.getByLabel('Número do lote').fill('QA-2026-101');
   await page.getByLabel('Quantidade de guias').fill('2');

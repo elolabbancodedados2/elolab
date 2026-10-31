@@ -50,10 +50,10 @@ for (const width of [1440, 768, 390]) {
     await expect(page).toHaveURL(`/exames/${id}`);
     await expect(page.getByRole('heading', { name: 'Detalhes do Exame', exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath(`exam-detail-${width}.png`) });
-    await page.getByRole('button', { name: 'Lançar resultado', exact: true }).click();
+    await page.locator('#main-content').getByRole('button', { name: 'Lançar resultado', exact: true }).click();
     await expect(page).toHaveURL(`/exames/${id}/resultado`);
     await page.getByLabel('Resultado', { exact: true }).fill('Resultado sintético, sem validade clínica.');
-    await page.getByRole('button', { name: 'Lançar resultado', exact: true }).scrollIntoViewIfNeeded();
+    await page.locator('#main-content').getByRole('button', { name: 'Lançar resultado', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath(`exam-result-${width}.png`) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: 'Voltar aos exames', exact: true }).click();
@@ -112,11 +112,14 @@ test('result conflict keeps text; successful retry saves then releases without d
   });
   await page.goto(`/exames/${id}/resultado`);
   await page.getByLabel('Resultado', { exact: true }).fill('Resultado sintético revisado.');
-  await page.getByRole('button', { name: 'Lançar resultado', exact: true }).click();
+  await page.locator('#main-content').getByRole('button', { name: 'Lançar resultado', exact: true }).click();
   await expect(page.getByText('Não foi possível lançar o resultado', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Resultado', { exact: true })).toHaveValue('Resultado sintético revisado.');
   expect(statusWrites).toBe(0);
-  await page.getByRole('button', { name: 'Lançar resultado', exact: true }).click();
+  // O aviso de erro fica sobre a ação no canto inferior direito; afastar o ponteiro libera o tempo do aviso.
+  await page.mouse.move(0, 0);
+  await expect(page.getByText('Não foi possível lançar o resultado', { exact: true })).toBeHidden({ timeout: 15_000 });
+  await page.locator('#main-content').getByRole('button', { name: 'Lançar resultado', exact: true }).click();
   await expect(page).toHaveURL('/exames');
   expect(resultWrites).toBe(2);
   expect(statusWrites).toBe(1);
@@ -128,7 +131,7 @@ test('lab and terminal exams cannot bypass their workflow through result URL', a
     await mockRecord(page, data);
     await page.goto(`/exames/${id}/resultado`);
     await expect(page.getByRole('heading', { name: 'Lançamento indisponível nesta etapa' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Lançar resultado', exact: true })).toHaveCount(0);
+    await expect(page.locator('#main-content').getByRole('button', { name: 'Lançar resultado', exact: true })).toHaveCount(0);
   }
 });
 
@@ -159,7 +162,7 @@ test('saved result remains saved when report release fails', async ({ page }, in
   });
   await page.goto(`/exames/${id}/resultado`);
   await page.getByLabel('Resultado', { exact: true }).fill('Resultado salvo antes da liberação.');
-  await page.getByRole('button', { name: 'Lançar resultado', exact: true }).click();
+  await page.locator('#main-content').getByRole('button', { name: 'Lançar resultado', exact: true }).click();
   await expect(page).toHaveURL('/exames');
   await expect(page.getByText('O resultado foi salvo, mas o laudo ainda não foi liberado.', { exact: true })).toBeVisible();
   expect(resultWrites).toBe(1);

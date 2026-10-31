@@ -100,92 +100,35 @@ test('platform support status keyboard and internal note work without losing foc
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('team dialogs cancel safely and restore focus on desktop', async ({ page }, testInfo) => {
+// Novo funcionário, novo médico e perfis viraram páginas próprias; a edição
+// concorrente e a página de perfis já são cobertas em employee-pages.spec.ts e
+// doctor-pages.spec.ts. Aqui fica o que só este fluxo cobre: o botão de vínculo
+// sem função e a prévia de acesso no formulário de novo funcionário.
+test('team list opens the new employee page with a live access preview on desktop', async ({ page }, testInfo) => {
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, employeesPopulated: true, employeeWithoutRoles: true, manageDoctors: true });
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/equipe?aba=funcionarios');
+  const main = page.locator('#main-content');
   await expect(page.getByText('Bruno QA sem permissao')).toBeVisible();
   await expect(page.getByRole('button', { name: /Defina uma fun/ })).toBeDisabled();
-  const addEmployee = page.getByRole('button', { name: 'Novo Funcionário' });
-  await addEmployee.click();
-  const employeeDialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Novo Funcionário' }) });
-  await expect(employeeDialog).toBeVisible();
-  await expect(employeeDialog.getByLabel('Nome completo *')).toBeVisible();
-  await expect(employeeDialog.getByRole('heading', { name: 'Permissões de Acesso' })).toBeVisible();
-  const accessPreview = employeeDialog.getByRole('region', { name: 'Prévia de acesso' });
+  await main.getByRole('button', { name: 'Novo Funcionário' }).click();
+  await expect(page).toHaveURL('/equipe/funcionarios/novo');
+  await expect(main.getByRole('heading', { level: 1, name: 'Novo Funcionário' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(main.getByLabel('Nome completo *')).toBeVisible();
+  await expect(main.getByRole('heading', { name: 'Permissões de Acesso' })).toBeVisible();
+  const accessPreview = main.getByRole('region', { name: 'Prévia de acesso' });
   await expect(accessPreview).toContainText('Selecione um papel');
-  await employeeDialog.getByRole('checkbox', { name: 'Recepção' }).click();
+  await main.getByRole('checkbox', { name: 'Recepção' }).click();
   await expect(accessPreview).toContainText('Agenda');
   await expect(accessPreview).not.toContainText('Contas a receber e a pagar');
-  await employeeDialog.getByRole('checkbox', { name: 'Recepção' }).click();
-  const employeeDialogGeometry = await employeeDialog.evaluate((dialog) => {
-    const box = dialog.getBoundingClientRect();
-    return { top: Math.round(box.top), bottom: Math.round(box.bottom), scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight };
-  });
-  expect(employeeDialogGeometry.top).toBeGreaterThanOrEqual(0);
-  expect(employeeDialogGeometry.bottom).toBeLessThanOrEqual(800);
-  expect(employeeDialogGeometry.scrollHeight).toBeGreaterThan(employeeDialogGeometry.clientHeight);
-  await page.keyboard.press('Escape');
-  await expect(employeeDialog).toBeHidden();
-  await expect(addEmployee).toBeFocused();
-
-  const customize = page.getByRole('button', { name: 'Personalizar perfis' });
-  await customize.click();
-  const customizeDialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Personalizar perfis' }) });
-  await expect(customizeDialog).toBeVisible();
-  await customizeDialog.getByLabel('Nome de exibição').first().fill('Rótulo sintético não salvo');
-  await customizeDialog.getByRole('button', { name: 'Cancelar' }).click();
-  await expect(customizeDialog).toBeHidden();
-  await expect(customize).toBeFocused();
-
-  await page.goto('/equipe?aba=medicos');
-  const addDoctor = page.getByRole('button', { name: 'Novo Médico' });
-  await addDoctor.click();
-  const doctorDialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Novo Médico' }) });
-  await expect(doctorDialog).toBeVisible();
-  await expect(doctorDialog.getByLabel('Nome completo')).toBeVisible();
-  const doctorDialogGeometry = await doctorDialog.evaluate((dialog) => {
-    const box = dialog.getBoundingClientRect();
-    return { top: Math.round(box.top), bottom: Math.round(box.bottom), scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight };
-  });
-  expect(doctorDialogGeometry.top).toBeGreaterThanOrEqual(0);
-  expect(doctorDialogGeometry.bottom).toBeLessThanOrEqual(800);
-  expect(doctorDialogGeometry.scrollHeight).toBeGreaterThanOrEqual(doctorDialogGeometry.clientHeight);
-  await page.keyboard.press('Escape');
-  await expect(doctorDialog).toBeHidden();
-  await expect(addDoctor).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const nonRpcWrites = synthetic.writes.filter((write) => !write.includes('/rpc/'));
   expect(nonRpcWrites.every((write) => write.endsWith('PATCH /rest/v1/profiles'))).toBe(true);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('equipe-medicos-vazia-1280.png'), animations: 'disabled' });
-});
-
-test('stale employee edit asks for reload without writing over a newer version', async ({ page }, testInfo) => {
-  const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
-  const synthetic = await installSyntheticClinic(page, { appOrigin, platformAdmin: false, employeesPopulated: true });
-  let editUrl = '';
-
-  await page.route('http://127.0.0.1:54321/rest/v1/funcionarios*', async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
-    editUrl = route.request().url();
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
-  });
-
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/equipe?aba=funcionarios');
-  await page.getByRole('button', { name: 'Editar funcionário Mariana QA' }).click();
-  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Editar Funcionário' }) });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel('Nome completo *').fill('Nome desatualizado QA');
-  await dialog.getByRole('button', { name: 'Salvar' }).click();
-
-  await expect(page.getByText('A ficha mudou desde que você abriu a edição.')).toBeVisible();
-  await expect(page.getByText(/Seus dados não foram salvos/i)).toBeVisible();
-  expect(new URL(editUrl).searchParams.get('edit_version')).toBe('eq.1');
-  expect(synthetic.writes.some((write) => write.includes('/rpc/sync_employee_roles_if_unchanged'))).toBe(false);
-  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('equipe-novo-funcionario-1280.png'), animations: 'disabled' });
 });
 
 test('pending invite confirmation can be cancelled without changing the invitation', async ({ page }, testInfo) => {

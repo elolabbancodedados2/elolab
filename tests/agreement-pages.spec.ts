@@ -49,8 +49,8 @@ for (const width of [1440, 768, 390]) {
     await page.getByRole('button', { name: 'Adicionar Exame', exact: true }).click();
     await expect(page).toHaveURL(`/convenios/${id}/exames/novo`);
     await page.getByLabel('Tipo do Exame *').fill('Novo exame QA');
-    await page.getByLabel('Valor Tabela (R$) *').fill('25');
-    await page.getByLabel('Valor Filme (R$)').fill('5');
+    await page.getByLabel('Valor de tabela (R$) *').fill('25');
+    await page.getByLabel('Valor de filme (R$)').fill('5');
     await expect(page.getByText('R$ 30,00', { exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Salvar', exact: true }).scrollIntoViewIfNeeded();
@@ -106,10 +106,10 @@ test('financial role edits scoped exam prices and recovers from failure without 
   await page.goto(`/convenios/${id}/exames/${priceId}/editar`);
   await expect(page.getByLabel('Tipo do Exame *')).toHaveValue('Hemograma QA');
   await expect(page.getByRole('tab', { name: 'Dados do Convênio' })).toHaveCount(0);
-  await page.getByLabel('Valor Tabela (R$) *').fill('50');
+  await page.getByLabel('Valor de tabela (R$) *').fill('50');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect(page.getByText('Falha sintética de preço', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Valor Tabela (R$) *')).toHaveValue('50');
+  await expect(page.getByLabel('Valor de tabela (R$) *')).toHaveValue('50');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect(page).toHaveURL(`/convenios/${id}/exames`);
   expect(writes).toBe(2);
@@ -165,7 +165,7 @@ test('new agreement and exam persist clinic-scoped payloads without nested overl
   expect(agreements).toBe(1);
   await page.goto(`/convenios/${id}/exames/novo`);
   await page.getByLabel('Tipo do Exame *').fill('Novo exame QA');
-  await page.getByLabel('Valor Tabela (R$) *').fill('25');
+  await page.getByLabel('Valor de tabela (R$) *').fill('25');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect(page).toHaveURL(`/convenios/${id}/exames`);
   expect(prices).toBe(1);

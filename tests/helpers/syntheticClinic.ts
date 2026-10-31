@@ -41,6 +41,9 @@ function base64Url(value: string) {
   return btoa(value).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
+// Testes que adiantam o relógio da página (page.clock) não podem cair no login por sessão vencida.
+const SESSION_SECONDS = 2 * 24 * 3600;
+
 function syntheticSession(options: SyntheticClinicOptions = {}) {
   const now = Math.floor(Date.now() / 1000);
   const accessToken = [
@@ -52,7 +55,7 @@ function syntheticSession(options: SyntheticClinicOptions = {}) {
       session_id: '00000000-0000-4000-8000-000000000005',
       email: TEST_EMAIL,
       iat: now,
-      exp: now + 3600,
+      exp: now + SESSION_SECONDS,
     })),
     'synthetic-test-signature',
   ].join('.');
@@ -60,8 +63,8 @@ function syntheticSession(options: SyntheticClinicOptions = {}) {
   return {
     access_token: accessToken,
     token_type: 'bearer',
-    expires_in: 3600,
-    expires_at: now + 3600,
+    expires_in: SESSION_SECONDS,
+    expires_at: now + SESSION_SECONDS,
     refresh_token: 'synthetic-local-refresh-token',
     user: {
       id: TEST_USER_ID,

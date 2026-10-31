@@ -57,7 +57,7 @@ for (const width of [1440, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`patient-duplicates-list-${width}.png`), fullPage: true });
 
-    await page.getByRole('button', { name: 'Revisar' }).click();
+    await page.locator('#main-content').getByRole('button', { name: 'Revisar' }).click();
     await expect(page.getByText('Ficha que permanece ativa')).toBeVisible();
     await page.getByLabel('Motivo da mesclagem').fill('Mesmo cadastro confirmado pela recepção.');
     const mergeButton = page.getByRole('button', { name: 'Mesclar cadastros' });

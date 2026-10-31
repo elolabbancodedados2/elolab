@@ -181,17 +181,6 @@ export default function Pacientes() {
   const patientFormPage = newPatientPage || editPatientPage;
   const listFocusId = (location.state as { focusId?: unknown } | null)?.focusId;
   const returnScrollTop = (location.state as { returnScrollTop?: unknown } | null)?.returnScrollTop;
-  useEffect(() => {
-    if (patientTaskPage || typeof listFocusId !== 'string') return;
-    const timeout = window.setTimeout(() => {
-      document.getElementById(listFocusId)?.focus();
-      navigate(`${location.pathname}${location.search}`, {
-        replace: true,
-        state: location.state?.patientFilters ? { patientFilters: location.state.patientFilters } : null,
-      });
-    }, 0);
-    return () => window.clearTimeout(timeout);
-  }, [patientTaskPage, listFocusId, location.pathname, location.search, location.state, navigate]);
   const [taskReadyFor, setTaskReadyFor] = useState('');
   const [taskError, setTaskError] = useState<unknown>(null);
   useEffect(() => {
@@ -320,6 +309,18 @@ export default function Pacientes() {
   }, [filterSexo, filterConvenio, filterIdade, hoje, dataLimite]);
   const statusBuscaPaciente = podeEditarPaciente ? filterStatusPaciente : 'ativos';
   const { data: resultadoBusca, isLoading, isFetching: isBuscandoPacientes, error: pacientesError, refetch } = useBuscaPacientes(searchTerm, { limite: limiteBusca, pagina: paginaPacientes, filtros: filtrosBusca, status: statusBuscaPaciente });
+  useEffect(() => {
+    // Espera a lista existir: com a busca ainda carregando, o foco cairia no conteúdo principal.
+    if (patientTaskPage || typeof listFocusId !== 'string' || isLoading) return;
+    const timeout = window.setTimeout(() => {
+      document.getElementById(listFocusId)?.focus();
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: location.state?.patientFilters ? { patientFilters: location.state.patientFilters } : null,
+      });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [patientTaskPage, listFocusId, location.pathname, location.search, location.state, navigate, isLoading]);
   const resumoPacientes = resultadoBusca?.pacientes ?? [];
   const inicioPagina = paginaPacientes * 50;
   const resumosVisiveis = resumoPacientes;

@@ -49,7 +49,9 @@ test('LGPD export scope and delivery evidence use safe dedicated pages', async (
   await expect(page.getByTestId('lgpd-export-page')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Escopo da exportação' })).toBeVisible();
   const exportTitleBounds = await page.getByRole('heading', { name: 'Escopo da exportação' }).boundingBox();
-  expect(exportTitleBounds && exportTitleBounds.y >= 140).toBe(true);
+  // O título abre logo abaixo do cabeçalho fixo, sem ficar escondido sob ele.
+  const headerBounds = await page.getByRole('banner').first().boundingBox();
+  expect(exportTitleBounds && headerBounds && exportTitleBounds.y >= headerBounds.y + headerBounds.height).toBe(true);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(page.url()).not.toContain(patientId);
   expect(page.url()).not.toContain('Pessoa');
@@ -180,7 +182,7 @@ test('the export page sends the selected scope through the existing audited expo
   await page.getByRole('button', { name: 'Gerar arquivo JSON' }).click();
   const download = await downloadPromise;
 
-  expect(download.suggestedFilename()).toMatch(/^lgpd-export-LGPD-QA-0402-2026-10-30\.json$/);
+  expect(download.suggestedFilename()).toMatch(/^lgpd-export-LGPD-QA-0402-\d{4}-\d{2}-\d{2}\.json$/);
   expect(inserts).toEqual([{ paciente_id: patientId, request_type: 'export', status: 'pending', escopo: ['cadastro'] }]);
   expect(updates).toHaveLength(1);
   expect(updates[0].evidencia).toContain('entrega formal ao titular');

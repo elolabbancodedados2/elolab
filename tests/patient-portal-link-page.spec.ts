@@ -123,7 +123,7 @@ test('paciente inativo não recebe novo link do Portal', async ({ page }, testIn
 
   await page.goto(`/pacientes/${patientId}/portal/link`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Paciente inativo' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Gerar link do Portal' })).toHaveCount(0);
+  await expect(page.locator('#main-content').getByRole('button', { name: 'Gerar link do Portal' })).toHaveCount(0);
   expect(fixtures.synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

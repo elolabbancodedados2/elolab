@@ -8,8 +8,7 @@ test.describe.configure({ retries: 0 });
 const CANONICAL_PATHS: Record<string, string> = {
   '/atestados': '/documentos-clinicos',
   '/encaminhamentos': '/documentos-clinicos',
-  '/caixa': '/recepcao',
-  '/caixa-diario': '/recepcao',
+  '/caixa': '/caixa-diario',
   '/contas-receber': '/contas',
   '/contas-pagar': '/contas',
   '/pagamentos': '/contas',

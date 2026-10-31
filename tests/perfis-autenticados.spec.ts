@@ -22,8 +22,8 @@ const ROLE_MATRIX = [
   },
   {
     role: 'financeiro',
-    allowed: ['/recepcao', '/convenios', '/financeiro', '/contas', '/faturamento-convenios', '/repasses-medicos', '/tarefas', '/suporte'],
-    denied: ['/agenda', '/pacientes', '/fila', '/prontuarios', '/estoque', '/configuracoes'],
+    allowed: ['/caixa-diario', '/convenios', '/financeiro', '/contas', '/faturamento-convenios', '/repasses-medicos', '/tarefas', '/suporte'],
+    denied: ['/recepcao', '/agenda', '/pacientes', '/fila', '/prontuarios', '/estoque', '/configuracoes'],
   },
 ] as const;
 

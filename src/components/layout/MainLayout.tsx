@@ -60,7 +60,7 @@ export function MainLayout() {
           <ImpersonationBanner />
           <main
             id="main-content"
-            className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain scroll-pt-20"
+            className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain scroll-pt-20 scroll-pb-24 lg:scroll-pb-4"
             role="main"
             tabIndex={-1}
           >
