@@ -462,7 +462,7 @@ function PrecosInternos({ task }: { task?: PriceTask }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
         </div>
-        <Button onClick={() => navigation.open('/precos-servicos/exames/particular/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+        <Button onClick={() => navigation.open('/precos-servicos/exames/particular/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Exame
         </Button>
       </div>
@@ -795,7 +795,7 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
             {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button onClick={() => navigation.open('/precos-servicos/exames/convenios/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+        <Button onClick={() => navigation.open('/precos-servicos/exames/convenios/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
           <Plus className="h-4 w-4" /> Novo Preço
         </Button>
       </div>
@@ -972,7 +972,7 @@ function PrecosExamesList() {
       />
 
       <Tabs defaultValue={location.state?.examPriceTab === 'convenio' ? 'convenio' : 'particular'} className="space-y-4">
-        <TabsList className="rounded-xl border border-border/60 bg-[#F3F8FC] p-1 text-muted-foreground">
+        <TabsList className="rounded-xl border border-border/60 bg-secondary p-1 text-muted-foreground">
           <TabsTrigger value="particular" className="gap-1.5 rounded-lg">
             <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno
           </TabsTrigger>

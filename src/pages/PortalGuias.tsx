@@ -118,7 +118,7 @@ export default function PortalGuias() {
                 <AlertCircle className="h-12 w-12 text-warning mx-auto" />
                 <h2 className="text-xl font-bold">Não foi possível validar o link</h2>
                 <p className="text-muted-foreground text-sm">Verifique sua conexão e tente novamente. Se o problema continuar, peça um novo link à clínica.</p>
-                <Button onClick={() => setValidationRetry(value => value + 1)} disabled={validating} className="mt-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+                <Button onClick={() => setValidationRetry(value => value + 1)} disabled={validating} className="mt-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
                   {validating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Tentar novamente
                 </Button>
@@ -149,7 +149,7 @@ export default function PortalGuias() {
               <p className="text-muted-foreground text-sm">
                 A clínica <strong>{clinicaNome}</strong> recebeu sua solicitação. Em breve entrarão em contato para agendar a coleta.
               </p>
-              <Button onClick={() => { setSuccess(false); setForm({ paciente_nome:'', paciente_cpf:'', paciente_nascimento:'', paciente_telefone:'', medico_externo_nome:'', medico_externo_crm:'', medico_externo_uf:'', medico_externo_especialidade:'', convenio_nome:'', numero_autorizacao:'', observacoes:'' }); setExames([{ nome: '' }]); }} className="mt-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+              <Button onClick={() => { setSuccess(false); setForm({ paciente_nome:'', paciente_cpf:'', paciente_nascimento:'', paciente_telefone:'', medico_externo_nome:'', medico_externo_crm:'', medico_externo_uf:'', medico_externo_especialidade:'', convenio_nome:'', numero_autorizacao:'', observacoes:'' }); setExames([{ nome: '' }]); }} className="mt-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
                 Enviar outra guia
               </Button>
             </CardContent>
@@ -160,7 +160,7 @@ export default function PortalGuias() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F3F8FC] py-6 px-4">
+    <div className="min-h-screen bg-secondary py-6 px-4">
       <div className="max-w-2xl mx-auto space-y-4">
         <div className="text-center animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-gradient-primary shadow-md mb-3">
@@ -171,7 +171,7 @@ export default function PortalGuias() {
         </div>
 
         <fieldset disabled={submitting} aria-busy={submitting} className="space-y-4 border-0 p-0 m-0 min-w-0">
-        <Card className="rounded-2xl border-[#DCE6F2]">
+        <Card className="rounded-2xl border-border">
           <CardHeader><CardTitle className="text-base">Dados do paciente</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div><Label>Nome completo *</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
@@ -183,7 +183,7 @@ export default function PortalGuias() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-[#DCE6F2]">
+        <Card className="rounded-2xl border-border">
           <CardHeader><CardTitle className="text-base">Médico solicitante</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div><Label>Nome</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
@@ -195,7 +195,7 @@ export default function PortalGuias() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-[#DCE6F2]">
+        <Card className="rounded-2xl border-border">
           <CardHeader><CardTitle className="text-base">Convênio</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -205,7 +205,7 @@ export default function PortalGuias() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-[#DCE6F2]">
+        <Card className="rounded-2xl border-border">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4 text-primary" /> Exames solicitados *</CardTitle>
@@ -237,7 +237,7 @@ export default function PortalGuias() {
           </CardContent>
         </Card>
 
-        <Button size="lg" className="w-full gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={enviar} disabled={submitting}>
+        <Button size="lg" className="w-full gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={enviar} disabled={submitting}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
           Enviar guia
         </Button>

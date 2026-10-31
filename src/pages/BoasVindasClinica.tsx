@@ -9,7 +9,7 @@ import logo from '@/assets/elolab-logo-identidade.png';
 export default function BoasVindasClinica() {
   const { profile } = useSupabaseAuth();
   return <main className="mx-auto flex min-h-[72vh] max-w-4xl items-center justify-center px-4 py-12">
-    <Card className="w-full overflow-hidden rounded-2xl border-[#DCE6F2] bg-gradient-to-b from-[#F3F8FC] to-card shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+    <Card className="w-full overflow-hidden rounded-2xl border-border bg-gradient-to-b from-secondary to-card shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
       <CardContent className="p-6 text-center sm:p-12">
         <motion.img src={logo} alt="EloLab" className="mx-auto mb-8 h-16 w-auto object-contain"
           initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}

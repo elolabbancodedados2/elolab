@@ -219,7 +219,7 @@ export default function Seguranca() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] px-4 py-3 text-sm text-muted-foreground break-all">
+            <div className="rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground break-all">
               Email da conta: <strong className="text-foreground">{user.email}</strong>
             </div>
             <Button variant="outline" className="rounded-full gap-2" onClick={() => setConfirmSignOutOpen(true)} disabled={isSigningOut}>

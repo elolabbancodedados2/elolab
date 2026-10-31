@@ -754,7 +754,7 @@ export default function PainelTV() {
                   key={chamado.id}
                   animate={{ scale: [1, 1.01, 1] }}
                   transition={{ repeat: Infinity, duration: 2 }}
-                  className="bg-gradient-primary rounded-2xl p-6 md:p-8 shadow-[0_16px_48px_rgba(16,128,202,0.45)] ring-1 ring-white/20 cursor-pointer mb-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
+                  className="bg-gradient-primary rounded-2xl p-6 md:p-8 shadow-[0_16px_48px_rgba(16,17,19,0.06)] ring-1 ring-white/20 cursor-pointer mb-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
                   onClick={() => rechamarPaciente(chamado)}
                   onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); rechamarPaciente(chamado); } }}
                   role="button"

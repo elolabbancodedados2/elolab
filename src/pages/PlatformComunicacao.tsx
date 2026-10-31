@@ -316,7 +316,7 @@ export default function PlatformComunicacao() {
               const ends = dateTime(item.termina_em);
               const { isScheduled, isActive, status } = statusOf(item, now);
               return (
-                <article key={item.id} className={cn('rounded-xl border border-border/60 p-4', isActive && 'border-border bg-[#F3F8FC]')}>
+                <article key={item.id} className={cn('rounded-xl border border-border/60 p-4', isActive && 'border-border bg-secondary')}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="font-semibold">{item.titulo}</h2>

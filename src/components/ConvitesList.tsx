@@ -488,7 +488,7 @@ export function ConvitesList() {
                           {inv.status !== 'aceito' && (
                             <Button
                               size="sm"
-                              className="h-9 gap-1 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                              className="h-9 gap-1 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110"
                               onClick={() => reenviarConvite(inv)}
                               disabled={acaoConviteOcupada}
                               aria-label={'Reenviar convite para ' + inv.email}

@@ -167,7 +167,7 @@ export default function PlatformSeguranca() {
                 type="button"
                 aria-pressed={adminFilter === value}
                 onClick={() => setAdminFilter(value)}
-                className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', adminFilter === value ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card hover:border-[#9CC7EC]')}
+                className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', adminFilter === value ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card hover:border-[#9CC7EC]')}
               >
                 {label}
               </button>

@@ -12,11 +12,11 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#F3F8FC] to-white px-4 py-10">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-secondary to-white px-4 py-10">
       <Link to="/" aria-label="EloLab, página inicial" className="mb-6 inline-flex min-h-10 items-center">
         <Logo />
       </Link>
-      <div className="w-full max-w-md rounded-2xl border border-[#DCE6F2] bg-card p-6 text-center shadow-[0_8px_24px_rgba(16,128,202,0.08)] animate-in fade-in slide-in-from-bottom-2 duration-500 sm:p-8">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-[0_8px_24px_rgba(16,17,19,0.06)] animate-in fade-in slide-in-from-bottom-2 duration-500 sm:p-8">
         <div className="mb-4 bg-gradient-primary bg-clip-text text-7xl font-extrabold text-transparent sm:text-8xl">404</div>
         <h1 className="mb-2 text-2xl font-bold text-foreground">Página não encontrada</h1>
         <p className="mb-8 text-muted-foreground">

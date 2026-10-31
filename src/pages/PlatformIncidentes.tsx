@@ -228,7 +228,7 @@ export default function PlatformIncidentes() {
         <section aria-label="Linha do tempo do incidente" className="rounded-xl border border-border bg-card p-5">
           <h2 className="font-semibold">Linha do tempo</h2>
           {updates.isError ? <p role="alert" className="mt-3 text-sm text-destructive">Não foi possível carregar a linha do tempo. {mensagemDeErro(updates.error)}</p> : updates.isLoading ? <Skeleton className="mt-3 h-12 w-full" /> : incidentTimeline.length ? (
-            <ol className="mt-3 space-y-2">{incidentTimeline.map(update => <li key={update.id} className="rounded-lg border-l-2 border-border bg-[#F3F8FC] p-3"><div className="flex flex-wrap items-center justify-between gap-2">{update.status && <Badge variant="outline">{statusLabels[update.status]}</Badge>}<time className="text-xs text-muted-foreground">{dateTime(update.created_at)}</time></div><p className="mt-2 whitespace-pre-wrap text-sm">{update.message}</p></li>)}</ol>
+            <ol className="mt-3 space-y-2">{incidentTimeline.map(update => <li key={update.id} className="rounded-lg border-l-2 border-border bg-secondary p-3"><div className="flex flex-wrap items-center justify-between gap-2">{update.status && <Badge variant="outline">{statusLabels[update.status]}</Badge>}<time className="text-xs text-muted-foreground">{dateTime(update.created_at)}</time></div><p className="mt-2 whitespace-pre-wrap text-sm">{update.message}</p></li>)}</ol>
           ) : <p className="mt-3 text-sm text-muted-foreground">Nenhuma atualização registrada ainda.</p>}
           {updates.data?.length === 500 && <p role="status" className="mt-3 text-xs text-muted-foreground">O painel carrega os 500 eventos mais recentes da plataforma; registros mais antigos podem não aparecer.</p>}
         </section>
@@ -341,7 +341,7 @@ export default function PlatformIncidentes() {
                 onClick={() => setFiltro(f)}
                 className={cn(
                   'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  filtro === f ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                  filtro === f ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                 )}
               >
                 {filtrosIncidente[f].label} ({contagem(f)})
@@ -401,7 +401,7 @@ export default function PlatformIncidentes() {
                     ) : timeline.length ? (
                       <ol className="space-y-2">
                         {timeline.map((update) => (
-                          <li key={update.id} className="rounded-xl border-l-2 border-border bg-[#F3F8FC] p-3">
+                          <li key={update.id} className="rounded-xl border-l-2 border-border bg-secondary p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               {update.status && <Badge variant="outline" className="rounded-full border-border text-primary">{statusLabels[update.status]}</Badge>}
                               <time className="text-xs text-muted-foreground">{dateTime(update.created_at)}</time>

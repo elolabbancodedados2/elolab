@@ -102,7 +102,7 @@ export default function PortalPacientesClinica() {
           </div>
 
           {paciente ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-secondary p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="truncate font-semibold text-foreground">{nomePaciente}</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">{paciente.telefone || 'Sem telefone cadastrado'}</p>
@@ -118,7 +118,7 @@ export default function PortalPacientesClinica() {
           )}
 
           {link && (
-            <div className="space-y-3 rounded-xl border border-border bg-[#F3F8FC] p-4">
+            <div className="space-y-3 rounded-xl border border-border bg-secondary p-4">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-primary" htmlFor="portal-generated-link">Link individual do portal</label>
                 <Button aria-label="Conferir link do portal" asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
@@ -133,7 +133,7 @@ export default function PortalPacientesClinica() {
                   <Copy aria-hidden="true" className="h-4 w-4" />Copiar
                 </Button>
                 {whatsapp && (
-                  <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110">
+                  <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer">
                       <MessageCircle aria-hidden="true" className="h-4 w-4" />Enviar por WhatsApp
                     </a>
@@ -145,7 +145,7 @@ export default function PortalPacientesClinica() {
             </div>
           )}
 
-          <div className="flex gap-3 rounded-xl border border-[#DCE6F2] bg-[#EEF4FA] p-4 text-sm text-muted-foreground">
+          <div className="flex gap-3 rounded-xl border border-border bg-[#EEF4FA] p-4 text-sm text-muted-foreground">
             <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p>Compartilhe este link somente com o paciente ou responsável autorizado. O endereço contém uma credencial individual de acesso.</p>
           </div>

@@ -429,7 +429,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                   <div
                     key={paciente.id}
                     className={cn(
-                      'p-3 border-b cursor-pointer hover:bg-[#F3F8FC]/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                      'p-3 border-b cursor-pointer hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
                       selectedPacienteId === paciente.id && 'bg-primary/10 border-l-2 border-l-primary',
                     )}
                     role="button"
@@ -602,7 +602,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                     const whatsapp = linkWhatsApp(enc.paciente?.telefone, mensagemWhatsApp(enc));
                     const podeAtualizar = podeAtualizarEncaminhamento(enc);
                     return (
-                      <TableRow key={enc.id} className="transition-colors hover:bg-[#F3F8FC]/70">
+                      <TableRow key={enc.id} className="transition-colors hover:bg-secondary/70">
                         <TableCell className="tabular-nums text-sm">
                           {enc.data_encaminhamento
                             ? format(parseDateOnly(enc.data_encaminhamento)!, 'dd/MM/yyyy')
@@ -649,7 +649,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                               </Button>
                             )}
                             {enc.status === 'em_andamento' && podeAtualizar && (
-                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110" onClick={() => { handleView(enc); }} disabled={isUpdating} aria-label={`Registrar contra-referência de ${nomePaciente}`}>
+                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={() => { handleView(enc); }} disabled={isUpdating} aria-label={`Registrar contra-referência de ${nomePaciente}`}>
                                 <Edit className="h-3.5 w-3.5" />Contra-ref.
                               </Button>
                             )}
@@ -788,7 +788,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                     size="sm"
                     onClick={handleSaveContraRef}
                     disabled={!contraRefText.trim() || isUpdating}
-                    className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"
+                    className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110"
                   >
                     {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                     Salvar e Concluir

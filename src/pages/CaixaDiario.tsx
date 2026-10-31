@@ -618,7 +618,7 @@ export default function CaixaDiario() {
 
           {/* Payment Breakdown */}
           {caixaHoje && totais.receita > 0 && (
-            <Card className="rounded-2xl border-primary/20 shadow-[0_8px_24px_rgba(16,128,202,0.08)]">
+            <Card className="rounded-2xl border-primary/20 shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2.5">
                   <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
@@ -634,7 +634,7 @@ export default function CaixaDiario() {
                     const Icon = FORMA_ICONS[forma] || Banknote;
                     const pct = totais.receita > 0 ? ((valor / totais.receita) * 100).toFixed(0) : '0';
                     return (
-                      <div key={forma} className="flex items-center gap-3 rounded-xl bg-[#F3F8FC] border border-[#DCE6F2] p-3">
+                      <div key={forma} className="flex items-center gap-3 rounded-xl bg-secondary border border-border p-3">
                         <div className="rounded-lg bg-gradient-primary p-2 text-white shrink-0">
                           <Icon className="h-4 w-4" />
                         </div>

@@ -771,7 +771,7 @@ export default function Documentacao() {
                     type="button"
                     aria-label="Limpar busca"
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -799,7 +799,7 @@ export default function Documentacao() {
                           'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                           ativa
                             ? 'bg-gradient-primary text-white shadow-sm'
-                            : 'text-muted-foreground hover:bg-[#F3F8FC] hover:text-foreground'
+                            : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                         )}
                       >
                         <Icon aria-hidden="true" className={cn('h-4 w-4 shrink-0', ativa ? 'text-white' : section.color)} />
@@ -824,7 +824,7 @@ export default function Documentacao() {
           {currentSection && (
             <div key={currentSection.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
               {/* Section Header */}
-              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-4 sm:p-5">
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-secondary p-4 sm:p-5">
                 <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                   <currentSection.icon className="h-5 w-5" />
                 </span>
@@ -876,7 +876,7 @@ export default function Documentacao() {
                     )}
 
                     {item.tips && item.tips.length > 0 && (
-                      <div className="mt-3 rounded-xl border border-[#DCE6F2] bg-[#F3F8FC] p-4">
+                      <div className="mt-3 rounded-xl border border-border bg-secondary p-4">
                         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
                           <Lightbulb aria-hidden="true" className="h-3.5 w-3.5" /> Dicas
                         </p>

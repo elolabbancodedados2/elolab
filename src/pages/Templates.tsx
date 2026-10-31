@@ -237,19 +237,19 @@ export default function Templates() {
                 onClick={() => setClinicalTab(ind.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                  ativo && 'border-transparent bg-gradient-primary text-white',
+                  ativo && 'border-foreground ring-1 ring-foreground',
                 )}
               >
                 <div className="flex min-h-[88px] items-center gap-3 p-3">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ativo ? 'bg-white/15' : 'bg-primary/10')}>
-                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-white' : 'text-primary')} />
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', 'border border-border bg-secondary')}>
+                    <Icon aria-hidden="true" className="h-5 w-5 text-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', ativo ? 'text-white/80' : 'text-foreground')}>{ind.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-white' : 'text-primary')}>{ind.count}</span>
+                      <h3 className={cn('truncate text-xs font-semibold', 'text-foreground')}>{ind.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', 'text-foreground')}>{ind.count}</span>
                     </div>
-                    <p className={cn('truncate text-[11px]', ativo ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
+                    <p className={cn('truncate text-[11px]', 'text-muted-foreground')}>{ind.caption}</p>
                   </div>
                 </div>
               </button>
@@ -343,7 +343,7 @@ export default function Templates() {
                           </div>
 
                           {linhas.length > 0 && (
-                            <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
+                            <details className="rounded-xl border border-border/60 bg-secondary p-2.5 text-xs">
                               <summary className="cursor-pointer font-medium text-primary">Ver medicamentos</summary>
                               <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
                                 {linhas.map((linha, index) => <li key={index}>{linha}</li>)}
@@ -397,7 +397,7 @@ export default function Templates() {
                           </div>
 
                           {template.conteudo && (
-                            <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
+                            <details className="rounded-xl border border-border/60 bg-secondary p-2.5 text-xs">
                               <summary className="cursor-pointer font-medium text-primary">Ver conteúdo</summary>
                               <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{template.conteudo}</p>
                             </details>
