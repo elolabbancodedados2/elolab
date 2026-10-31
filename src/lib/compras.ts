@@ -162,6 +162,18 @@ export function compararCotacao(
   };
 }
 
+/**
+ * Quanto o menor preço por item economiza sobre o fornecedor mais caro entre os
+ * que cotaram todos os itens. Sem ao menos um fornecedor completo não há base
+ * honesta de comparação.
+ */
+export function economiaSobreMaisCaro(comparacao: ComparacaoCotacao): number | null {
+  const completos = comparacao.totais.filter(t => t.cotouTudo);
+  if (completos.length === 0 || comparacao.itensSemProposta.length > 0) return null;
+  const maisCaro = Math.max(...completos.map(t => t.totalCotado));
+  return Math.max(0, arredondarMoeda(maisCaro - comparacao.totalMenorPreco));
+}
+
 export const ROTULO_SITUACAO_COTACAO: Record<SituacaoCotacao, string> = {
   aberta: 'Aberta',
   fechada: 'Pedidos gerados',

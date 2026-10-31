@@ -139,6 +139,8 @@ export function AgendaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchString = searchParams.toString();
   const { profile } = useSupabaseAuth();
+  // Encaixe sem agendamento é operação da recepção, só no dia de hoje.
+  const podeEncaixar = Boolean(profile?.roles?.some(role => role === 'admin' || role === 'recepcao'));
   const esperaIdDaRota = searchParams.get('espera');
   const pacienteIdDaRota = searchParams.get('paciente');
   const reagendarIdDaRota = searchParams.get('reagendar');
@@ -958,6 +960,9 @@ export function AgendaPage() {
             onDateChange={handleDateChange}
             onNovoAgendamento={() => setDialogState({ open: true, initial: { data: activeDate } })}
             onBloquear={openBlockManagement}
+            onEncaixe={podeEncaixar && activeDate === todaySaoPauloDateOnly()
+              ? () => navigate('/recepcao/encaixe', { state: { returnTo: `${location.pathname}${location.search}` } })
+              : undefined}
           />
         )}
       />

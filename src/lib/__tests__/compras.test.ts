@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { compararCotacao, formatarCnpj, itensParaCotar, lerPreco } from '../compras';
+import { compararCotacao, economiaSobreMaisCaro, formatarCnpj, itensParaCotar, lerPreco } from '../compras';
 import { mensagemErroCompras } from '../comprasApi';
 
 const fornecedores = [
@@ -34,6 +34,8 @@ describe('compararCotacao', () => {
     expect(beta).toMatchObject({ totalCotado: 281, totalVencido: 229, itensVencidos: 1 });
     expect(r.totalMenorPreco).toBe(274);
     expect(r.podeGerarPedidos).toBe(true);
+    // O mais caro que cotou tudo é f-a (300): a economia é 300 - 274.
+    expect(economiaSobreMaisCaro(r)).toBe(26);
   });
 
   it('no empate de preço vence o menor prazo e depois o nome do fornecedor', () => {
