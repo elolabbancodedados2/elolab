@@ -335,7 +335,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
       <ContextMenuTrigger asChild>
       <div
         ref={setNodeRef}
-        style={style}
+        style={{ ...style, borderLeftColor: color }}
         {...attributes}
         {...listeners}
         aria-roledescription="consulta"
@@ -354,7 +354,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           listeners?.onKeyDown?.(e);
         }}
       className={cn(
-        'group rounded-lg bg-card shadow-xs border border-border/60 hover:shadow-md hover:border-primary/40',
+        'group rounded-lg bg-card shadow-xs border border-l-[3px] border-border/60 hover:shadow-md hover:border-primary/40',
         'cursor-grab active:cursor-grabbing overflow-hidden transition-all',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
         compact ? 'px-1.5 py-0 text-[11px] leading-none' : 'px-1.5 py-1 text-xs',
