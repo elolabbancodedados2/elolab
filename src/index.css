@@ -219,6 +219,16 @@
 
 }
 
+/* Barra superior do app em branco gelo (protótipo aprovado em 30/10/2026).
+   O cabeçalho foi escrito com cores invertidas (fundo = foreground, texto = background);
+   aqui as duas são trocadas só dentro dele para virar fundo gelo com texto preto. */
+.navbar-gelo {
+  --foreground: 214 26% 94%;
+  --background: 220 8% 7%;
+  border-bottom-color: hsl(213 24% 88%);
+  box-shadow: none;
+}
+
 /* Preferência pessoal de densidade: reduz espaços sem comprometer alvos de toque. */
 html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
   margin-top: 1rem;
