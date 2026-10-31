@@ -49,6 +49,30 @@ describe('InicioPainel', () => {
     const atencao = screen.getByRole('region', { name: 'Precisa de atenção' });
     expect(within(atencao).getByRole('link', { name: /Estoque baixo/ })).toHaveAttribute('href', '/estoque');
   });
+
+  it('mostra o erro só na área que falhou e mantém as outras', () => {
+    const tentarAgenda = vi.fn();
+    renderPainel({ falhas: { agenda: tentarAgenda } });
+
+    const agenda = screen.getByRole('region', { name: 'Agenda de hoje' });
+    expect(within(agenda).getByText('Não foi possível carregar esta área.')).toBeInTheDocument();
+    expect(within(agenda).queryByText('Mariana Costa')).not.toBeInTheDocument();
+    within(agenda).getByRole('button', { name: 'Tentar de novo' }).click();
+    expect(tentarAgenda).toHaveBeenCalledTimes(1);
+
+    const fila = screen.getByRole('region', { name: 'Na sala de espera' });
+    expect(within(fila).getByText('Joana Albuquerque')).toBeInTheDocument();
+    expect(screen.getByText('R$ 1.250,00')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Tentar de novo' })).toHaveLength(1);
+  });
+
+  it('mantém as pendências conhecidas quando parte delas não carregou', () => {
+    renderPainel({ falhas: { atencao: vi.fn() } });
+
+    const atencao = screen.getByRole('region', { name: 'Precisa de atenção' });
+    expect(within(atencao).getByText('Algumas pendências não puderam ser verificadas.')).toBeInTheDocument();
+    expect(within(atencao).getByRole('link', { name: /Estoque baixo/ })).toBeInTheDocument();
+  });
 });
 
 const props = {

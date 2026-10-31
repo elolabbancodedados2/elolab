@@ -23,7 +23,8 @@ import {
   ShieldCheck, Target, Timer, Megaphone, Pill, Eye, ListChecks,
 } from '@/components/icons/elolabIcons';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
-import { ErrorState } from '@/components/ErrorState';
+import type { InicioPainelProps } from '@/components/dashboard/InicioPainel';
+import { useClinicOnboardingOverview } from '@/hooks/useClinicOnboarding';
 import { Link, Navigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -424,6 +425,14 @@ const valorEmAberto = (lancamento: { valor: number; valor_pago: number | null; d
   Math.max(0, Number(lancamento.valor || 0) - Number(lancamento.desconto || 0)
     + Number(lancamento.acrescimo || 0) - Number(lancamento.valor_pago || 0));
 
+// Etapas essenciais de `clinic_onboarding_overview`, com os mesmos destinos de /onboarding.
+const passosImplantacao = {
+  team: { label: 'Equipe e acessos', icon: Users, href: '/equipe?aba=funcionarios', color: 'text-primary' },
+  schedule: { label: 'Horários dos profissionais', icon: Stethoscope, href: '/equipe?aba=medicos', color: 'text-info' },
+  services: { label: 'Cadastrar serviços', icon: Wallet, href: '/precos-servicos?tab=tipos', color: 'text-warning' },
+  appointment: { label: 'Criar o primeiro agendamento', icon: Calendar, href: '/agenda/nova', color: 'text-success' },
+};
+
 function AdminDashboard() {
   const { profile: user } = useSupabaseAuth();
   const agora = useClinicClock();
@@ -766,21 +775,28 @@ function AdminDashboard() {
     ...operacionalStats,
   }), [consultasStats, financeiroStats, operacionalStats]);
 
-  const setupSteps = useMemo(() => [
-    { label: 'Cadastrar médicos', done: medicos.length > 0, icon: Stethoscope, href: '/medicos', color: 'text-info' },
-    { label: 'Cadastrar pacientes', done: totalPacientes > 0, icon: Users, href: '/pacientes', color: 'text-primary' },
-    { label: 'Agendar consulta', done: (resumo?.totalAgendamentos ?? 0) > 0, icon: Calendar, href: '/agenda', color: 'text-success' },
-    { label: 'Registrar financeiro', done: (resumo?.totalLancamentos ?? 0) > 0, icon: Wallet, href: '/financeiro', color: 'text-warning' },
-  ], [medicos, totalPacientes, resumo]);
-
-  const setupProgress = Math.round((setupSteps.filter(s => s.done).length / setupSteps.length) * 100);
+  // Mesma fonte da tela de primeiros passos (/onboarding), para os números baterem.
+  const onboardingQuery = useClinicOnboardingOverview({ staleTime: 60_000, suppressGlobalErrorToast: true });
+  const setupSteps = useMemo(() => (onboardingQuery.data?.steps ?? [])
+    .filter(step => step.key !== 'whatsapp')
+    .map(step => ({ ...passosImplantacao[step.key as keyof typeof passosImplantacao], done: step.complete })), [onboardingQuery.data]);
+  const setupProgress = onboardingQuery.data?.progress ?? 0;
 
   if (isLoading) return <DashboardSkeleton />;
-  const dashboardQueries = [resumoQuery, agendamentosQuery, lancamentosQuery, lancamentosPorPagamentoQuery, lancamentosPorVencimentoQuery, pagamentosQuery, medicosQuery, estoqueQuery, filaQuery];
-  const failedQuery = dashboardQueries.find(query => query.isError);
-  if (failedQuery) {
-    return <ErrorState title="Não foi possível carregar o dashboard" description="Os indicadores foram pausados porque uma ou mais áreas retornaram dados incompletos." error={failedQuery.error} onRetry={() => { for (const query of dashboardQueries) void query.refetch(); }} />;
-  }
+
+  // Cada área do Início mostra o próprio erro; uma consulta que falha não esconde as outras.
+  const tentarDeNovo = (...queries: Array<{ isError: boolean; refetch: () => Promise<unknown> }>) => () => {
+    for (const query of queries) if (query.isError) void query.refetch();
+  };
+  const consultasFinanceiras = [lancamentosQuery, lancamentosPorPagamentoQuery, lancamentosPorVencimentoQuery, pagamentosQuery];
+  const falhas: InicioPainelProps['falhas'] = {
+    ...(agendamentosQuery.isError ? { agenda: tentarDeNovo(agendamentosQuery), confirmacoes: tentarDeNovo(agendamentosQuery) } : {}),
+    ...(filaQuery.isError ? { fila: tentarDeNovo(filaQuery) } : {}),
+    ...(consultasFinanceiras.some(query => query.isError) ? { financeiro: tentarDeNovo(...consultasFinanceiras) } : {}),
+    ...([resumoQuery, estoqueQuery, tarefasQuery].some(query => query.isError) ? { atencao: tentarDeNovo(resumoQuery, estoqueQuery, tarefasQuery) } : {}),
+    ...(tarefasQuery.isError ? { tarefas: tentarDeNovo(tarefasQuery) } : {}),
+    ...(aniversariantesQuery.isError ? { aniversariantes: tentarDeNovo(aniversariantesQuery) } : {}),
+  };
 
   const fontesNoLimite = [
     { nome: 'agendamentos', total: agendamentos.length },
@@ -792,7 +808,8 @@ function AdminDashboard() {
     { nome: 'fila', total: fila.length },
   ].filter(fonte => fonte.total >= MAX_LINHAS_AUTO).map(fonte => fonte.nome);
 
-  const hasData = totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
+  // Sem o resumo não dá para saber se a clínica é nova: mostra o Início com o aviso de erro.
+  const hasData = resumoQuery.isError || totalPacientes > 0 || (resumo?.totalAgendamentos ?? 0) > 0 || (resumo?.totalLancamentos ?? 0) > 0;
   const firstName = user?.nome?.replace(/^(dr|dra|dr\(a\))\.?\s+/i, '').split(' ')[0] || 'equipe';
 
   const amanhaDate = parseDateOnly(hoje)!;
@@ -825,8 +842,8 @@ function AdminDashboard() {
   const resumoMes = {
     ticketMedio: formatCurrency(stats.ticketMedio),
     variacaoReceita: stats.trendReceita,
-    novosPacientes: stats.novosPacientesMes,
-    faltas: faltasMes,
+    novosPacientes: resumoQuery.isError ? Number.NaN : stats.novosPacientesMes,
+    faltas: agendamentosQuery.isError ? Number.NaN : faltasMes,
   };
 
   const tarefasResumo = minhasTarefas.map((t) => ({
@@ -882,7 +899,7 @@ function AdminDashboard() {
           </section>
         </motion.div>
         )}
-        {hasData && setupProgress < 100 && (
+        {hasData && onboardingQuery.data && setupProgress < 100 && (
           <motion.div variants={fadeUp}>
             <Card className="border-border bg-card">
               <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -935,6 +952,13 @@ function AdminDashboard() {
                   </div>
                 </div>
                 <CardContent className="p-6 pt-0 md:p-8 md:pt-0 mt-4">
+                  {onboardingQuery.isError && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-sm" role="status">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+                      <span className="min-w-0 flex-1">Não foi possível carregar o progresso da configuração.</span>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void onboardingQuery.refetch()}>Tentar de novo</Button>
+                    </div>
+                  )}
                   <div className="grid gap-3 sm:grid-cols-2">
                     {setupSteps.map((step, i) => (
                       <Link key={i} to={step.href}>
@@ -1004,7 +1028,8 @@ function AdminDashboard() {
             fluxoFinanceiro={stats.monthlyChartData.some((item) => (Number.isFinite(item.receitas) && item.receitas !== 0) || (Number.isFinite(item.despesas) && item.despesas !== 0)) ? stats.monthlyChartData : []}
             acoes={[{ label: 'Agendar consulta', href: '/agenda', icon: 'calendar' }, { label: 'Novo paciente', href: '/pacientes', icon: 'patient' }, { label: 'Abrir fila', href: '/fila', icon: 'queue' }, { label: 'Prontuários', href: '/prontuarios', icon: 'document' }]}
             confirmacoesAmanha={confirmacoesAmanha}
-            ocupacaoSemana={ocupacaoSemana}
+            ocupacaoSemana={agendamentosQuery.isError ? [] : ocupacaoSemana}
+            falhas={falhas}
             resumoMes={resumoMes}
             tarefas={tarefasResumo}
             aniversariantes={aniversariantes}

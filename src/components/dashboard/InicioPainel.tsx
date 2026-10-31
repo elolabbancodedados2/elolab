@@ -26,6 +26,28 @@ function iniciais(nome: string) {
   return `${partes[0]?.[0] ?? ''}${partes.length > 1 ? partes[partes.length - 1][0] : ''}`.toUpperCase();
 }
 
+/** Áreas do Início que carregam dados próprios e podem falhar sozinhas. */
+export type InicioBloco = 'fila' | 'atencao' | 'agenda' | 'financeiro' | 'confirmacoes' | 'tarefas' | 'aniversariantes';
+
+export type InicioPainelProps = AdminDashboardOverviewProps & {
+  /** Áreas cujos dados não carregaram, com a ação de tentar de novo daquela área. */
+  falhas?: Partial<Record<InicioBloco, () => void>>;
+};
+
+function FalhaBloco({ onRetry, mensagem = 'Não foi possível carregar esta área.' }: { onRetry: () => void; mensagem?: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#F0D4D2] bg-[#FBF1F0] p-3 text-sm text-[#3B3E44]" role="status">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-[#C8352E]" aria-hidden />
+      <span className="min-w-0 flex-1">{mensagem}</span>
+      <button type="button" onClick={() => onRetry()} className="inline-flex items-center gap-1.5 rounded-lg border border-[#E3E8EE] bg-white px-2.5 py-1 text-xs font-semibold text-[#111214] hover:bg-[#F1F4F7]">
+        <RefreshCw className="h-3.5 w-3.5" aria-hidden />Tentar de novo
+      </button>
+    </div>
+  );
+}
+
+const valorOuTraco = (valor: number) => (Number.isFinite(valor) ? String(valor) : '—');
+
 function Avatar({ nome }: { nome: string }) {
   return (
     <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EAEEF3] text-xs font-extrabold text-[#111214]">
@@ -51,7 +73,8 @@ export function InicioPainel({
   resumoMes,
   tarefas = [],
   aniversariantes = [],
-}: AdminDashboardOverviewProps) {
+  falhas = {},
+}: InicioPainelProps) {
   const fluxoHoje = Object.entries(agenda.reduce<Record<string, number>>((acc, item) => {
     acc[item.status] = (acc[item.status] ?? 0) + 1;
     return acc;
@@ -71,10 +94,10 @@ export function InicioPainel({
         </div>
         <dl className="flex flex-wrap items-center gap-y-2 lg:ml-auto">
           {[
-            ['Consultas hoje', String(metricas.consultas)],
-            ['Na fila', String(metricas.fila)],
-            ['Finalizadas', String(metricas.finalizadas)],
-            ['Recebido hoje', metricas.receita],
+            ['Consultas hoje', falhas.agenda ? '—' : String(metricas.consultas)],
+            ['Na fila', falhas.fila ? '—' : String(metricas.fila)],
+            ['Finalizadas', falhas.agenda ? '—' : String(metricas.finalizadas)],
+            ['Recebido hoje', falhas.financeiro ? '—' : metricas.receita],
           ].map(([rotulo, valor], index) => (
             <div key={rotulo} className={cn('flex items-baseline gap-2 px-4', index > 0 && 'border-l border-[#E3E8EE]')}>
               <dt className="text-xs text-[#6E737B]">{rotulo}</dt>
@@ -101,7 +124,7 @@ export function InicioPainel({
         <section aria-labelledby="inicio-fila" className={cn(quadro, 'space-y-3 xl:col-span-8')}>
           <div className="flex items-center gap-2">
             <h2 id="inicio-fila" className={tituloQuadro}>Na sala de espera</h2>
-            <span className="text-xs text-[#6E737B]">{filaAgora.length} {filaAgora.length === 1 ? 'paciente' : 'pacientes'}</span>
+            {!falhas.fila && <span className="text-xs text-[#6E737B]">{filaAgora.length} {filaAgora.length === 1 ? 'paciente' : 'pacientes'}</span>}
             {onAtualizarFila && (
               <button type="button" onClick={() => void onAtualizarFila()} disabled={filaAtualizando} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[#E3E8EE] px-2.5 py-1 text-xs font-semibold hover:bg-[#F1F4F7] disabled:opacity-60">
                 <RefreshCw className={cn('h-3.5 w-3.5', filaAtualizando && 'animate-spin')} />Atualizar
@@ -109,7 +132,7 @@ export function InicioPainel({
             )}
             <Link to="/fila" className={cn(linkQuadro, onAtualizarFila && 'ml-2')}>Abrir fila</Link>
           </div>
-          {filaAgora.length === 0 ? (
+          {falhas.fila ? <FalhaBloco onRetry={falhas.fila} /> : filaAgora.length === 0 ? (
             <p className="rounded-xl border border-dashed border-[#D3D8DF] p-4 text-sm text-[#6E737B]">Ninguém aguardando agora.</p>
           ) : (
             <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -142,8 +165,9 @@ export function InicioPainel({
             <h2 id="inicio-atencao" className={tituloQuadro}>Precisa de atenção</h2>
             <span className="text-xs text-[#6E737B]">{alertas.length}</span>
           </div>
+          {falhas.atencao && <FalhaBloco onRetry={falhas.atencao} mensagem="Algumas pendências não puderam ser verificadas." />}
           {alertas.length === 0 ? (
-            <p className="flex items-center gap-2 rounded-xl bg-[#F1F4F7] p-3 text-sm text-[#3B3E44]"><CheckCircle2 className="h-4 w-4" />Nada pendente agora.</p>
+            !falhas.atencao && <p className="flex items-center gap-2 rounded-xl bg-[#F1F4F7] p-3 text-sm text-[#3B3E44]"><CheckCircle2 className="h-4 w-4" />Nada pendente agora.</p>
           ) : (
             <ul className="space-y-2">
               {alertas.map(alerta => (
@@ -167,9 +191,10 @@ export function InicioPainel({
         <section aria-labelledby="inicio-agenda" className={cn(quadro, 'space-y-3 xl:col-span-5')}>
           <div className="flex items-center gap-2">
             <h2 id="inicio-agenda" className={tituloQuadro}>Agenda de hoje</h2>
-            <span className="text-xs text-[#6E737B]">{totalFluxo} consultas</span>
+            {!falhas.agenda && <span className="text-xs text-[#6E737B]">{totalFluxo} consultas</span>}
             <Link to="/agenda" className={linkQuadro}>Ver agenda</Link>
           </div>
+          {falhas.agenda ? <FalhaBloco onRetry={falhas.agenda} /> : (<>
           {totalFluxo > 0 && (
             <>
               <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-full" role="img" aria-label={fluxoHoje.map(([status, total]) => `${status}: ${total}`).join(', ')}>
@@ -213,6 +238,7 @@ export function InicioPainel({
             </div>
             <p className="mt-1 text-xs text-[#6E737B]">{desempenho.descricao}</p>
           </div>
+          </>)}
         </section>
 
         <section aria-labelledby="inicio-financeiro" className={cn(quadro, 'space-y-3 xl:col-span-7')}>
@@ -221,13 +247,14 @@ export function InicioPainel({
             <span className="text-xs text-[#6E737B]">últimos 6 meses</span>
             <Link to="/financeiro" className={linkQuadro}>Abrir financeiro</Link>
           </div>
-          {resumoMes && (
+          {falhas.financeiro && <FalhaBloco onRetry={falhas.financeiro} mensagem="Não foi possível carregar os recebimentos." />}
+          {resumoMes && !falhas.financeiro && (
             <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 ['Ticket médio', resumoMes.ticketMedio],
                 ['Receita x mês anterior', `${resumoMes.variacaoReceita > 0 ? '+' : ''}${resumoMes.variacaoReceita}%`],
-                ['Pacientes novos', String(resumoMes.novosPacientes)],
-                ['Faltas no mês', String(resumoMes.faltas)],
+                ['Pacientes novos', valorOuTraco(resumoMes.novosPacientes)],
+                ['Faltas no mês', valorOuTraco(resumoMes.faltas)],
               ].map(([rotulo, valor]) => (
                 <div key={rotulo} className="rounded-xl bg-[#F1F4F7] p-2.5">
                   <dt className="text-[11px] text-[#6E737B]">{rotulo}</dt>
@@ -236,7 +263,7 @@ export function InicioPainel({
               ))}
             </dl>
           )}
-          {fluxoFinanceiro.length === 0 ? (
+          {falhas.financeiro ? null : fluxoFinanceiro.length === 0 ? (
             <p className="text-sm text-[#6E737B]">Ainda não há recebimentos no período.</p>
           ) : (
             <ol className="flex h-36 items-end gap-2" aria-label="Recebimentos por mês">
@@ -271,9 +298,9 @@ export function InicioPainel({
         <section aria-labelledby="inicio-confirmar" className={cn(quadro, 'space-y-3 xl:col-span-6')}>
           <div className="flex items-center gap-2">
             <h2 id="inicio-confirmar" className={tituloQuadro}>Confirmar consultas de amanhã</h2>
-            <span className="text-xs text-[#6E737B]">{confirmacoesAmanha.length}</span>
+            {!falhas.confirmacoes && <span className="text-xs text-[#6E737B]">{confirmacoesAmanha.length}</span>}
           </div>
-          {confirmacoesAmanha.length === 0 ? (
+          {falhas.confirmacoes ? <FalhaBloco onRetry={falhas.confirmacoes} /> : confirmacoesAmanha.length === 0 ? (
             <p className="text-sm text-[#6E737B]">Nenhuma consulta de amanhã esperando confirmação.</p>
           ) : (
             <ul className="divide-y divide-[#EEF1F5]">
@@ -297,7 +324,7 @@ export function InicioPainel({
             <h2 id="inicio-tarefas" className={tituloQuadro}>Minhas tarefas</h2>
             <Link to="/tarefas" className={linkQuadro}>Ver todas</Link>
           </div>
-          {tarefas.length === 0 ? (
+          {falhas.tarefas ? <FalhaBloco onRetry={falhas.tarefas} /> : tarefas.length === 0 ? (
             <p className="flex items-center gap-2 text-sm text-[#6E737B]"><ListChecks className="h-4 w-4" />Nenhuma tarefa pendente.</p>
           ) : (
             <ul className="space-y-1.5">
@@ -315,9 +342,9 @@ export function InicioPainel({
         <section aria-labelledby="inicio-aniversario" className={cn(quadro, 'space-y-3 xl:col-span-3')}>
           <div className="flex items-center gap-2">
             <h2 id="inicio-aniversario" className={tituloQuadro}>Aniversariantes</h2>
-            <span className="text-xs text-[#6E737B]">{aniversariantes.length}</span>
+            {!falhas.aniversariantes && <span className="text-xs text-[#6E737B]">{aniversariantes.length}</span>}
           </div>
-          {aniversariantes.length === 0 ? (
+          {falhas.aniversariantes ? <FalhaBloco onRetry={falhas.aniversariantes} /> : aniversariantes.length === 0 ? (
             <p className="flex items-center gap-2 text-sm text-[#6E737B]"><Cake className="h-4 w-4" />Nenhum hoje.</p>
           ) : (
             <ul className="space-y-1.5">
