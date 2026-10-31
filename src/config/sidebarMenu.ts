@@ -113,6 +113,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Convênios', icon: Building2, href: '/convenios', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Acesso ao portal do paciente', icon: UsersRound, href: '/portal-pacientes', roles: ['admin'] },
+      { label: 'Privacidade (LGPD)', icon: Shield, href: '/lgpd-pacientes', roles: ['admin'] },
     ],
   },
   {
@@ -199,9 +200,9 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dados da clínica', icon: Building2, href: '/configuracoes', roles: ['admin'], exact: true },
       { label: 'Horários e agenda online', icon: CalendarRange, href: '/configuracoes?tab=horarios', roles: ['admin'] },
-      { label: 'Notificações', icon: Bell, href: '/configuracoes?tab=notificacoes', roles: ['admin'] },
       { label: 'Integrações disponíveis', icon: Settings2, href: '/configuracoes?tab=integracoes', roles: ['admin'] },
       { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
+      { label: 'Especialidades, documentos e mais', icon: Settings2, href: '/configuracoes-avancadas', roles: ['admin'] },
       { label: 'Plano e assinatura', icon: CreditCard, href: '/planos', roles: ['admin'] },
     ],
   },
@@ -273,6 +274,19 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Integrações de clientes', icon: Settings2, href: '/admin/integracoes', superAdminOnly: true },
       { label: 'Operação do serviço', icon: Gauge, href: '/admin/operacoes', superAdminOnly: true },
       { label: 'Relatórios agendados', icon: FileBarChart, href: '/admin/relatorios-agendados', superAdminOnly: true },
+    ],
+  },
+  {
+    label: 'Infraestrutura',
+    icon: Wrench,
+    roles: ['admin'],
+    superAdminOnly: true,
+    items: [
+      { label: 'Erros e registros', icon: ActivitySquare, href: '/admin/erros', superAdminOnly: true },
+      { label: 'Filas e webhooks', icon: ListChecks, href: '/admin/filas', superAdminOnly: true },
+      { label: 'Consumo e cotas', icon: Gauge, href: '/admin/consumo', superAdminOnly: true },
+      { label: 'Backups', icon: ShieldCheck, href: '/admin/backups', superAdminOnly: true },
+      { label: 'Domínios', icon: Building2, href: '/admin/dominios', superAdminOnly: true },
     ],
   },
 ];

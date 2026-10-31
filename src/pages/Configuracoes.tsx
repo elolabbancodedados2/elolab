@@ -460,10 +460,15 @@ export default function Configuracoes() {
         description="Gerencie os dados e as preferências da sua clínica."
         icon={<Settings2 />}
         actions={
-          <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full', isCloudSynced ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground')}>
-            {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
-            {isCloudSynced ? 'Sincronizado' : 'Local'}
-          </Badge>
+          <>
+            <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full', isCloudSynced ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground')}>
+              {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
+              {isCloudSynced ? 'Sincronizado' : 'Local'}
+            </Badge>
+            <Button asChild variant="outline" size="sm" className="rounded-full">
+              <Link to="/configuracoes-avancadas">Especialidades, documentos e mais</Link>
+            </Button>
+          </>
         }
       />
 
