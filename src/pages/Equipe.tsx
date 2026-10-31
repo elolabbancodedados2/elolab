@@ -1,9 +1,10 @@
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Stethoscope, UserCog, Mail } from 'lucide-react';
+import { Stethoscope, UserCog, Mail, ShieldCheck } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { ConvitesList } from '@/components/ConvitesList';
 import { SectionFallback } from '@/components/ui/loading-skeleton';
+import { PerfisDeAcesso } from '@/components/equipe/PerfisDeAcesso';
 
 const Medicos = lazy(() => import('./Medicos'));
 const Funcionarios = lazy(() => import('./Funcionarios'));
@@ -11,7 +12,7 @@ const Funcionarios = lazy(() => import('./Funcionarios'));
 export default function Equipe() {
   const [searchParams, setSearchParams] = useSearchParams();
   const abaSolicitada = searchParams.get('aba');
-  const tab = ['medicos', 'funcionarios', 'convites'].includes(abaSolicitada || '') ? abaSolicitada! : 'medicos';
+  const tab = ['medicos', 'funcionarios', 'convites', 'perfis'].includes(abaSolicitada || '') ? abaSolicitada! : 'medicos';
   const setTab = (value: string) => {
     setSearchParams(previous => {
       const next = new URLSearchParams(previous);
@@ -40,6 +41,10 @@ export default function Equipe() {
             <Mail className="h-4 w-4" />
             Convites
           </TabsTrigger>
+          <TabsTrigger value="perfis" className="h-10 shrink-0 gap-2 rounded-lg px-4 focus-visible:ring-ring">
+            <ShieldCheck className="h-4 w-4" />
+            Perfis de acesso
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="medicos" className="mt-5 focus-visible:ring-ring">
@@ -56,6 +61,10 @@ export default function Equipe() {
 
         <TabsContent value="convites" className="mt-5 focus-visible:ring-ring">
           <ConvitesList />
+        </TabsContent>
+
+        <TabsContent value="perfis" className="mt-5 focus-visible:ring-ring">
+          <PerfisDeAcesso />
         </TabsContent>
       </Tabs>
     </div>
