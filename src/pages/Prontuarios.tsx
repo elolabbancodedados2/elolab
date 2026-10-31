@@ -47,7 +47,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
 import { exportToFHIR, exportToXML } from '@/lib/clinicalExport';
-import { ageFromDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, dateRangeInTimeZoneIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { temSinaisPreenchidos, triagemParaSinais } from '@/lib/triagemParaSinais';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
 import { PatientSearchResult } from '@/components/clinical/PatientSearchResult';
 import { mensagemDeErro } from '@/lib/erros';
@@ -1500,6 +1501,45 @@ export default function Prontuarios() {
   const isReadOnly = (!!currentProntuario.id && !isEditing) || isSigned;
   const podeAdendar = isSigned && !!user?.roles?.includes('medico') && medicoId === currentProntuario.medico_id && !!medicoDoProntuario?.crm;
 
+  // Sinais da triagem do mesmo atendimento (ou do mesmo dia) para o médico
+  // copiar quando o prontuário ainda não tem sinais vitais.
+  const pacienteDaTriagem = (currentProntuario.paciente_id || selectedPacienteId || '') as string;
+  const agendamentoDaTriagem = (currentProntuario.agendamento_id || routeAgendamentoId || '') as string;
+  const dataDaTriagem = (currentProntuario.data || todaySaoPauloDateOnly()) as string;
+  const precisaTriagem = isProntuarioOpen && !isReadOnly && !!pacienteDaTriagem && !temSinaisPreenchidos(sinaisVitais);
+  const { data: triagemDoAtendimento } = useQuery({
+    queryKey: ['prontuario-triagem', user?.clinica_id ?? null, pacienteDaTriagem, agendamentoDaTriagem, dataDaTriagem],
+    enabled: precisaTriagem,
+    staleTime: 60_000,
+    queryFn: async () => {
+      let consulta = supabase
+        .from('triagens')
+        .select('pressao_arterial, frequencia_cardiaca, frequencia_respiratoria, temperatura, saturacao, peso, altura, imc, glicemia, dor_escala, data_hora')
+        .eq('paciente_id', pacienteDaTriagem);
+      if (agendamentoDaTriagem) {
+        consulta = consulta.eq('agendamento_id', agendamentoDaTriagem);
+      } else {
+        const intervalo = dateRangeInTimeZoneIso(dataDaTriagem, dataDaTriagem, 'America/Sao_Paulo');
+        consulta = consulta.gte('data_hora', intervalo.gte!).lt('data_hora', intervalo.lt!);
+      }
+      const { data, error } = await consulta.order('data_hora', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const sinaisDaTriagem = precisaTriagem && triagemDoAtendimento ? triagemParaSinais(triagemDoAtendimento) : null;
+  const triagemDisponivel = !!sinaisDaTriagem && temSinaisPreenchidos(sinaisDaTriagem);
+  const horaDaTriagem = triagemDoAtendimento?.data_hora
+    ? new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(new Date(triagemDoAtendimento.data_hora))
+    : '';
+  const usarSinaisDaTriagem = () => {
+    if (!sinaisDaTriagem) return;
+    setSinaisVitais(atual => ({ ...atual, ...sinaisDaTriagem }));
+    setHasUnsavedChanges(true);
+    changeVersionRef.current += 1;
+    toast.success('Sinais da triagem copiados para o exame físico.');
+  };
+
   const handleRequestEdit = async () => {
     if (erroPrescricoes) {
       toast.error('Edição temporariamente bloqueada', {
@@ -2790,7 +2830,12 @@ export default function Prontuarios() {
                   onReceita={() => changeProntuarioSection('prescricao')}
                 />
               )}
-              <FaixaSinaisVitais sinais={sinaisVitais as unknown as Record<string, string>} onAbrir={() => changeProntuarioSection('exame')} />
+              <FaixaSinaisVitais
+                sinais={(triagemDisponivel ? sinaisDaTriagem : sinaisVitais) as unknown as Record<string, string>}
+                onAbrir={() => changeProntuarioSection('exame')}
+                origem={triagemDisponivel ? `Triagem${horaDaTriagem ? ` ${horaDaTriagem}` : ''}` : undefined}
+                onUsar={triagemDisponivel ? usarSinaisDaTriagem : undefined}
+              />
             </div>
           )}
 
