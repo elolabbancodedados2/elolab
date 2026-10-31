@@ -533,7 +533,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
         return (
           <section key={tipo} aria-labelledby={`salas-tipo-${tipo}`} className="space-y-3">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <Icon className="h-4 w-4" />
               </span>
               <h2 id={`salas-tipo-${tipo}`} className="text-base font-semibold text-foreground">{TIPO_LABELS[tipo] || tipo}</h2>
@@ -740,7 +740,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
       {filtradasPorEstado.length === 0 && (
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardContent className="py-16 text-center text-muted-foreground">
-            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+            <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <DoorOpen className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">{totalSalas === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde aos filtros'}</p>

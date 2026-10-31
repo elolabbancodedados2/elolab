@@ -2415,7 +2415,7 @@ export default function Prontuarios() {
                         <ErrorState compact error={erroProntuarios} title="Histórico indisponível" onRetry={() => { void refetchProntuarios(); }} />
                       ) : pacienteProntuarios.length === 0 ? (
                         <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 px-4 py-12 text-center">
-                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-glow"><FileText className="h-5 w-5" /></span>
+                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground"><FileText className="h-5 w-5" /></span>
                           <p className="text-sm font-bold text-foreground">Nenhuma evolução registrada</p>
                           <p className="max-w-sm text-xs text-muted-foreground">O primeiro atendimento deste paciente aparecerá aqui, com queixa, exame físico, conduta e prescrições.</p>
                           <Button size="sm" className="mt-1" onClick={() => handleNovoProntuario()} disabled={!!erroMedicos || !!erroProntuarios}><Plus className="h-3.5 w-3.5" />Iniciar primeiro atendimento</Button>

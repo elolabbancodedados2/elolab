@@ -27,7 +27,7 @@ export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponi
     <CardHeader>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground"><CalendarRange className="h-4 w-4" /></span>
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><CalendarRange className="h-4 w-4" /></span>
           <div>
             <CardTitle className="text-base font-semibold">Projeção por cenário</CardTitle>
             <CardDescription>Mês atual e dois seguintes. Realizado = movimentos já ocorridos; previsto = saldos em aberto pelo vencimento e próximas ocorrências de contas recorrentes.</CardDescription>

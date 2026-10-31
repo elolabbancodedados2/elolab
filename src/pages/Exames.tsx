@@ -1387,7 +1387,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center gap-3">
-            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
               <FileText className="h-4 w-4" />
             </span>
             <CardTitle className="text-base font-semibold">Exames</CardTitle>
@@ -1416,7 +1416,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                   <TableRow>
                     <TableCell colSpan={6} className="py-3">
                       <div role="status" aria-live="polite" className="flex flex-col items-center gap-2 py-12 text-center">
-                        <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+                        <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                           <FileText className="h-7 w-7" />
                         </span>
                         <h3 className="font-semibold text-foreground">

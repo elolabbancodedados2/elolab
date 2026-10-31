@@ -300,7 +300,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
 
         <section role="group" aria-label="Situação das contas" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
           {([
-            { key: 'todos' as FiltroConta, icon: Users, label: 'Contas', caption: 'cadastradas na plataforma', color: 'text-white', surface: 'bg-white/20', destaque: true },
+            { key: 'todos' as FiltroConta, icon: Users, label: 'Contas', caption: 'cadastradas na plataforma', color: 'text-foreground', surface: 'bg-secondary', destaque: false },
             { key: 'online' as FiltroConta, icon: Circle, label: 'Ativas agora', caption: 'acesso nos últimos 15 min', color: 'text-success', surface: 'bg-success/10', destaque: false },
             { key: 'bloqueados' as FiltroConta, icon: UserX, label: 'Bloqueadas', caption: 'login impedido', color: 'text-destructive', surface: 'bg-destructive/10', destaque: false },
             { key: 'admins' as FiltroConta, icon: Shield, label: 'Administradores', caption: 'com função de admin', color: 'text-primary', surface: 'bg-primary/10', destaque: false },

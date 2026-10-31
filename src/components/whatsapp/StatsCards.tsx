@@ -10,7 +10,7 @@ interface StatsCardsProps {
 export function StatsCards({ sessions, stats }: StatsCardsProps) {
   const activeSessions = sessions.filter(s => s.status === 'connected').length;
   const cards = [
-    { label: 'Sessões Ativas', value: activeSessions, icon: Smartphone, color: 'text-white', surface: 'bg-white/20', destaque: true },
+    { label: 'Sessões Ativas', value: activeSessions, icon: Smartphone, color: 'text-foreground', surface: 'bg-secondary', destaque: false },
     { label: 'Mensagens Hoje', value: stats?.messages, icon: MessageSquare, color: 'text-primary', surface: 'bg-primary/10' },
     { label: 'Conversas Hoje', value: stats?.conversations, icon: Users, color: 'text-info', surface: 'bg-info/10' },
     { label: 'Ações do Agente Hoje', value: stats?.actions, icon: Activity, color: 'text-primary', surface: 'bg-primary/10' },

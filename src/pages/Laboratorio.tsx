@@ -411,7 +411,7 @@ export default function Laboratorio() {
           <div className="rounded-2xl border border-primary/30 bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                   <FlaskConical className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
@@ -647,7 +647,7 @@ export default function Laboratorio() {
             ) : filtered.length === 0 ? (
               <Card className="rounded-2xl border-border/60">
                 <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                     <FlaskConical className="h-7 w-7" />
                   </div>
                   <div>
@@ -842,7 +842,7 @@ export default function Laboratorio() {
           </section>
           {stats.total === 0 ? (
             <div className="rounded-2xl border border-border/60 bg-card py-12 flex flex-col items-center gap-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                 <Activity className="h-7 w-7" />
               </div>
               <div>
