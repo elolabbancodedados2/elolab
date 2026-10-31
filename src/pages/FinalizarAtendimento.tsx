@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type PatientSummary = {
   nome: string | null;
@@ -124,7 +125,7 @@ export default function FinalizarAtendimento() {
     const dias = Number(retornoSelecionado);
     if (!Number.isInteger(dias) || dias <= 0) return null;
     const hoje = parseDateOnly(todaySaoPauloDateOnly());
-    return hoje ? format(addDays(hoje, dias), 'dd/MM/yyyy', { locale: ptBR }) : null;
+    return hoje ? formatWithDatePreference(addDays(hoje, dias), 'dd/MM/yyyy', { locale: ptBR }) : null;
   }, [retornoSelecionado]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -254,7 +255,7 @@ export default function FinalizarAtendimento() {
                 </div>
                 <div className="flex min-w-0 gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><CalendarDays className="h-4 w-4" /></span>
-                  <div className="min-w-0"><p className="text-xs text-muted-foreground">Data</p><p className="font-medium">{parseDateOnly(appointment.data) ? format(parseDateOnly(appointment.data)!, 'dd/MM/yyyy', { locale: ptBR }) : appointment.data || 'Não informada'}</p></div>
+                  <div className="min-w-0"><p className="text-xs text-muted-foreground">Data</p><p className="font-medium">{parseDateOnly(appointment.data) ? formatWithDatePreference(parseDateOnly(appointment.data)!, 'dd/MM/yyyy', { locale: ptBR }) : appointment.data || 'Não informada'}</p></div>
                 </div>
                 <div className="flex min-w-0 gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Clock3 className="h-4 w-4" /></span>

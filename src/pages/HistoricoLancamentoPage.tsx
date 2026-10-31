@@ -10,6 +10,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { CAMPOS_TRILHA, formatarValorTrilha } from '@/lib/trilhaLancamento';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type HistoryRow = Database['public']['Functions']['historico_alteracoes_lancamento']['Returns'][number];
 type HistoryRouteState = { returnTo?: unknown; returnState?: unknown; rotulos?: unknown };
@@ -103,7 +104,7 @@ export default function HistoricoLancamentoPage() {
         <section aria-label="Dados da conta" className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
           <div><p className="text-xs text-muted-foreground">Descrição</p><p className="mt-1 font-medium">{account.data.descricao || 'Conta a pagar'}</p></div>
           <div><p className="text-xs text-muted-foreground">Valor atual</p><p className="mt-1 font-medium tabular-nums">{formatCurrency(Number(account.data.valor))}</p></div>
-          <div><p className="text-xs text-muted-foreground">Vencimento atual</p><p className="mt-1 font-medium">{account.data.data_vencimento ? new Date(`${account.data.data_vencimento}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informado'}</p></div>
+          <div><p className="text-xs text-muted-foreground">Vencimento atual</p><p className="mt-1 font-medium">{account.data.data_vencimento ? formatWithDatePreference(new Date(`${account.data.data_vencimento}T12:00:00`), 'dd/MM/yyyy') : 'Não informado'}</p></div>
         </section>
       )}
 

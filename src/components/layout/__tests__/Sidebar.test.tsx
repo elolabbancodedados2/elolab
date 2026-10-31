@@ -62,41 +62,16 @@ describe('Sidebar alterna áreas para a dona da plataforma', () => {
     expect(screen.getByRole('link', { name: 'Contas e acessos' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByRole('button', { name: 'Pacientes' })).not.toBeInTheDocument();
   });
-  it('exibe somente os dois destinos no seletor da conta plataforma com clínica', () => {
-    renderSidebar('/dashboard', true);
-
-    const selector = screen.getByRole('group', { name: 'Alternar área' });
-    expect(within(selector).getByRole('link', { name: 'App' })).toBeInTheDocument();
-    expect(within(selector).getByRole('link', { name: 'Painel Admin' })).toBeInTheDocument();
-  });
-
-  it('alterna entre o dashboard clínico e o Painel Admin', async () => {
-    const user = userEvent.setup();
-    renderSidebar('/dashboard', true);
-
-    const selector = screen.getByRole('group', { name: 'Alternar área' });
-    await user.click(within(selector).getByRole('link', { name: 'Painel Admin' }));
-    expect(screen.getByTestId('current-path')).toHaveTextContent('/painel-admin');
-    expect(within(selector).getByRole('link', { name: 'Painel Admin' })).toHaveAttribute('aria-current', 'page');
-
-    await user.click(within(selector).getByRole('link', { name: 'App' }));
-    expect(screen.getByTestId('current-path')).toHaveTextContent('/dashboard');
-    expect(within(selector).getByRole('link', { name: 'App' })).toHaveAttribute('aria-current', 'page');
-  });
-
-  it('não mostra o seletor ou links da plataforma para assinante admin de clínica', () => {
+  // O seletor App/Painel Admin fica no cabeçalho global: ver NavbarAlternarArea.test.tsx.
+  it('não mostra links da plataforma para assinante admin de clínica', () => {
     renderSidebar('/dashboard', false);
 
-    expect(screen.queryByRole('group', { name: 'Alternar área' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Painel Admin' })).not.toBeInTheDocument();
   });
 
-  it('separa o App do Painel Admin e mantém o App bloqueado sem clínica', () => {
+  it('mostra só a área da plataforma quando a conta plataforma não tem clínica', () => {
     renderSidebar('/dashboard', true, null);
 
-    const selector = screen.getByRole('group', { name: 'Alternar área' });
-    expect(within(selector).getByRole('button', { name: /App/ })).toBeDisabled();
-    expect(within(selector).getByRole('link', { name: 'Painel Admin' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pacientes' })).not.toBeInTheDocument();
   });

@@ -93,7 +93,8 @@ describe('PainelTV', () => {
 
       speak.mockClear();
       renderPainel();
-      expect(await screen.findAllByText('Paciente')).not.toHaveLength(0);
+      // O painel mostra a senha do atendimento, não o nome do paciente.
+      expect(await screen.findAllByText(/^Senha /)).not.toHaveLength(0);
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(speak).not.toHaveBeenCalled();
     } finally {

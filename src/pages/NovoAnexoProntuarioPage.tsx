@@ -18,6 +18,7 @@ import { registrarAcessoProntuario } from '@/lib/prontuarioAudit';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { toast } from 'sonner';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 const BUCKET = 'medical-attachments';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -49,7 +50,7 @@ function one<T>(value: Relation<T> | undefined): T | null {
 
 function formatDate(date: string) {
   const parsed = parseDateOnly(date);
-  return parsed ? format(parsed, 'dd/MM/yyyy', { locale: ptBR }) : date;
+  return parsed ? formatWithDatePreference(parsed, 'dd/MM/yyyy', { locale: ptBR }) : date;
 }
 
 function getFileProblem(file: File): string | null {

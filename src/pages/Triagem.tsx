@@ -37,6 +37,7 @@ import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { buildTriagensFilters, filtrarAgendamentosAguardandoTriagem, temCheckinAtivo } from '@/lib/triageQueue';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 const FUSO_CLINICA = 'America/Sao_Paulo';
 
@@ -777,7 +778,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           <>
             <span className="hidden min-[400px]:inline">{descricao}</span>
             <span className="min-[400px]:hidden">
-              {format(parseDateOnly(today)!, 'dd/MM', { locale: ptBR })}
+              {formatWithDatePreference(parseDateOnly(today)!, 'dd/MM', { locale: ptBR })}
               {listaAgendaDisponivel && !carregandoAgenda ? ` · ${pendingTriagemCount} aguardando` : ''}
               {!erroTriagens && !isLoading ? ` · ${triagemHoje.length} triados` : ''}
               {' · Manchester'}

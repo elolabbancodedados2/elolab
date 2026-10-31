@@ -18,6 +18,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
+import { formatWithDatePreference } from '@/lib/datePreference';
 
 type PaymentMethod = 'pix' | 'boleto' | 'transferencia' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
 type PayableAccount = {
@@ -235,7 +236,7 @@ export default function ContaPagarPagamentoPage() {
       <CardContent className="grid gap-4 pt-5 sm:grid-cols-2 lg:grid-cols-3">
         <Summary label="Despesa" value={account.descricao} />
         <Summary label="Categoria" value={categoryLabel} />
-        <Summary label="Vencimento" value={dueDate ? dueDate.toLocaleDateString('pt-BR') : 'Não informado'} />
+        <Summary label="Vencimento" value={dueDate ? formatWithDatePreference(dueDate, 'dd/MM/yyyy') : 'Não informado'} />
         <Summary label="Valor original" value={currency(Number(account.valor))} />
         <Summary label="Já pago" value={currency(Number(account.valor_pago || 0))} />
         <Summary label="Saldo em aberto" value={currency(remaining)} emphasis />

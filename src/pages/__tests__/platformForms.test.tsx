@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, cleanup } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider, useLocation } from 'react-router-dom';
 import PlatformConsumo from '@/pages/PlatformConsumo';
 import PlatformComunicacao from '@/pages/PlatformComunicacao';
 
-const { rpc, insert } = vi.hoisted(() => ({ rpc: vi.fn(), insert: vi.fn() }));
+const { rpc, insert, mutate } = vi.hoisted(() => ({ rpc: vi.fn(), insert: vi.fn(), mutate: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc, from: () => ({ insert }) } }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ user: { id: 'test' } }) }));
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useMutation: () => ({ mutate, isPending: false }),
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[0] === 'platform-usage' ? {
     generated_at: '2026-10-07T12:00:00.000Z',
     clinics: [{
@@ -18,20 +19,43 @@ vi.mock('@tanstack/react-query', () => ({
   } : [] }),
 }));
 
-beforeEach(() => { cleanup(); vi.restoreAllMocks(); rpc.mockReset(); insert.mockReset(); });
+beforeEach(() => { cleanup(); vi.restoreAllMocks(); rpc.mockReset(); insert.mockReset(); mutate.mockReset(); });
+
+function LocationProbe() {
+  return <output data-testid="current-path">{useLocation().pathname}</output>;
+}
+
+// A edição de limites saiu do prompt do navegador e virou uma página própria com formulário.
+function renderLimites() {
+  const router = createMemoryRouter([
+    { path: '/admin/consumo/:clinicId/limites', element: <><PlatformConsumo /><LocationProbe /></> },
+    { path: '/admin/consumo', element: <><p>Lista de consumo</p><LocationProbe /></> },
+  ], { initialEntries: ['/admin/consumo/test/limites'] });
+  return render(<RouterProvider router={router} />);
+}
+
 describe('Formulários da plataforma', () => {
-  it.each([0, 1, 2])('cancelar o campo %i não grava limites', (index) => {
-    const responses = ['10', '5000', '100'];
-    vi.spyOn(window, 'prompt').mockImplementation(() => responses.length === 3 - index ? null : responses.shift()!);
-    render(<PlatformConsumo />);
-    fireEvent.click(screen.getByRole('button', { name: 'Editar limites' }));
+  it('cancelar a edição volta à lista sem gravar limites', () => {
+    renderLimites();
+    fireEvent.change(screen.getByLabelText('Assentos de usuários'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/admin/consumo');
+    expect(mutate).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
-  it('rejeita limites vazios', () => {
-    vi.spyOn(window, 'prompt').mockReturnValue('');
-    render(<PlatformConsumo />);
-    fireEvent.click(screen.getByRole('button', { name: 'Editar limites' }));
-    expect(rpc).not.toHaveBeenCalled();
+  it.each(['Assentos de usuários', 'Tokens de IA por mês', 'Notificações por mês'])('rejeita %s vazio', (campo) => {
+    renderLimites();
+    fireEvent.change(screen.getByLabelText(campo), { target: { value: '' } });
+    const salvar = screen.getByRole('button', { name: 'Salvar limites' });
+    expect(salvar).toBeDisabled();
+    fireEvent.click(salvar);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+  it('grava limites válidos pela operação da plataforma', () => {
+    renderLimites();
+    fireEvent.change(screen.getByLabelText('Assentos de usuários'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar limites' }));
+    expect(mutate).toHaveBeenCalledWith({ clinica_id: 'test', max_users: 20, max_ai_tokens: 5000, max_notifications: 100 });
   });
   it('bloqueia comunicado que termina antes de começar', () => {
     const { container } = render(<PlatformComunicacao />);
