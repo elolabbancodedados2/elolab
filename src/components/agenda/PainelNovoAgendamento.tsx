@@ -3,6 +3,7 @@ import { ptBR } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@/components/icons/elolabIcons';
+import { Ban } from 'lucide-react';
 import { formatWithDatePreference } from '@/lib/datePreference';
 
 // Painel lateral do protótipo aprovado em 30/10/2026: calendário do mês e atalho para agendar no dia.
@@ -11,9 +12,10 @@ interface Props {
   diasComConsulta?: Record<string, number>;
   onDateChange: (date: string) => void;
   onNovoAgendamento: () => void;
+  onBloquear?: () => void;
 }
 
-export function PainelNovoAgendamento({ date, diasComConsulta, onDateChange, onNovoAgendamento }: Props) {
+export function PainelNovoAgendamento({ date, diasComConsulta, onDateChange, onNovoAgendamento, onBloquear }: Props) {
   const dia = parseISO(date);
   const diasMarcados = Object.entries(diasComConsulta ?? {})
     .filter(([, total]) => total > 0)
@@ -41,6 +43,11 @@ export function PainelNovoAgendamento({ date, diasComConsulta, onDateChange, onN
       <Button type="button" onClick={onNovoAgendamento} className="mt-2 h-9 w-full gap-1.5 rounded-lg">
         <Plus aria-hidden="true" className="h-4 w-4" /> Agendar em {formatWithDatePreference(dia, 'dd/MM')}
       </Button>
+      {onBloquear && (
+        <Button type="button" variant="outline" onClick={onBloquear} className="mt-1.5 h-8 w-full gap-1.5 rounded-lg text-xs">
+          <Ban aria-hidden="true" className="h-3.5 w-3.5" /> Bloquear horário
+        </Button>
+      )}
       <p className="mt-2 text-[11px] leading-snug text-muted-foreground">Ou clique num horário vago da grade para agendar com o profissional e a hora já preenchidos.</p>
     </section>
   );
