@@ -76,11 +76,12 @@ test('collection validates time, prevents a duplicate exam and preserves sector,
   await expect(page.getByText(/Este pedido já possui uma coleta/)).toBeVisible();
   expect(writes).toHaveLength(0);
   duplicate = false;
-  await save.click();
+  // O aviso anterior fica sobre o botão; o envio pelo teclado não depende do ponteiro.
+  await save.press('Enter');
   await expect(page.getByText('Falha QA ao salvar coleta', { exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Setor responsável' })).toContainText('Hematologia QA');
   fail = false;
-  await save.click();
+  await save.press('Enter');
   await expect(page).toHaveURL('/laboratorio?status=pendente');
   expect(writes).toHaveLength(2);
   expect(writes[1]).toMatchObject({ clinica_id: fixture.clinicId, paciente_id: patientId, exame_id: examId, setor_id: sectorId, status: 'coletado', data_coleta: '2026-01-01T12:00:00.000Z', coletado_por: '00000000-0000-4000-8000-000000000001' });
