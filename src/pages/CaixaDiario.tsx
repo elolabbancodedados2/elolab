@@ -573,7 +573,7 @@ export default function CaixaDiario() {
               {
                 key: 'todos',
                 label: totais.final < 0 ? 'Saldo negativo' : 'Saldo do dia',
-                caption: isOpen ? 'resultado financeiro' : diferencaFechamento === null ? 'caixa encerrado' : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} ${fmt(Math.abs(diferencaFechamento))}`,
+                caption: isOpen ? 'abertura + movimentos, com transferências' : diferencaFechamento === null ? 'caixa encerrado' : mesmoValor(diferencaFechamento, 0) ? 'bateu com o esperado' : `${diferencaFechamento > 0 ? 'sobra' : 'falta'} ${fmt(Math.abs(diferencaFechamento))}`,
                 value: totais.final,
                 icon: DollarSign,
                 color: 'text-foreground',
