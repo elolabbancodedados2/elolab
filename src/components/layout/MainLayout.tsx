@@ -18,6 +18,7 @@ import { usePersonalPreferences } from '@/hooks/usePersonalPreferences';
 import { useOperationalEvents } from '@/hooks/useOperationalEvents';
 import { MobileTabBar } from './MobileTabBar';
 import { BarraStatus } from './BarraStatus';
+import { AbasTelas } from './AbasTelas';
 
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -33,6 +34,7 @@ export function MainLayout() {
       <SkipLink targetId="main-content" />
       <RouteAccessibility />
       <Navbar mobileMenuOpen={mobileMenuOpen} onMenuClick={() => setMobileMenuOpen(open => !open)} />
+      <AbasTelas />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
