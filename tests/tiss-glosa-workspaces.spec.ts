@@ -309,3 +309,41 @@ test('as telas de recurso e decisão mantêm a ação final acima da navegação
   expect(context.synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
+test('faturamento mostra as guias com a situação da autorização', async ({ page }, testInfo) => {
+  const { synthetic } = await installBillingList(page);
+  const pacienteA = '00000000-0000-4000-8000-000000000301';
+  const pacienteB = '00000000-0000-4000-8000-000000000302';
+  const guia = (id: string, numero: string, paciente: string, autorizacao: string | null, tipo: string, data: string, valor: number) => ({
+    id, lote_id: loteId, clinica_id: clinicId, numero_guia: numero, numero_carteira: 'CART-QA', paciente_id: paciente,
+    autorizacao_id: autorizacao, data_atendimento: data, codigo_procedimento: '40301010', tipo_servico: tipo, quantidade: 1, valor_total: valor,
+  });
+  await page.unroute('http://127.0.0.1:54321/rest/v1/lote_tiss_guias**');
+  await page.unroute('http://127.0.0.1:54321/rest/v1/autorizacoes_convenio**');
+  await page.route('http://127.0.0.1:54321/rest/v1/lote_tiss_guias**', route => route.fulfill({ status: 200, json: [
+    guia('00000000-0000-4000-9000-000000000281', 'GUIA-QA-1', pacienteA, '00000000-0000-4000-9000-000000000291', 'exame', '2026-10-08', 90),
+    guia('00000000-0000-4000-9000-000000000282', 'GUIA-QA-2', pacienteB, '00000000-0000-4000-9000-000000000292', 'exame', '2026-10-09', 60),
+  ] }));
+  await page.route('http://127.0.0.1:54321/rest/v1/autorizacoes_convenio**', route => route.fulfill({ status: 200, json: [
+    { id: '00000000-0000-4000-9000-000000000291', status: 'autorizada', convenio_id: convenioId, paciente_id: pacienteA, tipo_servico: 'exame', data_expiracao: '2026-10-30', numero_autorizacao: 'AUT-QA-1' },
+    { id: '00000000-0000-4000-9000-000000000292', status: 'pendente', convenio_id: convenioId, paciente_id: pacienteB, tipo_servico: 'exame', data_expiracao: null, numero_autorizacao: 'AUT-QA-2' },
+  ] }));
+  await page.route('http://127.0.0.1:54321/rest/v1/rpc/buscar_pacientes_resumo_financeiro', route => route.fulfill({ status: 200, json: [
+    { id: pacienteA, nome: 'Paciente QA Um' }, { id: pacienteB, nome: 'Paciente QA Dois' },
+  ] }));
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/faturamento-convenios');
+  await page.getByRole('tab', { name: 'Guias (2)' }).click();
+  const linhaAutorizada = page.getByRole('row').filter({ hasText: 'GUIA-QA-1' });
+  await expect(linhaAutorizada.getByText('Autorizada')).toBeVisible();
+  await expect(linhaAutorizada.getByText('AUT-QA-1')).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'GUIA-QA-2' }).getByText('Pendente')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('faturamento-guias-autorizacao-1440.png'), animations: 'disabled' });
+
+  await page.getByRole('button', { name: /Pendentes 1/ }).click();
+  await expect(page.getByRole('row').filter({ hasText: 'GUIA-QA-1' })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('faturamento-guias-autorizacao-390.png'), animations: 'disabled', fullPage: true });
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
