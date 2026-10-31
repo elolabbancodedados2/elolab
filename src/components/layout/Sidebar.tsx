@@ -307,7 +307,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             aria-expanded={!collapsed && isOpen}
             aria-controls={!collapsed && isOpen ? groupPanelId : undefined}
             className={cn(
-              'w-full flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
+              'w-full flex min-h-8 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
               collapsed && 'justify-center',
               hasActiveChild ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground',
             )}
