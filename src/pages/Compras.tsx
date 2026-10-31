@@ -26,6 +26,7 @@ import {
   compararCotacao, formatarCnpj, lerPreco, normalizarCnpj,
   ROTULO_SITUACAO_COTACAO, ROTULO_SITUACAO_PEDIDO,
   type SituacaoCotacao, type SituacaoPedidoCompra,
+  economiaSobreMaisCaro,
 } from '@/lib/compras';
 import { criarCotacao, mensagemErroCompras, type NovoItemCotacao } from '@/lib/comprasApi';
 
@@ -456,11 +457,17 @@ function GradeComparacao({ comparacao }: { comparacao: ReturnType<typeof compara
   if (comparacao.linhas.length === 0) {
     return <p className="rounded-xl border border-dashed border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">Esta cotação não tem itens.</p>;
   }
+  const economia = economiaSobreMaisCaro(comparacao);
   return (
     <section aria-label="Comparação de preços" className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold">Comparação item × fornecedor</h3>
-        <span className="text-xs text-muted-foreground">Total com menor preço <strong className="ml-1 text-sm tabular-nums text-foreground">{formatCurrency(comparacao.totalMenorPreco)}</strong></span>
+        <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>Total com menor preço <strong className="ml-1 text-sm tabular-nums text-foreground">{formatCurrency(comparacao.totalMenorPreco)}</strong></span>
+          {economia !== null && economia > 0 && (
+            <span>Economia sobre o mais caro <strong className="ml-1 text-sm tabular-nums text-foreground">{formatCurrency(economia)}</strong></span>
+          )}
+        </span>
       </div>
       <div className="overflow-x-auto">
         <Table>
