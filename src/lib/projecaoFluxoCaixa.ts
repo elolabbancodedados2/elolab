@@ -75,8 +75,10 @@ export function projetarFluxoCaixa(
   for (const r of realizados) {
     const alvo = acc.get(r.data.slice(0, 7));
     if (!alvo || r.data > opcoes.hoje) continue;
-    if (r.tipo === 'receita' || r.tipo === 'suprimento') alvo.re += emCentavos(r.valor);
-    else if (r.tipo === 'despesa' || r.tipo === 'sangria') alvo.rs += emCentavos(r.valor);
+    // Sangria e suprimento são transferências internas e não mudam o resultado
+    // (mesma regra de totaisMovimentoCaixa, do Financeiro e do DRE).
+    if (r.tipo === 'receita') alvo.re += emCentavos(r.valor);
+    else if (r.tipo === 'despesa') alvo.rs += emCentavos(r.valor);
   }
 
   const temContinuacao = new Set(lancamentos.map((l) => l.recorrencia_origem_id).filter(Boolean));

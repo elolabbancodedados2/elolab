@@ -48,6 +48,17 @@ describe('projeção do fluxo de caixa', () => {
     expect(r[1]).toMatchObject({ realizadoEntradas: 0, saldoMes: -200, saldoAcumulado: 379.9 });
   });
 
+  it('não soma sangria nem suprimento ao realizado, por serem transferências internas', () => {
+    const semTransferencias = projetarFluxoCaixa(lancamentos, [{ tipo: 'receita', valor: 500, data: '2026-10-02' }], { hoje, meses: 1, cenario: 'realista' });
+    const comTransferencias = projetarFluxoCaixa(lancamentos, [
+      { tipo: 'receita', valor: 500, data: '2026-10-02' },
+      { tipo: 'sangria', valor: 300, data: '2026-10-02' },
+      { tipo: 'suprimento', valor: 50, data: '2026-10-03' },
+    ], { hoje, meses: 1, cenario: 'realista' });
+    expect(comTransferencias).toEqual(semTransferencias);
+    expect(comTransferencias[0]).toMatchObject({ realizadoEntradas: 500, realizadoSaidas: 0 });
+  });
+
   it('não projeta recorrência que já gerou a próxima conta', () => {
     const r = projetarFluxoCaixa([
       conta({ id: 'a', tipo: 'despesa', status: 'pago', valor: 80, data_vencimento: '2026-10-05', recorrente: true, frequencia_recorrencia: 'mensal' }),
