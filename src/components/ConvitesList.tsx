@@ -283,7 +283,8 @@ export function ConvitesList() {
   const INDICADORES: Array<{ chave: InviteStatus | 'todos'; label: string; value: number; icon: typeof Mail; color: string; surface: string; escuro: boolean; caption: string }> = [
     { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'aguardando aceite' },
     { chave: 'aceito', label: 'Aceitos', value: aceitos, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'acesso liberado' },
-    { chave: 'expirado', label: 'Expirados', value: expirados, icon: XCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false, caption: 'link vencido' },
+    // Vermelho só quando há convite vencido; zero expirados não é problema.
+    { chave: 'expirado', label: 'Expirados', value: expirados, icon: XCircle, color: expirados > 0 ? 'text-destructive' : 'text-muted-foreground', surface: expirados > 0 ? 'bg-destructive/10' : 'bg-secondary', escuro: false, caption: 'link vencido' },
     { chave: 'todos', label: 'Total', value: invites.length, icon: Mail, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'todos os convites' },
   ];
   const descricaoHeader = invites.length === 0
@@ -313,7 +314,7 @@ export function ConvitesList() {
         <Input ref={linkManualInputRef} value={linkManual} readOnly aria-label="Link de aceitação do convite" onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()} autoFocus />
         <Button variant="outline" onClick={() => setLinkManual('')}>Fechar link</Button>
       </section>}
-      <Alert>
+      <Alert role="note">
         <Mail className="h-4 w-4" />
         <AlertTitle>Como funciona o convite</AlertTitle>
         <AlertDescription className="space-y-1">
