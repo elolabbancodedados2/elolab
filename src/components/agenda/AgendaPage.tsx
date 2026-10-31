@@ -957,6 +957,7 @@ export function AgendaPage() {
             diasComConsulta={diasComConsulta}
             onDateChange={handleDateChange}
             onNovoAgendamento={() => setDialogState({ open: true, initial: { data: activeDate } })}
+            onBloquear={openBlockManagement}
           />
         )}
       />
