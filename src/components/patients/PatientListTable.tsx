@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power, MessageCircle } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PatientPhoto, AllergyAlert } from '@/components/clinical';
 import { describeMissingPatientContacts } from '@/lib/patientContactCompleteness';
 import { cn } from '@/lib/utils';
+import { PainelPaciente } from './PainelPaciente';
 
 const CHAVE_MODO = 'elolab_pacientes_modo';
 type ModoLista = 'fichas' | 'lista';
@@ -18,6 +19,20 @@ function lerModo(): ModoLista {
   } catch {
     return 'fichas';
   }
+}
+
+// O painel lateral só cabe em telas largas; abaixo disso o clique abre a ficha.
+const TELA_LARGA = '(min-width: 1280px)';
+function useTelaLarga() {
+  const [larga, setLarga] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(TELA_LARGA).matches === true);
+  useEffect(() => {
+    const consulta = window.matchMedia?.(TELA_LARGA);
+    if (!consulta) return;
+    const atualizar = () => setLarga(consulta.matches);
+    consulta.addEventListener?.('change', atualizar);
+    return () => consulta.removeEventListener?.('change', atualizar);
+  }, []);
+  return larga;
 }
 
 function patientSexLabel(value: string | null | undefined) {
@@ -70,6 +85,10 @@ export const PatientListTable = memo(function PatientListTable({
     setModo(novo);
     try { localStorage.setItem(CHAVE_MODO, novo); } catch { /* armazenamento indisponível: vale só nesta sessão */ }
   };
+  const telaLarga = useTelaLarga();
+  const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
+  const comPainel = telaLarga && modo === 'fichas' && !isLoading && !hasError && pacientes.length > 0;
+  const selecionado = comPainel ? pacientes.find(p => p.id === selecionadoId) ?? pacientes[0] : null;
   const paginaAtual = pagina;
   const pacientesVisiveis = pacientes;
   const vazioPorBusca = totalPacientes !== 0;
@@ -114,15 +133,16 @@ export const PatientListTable = memo(function PatientListTable({
           </Button>
         ))}
       </div>
-      <div className={cn('divide-y', modo === 'fichas' ? 'lg:grid lg:grid-cols-2 lg:gap-3 lg:divide-y-0 lg:px-4 lg:pb-4 2xl:grid-cols-3' : 'lg:hidden')}>
+      <div className={cn(comPainel && 'grid grid-cols-[minmax(0,1fr)_340px] gap-3 px-4 pb-4')}>
+      <div className={cn('divide-y', modo === 'fichas' ? (comPainel ? 'grid grid-cols-2 content-start gap-3 divide-y-0' : 'lg:grid lg:grid-cols-2 lg:gap-3 lg:divide-y-0 lg:px-4 lg:pb-4 2xl:grid-cols-3') : 'lg:hidden')}>
         {isLoading ? <div className="px-4 py-12 text-center text-muted-foreground">Carregando pacientes…</div> : hasError ? <div className="px-4 py-12 text-center text-destructive">Não foi possível carregar esta página.</div> : pacientes.length === 0 ? (
           renderEmptyState()
         ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
           const contatoAusente = describeMissingPatientContacts(paciente);
           return (
-            <article key={paciente.id} className="p-4 lg:rounded-xl lg:border lg:border-border lg:bg-card lg:shadow-xs">
-              <button type="button" className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onView(paciente)}>
+            <article key={paciente.id} className={cn('p-4 lg:rounded-xl lg:border lg:border-border lg:bg-card lg:shadow-xs', selecionado?.id === paciente.id && 'lg:border-foreground lg:ring-1 lg:ring-foreground')}>
+              <button type="button" aria-pressed={comPainel ? selecionado?.id === paciente.id : undefined} className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => (comPainel ? setSelecionadoId(paciente.id) : onView(paciente))} onDoubleClick={() => comPainel && onView(paciente)}>
                 <PatientPhoto pacienteId={paciente.id} pacienteNome={paciente.nome} currentPhotoUrl={paciente.foto_url} size="sm" editable={false} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{paciente.nome}</span>
@@ -171,6 +191,17 @@ export const PatientListTable = memo(function PatientListTable({
             </article>
           );
         })}
+      </div>
+      {selecionado && (
+        <PainelPaciente
+          paciente={selecionado}
+          idade={calcularIdade(selecionado.data_nascimento)}
+          convenio={getConvenioNome(selecionado.convenio_id)}
+          podeEditar={podeEditarPaciente}
+          onView={onView}
+          onEdit={onEdit}
+        />
+      )}
       </div>
       <div className={cn('hidden overflow-x-auto', modo === 'lista' && 'lg:block')}>
       <Table className="[&_th]:px-2 [&_td]:px-2">
