@@ -17,7 +17,7 @@ export default function TemplatesUnificado() {
   return (
     <div className="space-y-5">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="mx-auto grid h-auto w-full max-w-md grid-cols-2 rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm">
+        <TabsList className="grid h-auto w-full max-w-md grid-cols-2 rounded-lg border border-border bg-secondary p-1.5">
           <TabsTrigger value="prontuario" className="min-h-11 gap-2 rounded-xl">
             <FolderKanban className="h-4 w-4" />
             Clínicos
