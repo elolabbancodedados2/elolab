@@ -212,6 +212,31 @@ export function itensParaCotar<T extends {
     });
 }
 
+/** Dados iniciais da conta a pagar gerada a partir de um pedido de compra recebido. */
+export interface ContaPagarInicial {
+  categoria: string;
+  descricao: string;
+  valor: number;
+  fornecedor: string;
+  numero_documento: string;
+}
+
+export function numeroPedidoCompra(id: string) {
+  return id.replace(/-/g, '').slice(0, 8).toUpperCase();
+}
+
+export function contaPagarDoPedido(pedido: { id: string; total: number | string; fornecedores?: { nome: string } | null }): ContaPagarInicial {
+  const numero = numeroPedidoCompra(pedido.id);
+  const fornecedor = pedido.fornecedores?.nome?.trim() ?? '';
+  return {
+    categoria: 'fornecedores',
+    descricao: `Pedido de compra nº ${numero}${fornecedor ? ` — ${fornecedor}` : ''}`,
+    valor: arredondarMoeda(Number(pedido.total) || 0),
+    fornecedor,
+    numero_documento: `PC-${numero}`,
+  };
+}
+
 export function normalizarCnpj(valor: string) {
   return valor.replace(/\D/g, '');
 }

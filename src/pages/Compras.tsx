@@ -26,7 +26,7 @@ import {
   compararCotacao, formatarCnpj, lerPreco, normalizarCnpj,
   ROTULO_SITUACAO_COTACAO, ROTULO_SITUACAO_PEDIDO,
   type SituacaoCotacao, type SituacaoPedidoCompra,
-  economiaSobreMaisCaro,
+  economiaSobreMaisCaro, contaPagarDoPedido, numeroPedidoCompra,
 } from '@/lib/compras';
 import { criarCotacao, mensagemErroCompras, type NovoItemCotacao } from '@/lib/comprasApi';
 
@@ -74,6 +74,8 @@ export default function Compras() {
   const clinicaId = profile?.clinica_id ?? null;
   const roles: string[] = profile?.roles ?? [];
   const podeGerir = roles.includes('admin') || roles.includes('enfermagem');
+  // Mesmos perfis da rota /contas/pagar/nova.
+  const podeLancarConta = roles.includes('admin') || roles.includes('financeiro');
 
   const mudarAba = (nova: Aba) => {
     const params = new URLSearchParams(searchParams);
@@ -124,7 +126,7 @@ export default function Compras() {
       />
 
       {aba === 'cotacoes' && <AbaCotacoes clinicaId={clinicaId} podeGerir={podeGerir} fornecedores={fornecedoresQuery.data ?? []} />}
-      {aba === 'pedidos' && <AbaPedidos clinicaId={clinicaId} podeGerir={podeGerir} />}
+      {aba === 'pedidos' && <AbaPedidos clinicaId={clinicaId} podeGerir={podeGerir} podeLancarConta={podeLancarConta} />}
       {aba === 'fornecedores' && <AbaFornecedores clinicaId={clinicaId} podeGerir={podeGerir} query={fornecedoresQuery} />}
     </main>
   );
@@ -635,8 +637,10 @@ function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
 
 // ─── Pedidos ────────────────────────────────────────────────────────────────
 
-function AbaPedidos({ clinicaId, podeGerir }: { clinicaId: string; podeGerir: boolean }) {
+function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: string; podeGerir: boolean; podeLancarConta: boolean }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [recemRecebido, setRecemRecebido] = useState<{ id: string; total: number | string; fornecedores?: { nome: string } | null } | null>(null);
   const [filtro, setFiltro] = useState<'todos' | SituacaoPedidoCompra>('todos');
   const [aberto, setAberto] = useState<string | null>(null);
   const [receber, setReceber] = useState<string | null>(null);
@@ -662,7 +666,9 @@ function AbaPedidos({ clinicaId, podeGerir }: { clinicaId: string; podeGerir: bo
       if (error) throw error;
       return data as { ja_recebido?: boolean; entradas?: number } | null;
     },
-    onSuccess: resultado => {
+    onSuccess: (resultado, id) => {
+      const pedido = pedidos.find(p => p.id === id);
+      if (pedido && !resultado?.ja_recebido) setRecemRecebido(pedido);
       toast.success(resultado?.ja_recebido ? 'Este pedido já estava recebido.' : `Pedido recebido. ${resultado?.entradas ?? 0} ${resultado?.entradas === 1 ? 'item entrou' : 'itens entraram'} no estoque.`);
       setReceber(null);
       void queryClient.invalidateQueries({ queryKey: ['compras'] });
@@ -706,6 +712,22 @@ function AbaPedidos({ clinicaId, podeGerir }: { clinicaId: string; podeGerir: bo
           ))}
         </div>
       </div>
+      {recemRecebido && (
+        <div role="status" className="flex flex-col gap-2 border-b border-border bg-success/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Pedido nº {numeroPedidoCompra(recemRecebido.id)} recebido ({formatCurrency(Number(recemRecebido.total))}).
+            {podeLancarConta ? ' Lance a conta a pagar do fornecedor para não esquecer o pagamento.' : ' Avise o financeiro para lançar a conta a pagar do fornecedor.'}
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setRecemRecebido(null)}>Dispensar</Button>
+            {podeLancarConta && (
+              <Button size="sm" onClick={() => navigate('/contas/pagar/nova', { state: { initial: contaPagarDoPedido(recemRecebido) } })}>
+                Lançar conta a pagar
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {pedidosQuery.isLoading ? <div className="p-4"><TableSkeleton rows={5} cols={6} /></div>
         : visiveis.length === 0 ? (
           <EmptyState className="m-4" icon={Package} title={pedidos.length === 0 ? 'Nenhum pedido emitido' : 'Nenhum pedido nesta situação'}

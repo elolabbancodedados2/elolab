@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { compararCotacao, economiaSobreMaisCaro, formatarCnpj, itensParaCotar, lerPreco } from '../compras';
+import { compararCotacao, contaPagarDoPedido, economiaSobreMaisCaro, formatarCnpj, itensParaCotar, lerPreco } from '../compras';
 import { mensagemErroCompras } from '../comprasApi';
 
 const fornecedores = [
@@ -115,6 +115,16 @@ describe('apoio das compras', () => {
     const emCompra = new Set(['a', 'c', 'outro']);
     expect(itensParaCotar(estoque, emCompra).map(i => i.estoque_id)).toEqual(['b']);
     expect(itensParaCotar(estoque).length - itensParaCotar(estoque, emCompra).length).toBe(2);
+  });
+
+  it('prepara a conta a pagar do pedido recebido com fornecedor, total e número', () => {
+    expect(contaPagarDoPedido({ id: 'ab12cd34-0000-4000-8000-000000000001', total: '1234.5', fornecedores: { nome: 'Distribuidora QA' } })).toEqual({
+      categoria: 'fornecedores',
+      descricao: 'Pedido de compra nº AB12CD34 — Distribuidora QA',
+      valor: 1234.5,
+      fornecedor: 'Distribuidora QA',
+      numero_documento: 'PC-AB12CD34',
+    });
   });
 
   it('lê preços em formato brasileiro e rejeita texto inválido', () => {
