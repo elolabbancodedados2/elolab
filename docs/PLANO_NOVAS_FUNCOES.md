@@ -28,9 +28,12 @@ Ordem sugerida por valor para a clínica e risco baixo:
    - Tela `/financeiro/dre` (menu Financeiro → "DRE e plano de contas"): DRE gerencial em cascata por competência com contas expansíveis, mês anterior, variação, margem sobre a receita líquida, aviso de lançamentos sem conta e exportação CSV; plano de contas em árvore (criar, editar, desativar, plano padrão); vínculo das categorias às contas.
    - Lógica pura e testes em `src/lib/dre.ts`; teste de render em `src/pages/__tests__/DrePlanoContas.test.tsx`.
    - Fica para depois: rateio por centro de custo (`centro_custo`).
-2. **Estoque e compras: cotação e pedido**
-   - Tabelas: `cotacoes_compra`, `cotacao_itens`, `pedidos_compra`, usando `fornecedores` que já existe.
-   - Telas: comparação de preços por fornecedor com o melhor destacado, pedido gerado a partir da cotação, entrada no estoque ao receber.
+2. **Estoque e compras: fornecedores, cotação e pedido** — entregue em 31/10/2026; migration pendente de aplicação.
+   - Correção do levantamento: não existia tabela de fornecedores (só o texto livre `estoque.fornecedor`). A tabela `fornecedores` foi criada agora.
+   - Migration `20261031121000_compras_cotacoes_pedidos.sql`: `fornecedores`, `cotacoes_compra`, `cotacao_itens`, `cotacao_propostas`, `pedidos_compra`, `pedido_compra_itens`, com RLS por clínica (leitura para admin, enfermagem e financeiro; escrita para admin e enfermagem) e triggers que impedem vínculos entre clínicas.
+   - RPCs: `gerar_pedidos_da_cotacao` (menor preço por item, um pedido por fornecedor, fecha a cotação) e `receber_pedido_compra` (entrada no estoque por `registrar_movimentacao_estoque`, uma única vez).
+   - Tela `/compras` com abas Cotações, Pedidos e Fornecedores; no Estoque, atalho Compras e `Cotar itens em falta`.
+   - Falta: aplicar a migration no ambiente local, prova visual e aprovação do responsável para produção.
 3. **Relacionamento: campanhas e NPS**
    - Já existem dados de NPS; falta `campanhas` (público, mensagem com variáveis, canal, agenda de envio) e resultado por campanha.
    - Telas: NPS do período com distribuição, lista de pacientes sem retorno, envio em lote pelo WhatsApp já integrado.

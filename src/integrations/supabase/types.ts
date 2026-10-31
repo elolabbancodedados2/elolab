@@ -999,6 +999,90 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"cotacao_itens": {
+                  Row: {
+                    "clinica_id": string,"cotacao_id": string,"created_at": string,"descricao": string,"estoque_id": string | null,"id": string,"quantidade": number,"unidade": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id"?: string,"cotacao_id": string,"created_at"?: string,"descricao": string,"estoque_id"?: string | null,"id"?: string,"quantidade": number,"unidade"?: string | null
+                  }
+                  Update: {
+                    "clinica_id"?: string,"cotacao_id"?: string,"created_at"?: string,"descricao"?: string,"estoque_id"?: string | null,"id"?: string,"quantidade"?: number,"unidade"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "cotacao_itens_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cotacao_itens_cotacao_id_fkey"
+      columns: ["cotacao_id"]
+isOneToOne: false
+      referencedRelation: "cotacoes_compra"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cotacao_itens_estoque_id_fkey"
+      columns: ["estoque_id"]
+isOneToOne: false
+      referencedRelation: "estoque"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"cotacao_propostas": {
+                  Row: {
+                    "clinica_id": string,"cotacao_item_id": string,"created_at": string,"fornecedor_id": string,"id": string,"observacao": string | null,"prazo_dias": number | null,"preco_unitario": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id"?: string,"cotacao_item_id": string,"created_at"?: string,"fornecedor_id": string,"id"?: string,"observacao"?: string | null,"prazo_dias"?: number | null,"preco_unitario": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "clinica_id"?: string,"cotacao_item_id"?: string,"created_at"?: string,"fornecedor_id"?: string,"id"?: string,"observacao"?: string | null,"prazo_dias"?: number | null,"preco_unitario"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "cotacao_propostas_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cotacao_propostas_cotacao_item_id_fkey"
+      columns: ["cotacao_item_id"]
+isOneToOne: false
+      referencedRelation: "cotacao_itens"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cotacao_propostas_fornecedor_id_fkey"
+      columns: ["fornecedor_id"]
+isOneToOne: false
+      referencedRelation: "fornecedores"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"cotacoes_compra": {
+                  Row: {
+                    "clinica_id": string,"created_at": string,"criado_por": string | null,"id": string,"observacoes": string | null,"status": string,"titulo": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id": string,"created_at"?: string,"criado_por"?: string | null,"id"?: string,"observacoes"?: string | null,"status"?: string,"titulo": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "clinica_id"?: string,"created_at"?: string,"criado_por"?: string | null,"id"?: string,"observacoes"?: string | null,"status"?: string,"titulo"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "cotacoes_compra_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"documentos_portal_paciente": {
                   Row: {
                     "anexo_id": string,"atualizado_em": string,"clinica_id": string,"id": string,"origem": string,"paciente_id": string,"publicado": boolean,"publicado_em": string | null,"publicado_por": string | null,"revogado_em": string | null,"revogado_por": string | null,"validade_ate": string | null
@@ -1378,6 +1462,26 @@ isOneToOne: false
                   }
                   Relationships: [
                     
+                  ]
+                },"fornecedores": {
+                  Row: {
+                    "ativo": boolean,"clinica_id": string,"cnpj": string | null,"contato": string | null,"created_at": string,"email": string | null,"id": string,"nome": string,"telefone": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "ativo"?: boolean,"clinica_id": string,"cnpj"?: string | null,"contato"?: string | null,"created_at"?: string,"email"?: string | null,"id"?: string,"nome": string,"telefone"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "ativo"?: boolean,"clinica_id"?: string,"cnpj"?: string | null,"contato"?: string | null,"created_at"?: string,"email"?: string | null,"id"?: string,"nome"?: string,"telefone"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fornecedores_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"glosas_convenio": {                  Row: {
                     "chave_idempotencia": string | null,"clinica_id": string,"codigo_glosa": string,"created_at": string,"criado_por": string | null,"guia_referencia": string | null,"id": string,"lote_id": string,"motivo": string,"recurso_enviado_em": string | null,"recurso_justificativa": string | null,"recurso_prazo": string | null,"recurso_responsavel_id": string | null,"resolvido_em": string | null,"status": string,"updated_at": string,"valor_glosado": number,"valor_recuperado": number
@@ -2413,6 +2517,70 @@ isOneToOne: false
       columns: ["paciente_id"]
 isOneToOne: false
       referencedRelation: "pacientes"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"pedido_compra_itens": {
+                  Row: {
+                    "clinica_id": string,"created_at": string,"descricao": string,"estoque_id": string | null,"id": string,"pedido_id": string,"preco_unitario": number,"quantidade": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id"?: string,"created_at"?: string,"descricao": string,"estoque_id"?: string | null,"id"?: string,"pedido_id": string,"preco_unitario": number,"quantidade": number
+                  }
+                  Update: {
+                    "clinica_id"?: string,"created_at"?: string,"descricao"?: string,"estoque_id"?: string | null,"id"?: string,"pedido_id"?: string,"preco_unitario"?: number,"quantidade"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "pedido_compra_itens_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pedido_compra_itens_estoque_id_fkey"
+      columns: ["estoque_id"]
+isOneToOne: false
+      referencedRelation: "estoque"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pedido_compra_itens_pedido_id_fkey"
+      columns: ["pedido_id"]
+isOneToOne: false
+      referencedRelation: "pedidos_compra"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"pedidos_compra": {
+                  Row: {
+                    "clinica_id": string,"cotacao_id": string | null,"created_at": string,"emitido_por": string | null,"fornecedor_id": string,"id": string,"recebido_em": string | null,"recebido_por": string | null,"status": string,"total": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinica_id": string,"cotacao_id"?: string | null,"created_at"?: string,"emitido_por"?: string | null,"fornecedor_id": string,"id"?: string,"recebido_em"?: string | null,"recebido_por"?: string | null,"status"?: string,"total"?: number,"updated_at"?: string
+                  }
+                  Update: {
+                    "clinica_id"?: string,"cotacao_id"?: string | null,"created_at"?: string,"emitido_por"?: string | null,"fornecedor_id"?: string,"id"?: string,"recebido_em"?: string | null,"recebido_por"?: string | null,"status"?: string,"total"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "pedidos_compra_clinica_id_fkey"
+      columns: ["clinica_id"]
+isOneToOne: false
+      referencedRelation: "clinicas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pedidos_compra_cotacao_id_fkey"
+      columns: ["cotacao_id"]
+isOneToOne: false
+      referencedRelation: "cotacoes_compra"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pedidos_compra_fornecedor_id_fkey"
+      columns: ["fornecedor_id"]
+isOneToOne: false
+      referencedRelation: "fornecedores"
       referencedColumns: ["id"]
     }
                   ]
@@ -4775,6 +4943,9 @@ isOneToOne: false
 "finish_automation_delivery":
 { Args: { "p_chave": string,"p_clinica_id": string,"p_estado"?: string }; Returns: undefined
                            },
+"gerar_pedidos_da_cotacao":
+{ Args: { "p_cotacao_id": string }; Returns: string[]
+                           },
 "gerar_repasses_medicos":
 { Args: { "p_competencia": string }; Returns: number
                            },
@@ -5187,6 +5358,9 @@ isOneToOne: false
 { Args: { "p_lote_id": string }; Returns: {
               "campo": string,"gravidade": string,"guia_id": string | null,"mensagem": string,"numero_guia": string | null,"tipo": string
             }[]
+                           },
+"receber_pedido_compra":
+{ Args: { "p_pedido_id": string }; Returns: Json
                            },
 "registrar_exportacao_lgpd_paciente":
 { Args: { "p_paciente_id": string }; Returns: number

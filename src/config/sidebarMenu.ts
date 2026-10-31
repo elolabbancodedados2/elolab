@@ -39,6 +39,7 @@ import {
   Bell,
   MessageSquarePlus,
   Wrench,
+  ShoppingCart,
 } from '@/components/icons/elolabIcons';
 import type { EloLabIcon } from '@/components/icons/elolabIcons';
 import { AppRole } from '@/contexts/SupabaseAuthContext';
@@ -162,6 +163,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
       { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
+      { label: 'Compras', icon: ShoppingCart, href: '/compras', roles: ['admin', 'enfermagem', 'financeiro'] },
       { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
     ],

@@ -64,6 +64,7 @@ const labelsByPath: Record<string, string> = {
   '/gestao-fluxo': 'Salas e lista de espera',
   '/estoque': 'Estoque',
   '/estoque/novo': 'Novo produto',
+  '/compras': 'Compras',
   '/tarefas/nova': 'Nova tarefa',
   '/convenios': 'Convênios',
   '/faturamento-convenios': 'Faturamento de convênios',

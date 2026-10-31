@@ -76,6 +76,7 @@ export { PrinterIcon as Printer } from '@phosphor-icons/react/dist/csr/Printer';
 export { ProhibitIcon as Ban } from '@phosphor-icons/react/dist/csr/Prohibit';
 export { PushPinIcon as Pin } from '@phosphor-icons/react/dist/csr/PushPin';
 export { ReceiptIcon as Receipt } from '@phosphor-icons/react/dist/csr/Receipt';
+export { ShoppingCartIcon as ShoppingCart } from '@phosphor-icons/react/dist/csr/ShoppingCart';
 export { PulseIcon as Activity, PulseIcon as ActivitySquare } from '@phosphor-icons/react/dist/csr/Pulse';
 export { QuestionIcon as CircleHelp } from '@phosphor-icons/react/dist/csr/Question';
 export { RobotIcon as BotMessageSquare } from '@phosphor-icons/react/dist/csr/Robot';
