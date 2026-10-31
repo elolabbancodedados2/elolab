@@ -376,24 +376,24 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
           <div className="order-1 min-w-0 space-y-5 xl:order-2">
             {/* ─── Destaque + indicadores ─── */}
             <motion.div variants={fadeUp} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-[24px] bg-brand-dark p-6 text-white shadow-glow lg:row-span-2">
+              <section aria-labelledby="proximo-paciente-title" className="relative overflow-hidden rounded-[24px] border border-border bg-card p-6 text-foreground lg:row-span-2">
                 <div className="relative flex h-full flex-col">
-                  <h2 id="proximo-paciente-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">Próximo paciente</h2>
+                  <h2 id="proximo-paciente-title" className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Próximo paciente</h2>
                   {stats.proximaConsulta && proximoPaciente ? (
                     <>
                       <p className="mt-3 text-[52px] font-light leading-none tracking-[-0.04em] tabular-nums">{stats.proximaConsulta.hora_inicio?.slice(0, 5)}</p>
                       <div className="mt-4 flex items-center gap-3">
-                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-extrabold text-primary">{iniciais(proximoPaciente.nome)}</span>
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-extrabold text-primary-foreground">{iniciais(proximoPaciente.nome)}</span>
                         <span className="min-w-0">
                           <span className="block truncate text-lg font-bold">{proximoPaciente.nome}{idadeProximo !== null ? `, ${idadeProximo}` : ''}</span>
-                          <span className="flex items-center gap-1 truncate text-xs text-white/75">
+                          <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                             {stats.proximaConsulta.tipo || 'Consulta'}
                             {proximoPaciente.telefone && <><span className="opacity-50">·</span><Phone className="h-3 w-3" />{proximoPaciente.telefone}</>}
                           </span>
                         </span>
                       </div>
                       <div className="mt-4 flex flex-wrap gap-1.5">
-                        <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold">{statusLabel[stats.proximaConsulta.status] || stats.proximaConsulta.status}</span>
+                        <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-[11px] font-semibold">{statusLabel[stats.proximaConsulta.status] || stats.proximaConsulta.status}</span>
                         {proximoPaciente.alergias?.length > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-full border border-red-200/40 bg-red-500/25 px-2.5 py-1 text-[11px] font-bold">
                             <AlertTriangle className="h-3 w-3" />Alergias: {proximoPaciente.alergias.join(', ')}
@@ -401,17 +401,17 @@ export function DoctorDashboard({ userName }: DoctorDashboardProps) {
                         )}
                       </div>
                       <div className="mt-auto flex flex-wrap gap-2 pt-6">
-                        <Link to={linkAtendimento(stats.proximaConsulta)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold text-primary transition hover:bg-white/90">
+                        <Link to={linkAtendimento(stats.proximaConsulta)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-bold text-primary-foreground transition hover:bg-primary/90">
                           Iniciar atendimento <ArrowRight className="h-4 w-4" />
                         </Link>
-                        <Link to="/fila" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/30 px-4 text-sm font-semibold transition hover:bg-white/10">Ver fila</Link>
+                        <Link to="/fila" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold transition hover:bg-secondary">Ver fila</Link>
                       </div>
                     </>
                   ) : (
                     <div className="mt-4">
                       <CheckCircle2 className="h-8 w-8 text-highlight" />
                       <p className="mt-3 text-xl font-bold">Nenhum paciente pendente</p>
-                      <p className="mt-1 max-w-xs text-sm text-white/75">{stats.consultasAmanha > 0 ? `Amanhã você tem ${stats.consultasAmanha} consulta(s) agendada(s).` : 'Sua agenda está livre por enquanto.'}</p>
+                      <p className="mt-1 max-w-xs text-sm text-muted-foreground">{stats.consultasAmanha > 0 ? `Amanhã você tem ${stats.consultasAmanha} consulta(s) agendada(s).` : 'Sua agenda está livre por enquanto.'}</p>
                     </div>
                   )}
                 </div>

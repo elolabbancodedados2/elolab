@@ -12,6 +12,7 @@ import {
   TestTube, ArrowRight, UserCheck, BadgeCheck, Share2, MessageCircle, ExternalLink,
   Hash, MapPin, Fingerprint, ScrollText, ArrowLeft,
 } from 'lucide-react';
+import { AtalhosDocumentos } from '@/components/clinical/AtalhosDocumentos';
 
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -267,7 +268,7 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
     <div className="space-y-4">
       {/* Header strip */}
       <div className="rounded-[24px] overflow-hidden border border-border/60 bg-card shadow-xs">
-        <div className="relative overflow-hidden bg-brand-dark p-5 text-white">
+        <div className="relative overflow-hidden p-5">
           <div className="relative flex items-start gap-4">
             <PatientPhoto
               pacienteId={paciente.id}
@@ -277,23 +278,23 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
               editable={false}
             />
             <div className="flex-1 min-w-0">
-              <h2 className="break-words text-xl font-extrabold leading-tight text-white [overflow-wrap:anywhere]">
+              <h2 className="break-words text-xl font-extrabold leading-tight text-foreground [overflow-wrap:anywhere]">
                 {paciente.nome_social || paciente.nome}
               </h2>
               {paciente.nome_social && (
-                <p className="text-xs text-white/75">Civil: {paciente.nome}</p>
+                <p className="text-xs text-muted-foreground">Civil: {paciente.nome}</p>
               )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                <Badge className="border-white/25 bg-white/15 px-2 py-0 text-xs font-bold text-white">
+                <Badge className="border-border bg-secondary px-2 py-0 text-xs font-bold text-foreground">
                   {paciente.data_nascimento ? `${idade} anos` : 'Idade N/I'}
                 </Badge>
                 {paciente.sexo && (
-                  <Badge variant="outline" className="border-white/25 px-1.5 py-0 text-xs text-white">
+                  <Badge variant="outline" className="border-border px-1.5 py-0 text-xs text-foreground">
                     {paciente.sexo === 'masculino' ? '♂ Masc' : paciente.sexo === 'feminino' ? '♀ Fem' : 'Outro'}
                   </Badge>
                 )}
                 {paciente.data_nascimento && (
-                  <span className="text-xs text-white/75">
+                  <span className="text-xs text-muted-foreground">
                     {formatDate(paciente.data_nascimento, 'short')}
                   </span>
                 )}
@@ -2771,6 +2772,13 @@ export default function Prontuarios() {
               title="Prescrições não carregaram"
               description="O prontuário está em modo de leitura para evitar sobrescrever prescrições ocultas. Recarregue antes de solicitar edição."
               onRetry={() => void carregarPrescricoes(currentProntuario.id)}
+            />
+          )}
+
+          {!isReadOnly && (currentProntuario.paciente_id || selectedPacienteId) && (
+            <AtalhosDocumentos
+              pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
+              onReceita={() => changeProntuarioSection('prescricao')}
             />
           )}
 

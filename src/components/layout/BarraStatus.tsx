@@ -57,7 +57,7 @@ export function BarraStatus() {
       aria-label="Barra de status"
       className="hidden h-7 shrink-0 items-stretch border-t border-border bg-secondary text-[11.5px] text-muted-foreground lg:flex"
     >
-      <span className={item} role="status">
+      <span className={item}>
         <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', online ? 'bg-success' : 'bg-destructive')} />
         {online ? 'Online' : 'Sem conexão: as alterações não serão salvas'}
       </span>

@@ -300,15 +300,15 @@ function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]
     </header>
 
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
-      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-[24px] bg-brand-dark p-6 text-white shadow-glow">
+      <section aria-labelledby="turno-title" className="relative overflow-hidden rounded-[24px] border border-border bg-card p-6 text-foreground">
         <div className="relative">
-          <h2 id="turno-title" className="text-xs font-bold uppercase tracking-[0.12em] text-white/80">{workspace?.title ?? 'Seu espaço de trabalho'}</h2>
+          <h2 id="turno-title" className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{workspace?.title ?? 'Seu espaço de trabalho'}</h2>
           {proxima ? <>
             <p className="mt-3 text-[44px] font-light leading-none tracking-[-0.04em] tabular-nums">{proxima.hora_inicio?.slice(0, 5)}</p>
             <p className="mt-2 truncate text-base font-bold">{proxima.pacientes?.nome || 'Paciente'}</p>
-            <p className="truncate text-xs text-white/75">{proxima.tipo || 'Consulta'}{proxima.medicos?.nome ? ` · ${nomeMedico(proxima.medicos.nome)}` : ''}</p>
-          </> : <p className="mt-3 max-w-xs text-sm text-white/80">{workspace?.description ?? 'Os atalhos exibidos respeitam as permissões do seu perfil. Se precisar de outro acesso, fale com o administrador.'}</p>}
-          {workspace && <div className="mt-5 flex flex-wrap gap-2">{workspace.actions.filter(action => visibleLinks.has(action.href)).map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', index === 0 ? 'bg-white text-primary' : 'border border-white/30 text-white hover:bg-white/10')}><Icon className="h-4 w-4" />{label}</Link>)}</div>}
+            <p className="truncate text-xs text-muted-foreground">{proxima.tipo || 'Consulta'}{proxima.medicos?.nome ? ` · ${nomeMedico(proxima.medicos.nome)}` : ''}</p>
+          </> : <p className="mt-3 max-w-xs text-sm text-muted-foreground">{workspace?.description ?? 'Os atalhos exibidos respeitam as permissões do seu perfil. Se precisar de outro acesso, fale com o administrador.'}</p>}
+          {workspace && <div className="mt-5 flex flex-wrap gap-2">{workspace.actions.filter(action => visibleLinks.has(action.href)).map(({ label, href, icon: Icon }, index) => <Link key={href} to={href} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-bold transition hover:brightness-105', index === 0 ? 'bg-primary text-primary-foreground' : 'border border-border text-foreground hover:bg-secondary')}><Icon className="h-4 w-4" />{label}</Link>)}</div>}
         </div>
       </section>
       {kpis.map(kpi => <Link key={kpi.label} to={kpi.href} className={cn('group relative flex min-w-0 flex-col rounded-[22px] p-5 shadow-xs transition hover:-translate-y-0.5 hover:shadow-md', kpi.tone)}>
