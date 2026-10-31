@@ -51,7 +51,7 @@ const prioridadeConfig: Record<string, { label: string; dot: string; stripe: str
 
 const kanbanColumns = [
   { key: 'pendente', label: 'Pendente', icon: Circle, head: 'bg-warning/10 text-warning' },
-  { key: 'em_andamento', label: 'Em Andamento', icon: Clock, head: 'bg-gradient-primary text-white' },
+  { key: 'em_andamento', label: 'Em Andamento', icon: Clock, head: 'bg-secondary text-foreground' },
   { key: 'concluida', label: 'Concluída', icon: CheckCircle2, head: 'bg-success/10 text-success' },
   { key: 'cancelada', label: 'Cancelada', icon: AlertTriangle, head: 'bg-muted text-muted-foreground' },
 ];

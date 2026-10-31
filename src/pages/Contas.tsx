@@ -28,12 +28,12 @@ export default function Contas() {
         else next.delete('tab');
         return next;
       })} className="w-full">
-        <TabsList className="mx-auto grid w-full max-w-sm grid-cols-2 rounded-full border border-border/60 bg-muted/40 p-1 shadow-xs">
-          <TabsTrigger value="receber" className="gap-2 rounded-full data-[state=active]:shadow-sm">
+        <TabsList className="grid w-full max-w-sm grid-cols-2 rounded-lg border border-border bg-secondary p-1">
+          <TabsTrigger value="receber" className="gap-2">
             <BadgeDollarSign className="h-4 w-4" />
             A Receber
           </TabsTrigger>
-          <TabsTrigger value="pagar" className="gap-2 rounded-full data-[state=active]:shadow-sm">
+          <TabsTrigger value="pagar" className="gap-2">
             <CreditCard className="h-4 w-4" />
             A Pagar
           </TabsTrigger>

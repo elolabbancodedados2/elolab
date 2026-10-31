@@ -62,7 +62,7 @@ describe('Acesso ao módulo Fila e Triagem', () => {
   it('usa os tokens EloLab na navegação local', () => {
     renderAt('/fila');
     const tabList = screen.getByRole('tablist');
-    expect(tabList).toHaveClass('border-border', 'bg-muted');
+    expect(tabList).toHaveClass('border-border', 'bg-secondary');
     expect(tabList.className).not.toMatch(/#(?:[\da-f]{3,8})\b/i);
   });
 

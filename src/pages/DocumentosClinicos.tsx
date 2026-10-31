@@ -25,7 +25,7 @@ export default function DocumentosClinicos() {
   return (
     <div className="space-y-5">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="mx-auto grid h-auto w-full max-w-2xl grid-cols-2 rounded-2xl border border-border bg-muted/60 p-1.5 shadow-sm sm:grid-cols-4">
+        <TabsList className="grid h-auto w-full max-w-2xl grid-cols-2 rounded-lg border border-border bg-secondary p-1.5 sm:grid-cols-4">
           <TabsTrigger value="prescricoes" className="min-h-11 gap-2 rounded-xl">
             <BookMarked className="h-4 w-4" />
             Prescrições
