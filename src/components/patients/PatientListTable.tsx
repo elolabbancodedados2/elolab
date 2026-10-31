@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power, MessageCircle } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,18 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PatientPhoto, AllergyAlert } from '@/components/clinical';
 import { describeMissingPatientContacts } from '@/lib/patientContactCompleteness';
+import { cn } from '@/lib/utils';
+
+const CHAVE_MODO = 'elolab_pacientes_modo';
+type ModoLista = 'fichas' | 'lista';
+
+function lerModo(): ModoLista {
+  try {
+    return localStorage.getItem(CHAVE_MODO) === 'lista' ? 'lista' : 'fichas';
+  } catch {
+    return 'fichas';
+  }
+}
 
 function patientSexLabel(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleLowerCase('pt-BR');
@@ -52,6 +64,12 @@ export const PatientListTable = memo(function PatientListTable({
   pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
 }: PatientListTableProps) {
   const tamanhoPagina = 50;
+  // Fichas é o padrão do protótipo aprovado em 30/10/2026; a lista em tabela continua disponível.
+  const [modo, setModo] = useState<ModoLista>(lerModo);
+  const trocarModo = (novo: ModoLista) => {
+    setModo(novo);
+    try { localStorage.setItem(CHAVE_MODO, novo); } catch { /* armazenamento indisponível: vale só nesta sessão */ }
+  };
   const paginaAtual = pagina;
   const pacientesVisiveis = pacientes;
   const vazioPorBusca = totalPacientes !== 0;
@@ -81,14 +99,29 @@ export const PatientListTable = memo(function PatientListTable({
 
   return (
     <div>
-      <div className="divide-y lg:hidden">
+      <div role="group" aria-label="Exibição da lista de pacientes" className="hidden justify-end gap-1 px-4 pb-3 lg:flex">
+        {(['fichas', 'lista'] as const).map(opcao => (
+          <Button
+            key={opcao}
+            type="button"
+            size="sm"
+            variant={modo === opcao ? 'default' : 'outline'}
+            aria-pressed={modo === opcao}
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => trocarModo(opcao)}
+          >
+            {opcao === 'fichas' ? 'Fichas' : 'Lista'}
+          </Button>
+        ))}
+      </div>
+      <div className={cn('divide-y', modo === 'fichas' ? 'lg:grid lg:grid-cols-2 lg:gap-3 lg:divide-y-0 lg:px-4 lg:pb-4 2xl:grid-cols-3' : 'lg:hidden')}>
         {isLoading ? <div className="px-4 py-12 text-center text-muted-foreground">Carregando pacientes…</div> : hasError ? <div className="px-4 py-12 text-center text-destructive">Não foi possível carregar esta página.</div> : pacientes.length === 0 ? (
           renderEmptyState()
         ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
           const contatoAusente = describeMissingPatientContacts(paciente);
           return (
-            <article key={paciente.id} className="p-4">
+            <article key={paciente.id} className="p-4 lg:rounded-xl lg:border lg:border-border lg:bg-card lg:shadow-xs">
               <button type="button" className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onView(paciente)}>
                 <PatientPhoto pacienteId={paciente.id} pacienteNome={paciente.nome} currentPhotoUrl={paciente.foto_url} size="sm" editable={false} />
                 <span className="min-w-0 flex-1">
@@ -104,33 +137,33 @@ export const PatientListTable = memo(function PatientListTable({
                 <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </button>
               {paciente.alergias?.length > 0 && <AllergyAlert alergias={paciente.alergias} compact className="mt-2" />}
-              <div data-testid="patient-mobile-actions" className="mt-3 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div data-testid="patient-mobile-actions" className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 lg:gap-1.5" onClick={(e) => e.stopPropagation()}>
                 {(() => {
                   const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
                   return whatsapp ? (
-                    <Button asChild variant="outline" className="h-11 w-full min-w-0 gap-1 rounded-full border-primary/30 px-2 text-xs text-primary">
+                    <Button asChild variant="outline" className="h-11 lg:h-8 w-full min-w-0 gap-1 rounded-full border-primary/30 px-2 text-xs text-primary">
                       <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
                     </Button>
                   ) : null;
                 })()}
                 {podeGerarLinkPortal && paciente.ativo !== false && (
-                  <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
+                  <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
                     <Link className="h-4 w-4" /> Portal
                   </Button>
                 )}
                 {podeGerarLinkPortal && paciente.ativo !== false && (
-                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
+                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
                     <Unlink className="h-4 w-4" /> Revogar
                   </Button>
                 )}
-                {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
+                {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
                   <Edit className="h-4 w-4" /> Editar
                 </Button>}
-                {podeEditarPaciente && onChangeStatus && <Button variant="outline" onClick={() => onChangeStatus(paciente)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`}>
+                {podeEditarPaciente && onChangeStatus && <Button variant="outline" onClick={() => onChangeStatus(paciente)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`}>
                   <Power className="h-4 w-4" /> {paciente.ativo === false ? 'Reativar' : 'Inativar'}
                 </Button>}
                 {podeExcluirPaciente && (
-                  <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
+                  <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
                     <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
                 )}
@@ -139,7 +172,7 @@ export const PatientListTable = memo(function PatientListTable({
           );
         })}
       </div>
-      <div className="hidden overflow-x-auto lg:block">
+      <div className={cn('hidden overflow-x-auto', modo === 'lista' && 'lg:block')}>
       <Table className="[&_th]:px-2 [&_td]:px-2">
         <TableHeader>
           <TableRow>
