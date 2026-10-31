@@ -464,12 +464,12 @@ export default function CaixaDiario() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="inline-flex h-auto w-auto min-w-full gap-0.5 rounded-xl border border-border bg-muted/60 p-1 md:w-full md:min-w-0 md:flex-wrap md:justify-center">
+          <TabsList className="inline-flex h-auto w-auto gap-0.5 p-1">
             {[
               { v: 'hoje', l: 'Caixa Hoje', i: Receipt },
               { v: 'historico', l: 'Histórico', i: History },
             ].map(tab => (
-              <TabsTrigger key={tab.v} value={tab.v} className="min-h-10 gap-1.5 whitespace-nowrap rounded-full px-3 text-xs">
+              <TabsTrigger key={tab.v} value={tab.v} className="min-h-8 gap-1.5 whitespace-nowrap px-3 text-xs">
                 <tab.i className="h-3.5 w-3.5" /> {tab.l}
               </TabsTrigger>
             ))}
@@ -502,11 +502,8 @@ export default function CaixaDiario() {
           )}
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {!caixaHoje ? (
-              <Button onClick={() => navigate("/recepcao/caixa/abrir", { state: { returnTo: location.pathname + location.search } })} className="h-11 gap-2 rounded-full bg-primary px-5 text-primary-foreground hover:bg-primary/90">
-                <Unlock className="h-4 w-4" /> Abrir Caixa
-              </Button>
-            ) : isOpen ? (
+            {/* Sem caixa aberto, o botão do cabeçalho e o do aviso abaixo já levam à abertura. */}
+            {!caixaHoje ? null : isOpen ? (
               <>
                 <Button onClick={() => navigate('/recepcao/caixa/venda', { state: { returnTo: '/caixa-diario', cashTab: 'hoje' } })} className="h-11 gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110">
                   <ShoppingCart className="h-4 w-4" /> Nova Venda

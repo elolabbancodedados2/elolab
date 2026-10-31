@@ -428,7 +428,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
           <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-xs">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <Bell className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
@@ -557,7 +557,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                 {filteredLista.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
-                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+                      <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                         <Clock className="h-7 w-7" />
                       </span>
                       <p className="font-medium text-foreground">{lista.length === 0 ? 'Nenhum paciente na lista de espera' : 'Nenhum paciente corresponde aos filtros'}</p>

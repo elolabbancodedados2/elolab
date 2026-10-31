@@ -405,7 +405,7 @@ export default function FluxoCaixa() {
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <TrendingUp className="h-4 w-4" />
               </span>
               <div>
@@ -444,7 +444,7 @@ export default function FluxoCaixa() {
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader>
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <Wallet className="h-4 w-4" />
               </span>
               <div>
@@ -504,7 +504,7 @@ export default function FluxoCaixa() {
       {temMovimentosNoMes && <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
           <div className="flex items-center gap-2.5">
-            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
               <DollarSign className="h-4 w-4" />
             </span>
             <div>
@@ -516,7 +516,7 @@ export default function FluxoCaixa() {
         <CardContent>
           {dadosPorCategoria.length === 0 ? (
             <div role="status" className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
-              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                 <DollarSign className="h-6 w-6" />
               </span>
               <p className="text-sm font-medium text-foreground">Nenhuma movimentação neste mês</p>

@@ -707,7 +707,7 @@ export default function MapaColeta() {
           <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-sm">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+                <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <TestTubes className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
@@ -836,7 +836,7 @@ export default function MapaColeta() {
             return (
               <section key={grupo.chave} aria-labelledby={idGrupo} className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+                  <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                     <DoorOpen className="h-4 w-4" />
                   </span>
                   <h2 id={idGrupo} className="text-base font-semibold text-foreground">{grupo.nome}</h2>
@@ -862,7 +862,7 @@ export default function MapaColeta() {
           {filtrado.length === 0 && !loading && (
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+                <span aria-hidden="true" className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <Beaker className="h-7 w-7" />
                 </span>
                 <p className="font-medium text-foreground">

@@ -315,7 +315,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       {tipos.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {INDICADORES.map(({ key, label, legenda, icon: Icon, cor }) => {
-            const destaque = key === 'todos';
+            const destaque = false;
             return (
               <button
                 key={key}
@@ -376,7 +376,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       ) : tipos.length === 0 ? (
         <Card className="rounded-2xl border-dashed border-border/60 shadow-xs">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <span aria-hidden="true" className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+            <span aria-hidden="true" className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <Stethoscope className="h-7 w-7" />
             </span>
             <p className="font-bold text-foreground">Nenhum tipo de consulta cadastrado</p>

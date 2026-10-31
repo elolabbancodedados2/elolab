@@ -87,7 +87,7 @@ export default function FilaPassagemPage() {
 
           <aside className="flex h-fit flex-col gap-4 rounded-2xl border border-primary/15 bg-primary/[0.04] p-5 shadow-sm sm:p-6">
             <div>
-              <span className="mb-3 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <span className="mb-3 flex size-10 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                 <ListTodo aria-hidden="true" className="size-5" />
               </span>
               <h2 className="font-display text-lg font-semibold">Deixe uma pendência para a equipe</h2>

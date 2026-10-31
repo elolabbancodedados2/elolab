@@ -142,7 +142,7 @@ export default function RelatoriosSalvos() {
       {items.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {INDICADORES.map(({ key, label, legenda, icon: Icon, cor }) => {
-            const destaque = key === 'todos';
+            const destaque = false;
             return (
               <button
                 key={key}

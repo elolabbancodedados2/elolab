@@ -694,15 +694,15 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
                 onClick={() => setFilterStatus(s.filter)}
                 className={cn(
                   'flex min-h-[76px] w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md sm:gap-3 sm:px-4',
-                  ativo ? 'border-transparent bg-gradient-primary text-white shadow-md' : 'border-border/60 bg-card shadow-xs hover:border-primary/40',
+                  ativo ? 'border-foreground bg-card ring-1 ring-foreground shadow-xs' : 'border-border/60 bg-card shadow-xs hover:border-primary/40',
                 )}
               >
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.iconBg, s.iconColor, ativo && 'bg-white/15 text-white')}>
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.iconBg, s.iconColor)}>
                   <s.icon className="h-5 w-5" />
                 </div>
                 <div>
                   <p className="text-xl font-bold tabular-nums">{s.value}</p>
-                  <p className={cn('text-[11px] font-medium', ativo ? 'text-white/70' : 'text-muted-foreground')}>{s.label}</p>
+                  <p className="text-[11px] font-medium text-muted-foreground">{s.label}</p>
                 </div>
               </button>
             </div>
