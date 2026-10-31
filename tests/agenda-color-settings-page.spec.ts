@@ -81,6 +81,7 @@ test('esquema de cores mantém escolhas em caso de falha e protege saída sem sa
   await page.getByRole('button', { name: 'Voltar à agenda' }).click();
   await expect(page.getByRole('alertdialog')).toBeVisible();
   await page.getByRole('button', { name: 'Sair sem salvar' }).click();
-  await expect(page).toHaveURL('/agenda?data=2026-10-30&view=daily');
+  // Sem data na URL a agenda abre no dia de hoje.
+  await expect(page).toHaveURL(/\/agenda\?data=\d{4}-\d{2}-\d{2}&view=daily$/);
   expect(attempts).toBe(1);
 });
