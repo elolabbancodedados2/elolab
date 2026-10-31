@@ -36,7 +36,8 @@ Ordem sugerida por valor para a clínica e risco baixo:
    - Odontograma (dentes, faces, procedimentos planejados e realizados) e fotos clínicas com marcação de pontos (dermatologia).
    - Tabelas: `odontograma_registros`, `fotos_clinicas` (arquivo no storage com a mesma regra de acesso do prontuário).
 5. **Configurações: matriz de permissões**
-   - Já existem permissões no banco; falta a tela em matriz (perfil × módulo) do protótipo.
+   - Entregue sem banco: a aba Equipe → Perfis de acesso mostra a matriz perfil × módulo lida da configuração do menu.
+   - Pendente (precisa de banco): editar o acesso por perfil ou por pessoa, com tabela própria e trilha de auditoria.
 
 ## Como cada função será entregue
 
