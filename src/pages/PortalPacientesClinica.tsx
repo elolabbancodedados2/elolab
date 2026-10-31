@@ -118,16 +118,16 @@ export default function PortalPacientesClinica() {
           )}
 
           {link && (
-            <div className="space-y-3 rounded-xl border border-[#BFD8EE] bg-[#F3F8FC] p-4">
+            <div className="space-y-3 rounded-xl border border-border bg-[#F3F8FC] p-4">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]" htmlFor="portal-generated-link">Link individual do portal</label>
-                <Button aria-label="Conferir link do portal" asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-primary" htmlFor="portal-generated-link">Link individual do portal</label>
+                <Button aria-label="Conferir link do portal" asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                   <a href={link} target="_blank" rel="noopener noreferrer" aria-label="Conferir link do portal" title="Conferir link do portal">
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
               </div>
-              <Input id="portal-generated-link" value={link} readOnly onFocus={(event) => event.currentTarget.select()} className="h-10 rounded-full bg-white font-mono text-xs focus-visible:ring-[#1080CA]" />
+              <Input id="portal-generated-link" value={link} readOnly onFocus={(event) => event.currentTarget.select()} className="h-10 rounded-full bg-white font-mono text-xs focus-visible:ring-primary" />
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button type="button" variant="outline" onClick={() => void copiarLink()} className="gap-2 rounded-full">
                   <Copy aria-hidden="true" className="h-4 w-4" />Copiar
@@ -146,7 +146,7 @@ export default function PortalPacientesClinica() {
           )}
 
           <div className="flex gap-3 rounded-xl border border-[#DCE6F2] bg-[#EEF4FA] p-4 text-sm text-muted-foreground">
-            <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#1080CA]" />
+            <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p>Compartilhe este link somente com o paciente ou responsável autorizado. O endereço contém uma credencial individual de acesso.</p>
           </div>
         </CardContent>

@@ -103,7 +103,7 @@ export default function PortalGuias() {
   if (validating) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-[#1080CA]" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -174,24 +174,24 @@ export default function PortalGuias() {
         <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader><CardTitle className="text-base">Dados do paciente</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div><Label>Nome completo *</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
+            <div><Label>Nome completo *</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.paciente_nome} onChange={(e) => setForm({ ...form, paciente_nome: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>CPF</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
-              <div><Label>Data nascimento</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
+              <div><Label>CPF</Label><Input className="rounded-xl focus-visible:ring-primary" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
+              <div><Label>Data nascimento</Label><Input className="rounded-xl focus-visible:ring-primary" type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
             </div>
-            <div><Label>Telefone (WhatsApp)</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
+            <div><Label>Telefone (WhatsApp)</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
           </CardContent>
         </Card>
 
         <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader><CardTitle className="text-base">Médico solicitante</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div><Label>Nome</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
+            <div><Label>Nome</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="col-span-2"><Label>CRM</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
-              <div><Label>UF</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" maxLength={2} value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
+              <div className="col-span-2"><Label>CRM</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
+              <div><Label>UF</Label><Input className="rounded-xl focus-visible:ring-primary" maxLength={2} value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
             </div>
-            <div><Label>Especialidade</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
+            <div><Label>Especialidade</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
           </CardContent>
         </Card>
 
@@ -199,8 +199,8 @@ export default function PortalGuias() {
           <CardHeader><CardTitle className="text-base">Convênio</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Convênio</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Particular se não tiver" /></div>
-              <div><Label>Nº autorização</Label><Input className="rounded-xl focus-visible:ring-[#1080CA]" value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
+              <div><Label>Convênio</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Particular se não tiver" /></div>
+              <div><Label>Nº autorização</Label><Input className="rounded-xl focus-visible:ring-primary" value={form.numero_autorizacao} onChange={(e) => setForm({ ...form, numero_autorizacao: e.target.value })} /></div>
             </div>
           </CardContent>
         </Card>
@@ -208,7 +208,7 @@ export default function PortalGuias() {
         <Card className="rounded-2xl border-[#DCE6F2]">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4 text-[#1080CA]" /> Exames solicitados *</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4 text-primary" /> Exames solicitados *</CardTitle>
               <Button size="sm" variant="outline" onClick={() => setExames((current) => [...current, { nome: '' }])} disabled={exames.length >= 50} className="gap-1.5 rounded-full">
                 <Plus className="h-3.5 w-3.5" /> Adicionar
               </Button>
@@ -218,7 +218,7 @@ export default function PortalGuias() {
             {exames.map((ex, i) => (
               <div key={i} className="flex gap-2">
                 <Input
-                  className="rounded-xl focus-visible:ring-[#1080CA]"
+                  className="rounded-xl focus-visible:ring-primary"
                   value={ex.nome}
                   onChange={(e) => setExames((current) => current.map((x, idx) => idx === i ? { nome: e.target.value } : x))}
                   placeholder={`Exame ${i + 1}`}
@@ -232,7 +232,7 @@ export default function PortalGuias() {
             ))}
             <div className="pt-2">
               <Label>Observações</Label>
-              <Textarea className="rounded-xl focus-visible:ring-[#1080CA]" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
+              <Textarea className="rounded-xl focus-visible:ring-primary" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
             </div>
           </CardContent>
         </Card>

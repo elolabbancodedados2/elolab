@@ -425,10 +425,10 @@ export default function PlatformClinicas() {
       {/* KPIs */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4" aria-label="Indicadores das clínicas">
         {([
-          { key: 'todas', title: 'Clínicas', value: totals.clinicas, detail: `${totals.arquivadas} arquivada(s)`, icon: Building2, tone: 'bg-[#1080CA]/10 text-[#1080CA]', destaque: true },
+          { key: 'todas', title: 'Clínicas', value: totals.clinicas, detail: `${totals.arquivadas} arquivada(s)`, icon: Building2, tone: 'bg-primary/10 text-primary', destaque: true },
           { key: 'ativas', title: 'Assinaturas Ativas', value: totals.ativas, detail: 'válidas, pagas e sem suspensão', icon: CheckCircle2, tone: 'bg-success/10 text-success', destaque: false },
           { key: 'trial', title: 'Em Trial', value: totals.trial, detail: 'em período de teste válido', icon: Hourglass, tone: 'bg-info/10 text-info', destaque: false },
-          { key: null, title: 'Pacientes (total)', value: totals.pacientes, detail: 'inclui clínicas arquivadas', icon: Users, tone: 'bg-[#1080CA]/10 text-[#1080CA]', destaque: false },
+          { key: null, title: 'Pacientes (total)', value: totals.pacientes, detail: 'inclui clínicas arquivadas', icon: Users, tone: 'bg-primary/10 text-primary', destaque: false },
         ] as const).map(({ key, title, value, detail, icon: Icon, tone, destaque }) => {
           const ativo = key !== null && filtroStatus === key;
           const conteudo = (
@@ -455,7 +455,7 @@ export default function PlatformClinicas() {
               type="button"
               aria-pressed={ativo}
               onClick={() => setFiltroStatus(key === filtroStatus ? 'todas' : key)}
-              className={cn(base, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2', ativo && !destaque && 'border-[#1080CA] ring-1 ring-[#1080CA]/40')}
+              className={cn(base, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', ativo && !destaque && 'border-primary ring-1 ring-primary/40')}
             >
               {conteudo}
             </button>
@@ -473,7 +473,7 @@ export default function PlatformClinicas() {
                 placeholder="Buscar por clínica, dono ou plano..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                className="h-10 rounded-full pl-9 focus-visible:ring-primary"
               />
             </div>
           </div>
@@ -487,7 +487,7 @@ export default function PlatformClinicas() {
                 aria-pressed={filtroStatus === valor}
                 onClick={() => setFiltroStatus(valor)}
                 className={cn(
-                  'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   filtroStatus === valor ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                 )}
               >

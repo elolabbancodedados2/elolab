@@ -277,7 +277,7 @@ export default function AnalisePreditiva() {
           { key: 'alto', icon: Siren, label: 'Alto risco', value: stats.altoRisco, caption: 'confirmar primeiro', color: 'text-white', surface: 'bg-white/15', escuro: true, filtro: 'alto' as const },
           { key: 'medio', icon: AlertTriangle, label: 'Risco médio', value: stats.medioRisco, caption: 'vale um lembrete', color: 'text-warning', surface: 'bg-warning/10', escuro: false, filtro: 'medio' as const },
           { key: 'baixo', icon: CheckCircle2, label: 'Baixo risco', value: stats.baixoRisco, caption: 'tendem a comparecer', color: 'text-success', surface: 'bg-success/10', escuro: false, filtro: 'baixo' as const },
-          { key: 'todos', icon: Users, label: 'Total', value: stats.total, caption: 'consultas com previsão', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, filtro: 'todos' as const },
+          { key: 'todos', icon: Users, label: 'Total', value: stats.total, caption: 'consultas com previsão', color: 'text-primary', surface: 'bg-primary/10', escuro: false, filtro: 'todos' as const },
           { key: 'indice', icon: Gauge, label: 'Índice médio', value: `${stats.indiceMedio}%`, caption: 'chance média de falta', color: 'text-foreground', surface: 'bg-muted', escuro: false, filtro: null },
         ]).map(s => {
           const Icon = s.icon;
@@ -312,9 +312,9 @@ export default function AnalisePreditiva() {
               onClick={() => setFiltroRisco(ativo && filtro !== 'todos' ? 'todos' : filtro)}
               className={cn(
                 classes,
-                'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
-                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && s.escuro && 'ring-2 ring-primary/60',
               )}
             >
               {conteudo}
@@ -330,14 +330,14 @@ export default function AnalisePreditiva() {
         const semContato = !maiorRisco.telefone && !maiorRisco.email;
         const enviando = enviandoLembreteId === maiorRisco.agendamento_id;
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
                   <Siren className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Maior risco agora</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Maior risco agora</p>
                   <h2 className="truncate text-lg font-bold text-foreground">{maiorRisco.paciente_nome}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{formatarDataConsulta(maiorRisco, 'dd/MM/yyyy')}</span>
@@ -350,14 +350,14 @@ export default function AnalisePreditiva() {
                       {maiorRisco.motivos_risco.join(' · ')}
                     </p>
                   )}
-                  <p className="mt-0.5 truncate text-xs font-medium text-[#1080CA]" title={maiorRisco.recomendacoes}>
+                  <p className="mt-0.5 truncate text-xs font-medium text-primary" title={maiorRisco.recomendacoes}>
                     Recomendação: {maiorRisco.recomendacoes}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp ? (
-                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
                   </Button>
                 ) : (
@@ -408,7 +408,7 @@ export default function AnalisePreditiva() {
                     aria-pressed={ativo}
                     onClick={() => setFiltroRisco(opt.key)}
                     className={cn(
-                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                     )}
                   >
@@ -485,7 +485,7 @@ export default function AnalisePreditiva() {
                               <span className="truncate">{pred.motivos_risco.join(' · ')}</span>
                             </p>
                           )}
-                          <p className="mt-0.5 truncate text-xs text-[#1080CA]" title={pred.recomendacoes}>{pred.recomendacoes}</p>
+                          <p className="mt-0.5 truncate text-xs text-primary" title={pred.recomendacoes}>{pred.recomendacoes}</p>
                         </TableCell>
                         <TableCell className="hidden whitespace-nowrap text-sm md:table-cell">{formatarDataConsulta(pred, 'dd/MM/yyyy')}</TableCell>
                         <TableCell className="hidden max-w-[180px] truncate text-sm lg:table-cell">{pred.medico_nome}</TableCell>
@@ -498,7 +498,7 @@ export default function AnalisePreditiva() {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {whatsapp && (
-                              <Button aria-label={`Chamar ${pred.paciente_nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Chamar ${pred.paciente_nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${pred.paciente_nome} no WhatsApp`} title="Chamar no WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

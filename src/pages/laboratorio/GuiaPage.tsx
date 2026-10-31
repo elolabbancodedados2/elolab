@@ -45,9 +45,9 @@ function paraDataHoraLocal(value?: string | null): string {
 
 const STATUS_LABEL: Record<string, { label: string; variant: any; badge: string }> = {
   recebida: { label: 'Recebida', variant: 'secondary', badge: 'border-warning/40 bg-warning/10 text-warning-foreground' },
-  em_analise: { label: 'Em análise', variant: 'default', badge: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]' },
+  em_analise: { label: 'Em análise', variant: 'default', badge: 'border-primary/30 bg-primary/10 text-primary' },
   agendada: { label: 'Agendada', variant: 'default', badge: 'border-info/30 bg-info/10 text-info' },
-  encaminhada_fila: { label: 'Na fila', variant: 'default', badge: 'border-[#1080CA]/30 bg-[#1080CA]/10 text-[#1080CA]' },
+  encaminhada_fila: { label: 'Na fila', variant: 'default', badge: 'border-primary/30 bg-primary/10 text-primary' },
   finalizada: { label: 'Finalizada', variant: 'outline', badge: 'border-success/30 bg-success/10 text-success' },
   cancelada: { label: 'Cancelada', variant: 'destructive', badge: 'border-border bg-muted text-muted-foreground' },
 };

@@ -201,7 +201,7 @@ export default function CobrancaInadimplentes() {
   const kpis = [
     {
       key: 'todos' as FiltroIndicador, label: 'Pendências vencidas', value: data.length, icon: AlertTriangle,
-      color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'lançamentos em aberto', money: false,
+      color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'lançamentos em aberto', money: false,
     },
     {
       key: 'atraso30' as FiltroIndicador, label: 'Saldo em aberto', value: totalDevido, icon: DollarSign,
@@ -210,7 +210,7 @@ export default function CobrancaInadimplentes() {
     },
     {
       key: 'comContato' as FiltroIndicador, label: 'Com contato para cobrança', value: comContato.length, icon: MessageCircle,
-      color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false,
+      color: 'text-primary', surface: 'bg-primary/10', escuro: false,
       caption: `${data.length - comContato.length} sem telefone ou e-mail`, money: false,
     },
   ];
@@ -265,10 +265,10 @@ export default function CobrancaInadimplentes() {
               aria-pressed={ativo}
               onClick={() => setFiltroIndicador(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !kpi.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && kpi.escuro && 'ring-2 ring-[#1080CA]/60',
+                ativo && !kpi.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && kpi.escuro && 'ring-2 ring-primary/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -295,14 +295,14 @@ export default function CobrancaInadimplentes() {
         const whatsapp = linkWhatsApp(destaque.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), valorFormatado, destaque.dias));
         const vencimento = parseDateOnly(destaque.data_vencimento);
         return (
-          <Card className="overflow-hidden rounded-2xl border-[#1080CA]/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
+          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,128,202,0.12)]">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md">
                   <AlertTriangle className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1080CA]">Pendência mais urgente</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Pendência mais urgente</p>
                   <h2 className="truncate text-lg font-bold text-foreground">{nome}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {vencimento && <span className="inline-flex items-center gap-1">Venc. {format(vencimento, 'dd/MM/yyyy')}</span>}
@@ -315,7 +315,7 @@ export default function CobrancaInadimplentes() {
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp ? (
-                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-[#1080CA]/30 text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
                     <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
                   </Button>
                 ) : (
@@ -337,7 +337,7 @@ export default function CobrancaInadimplentes() {
                   <AlertTriangle className="h-4 w-4" />
                 </span>
                 Pendências
-                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filtrados.length} de {data.length}</Badge>
+                <Badge variant="outline" className="rounded-full border-border text-primary">{filtrados.length} de {data.length}</Badge>
               </CardTitle>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <div className="relative w-full sm:w-64">
@@ -347,7 +347,7 @@ export default function CobrancaInadimplentes() {
                     placeholder="Nome do paciente..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                    className="h-10 rounded-full pl-9 focus-visible:ring-primary"
                   />
                 </div>
                 {temFiltro && (
@@ -376,7 +376,7 @@ export default function CobrancaInadimplentes() {
                     aria-pressed={ativo}
                     onClick={() => setFiltroFaixa(ativo ? 'todas' : faixa.id)}
                     className={cn(
-                      'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                      'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-foreground hover:border-[#9CC7EC]',
                     )}
                   >
@@ -446,14 +446,14 @@ export default function CobrancaInadimplentes() {
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1 text-xs">
-                              {l.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-[#1080CA]" />{l.pacientes.telefone}</p>}
+                              {l.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-primary" />{l.pacientes.telefone}</p>}
                               {l.pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" />{l.pacientes.email}</p>}
                               {!l.pacientes?.telefone && !l.pacientes?.email && <span className="text-muted-foreground">sem contato</span>}
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
                             {whatsapp ? (
-                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

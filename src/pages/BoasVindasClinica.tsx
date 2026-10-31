@@ -16,14 +16,14 @@ export default function BoasVindasClinica() {
           transition={{ duration: 0.65, ease: 'easeOut' }} />
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.45 }}>
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md" aria-hidden="true"><Sparkles className="h-7 w-7" /></div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#1080CA]">Sua clínica começa aqui</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Sua clínica começa aqui</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Bem-vindo{profile?.nome ? `, ${profile.nome.split(' ')[0]}` : ''}.</h1>
           <p className="mx-auto mt-3 max-w-xl text-muted-foreground">Seu espaço EloLab está pronto. Vamos configurar os detalhes essenciais para sua equipe começar a atender com confiança.</p>
         </motion.div>
         <div className="mx-auto mt-8 grid max-w-2xl gap-3 text-left sm:grid-cols-3">
           {[['Serviços', 'Organize o que sua clínica oferece', CheckCircle2], ['Horários', 'Defina quando sua equipe atende', CalendarCheck], ['Equipe', 'Convide quem trabalha com você', UsersRound]].map(([title, detail, Icon]) => {
             const StepIcon = Icon as typeof CheckCircle2;
-            return <div key={title as string} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs"><span aria-hidden="true" className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#1080CA]/10 text-[#1080CA]"><StepIcon className="h-5 w-5" /></span><p className="font-semibold">{title as string}</p><p className="mt-1 text-xs text-muted-foreground">{detail as string}</p></div>;
+            return <div key={title as string} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs"><span aria-hidden="true" className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><StepIcon className="h-5 w-5" /></span><p className="font-semibold">{title as string}</p><p className="mt-1 text-xs text-muted-foreground">{detail as string}</p></div>;
           })}
         </div>
         <Button asChild size="lg" className="mt-8 h-12 rounded-full bg-gradient-primary px-7 text-white shadow-md hover:brightness-110">

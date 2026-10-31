@@ -137,7 +137,7 @@ export default function PlatformDominios() {
                 className={cn(
                   'rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   main ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
-                  statusFilter === key && !main && 'ring-2 ring-[#1080CA]/40',
+                  statusFilter === key && !main && 'ring-2 ring-primary/40',
                 )}
               >
                 <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', main ? 'bg-white/20 text-white' : cls)}><Icon className="h-5 w-5" /></span>
@@ -157,7 +157,7 @@ export default function PlatformDominios() {
         <CardContent className="grid gap-4 sm:grid-cols-[minmax(16rem,2fr)_minmax(10rem,1fr)_auto] sm:items-end">
           <div className="space-y-2">
             <Label htmlFor="platform-domain">Domínio</Label>
-            <Input id="platform-domain" className="h-10 rounded-full font-mono focus-visible:ring-[#1080CA]" value={domainInput} onChange={(event) => setDomainInput(event.target.value)} placeholder="clinica.com.br" autoCapitalize="none" autoCorrect="off" disabled={addDomain.isPending} />
+            <Input id="platform-domain" className="h-10 rounded-full font-mono focus-visible:ring-primary" value={domainInput} onChange={(event) => setDomainInput(event.target.value)} placeholder="clinica.com.br" autoCapitalize="none" autoCorrect="off" disabled={addDomain.isPending} />
             {domainInput.trim() && !domainValid && <p role="alert" className="text-xs text-destructive">Digite um domínio válido, sem porta, caminho ou parâmetros.</p>}
           </div>
           <div className="space-y-2">
@@ -214,7 +214,7 @@ export default function PlatformDominios() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="break-all font-mono font-semibold">{item.domain}</h2>
-                        <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{item.purpose === 'app' ? 'Aplicação' : 'E-mail'}</Badge>
+                        <Badge variant="outline" className="rounded-full border-border text-primary">{item.purpose === 'app' ? 'Aplicação' : 'E-mail'}</Badge>
                         <Badge variant={item.status === 'error' ? 'destructive' : 'secondary'} className={cn('rounded-full', item.status === 'verified' && 'border-transparent bg-success/15 text-success')}>
                           {statusLabels[item.status] || item.status}
                         </Badge>
@@ -246,7 +246,7 @@ export default function PlatformDominios() {
               );
             })
           ) : (
-            <div className="rounded-xl border border-dashed border-[#BFD8EE] p-8 text-center">
+            <div className="rounded-xl border border-dashed border-border p-8 text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Globe className="h-6 w-6" /></span>
               <p className="mt-3 font-medium text-foreground">Nenhum domínio cadastrado</p>
               <p className="mt-1 text-sm text-muted-foreground">Adicione um domínio para consultar seus registros DNS.</p>

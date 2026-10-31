@@ -757,7 +757,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
           {([
             { key: 'ativos' as FiltroConvenio, icon: CheckCircle2, label: 'Ativos', value: totalAtivos, caption: 'aceitos no atendimento', color: 'text-white', surface: 'bg-white/15', escuro: true },
             { key: 'inativos' as FiltroConvenio, icon: XCircle, label: 'Inativos', value: totalInativos, caption: 'histórico preservado', color: 'text-muted-foreground', surface: 'bg-muted', escuro: false },
-            { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false },
+            { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
             { key: 'todos' as FiltroConvenio, icon: Layers, label: 'Todos', value: totalConvenios, caption: 'convênios cadastrados', color: 'text-foreground', surface: 'bg-[#EEF4FA]', escuro: false },
           ]).map(s => {
             const Icon = s.icon;
@@ -769,10 +769,10 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                 aria-pressed={ativo}
                 onClick={() => setFiltroStatus(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                  ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                  ativo && s.escuro && 'ring-2 ring-primary/60',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -801,7 +801,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
               <div className="relative w-full sm:w-72">
                 <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input aria-label="Buscar convênio por nome, código, ANS ou CNPJ" placeholder="Buscar nome, código, ANS ou CNPJ..." value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+                  onChange={e => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
               </div>
             </div>
             <div role="group" aria-label="Filtrar convênios por status" className="flex flex-wrap items-center gap-1.5">
@@ -818,7 +818,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                     aria-pressed={ativo}
                     onClick={() => setFiltroStatus(opt.key)}
                     className={cn(
-                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                     )}
                   >
@@ -887,7 +887,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                             <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-muted-foreground">
                               <span>{c.codigo}</span>
                               {temTabela && (
-                                <Badge variant="outline" className="rounded-full border-[#BFD8EE] bg-white font-sans text-[9px] text-[#1080CA]">
+                                <Badge variant="outline" className="rounded-full border-border bg-white font-sans text-[9px] text-primary">
                                   <FlaskConical aria-hidden="true" className="mr-0.5 h-2.5 w-2.5" /> Tabela de exames
                                 </Badge>
                               )}
@@ -905,7 +905,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                         <TableCell className="hidden md:table-cell">
                           <div className="space-y-0.5 text-xs">
                             {c.registro_ans ? (
-                              <p className="flex items-center gap-1"><Shield aria-hidden="true" className="h-3 w-3 text-[#1080CA]" />{c.registro_ans}</p>
+                              <p className="flex items-center gap-1"><Shield aria-hidden="true" className="h-3 w-3 text-primary" />{c.registro_ans}</p>
                             ) : (
                               <p className="text-muted-foreground">Sem registro</p>
                             )}
@@ -943,7 +943,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                                 : <Power aria-hidden="true" className="h-3.5 w-3.5" />}
                               {atualizandoStatusId === c.id ? 'Salvando...' : c.ativo ? 'Inativar' : 'Ativar'}
                             </Button>}
-                            {podeGerenciarTabelaExames && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]" aria-label={`Gerenciar preços de exames do convênio ${c.nome}`} title="Tabela de preços de exames" onClick={() => handleGerenciarPrecosExames(c)}>
+                            {podeGerenciarTabelaExames && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary" aria-label={`Gerenciar preços de exames do convênio ${c.nome}`} title="Tabela de preços de exames" onClick={() => handleGerenciarPrecosExames(c)}>
                               <FlaskConical className="h-4 w-4" />
                             </Button>}
                             {portalUrl && (

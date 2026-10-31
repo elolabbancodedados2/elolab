@@ -236,18 +236,18 @@ export default function Templates() {
                 aria-pressed={ativo}
                 onClick={() => setClinicalTab(ind.key)}
                 className={cn(
-                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                  'group rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   ativo && 'border-transparent bg-gradient-primary text-white',
                 )}
               >
                 <div className="flex min-h-[88px] items-center gap-3 p-3">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ativo ? 'bg-white/15' : 'bg-[#1080CA]/10')}>
-                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-white' : 'text-[#1080CA]')} />
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ativo ? 'bg-white/15' : 'bg-primary/10')}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-white' : 'text-primary')} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className={cn('truncate text-xs font-semibold', ativo ? 'text-white/80' : 'text-foreground')}>{ind.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-white' : 'text-[#1080CA]')}>{ind.count}</span>
+                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-white' : 'text-primary')}>{ind.count}</span>
                     </div>
                     <p className={cn('truncate text-[11px]', ativo ? 'text-white/60' : 'text-muted-foreground')}>{ind.caption}</p>
                   </div>
@@ -267,7 +267,7 @@ export default function Templates() {
             onChange={event => setActiveSearch(event.target.value)}
             placeholder={clinicalTab === 'prescriptions' ? 'Buscar nome, tipo ou medicamento...' : 'Buscar nome, tipo, CID ou conteúdo...'}
             aria-label={clinicalTab === 'prescriptions' ? 'Buscar templates de prescrição' : 'Buscar templates de atestado'}
-            className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+            className="h-10 rounded-full pl-9 focus-visible:ring-primary"
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -320,7 +320,7 @@ export default function Templates() {
                   <Icon className="h-4 w-4" />
                 </span>
                 <h2 id={`modelos-grupo-${group.key}`} className="text-base font-semibold text-foreground">{group.label}</h2>
-                <Badge variant="outline" className="h-5 rounded-full border-[#BFD8EE] bg-white text-xs tabular-nums text-[#1080CA]">{group.items.length}</Badge>
+                <Badge variant="outline" className="h-5 rounded-full border-border bg-white text-xs tabular-nums text-primary">{group.items.length}</Badge>
               </div>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {clinicalTab === 'prescriptions'
@@ -333,7 +333,7 @@ export default function Templates() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <h3 className="truncate font-semibold text-foreground">{template.nome}</h3>
-                              <Badge variant="outline" className="mt-1 rounded-full border-[#BFD8EE] text-[11px] text-[#1080CA]">
+                              <Badge variant="outline" className="mt-1 rounded-full border-border text-[11px] text-primary">
                                 {PRESCRIPTION_TYPES[template.tipo || 'simples'] || template.tipo}
                               </Badge>
                             </div>
@@ -344,7 +344,7 @@ export default function Templates() {
 
                           {linhas.length > 0 && (
                             <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
-                              <summary className="cursor-pointer font-medium text-[#1080CA]">Ver medicamentos</summary>
+                              <summary className="cursor-pointer font-medium text-primary">Ver medicamentos</summary>
                               <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
                                 {linhas.map((linha, index) => <li key={index}>{linha}</li>)}
                               </ol>
@@ -383,7 +383,7 @@ export default function Templates() {
                             <div className="min-w-0">
                               <h3 className="truncate font-semibold text-foreground">{template.nome}</h3>
                               <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[11px] text-[#1080CA]">
+                                <Badge variant="outline" className="rounded-full border-border text-[11px] text-primary">
                                   {CERTIFICATE_TYPES[template.tipo || 'comparecimento'] || template.tipo}
                                 </Badge>
                                 {template.tipo === 'afastamento' && template.dias_afastamento != null && (
@@ -398,7 +398,7 @@ export default function Templates() {
 
                           {template.conteudo && (
                             <details className="rounded-xl border border-border/60 bg-[#F3F8FC] p-2.5 text-xs">
-                              <summary className="cursor-pointer font-medium text-[#1080CA]">Ver conteúdo</summary>
+                              <summary className="cursor-pointer font-medium text-primary">Ver conteúdo</summary>
                               <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{template.conteudo}</p>
                             </details>
                           )}

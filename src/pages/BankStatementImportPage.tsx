@@ -23,7 +23,7 @@ const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency
 const LIMITE_ARQUIVO = 5 * 1024 * 1024;
 const LIMITE_IMPORTACAO = 5000;
 const SITUACAO: Record<SituacaoLinhaExtrato, { label: string; className: string }> = {
-  nova: { label: 'Nova', className: 'border-[#BFD8EE] bg-[#EAF2FF] text-[#1456C0]' },
+  nova: { label: 'Nova', className: 'border-border bg-secondary text-primary' },
   ja_importada: { label: 'Já importada', className: 'border-border bg-muted/50 text-muted-foreground' },
   repetida_no_arquivo: { label: 'Repetida no arquivo', className: 'border-warning/40 bg-warning/10 text-warning-foreground' },
 };
@@ -138,7 +138,7 @@ export default function BankStatementImportPage() {
         <div><CardTitle className="text-base">2. Revise antes de registrar</CardTitle><p className="mt-1 text-sm text-muted-foreground">{extrato.nomeArquivo} · conta {extrato.conta}</p></div>
         <div className="flex flex-wrap gap-2" aria-label="Resumo do extrato">
           <Badge variant="outline">{previa.length} transações</Badge>
-          <Badge variant="outline" className="border-[#BFD8EE] bg-[#EAF2FF] text-[#1456C0]">{novas.length} nova{novas.length === 1 ? '' : 's'}</Badge>
+          <Badge variant="outline" className="border-border bg-secondary text-primary">{novas.length} nova{novas.length === 1 ? '' : 's'}</Badge>
           <Badge variant="outline" className="border-border text-muted-foreground">{previa.filter(l => l.situacao === 'ja_importada').length} já importada{previa.filter(l => l.situacao === 'ja_importada').length === 1 ? '' : 's'}</Badge>
           <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning-foreground">{previa.filter(l => l.situacao === 'repetida_no_arquivo').length} repetida{previa.filter(l => l.situacao === 'repetida_no_arquivo').length === 1 ? '' : 's'}</Badge>
           <Badge variant="outline" className="border-[#A8D5B2] bg-[#EAF5EC] text-[#166534]">{matches} com correspondência</Badge>

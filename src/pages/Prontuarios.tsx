@@ -663,7 +663,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {badge && <Badge className={`text-xs px-1.5 py-0 rounded-full ${badgeClass}`}>{badge}</Badge>}
         {href && (
-          <Link to={href} className="h-7 px-2 rounded-full text-xs text-[#1080CA] border border-[#DCE6F2] hover:bg-[#EEF4FA] flex items-center gap-1 transition-colors">
+          <Link to={href} className="h-7 px-2 rounded-full text-xs text-primary border border-[#DCE6F2] hover:bg-[#EEF4FA] flex items-center gap-1 transition-colors">
             <ExternalLink className="h-3 w-3" />Abrir
           </Link>
         )}
@@ -676,7 +676,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><TestTube className="h-3.5 w-3.5" /> Exames ({exames.length})</h4>
-          <Link to={`/exames?paciente=${pacienteId}`} className="text-xs text-[#1080CA] hover:underline flex items-center gap-0.5">
+          <Link to={`/exames?paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
             Ver todos <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
@@ -722,7 +722,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><FileCheck className="h-3.5 w-3.5" /> Atestados ({atestados.length})</h4>
-          <Link to={`/atestados?paciente=${pacienteId}`} className="text-xs text-[#1080CA] hover:underline flex items-center gap-0.5">
+          <Link to={`/atestados?paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
             Ver todos <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
@@ -733,7 +733,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><ArrowRight className="h-3.5 w-3.5" /> Encaminhamentos ({encaminhamentos.length})</h4>
-          <Link to={`/encaminhamentos?paciente=${pacienteId}`} className="text-xs text-[#1080CA] hover:underline flex items-center gap-0.5">
+          <Link to={`/encaminhamentos?paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
             Ver todos <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
@@ -2204,7 +2204,7 @@ export default function Prontuarios() {
                   placeholder="Nome, CPF ou telefone"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-8 text-sm focus-visible:ring-[#1080CA]"
+                  className="h-10 rounded-full pl-8 text-sm focus-visible:ring-primary"
                 />
               </div>
             </CardHeader>
@@ -2251,7 +2251,7 @@ export default function Prontuarios() {
                   <section aria-labelledby="open-medical-drafts" className="border-b border-[#DCE6F2] bg-[#F3F8FC] p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h2 id="open-medical-drafts" className="text-xs font-bold text-foreground">Rascunhos em aberto</h2>
-                      <Badge variant="outline" className="h-5 border-[#BFD8EE] bg-white text-xs text-[#1080CA]">
+                      <Badge variant="outline" className="h-5 border-border bg-white text-xs text-primary">
                         {rascunhosAbertos.length}
                       </Badge>
                     </div>
@@ -2279,7 +2279,7 @@ export default function Prontuarios() {
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center justify-between gap-2">
                                   <span className="truncate text-xs font-semibold text-foreground">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
-                                  <span className="shrink-0 text-xs text-[#1080CA]">Retomar</span>
+                                  <span className="shrink-0 text-xs text-primary">Retomar</span>
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                   {draft.queixa_principal?.trim() || 'Evolução sem queixa principal'}
@@ -2288,7 +2288,7 @@ export default function Prontuarios() {
                                   Autor: {nomeAutorRascunho(draft.medico_id, medicos, user?.nome)} · Último salvamento: {draft.updated_at ? format(new Date(draft.updated_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }) : 'data indisponível'}
                                 </span>
                               </span>
-                              <ArrowRight className="ml-2 h-3.5 w-3.5 shrink-0 text-[#1080CA]" aria-hidden="true" />
+                              <ArrowRight className="ml-2 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                             </Button>
                           );
                         })}

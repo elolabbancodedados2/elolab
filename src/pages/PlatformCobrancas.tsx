@@ -294,8 +294,8 @@ export default function PlatformCobrancas() {
                 aria-pressed={status === key}
                 onClick={() => setStatus(status === key ? 'all' : key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
-                  status === key && 'border-[#1080CA] ring-1 ring-[#1080CA]/40',
+                  'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                  status === key && 'border-primary ring-1 ring-primary/40',
                 )}
               >
                 {conteudo}
@@ -313,7 +313,7 @@ export default function PlatformCobrancas() {
         <CardHeader><CardTitle>Carteira de clientes</CardTitle><CardDescription>{lista.length} de {overview.data?.subscriptions.length ?? 0} clínicas. Estado local da assinatura e vínculo com o Mercado Pago; expiradas não entram no total ativo nem no MRR.</CardDescription></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full min-w-56 flex-1 sm:w-auto"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar clínicas por nome, responsável ou plano" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar clínica, responsável ou plano" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" /></div>
+            <div className="relative w-full min-w-56 flex-1 sm:w-auto"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar clínicas por nome, responsável ou plano" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar clínica, responsável ou plano" className="h-10 rounded-full pl-9 focus-visible:ring-primary" /></div>
             {(busca.trim() || status !== 'all') && <Button variant="outline" className="h-10 rounded-full" onClick={() => { setBusca(''); setStatus('all'); }}>Limpar filtros</Button>}
             <Select value={status} onValueChange={setStatus}><SelectTrigger className="h-10 w-full rounded-full sm:w-48" aria-label="Filtrar assinatura"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="ativa">Ativas válidas</SelectItem><SelectItem value="trial">Trials válidos</SelectItem><SelectItem value="cancelada">Canceladas</SelectItem><SelectItem value="vencida">Vencidas</SelectItem><SelectItem value="sem_assinatura">Sem assinatura</SelectItem></SelectContent></Select>
           </div>
@@ -408,7 +408,7 @@ export default function PlatformCobrancas() {
       </Card>
 
       <Card className="rounded-2xl border-border/60 shadow-xs">
-        <CardHeader><CardTitle className="flex items-center gap-2"><Webhook className="h-5 w-5 text-[#1080CA]" /> Webhooks recentes</CardTitle><CardDescription>Metadados operacionais; os payloads financeiros não são expostos. A lista mostra até 30 dos 100 eventos carregados.</CardDescription></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><Webhook className="h-5 w-5 text-primary" /> Webhooks recentes</CardTitle><CardDescription>Metadados operacionais; os payloads financeiros não são expostos. A lista mostra até 30 dos 100 eventos carregados.</CardDescription></CardHeader>
         <CardContent className="space-y-2">
           {overview.isLoading ? <Skeleton className="h-32 w-full" /> : overview.isError ? null : (overview.data?.webhooks || []).slice(0, 30).map((webhook) => (
             <div key={webhook.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-card p-3">

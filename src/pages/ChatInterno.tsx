@@ -130,7 +130,7 @@ function ChatSidebar({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className={cn('pl-10 h-10 text-sm rounded-full focus-visible:ring-[#1080CA]', search && 'pr-10')}
+            className={cn('pl-10 h-10 text-sm rounded-full focus-visible:ring-primary', search && 'pr-10')}
             aria-label="Buscar conversas e equipe"
             placeholder={tab === 'conversas' ? 'Buscar por nome ou e-mail...' : 'Buscar na equipe...'}
             value={search}
@@ -163,7 +163,7 @@ function ChatSidebar({
           className={cn(
             'flex-1 text-xs font-semibold py-2.5 transition-colors border-b-2',
             tab === 'conversas'
-              ? 'border-[#1080CA] text-[#1080CA]'
+              ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
         >
@@ -179,7 +179,7 @@ function ChatSidebar({
           className={cn(
             'flex-1 text-xs font-semibold py-2.5 transition-colors border-b-2 flex items-center justify-center gap-1.5',
             tab === 'equipe'
-              ? 'border-[#1080CA] text-[#1080CA]'
+              ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
         >
@@ -219,18 +219,18 @@ function ChatSidebar({
                       className={cn(
                         'w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-all text-left',
                         selectedConversaId === c.id
-                          ? 'bg-[#1080CA]/10 border border-[#1080CA]/30'
+                          ? 'bg-primary/10 border border-primary/30'
                           : c.urgente_nao_lida
                           ? 'bg-destructive/5 hover:bg-destructive/10'
                           : c.nao_lidas > 0
-                          ? 'bg-[#1080CA]/5 hover:bg-[#1080CA]/10'
+                          ? 'bg-primary/5 hover:bg-primary/10'
                           : 'hover:bg-muted/60',
                       )}
                     >
                       <div className="relative shrink-0">
                         <Avatar className="h-10 w-10">
                           {c.outro_usuario?.avatar_url && <AvatarImage src={c.outro_usuario.avatar_url} />}
-                          <AvatarFallback className="bg-[#1080CA]/10 text-[#1080CA] text-xs font-semibold">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                             {getInitials(c.outro_usuario?.nome ?? '?')}
                           </AvatarFallback>
                         </Avatar>
@@ -258,7 +258,7 @@ function ChatSidebar({
                           {c.nao_lidas > 0 && (
                             <Badge className={cn(
                               'rounded-full h-5 min-w-[20px] flex items-center justify-center px-1.5 text-[10px] font-bold shrink-0',
-                              c.urgente_nao_lida ? 'bg-destructive text-destructive-foreground' : 'bg-[#1080CA] text-white',
+                              c.urgente_nao_lida ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-white',
                             )}>
                               {c.nao_lidas}
                             </Badge>
@@ -328,7 +328,7 @@ function TeamMemberButton({ member, onSelect }: { member: TeamMember; onSelect: 
       <div className="relative shrink-0">
         <Avatar className="h-9 w-9">
           {member.avatar && <AvatarImage src={member.avatar} />}
-          <AvatarFallback className="bg-[#1080CA]/10 text-[#1080CA] text-xs font-semibold">
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
             {getInitials(member.nome)}
           </AvatarFallback>
         </Avatar>
@@ -349,7 +349,7 @@ function TeamMemberButton({ member, onSelect }: { member: TeamMember; onSelect: 
           )}
         </p>
       </div>
-      <span className="h-7 px-2.5 shrink-0 inline-flex items-center rounded-full text-xs text-[#1080CA] bg-[#1080CA]/10">
+      <span className="h-7 px-2.5 shrink-0 inline-flex items-center rounded-full text-xs text-primary bg-primary/10">
         Conversar
       </span>
     </button>
@@ -427,7 +427,7 @@ function ConversaView({
         <div className="relative shrink-0">
           <Avatar className="h-10 w-10">
             {conversa.outro_usuario?.avatar_url && <AvatarImage src={conversa.outro_usuario.avatar_url} />}
-            <AvatarFallback className="bg-[#1080CA]/10 text-[#1080CA] text-xs font-semibold">
+            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
               {getInitials(outroNome)}
             </AvatarFallback>
           </Avatar>
@@ -456,7 +456,7 @@ function ConversaView({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" ref={scrollRef}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
-            <Loader2 className="h-6 w-6 animate-spin text-[#1080CA]" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <p className="text-xs text-muted-foreground">Carregando mensagens...</p>
           </div>
         ) : mensagens.length === 0 ? (
@@ -564,7 +564,7 @@ function ConversaView({
             onClick={() => setShowEmojis(s => !s)}
             className={cn(
               'flex items-center justify-center h-9 w-9 rounded-full transition-colors shrink-0',
-              showEmojis ? 'bg-[#1080CA]/10 text-[#1080CA]' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+              showEmojis ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
             )}
           >
             <Smile className="h-4 w-4" />
@@ -572,7 +572,7 @@ function ConversaView({
 
           <Input
             ref={inputRef}
-            className="flex-1 h-11 min-w-0 text-sm rounded-full focus-visible:ring-[#1080CA]"
+            className="flex-1 h-11 min-w-0 text-sm rounded-full focus-visible:ring-primary"
             aria-label="Mensagem"
             placeholder="Digite uma mensagem..."
             value={texto}
@@ -691,7 +691,7 @@ export default function ChatInterno() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {totalNaoLidas > 0 && (
-              <Badge className="rounded-full bg-[#1080CA] text-white">
+              <Badge className="rounded-full bg-primary text-white">
                 {totalNaoLidas} não lidas
               </Badge>
             )}

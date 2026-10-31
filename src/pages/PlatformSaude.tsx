@@ -240,7 +240,7 @@ export default function PlatformSaude() {
         ].map((c, i) => (
           <Card key={c.label} className={cn('rounded-2xl border-border/60 shadow-xs', i === 0 && 'border-transparent bg-gradient-primary text-white')}>
             <CardContent className="flex items-center gap-3 p-4">
-              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', i === 0 ? 'bg-white/20 text-white' : 'bg-[#1080CA]/10 text-[#1080CA]')}>
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', i === 0 ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary')}>
                 <c.icon className="h-5 w-5" />
               </div>
               <div className="min-w-0">
@@ -260,7 +260,7 @@ export default function PlatformSaude() {
           <div className="relative flex-1 sm:max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar clínica..." aria-label="Buscar clínica" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+              placeholder="Buscar clínica..." aria-label="Buscar clínica" className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
           </div>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="mr-1 text-muted-foreground">Ordenar:</span>
@@ -311,7 +311,7 @@ export default function PlatformSaude() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold truncate">{c.clinica_nome}</p>
-                      {c.em_trial && <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[10px] text-[#1080CA]">Trial</Badge>}
+                      {c.em_trial && <Badge variant="outline" className="rounded-full border-border text-[10px] text-primary">Trial</Badge>}
                       {c.assinatura_status === 'ativa' && <Badge className="rounded-full bg-success/15 text-[10px] text-success hover:bg-success/15">Ativa</Badge>}
                       {c.suspensa && <Badge variant="destructive" className="rounded-full text-[10px]">Suspensa</Badge>}
                       {c.arquivada && <Badge variant="outline" className="rounded-full text-[10px]">Arquivada</Badge>}

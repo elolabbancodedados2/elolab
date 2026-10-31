@@ -599,7 +599,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
     { key: 'sem_permissao' as const, label: 'Sem permissão', value: totalSemPermissao, icon: ShieldCheck, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'ativos sem acesso definido' },
     { key: 'ativo' as const, label: 'Ativos', value: totalAtivos, icon: CheckCircle, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'com acesso liberado' },
     { key: 'inativo' as const, label: 'Inativos', value: totalInativos, icon: UserX, color: 'text-muted-foreground', surface: 'bg-muted', escuro: false, caption: 'sem acesso ao sistema' },
-    { key: 'todos' as const, label: 'Total', value: funcionarios.length, icon: Users, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'toda a equipe' },
+    { key: 'todos' as const, label: 'Total', value: funcionarios.length, icon: Users, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'toda a equipe' },
   ];
 
   return (
@@ -641,10 +641,10 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
               aria-pressed={ativo}
               onClick={() => setFilterStatus(ind.key === 'todos' ? 'todos' : (ativo ? 'todos' : ind.key))}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 ind.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
+                ativo && !ind.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && ind.escuro && 'ring-2 ring-primary/60',
               )}
             >
               <div className="flex items-start justify-between gap-2 p-4">
@@ -670,12 +670,12 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
                 <Users className="h-4 w-4" />
               </span>
               Equipe
-              <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{filteredFuncionarios.length} de {funcionarios.length}</Badge>
+              <Badge variant="outline" className="rounded-full border-border text-primary">{filteredFuncionarios.length} de {funcionarios.length}</Badge>
             </CardTitle>
             <div className="flex items-center gap-2">
               <div className="relative w-full sm:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input aria-label="Buscar funcionários por nome ou e-mail" placeholder="Buscar por nome ou e-mail..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-10 focus-visible:ring-[#1080CA]" />
+                <Input aria-label="Buscar funcionários por nome ou e-mail" placeholder="Buscar por nome ou e-mail..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-10 focus-visible:ring-primary" />
               </div>
               {temFiltro && (
                 <Button variant="ghost" size="sm" className="h-10 shrink-0 gap-1.5 rounded-full text-muted-foreground" onClick={limparFiltros}>
@@ -780,7 +780,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
                                 <TooltipTrigger asChild>
                                   <span className="inline-flex" tabIndex={func.roles.length === 0 ? 0 : undefined}>
                                     <Button aria-label={func.roles.length > 0 ? 'Enviar convite por e-mail' : 'Defina uma função antes de enviar convite'} size="icon" variant="ghost" className="h-9 w-9 rounded-full" onClick={() => handleSendInvitation(func)} disabled={inviteMutation.isPending || func.roles.length === 0}>
-                                      {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-[#1080CA]" />}
+                                      {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-primary" />}
                                     </Button>
                                   </span>
                                 </TooltipTrigger>

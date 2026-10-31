@@ -20,7 +20,7 @@ const NotFound = () => {
         <div className="mb-4 bg-gradient-primary bg-clip-text text-7xl font-extrabold text-transparent sm:text-8xl">404</div>
         <h1 className="mb-2 text-2xl font-bold text-foreground">Página não encontrada</h1>
         <p className="mb-8 text-muted-foreground">
-          A página <code className="break-all rounded-full bg-[#EEF4FA] px-2 py-0.5 text-sm text-[#1080CA]">{location.pathname}</code> não existe ou foi removida.
+          A página <code className="break-all rounded-full bg-[#EEF4FA] px-2 py-0.5 text-sm text-primary">{location.pathname}</code> não existe ou foi removida.
           Confira o endereço ou siga por um dos caminhos abaixo.
         </p>
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">

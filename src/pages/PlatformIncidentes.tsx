@@ -228,7 +228,7 @@ export default function PlatformIncidentes() {
         <section aria-label="Linha do tempo do incidente" className="rounded-xl border border-border bg-card p-5">
           <h2 className="font-semibold">Linha do tempo</h2>
           {updates.isError ? <p role="alert" className="mt-3 text-sm text-destructive">Não foi possível carregar a linha do tempo. {mensagemDeErro(updates.error)}</p> : updates.isLoading ? <Skeleton className="mt-3 h-12 w-full" /> : incidentTimeline.length ? (
-            <ol className="mt-3 space-y-2">{incidentTimeline.map(update => <li key={update.id} className="rounded-lg border-l-2 border-[#BFD8EE] bg-[#F3F8FC] p-3"><div className="flex flex-wrap items-center justify-between gap-2">{update.status && <Badge variant="outline">{statusLabels[update.status]}</Badge>}<time className="text-xs text-muted-foreground">{dateTime(update.created_at)}</time></div><p className="mt-2 whitespace-pre-wrap text-sm">{update.message}</p></li>)}</ol>
+            <ol className="mt-3 space-y-2">{incidentTimeline.map(update => <li key={update.id} className="rounded-lg border-l-2 border-border bg-[#F3F8FC] p-3"><div className="flex flex-wrap items-center justify-between gap-2">{update.status && <Badge variant="outline">{statusLabels[update.status]}</Badge>}<time className="text-xs text-muted-foreground">{dateTime(update.created_at)}</time></div><p className="mt-2 whitespace-pre-wrap text-sm">{update.message}</p></li>)}</ol>
           ) : <p className="mt-3 text-sm text-muted-foreground">Nenhuma atualização registrada ainda.</p>}
           {updates.data?.length === 500 && <p role="status" className="mt-3 text-xs text-muted-foreground">O painel carrega os 500 eventos mais recentes da plataforma; registros mais antigos podem não aparecer.</p>}
         </section>
@@ -284,7 +284,7 @@ export default function PlatformIncidentes() {
               className={cn(
                 'flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 i === 0 && 'col-span-2 border-transparent bg-gradient-primary text-white sm:col-span-1',
-                filtro === f && 'ring-2 ring-[#1080CA]/40',
+                filtro === f && 'ring-2 ring-primary/40',
               )}
             >
               <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', cor)}><Icon className="h-5 w-5" /></span>
@@ -401,9 +401,9 @@ export default function PlatformIncidentes() {
                     ) : timeline.length ? (
                       <ol className="space-y-2">
                         {timeline.map((update) => (
-                          <li key={update.id} className="rounded-xl border-l-2 border-[#BFD8EE] bg-[#F3F8FC] p-3">
+                          <li key={update.id} className="rounded-xl border-l-2 border-border bg-[#F3F8FC] p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              {update.status && <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{statusLabels[update.status]}</Badge>}
+                              {update.status && <Badge variant="outline" className="rounded-full border-border text-primary">{statusLabels[update.status]}</Badge>}
                               <time className="text-xs text-muted-foreground">{dateTime(update.created_at)}</time>
                             </div>
                             <p className="mt-2 whitespace-pre-wrap text-sm">{update.message}</p>

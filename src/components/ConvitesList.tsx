@@ -284,7 +284,7 @@ export function ConvitesList() {
     { chave: 'pendente', label: 'Pendentes', value: pendentes, icon: Clock, color: 'text-white', surface: 'bg-white/15', escuro: true, caption: 'aguardando aceite' },
     { chave: 'aceito', label: 'Aceitos', value: aceitos, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'acesso liberado' },
     { chave: 'expirado', label: 'Expirados', value: expirados, icon: XCircle, color: 'text-destructive', surface: 'bg-destructive/10', escuro: false, caption: 'link vencido' },
-    { chave: 'todos', label: 'Total', value: invites.length, icon: Mail, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10', escuro: false, caption: 'todos os convites' },
+    { chave: 'todos', label: 'Total', value: invites.length, icon: Mail, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'todos os convites' },
   ];
   const descricaoHeader = invites.length === 0
     ? 'Acompanhe o acesso da equipe e mantenha os convites sob controle.'
@@ -347,10 +347,10 @@ export function ConvitesList() {
               aria-pressed={ativo}
               onClick={() => setFiltro(ind.chave === 'todos' ? 'todos' : (ativo ? 'todos' : ind.chave))}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 ind.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !ind.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && ind.escuro && 'ring-2 ring-[#1080CA]/60',
+                ativo && !ind.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && ind.escuro && 'ring-2 ring-primary/60',
               )}
             >
               <div className="flex items-start justify-between gap-2 p-4">
@@ -392,7 +392,7 @@ export function ConvitesList() {
               <Mail className="h-4 w-4" />
             </span>
             Convites enviados
-            <Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{visiveis.length} de {invites.length}</Badge>
+            <Badge variant="outline" className="rounded-full border-border text-primary">{visiveis.length} de {invites.length}</Badge>
           </CardTitle>
           <CardDescription>Acompanhe o status de cada convite, reenvie ou cancele.</CardDescription>
           {filtro !== 'todos' && (

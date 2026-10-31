@@ -15,7 +15,7 @@ export function HistoricoLancamentoButton({ lancamentoId, descricao, rotulos, re
   const returnTo = `${location.pathname}${location.search}`;
 
   return (
-    <Button asChild size="icon" variant="ghost" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10" aria-label={`Histórico de alterações de ${descricao || 'lançamento'}`} title="Histórico de alterações">
+    <Button asChild size="icon" variant="ghost" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10" aria-label={`Histórico de alterações de ${descricao || 'lançamento'}`} title="Histórico de alterações">
       <Link
         to={`/contas/pagar/${encodeURIComponent(lancamentoId)}/historico`}
         state={{

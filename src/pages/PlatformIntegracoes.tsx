@@ -65,19 +65,19 @@ export default function PlatformIntegracoes(){
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20"><Building2 className="h-5 w-5" /></span>
           <p className="mt-2 text-2xl font-bold tabular-nums">{total}</p><p className="text-[11px] text-white/75">Clínicas monitoradas</p>
         </button>
-        <button type="button" aria-pressed={onlyAlerts} onClick={() => setOnlyAlerts(true)} className={cn('rounded-2xl border bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', unhealthy ? 'border-destructive/40' : 'border-border/60', onlyAlerts && 'ring-2 ring-[#1080CA]/40')}>
+        <button type="button" aria-pressed={onlyAlerts} onClick={() => setOnlyAlerts(true)} className={cn('rounded-2xl border bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', unhealthy ? 'border-destructive/40' : 'border-border/60', onlyAlerts && 'ring-2 ring-primary/40')}>
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><AlertTriangle className="h-5 w-5" /></span>
           <p className={cn('mt-2 text-2xl font-bold tabular-nums', unhealthy > 0 && 'text-destructive')}>{unhealthy}</p><p className="text-[11px] text-muted-foreground">Alertas de integração</p>
         </button>
         <div className="col-span-2 rounded-2xl border border-border/60 bg-card p-4 shadow-xs md:col-span-1">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1080CA]/10 text-[#1080CA]"><Clock className="h-5 w-5" /></span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Clock className="h-5 w-5" /></span>
           <p className="mt-2 text-sm font-semibold">{last(query.data?.generated_at)}</p><p className="text-[11px] text-muted-foreground">Dados consolidados em</p>
         </div>
       </section>
 
       <Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><CardTitle>Status por clínica</CardTitle><CardDescription>O status reflete o último registro disponível no EloLab, não uma verificação ao vivo. “Sem uso” indica falta de evidência operacional e não conta como falha.</CardDescription></CardHeader><CardContent className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica" aria-label="Buscar clínica" /></div>
+          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-primary" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica" aria-label="Buscar clínica" /></div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" aria-pressed={onlyAlerts} onClick={() => setOnlyAlerts(v => !v)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', onlyAlerts ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-[#DCE6F2] bg-card hover:border-[#9CC7EC]')}>Somente com alerta</button>
             {filtered && <Button variant="outline" size="sm" className="rounded-full" onClick={() => { setSearch(''); setOnlyAlerts(false); }}>Limpar filtros</Button>}
@@ -89,7 +89,7 @@ export default function PlatformIntegracoes(){
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">{services.map(([label, key, Icon]) => {
             const state = clinic[key];
             const badge = badgeFor(state);
-            return <div key={key} className="rounded-xl bg-[#F3F8FC] p-3"><div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-sm font-medium"><Icon className="h-4 w-4 text-[#1080CA]" />{label}</span><Badge variant={badge.variant} className="rounded-full">{badge.label}</Badge></div><p className="mt-2 truncate text-xs text-muted-foreground">{state.status ? `Último estado: ${statusLabel(state.status)}` : `${state.total || 0} cadastrada(s)`}</p><p className="mt-1 text-[11px] text-muted-foreground">{last(state.last_activity)}</p></div>;
+            return <div key={key} className="rounded-xl bg-[#F3F8FC] p-3"><div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-sm font-medium"><Icon className="h-4 w-4 text-primary" />{label}</span><Badge variant={badge.variant} className="rounded-full">{badge.label}</Badge></div><p className="mt-2 truncate text-xs text-muted-foreground">{state.status ? `Último estado: ${statusLabel(state.status)}` : `${state.total || 0} cadastrada(s)`}</p><p className="mt-1 text-[11px] text-muted-foreground">{last(state.last_activity)}</p></div>;
           })}</div>
         </section>)}
         {!clinics.length && <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><PlugZap className="h-6 w-6" /></span><p className="text-sm text-muted-foreground">{search.trim() ? 'Nenhuma clínica corresponde à busca.' : onlyAlerts ? 'Nenhuma clínica com alerta de integração.' : 'Nenhuma clínica cadastrada para monitorar.'}</p>{filtered && <Button variant="outline" size="sm" className="rounded-full" onClick={() => { setSearch(''); setOnlyAlerts(false); }}>Limpar busca</Button>}</div>}

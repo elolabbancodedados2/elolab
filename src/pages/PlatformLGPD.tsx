@@ -299,14 +299,14 @@ export default function PlatformLGPD() {
           const alert = 'alert' in kpi && kpi.alert;
           const body = (
             <>
-              <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', main ? 'bg-white/20 text-white' : alert ? 'bg-destructive/10 text-destructive' : 'bg-[#1080CA]/10 text-[#1080CA]')}><Icon className="h-5 w-5" /></span>
+              <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', main ? 'bg-white/20 text-white' : alert ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary')}><Icon className="h-5 w-5" /></span>
               <p className={cn('mt-2 text-2xl font-bold tabular-nums', alert && 'text-destructive')}>{value}</p>
               <p className={cn('text-[11px]', main ? 'text-white/75' : 'text-muted-foreground')}>{kpi.label}</p>
             </>
           );
           const cls = cn('rounded-2xl border p-4 text-left shadow-xs', main ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card', alert && 'border-destructive/40');
           return kpi.filter ? (
-            <button key={kpi.label} type="button" aria-pressed={statusFilter === kpi.filter} onClick={() => setStatusFilter(kpi.filter)} className={cn(cls, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', statusFilter === kpi.filter && !main && 'ring-2 ring-[#1080CA]/40')}>{body}</button>
+            <button key={kpi.label} type="button" aria-pressed={statusFilter === kpi.filter} onClick={() => setStatusFilter(kpi.filter)} className={cn(cls, 'transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', statusFilter === kpi.filter && !main && 'ring-2 ring-primary/40')}>{body}</button>
           ) : <div key={kpi.label} className={cn(cls, 'col-span-2 md:col-span-1')}>{body}</div>;
         })}
       </section>
@@ -316,7 +316,7 @@ export default function PlatformLGPD() {
           <CardTitle>Solicitações de titulares</CardTitle>
           <CardDescription>{visibleCases.length} de {casos.data?.length ?? 0} solicitações carregadas. A decisão exige justificativa registrada no histórico; os pendentes com prazo mais próximo aparecem primeiro.</CardDescription>
           <div className="grid gap-2 pt-2 sm:grid-cols-[minmax(14rem,1fr)_12rem_auto] sm:items-center">
-            <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" value={caseSearch} onChange={(event) => setCaseSearch(event.target.value)} placeholder="Buscar clínica, titular ou justificativa" aria-label="Buscar solicitações LGPD" /></div>
+            <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-primary" value={caseSearch} onChange={(event) => setCaseSearch(event.target.value)} placeholder="Buscar clínica, titular ou justificativa" aria-label="Buscar solicitações LGPD" /></div>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as RequestStatus | 'all')}><SelectTrigger className="h-10 rounded-full" aria-label="Filtrar solicitações por status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os status</SelectItem><SelectItem value="pending">Pendentes</SelectItem><SelectItem value="fulfilled">Atendidas</SelectItem><SelectItem value="denied">Negadas</SelectItem></SelectContent></Select>
             {(caseSearch.trim() || statusFilter !== 'all') && <Button variant="outline" size="sm" className="rounded-full" onClick={() => { setCaseSearch(''); setStatusFilter('all'); }}>Limpar filtros</Button>}
           </div>
@@ -337,7 +337,7 @@ export default function PlatformLGPD() {
                   <Badge variant={caso.status === 'pending' ? vencido ? 'destructive' : 'secondary' : 'outline'} className="rounded-full">{STATUS_LABELS[caso.status] || caso.status}</Badge>
                   <p className="text-xs text-muted-foreground">{caso.status === 'pending' ? caso.base_legal || 'Base legal pendente' : `Atualizada em ${dateTime(caso.updated_at)}`}</p>
                 </div>
-                {caso.status === 'pending' ? <Button className="h-9 rounded-full bg-[#1080CA] text-xs text-white hover:bg-[#1080CA] hover:brightness-110" onClick={() => openDecision(caso)}>Registrar decisão</Button> : <span className="text-xs text-muted-foreground">Responsável: {caso.responsavel_id ? `${caso.responsavel_id.slice(0, 8)}…` : 'não registrado'}</span>}
+                {caso.status === 'pending' ? <Button className="h-9 rounded-full bg-primary text-xs text-white hover:bg-primary hover:brightness-110" onClick={() => openDecision(caso)}>Registrar decisão</Button> : <span className="text-xs text-muted-foreground">Responsável: {caso.responsavel_id ? `${caso.responsavel_id.slice(0, 8)}…` : 'não registrado'}</span>}
                 {caso.evidencia && <p className="md:col-span-4 whitespace-pre-wrap rounded-lg bg-[#F3F8FC] p-2 text-xs">Registro: {caso.evidencia}</p>}
               </article>
             );
@@ -366,7 +366,7 @@ export default function PlatformLGPD() {
           {politicas.isLoading ? <div className="space-y-2">{[1, 2].map((item) => <Skeleton key={item} className="h-16 w-full rounded-xl" />)}</div> : politicas.data?.map((politica) => (
             <div key={politica.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3">
               <div className="min-w-0"><p className="font-medium">{politica.categoria}</p><p className="text-xs text-muted-foreground">{politica.base_legal}</p></div>
-              <div className="flex items-center gap-2"><Badge variant={politica.ativo ? 'outline' : 'secondary'} className="rounded-full">{politica.ativo ? 'Ativa' : 'Inativa'}</Badge><Badge variant="outline" className="rounded-full border-[#BFD8EE] text-[#1080CA]">{politica.retencao_meses} meses</Badge></div>
+              <div className="flex items-center gap-2"><Badge variant={politica.ativo ? 'outline' : 'secondary'} className="rounded-full">{politica.ativo ? 'Ativa' : 'Inativa'}</Badge><Badge variant="outline" className="rounded-full border-border text-primary">{politica.retencao_meses} meses</Badge></div>
             </div>
           ))}
           {politicas.data?.length === 0 && <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma política cadastrada. Use o formulário acima para adicionar a primeira.</p>}

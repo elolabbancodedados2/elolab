@@ -543,7 +543,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
   const getTipoLabel = (tipo: string | null) => TIPOS_ATESTADO.find(t => t.value === tipo)?.label || tipo;
   const getTipoBadge = (tipo: string | null) => {
     switch (tipo) {
-      case 'comparecimento': return 'border-[#BFD8EE] bg-[#EEF4FA] text-[#1080CA]';
+      case 'comparecimento': return 'border-border bg-[#EEF4FA] text-primary';
       case 'afastamento': return 'border-warning/30 bg-warning/10 text-warning';
       case 'aptidao': return 'border-success/30 bg-success/10 text-success';
       case 'acompanhante': return 'border-border bg-muted text-foreground';
@@ -632,8 +632,8 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
             label: tipo.label.replace(/^(Atestado|Declaração) (de |Médico )?/, '').replace(/^\((.*)\)$/, '$1'),
             value: stats.porTipo[tipo.value] ?? 0,
             caption: tipo.value === 'afastamento' && stats.vigentes > 0 ? `${stats.vigentes} em vigor` : 'emitidos',
-            color: tipo.value === 'afastamento' ? 'text-warning' : tipo.value === 'aptidao' ? 'text-success' : tipo.value === 'comparecimento' ? 'text-[#1080CA]' : 'text-foreground',
-            surface: tipo.value === 'afastamento' ? 'bg-warning/10' : tipo.value === 'aptidao' ? 'bg-success/10' : tipo.value === 'comparecimento' ? 'bg-[#1080CA]/10' : 'bg-muted',
+            color: tipo.value === 'afastamento' ? 'text-warning' : tipo.value === 'aptidao' ? 'text-success' : tipo.value === 'comparecimento' ? 'text-primary' : 'text-foreground',
+            surface: tipo.value === 'afastamento' ? 'bg-warning/10' : tipo.value === 'aptidao' ? 'bg-success/10' : tipo.value === 'comparecimento' ? 'bg-primary/10' : 'bg-muted',
             escuro: false,
           })),
         ]).map(s => {
@@ -650,10 +650,10 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
               aria-pressed={ativo}
               onClick={alternar}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 s.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && s.escuro && 'ring-2 ring-primary/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -686,7 +686,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                   placeholder="Buscar por nome, CPF ou telefone..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  className="h-10 rounded-full pl-9 focus-visible:ring-primary"
                 />
               </div>
             </div>
@@ -707,7 +707,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                       aria-pressed={ativo}
                       onClick={() => setPeriodoFiltro(opt.key)}
                       className={cn(
-                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                       )}
                     >
@@ -716,13 +716,13 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                   );
                 })}
                 {pacienteFiltroId && (
-                  <Badge variant="outline" className="h-8 gap-1 rounded-full border-[#BFD8EE] pl-3 pr-1 text-xs font-medium text-[#1080CA]">
+                  <Badge variant="outline" className="h-8 gap-1 rounded-full border-border pl-3 pr-1 text-xs font-medium text-primary">
                     Paciente: {pacienteFiltroNome}
                     <button
                       type="button"
                       onClick={limparPacienteFiltro}
                       aria-label="Remover filtro de paciente"
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-[#1080CA]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <X aria-hidden="true" className="h-3 w-3" />
                     </button>
@@ -808,7 +808,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                         <TableCell className="text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1">
                             {whatsapp && (
-                              <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

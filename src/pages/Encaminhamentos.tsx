@@ -366,10 +366,10 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
               aria-pressed={ativo}
               onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 s.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !s.escuro && 'border-[#1080CA]/50 ring-1 ring-[#1080CA]/30',
-                ativo && s.escuro && 'ring-2 ring-[#1080CA]/60',
+                ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && s.escuro && 'ring-2 ring-primary/60',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -396,7 +396,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
         <Card className="rounded-2xl border-border/60 shadow-xs lg:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <User className="h-4 w-4 text-[#1080CA]" />
+              <User className="h-4 w-4 text-primary" />
               Pacientes
             </CardTitle>
             <div className="relative">
@@ -406,7 +406,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                 placeholder="Buscar por nome, CPF ou telefone..."
                 value={patientSearchTerm}
                 onChange={(e) => setPatientSearchTerm(e.target.value)}
-                className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                className="h-10 rounded-full pl-9 focus-visible:ring-primary"
               />
             </div>
           </CardHeader>
@@ -429,8 +429,8 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                   <div
                     key={paciente.id}
                     className={cn(
-                      'p-3 border-b cursor-pointer hover:bg-[#F3F8FC]/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1080CA]',
-                      selectedPacienteId === paciente.id && 'bg-[#1080CA]/10 border-l-2 border-l-[#1080CA]',
+                      'p-3 border-b cursor-pointer hover:bg-[#F3F8FC]/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                      selectedPacienteId === paciente.id && 'bg-primary/10 border-l-2 border-l-primary',
                     )}
                     role="button"
                     tabIndex={0}
@@ -490,7 +490,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardContent className={cn('text-center', medicoId ? 'py-16' : 'py-8')}>
                 <div className="text-center text-muted-foreground">
-                  <ArrowRightLeft aria-hidden="true" className="mx-auto mb-3 h-10 w-10 text-[#1080CA] opacity-40" />
+                  <ArrowRightLeft aria-hidden="true" className="mx-auto mb-3 h-10 w-10 text-primary opacity-40" />
                   <p className="font-medium">
                     {!medicoId
                       ? 'Seu usuário não está vinculado a um cadastro médico ativo. Um médico identificado precisa constar como origem do encaminhamento.'
@@ -524,7 +524,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                   placeholder="Paciente, CPF, especialidade ou motivo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                  className="h-10 rounded-full pl-9 focus-visible:ring-primary"
                 />
               </div>
             </div>
@@ -545,7 +545,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                       aria-pressed={ativo}
                       onClick={() => setStatusFilter(opt.key)}
                       className={cn(
-                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA]',
+                        'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
                       )}
                     >
@@ -634,7 +634,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                         <TableCell className="text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1">
                             {whatsapp && (
-                              <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-[#1080CA] hover:bg-[#1080CA]/10 hover:text-[#1080CA]">
+                              <Button aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Avisar ${nomePaciente} pelo WhatsApp`} title="Avisar pelo WhatsApp">
                                   <MessageCircle className="h-4 w-4" />
                                 </a>

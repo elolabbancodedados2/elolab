@@ -207,8 +207,8 @@ export default function PlatformComunicacao() {
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   highlight && 'border-transparent bg-gradient-primary text-white',
-                  statusFilter === value && !highlight && 'border-[#1080CA] ring-1 ring-[#1080CA]/30',
-                  statusFilter === value && highlight && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                  statusFilter === value && !highlight && 'border-primary ring-1 ring-primary/30',
+                  statusFilter === value && highlight && 'ring-2 ring-primary/40 ring-offset-2',
                 )}
               >
                 <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : color)}><Icon className="h-5 w-5" /></span>
@@ -310,13 +310,13 @@ export default function PlatformComunicacao() {
             </div>
           ) : history.length ? (
             visibleHistory.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-[#BFD8EE] p-6 text-center text-sm text-muted-foreground">Nenhum comunicado com este status.</p>
+              <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nenhum comunicado com este status.</p>
             ) : visibleHistory.map((item) => {
               const starts = dateTime(item.inicia_em);
               const ends = dateTime(item.termina_em);
               const { isScheduled, isActive, status } = statusOf(item, now);
               return (
-                <article key={item.id} className={cn('rounded-xl border border-border/60 p-4', isActive && 'border-[#BFD8EE] bg-[#F3F8FC]')}>
+                <article key={item.id} className={cn('rounded-xl border border-border/60 p-4', isActive && 'border-border bg-[#F3F8FC]')}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="font-semibold">{item.titulo}</h2>
@@ -324,7 +324,7 @@ export default function PlatformComunicacao() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={item.tipo === 'critico' ? 'destructive' : item.tipo === 'atencao' ? 'secondary' : 'outline'} className="rounded-full">{typeLabels[item.tipo] || item.tipo}</Badge>
-                      <Badge variant="outline" className={cn('rounded-full', status === 'Publicado' && 'border-transparent bg-gradient-primary text-white', status === 'Programado' && 'border-[#BFD8EE] text-[#1080CA]')}>{status}</Badge>
+                      <Badge variant="outline" className={cn('rounded-full', status === 'Publicado' && 'border-transparent bg-gradient-primary text-white', status === 'Programado' && 'border-border text-primary')}>{status}</Badge>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -340,7 +340,7 @@ export default function PlatformComunicacao() {
               );
             })
           ) : (
-            <div className="flex flex-col items-center rounded-xl border border-dashed border-[#BFD8EE] p-8 text-center">
+            <div className="flex flex-col items-center rounded-xl border border-dashed border-border p-8 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Megaphone className="h-6 w-6" /></span>
               <p className="mt-3 font-medium text-foreground">Nenhum comunicado ainda</p>
               <p className="mt-1 text-sm text-muted-foreground">Os avisos publicados aparecerão nesta lista. Use o formulário acima para enviar o primeiro.</p>

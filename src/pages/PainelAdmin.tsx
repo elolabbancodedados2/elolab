@@ -146,7 +146,7 @@ export default function PainelAdmin() {
                     )}>{value}</p>
                     <p className={cn('mt-1 text-xs', dark ? 'text-white/60' : 'text-muted-foreground')}>{detail}</p>
                   </div>
-                  <span className={cn('rounded-xl p-2.5', dark ? 'bg-white/20 text-white' : 'bg-[#1080CA]/10 text-[#1080CA]')}>
+                  <span className={cn('rounded-xl p-2.5', dark ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary')}>
                     <Icon className="h-5 w-5" />
                   </span>
                 </CardContent>
@@ -166,7 +166,7 @@ export default function PainelAdmin() {
             <Link
               key={title}
               to={href}
-              className="group inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium shadow-xs transition-colors hover:border-[#1080CA]/40 hover:text-[#1080CA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium shadow-xs transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Icon className="h-4 w-4" />
               {title}
@@ -187,7 +187,7 @@ export default function PainelAdmin() {
               {data.top_clients.slice(0, 5).map((client) => {
                 const semUso = client.dias_sem_uso === null || client.dias_sem_uso >= 14;
                 return (
-                  <Link key={client.clinica_id} to={`/admin/crm?busca=${encodeURIComponent(client.clinica_nome)}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#1080CA]/30 hover:bg-muted/40">
+                  <Link key={client.clinica_id} to={`/admin/crm?busca=${encodeURIComponent(client.clinica_nome)}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-primary/30 hover:bg-muted/40">
                     <div className="min-w-0"><p className="truncate font-medium">{client.clinica_nome}</p><p className="text-xs text-muted-foreground">{client.plano_nome || 'Sem plano'} · {client.total_pacientes} pacientes</p></div>
                     <div className="flex items-center gap-3"><span className="text-sm text-muted-foreground">{client.dias_sem_uso === null ? 'Sem atividade' : semUso ? `${client.dias_sem_uso} dias sem uso` : `Ativa há ${client.dias_sem_uso} dias`}</span><Badge variant={semUso ? 'secondary' : 'outline'} className="rounded-full">{semUso ? 'Acompanhar' : 'Ativa'}</Badge></div>
                   </Link>
@@ -200,7 +200,7 @@ export default function PainelAdmin() {
           <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader><CardTitle>Atendimento ao cliente</CardTitle><CardDescription>Solicitações que precisam de acompanhamento.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Solicitações em aberto</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.abertos}</p></div><Headset className="h-5 w-5 text-[#1080CA]" /></div>
+              <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Solicitações em aberto</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.abertos}</p></div><Headset className="h-5 w-5 text-primary" /></div>
               <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><p className="text-sm text-muted-foreground">Fora do prazo de resposta</p><p className="mt-1 text-2xl font-semibold tabular-nums">{data.support.sla_vencido}</p></div><Badge variant={data.support.sla_vencido ? 'destructive' : 'outline'} className="rounded-full">{data.support.sla_vencido ? 'Prioridade' : 'Em dia'}</Badge></div>
               <Button asChild className="w-full rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,128,202,0.35)] hover:brightness-110"><Link to="/admin/suporte">Abrir central de suporte<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
             </CardContent>

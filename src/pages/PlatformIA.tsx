@@ -165,7 +165,7 @@ export default function PlatformIA() {
   const summary = usage.data;
   const stats = useMemo(() => [
     { label: 'Requisições no mês', value: formatNumber(summary?.requests), icon: Zap, color: '', detail: 'chamadas ao assistente' },
-    { label: 'Tokens no mês', value: formatNumber(summary?.total_tokens), icon: Sparkles, color: 'bg-[#1080CA]/10 text-[#1080CA]', detail: `${formatNumber(summary?.input_tokens)} entrada · ${formatNumber(summary?.output_tokens)} saída` },
+    { label: 'Tokens no mês', value: formatNumber(summary?.total_tokens), icon: Sparkles, color: 'bg-primary/10 text-primary', detail: `${formatNumber(summary?.input_tokens)} entrada · ${formatNumber(summary?.output_tokens)} saída` },
     { label: 'Falhas no mês', value: formatNumber(summary?.failed_requests), icon: AlertTriangle, color: summary?.failed_requests ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success', detail: summary?.requests ? `${((summary.failed_requests / summary.requests) * 100).toFixed(1)}% das requisições` : 'sem requisições no mês' },
     { label: 'Custo estimado registrado', value: `US$ ${Number(summary?.estimated_cost || 0).toFixed(4)}`, icon: Coins, color: 'bg-warning/10 text-warning', detail: 'estimativa do aplicativo' },
   ], [summary]);
@@ -234,7 +234,7 @@ export default function PlatformIA() {
             <p className="mt-1 text-sm text-muted-foreground">Seu rascunho continua nesta tela. Escolha carregar a versão {versionConflict.versao} ou revisar seu rascunho antes de reaplicá-lo.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setDraft(toDraft(versionConflict)); setVersionConflict(null); }}>Carregar versão {versionConflict.versao}</Button>
-              <Button size="sm" className="rounded-full bg-[#1080CA] text-white hover:brightness-110" onClick={() => { setDraft((current) => current ? { ...current, baseVersion: versionConflict.versao } : toDraft(versionConflict)); setVersionConflict(null); toast.warning('Rascunho mantido', { description: 'Revise os campos antes de publicar sobre a versão atual.' }); }}>Manter meu rascunho</Button>
+              <Button size="sm" className="rounded-full bg-primary text-white hover:brightness-110" onClick={() => { setDraft((current) => current ? { ...current, baseVersion: versionConflict.versao } : toDraft(versionConflict)); setVersionConflict(null); toast.warning('Rascunho mantido', { description: 'Revise os campos antes de publicar sobre a versão atual.' }); }}>Manter meu rascunho</Button>
             </div>
           </div>}
           <CardHeader>
@@ -312,7 +312,7 @@ export default function PlatformIA() {
           ) : versions.data?.length ? versions.data.map((version) => {
             const current = version.versao === config.data?.versao;
             return (
-              <div key={version.id} className={cn('flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3', current && 'border-[#BFD8EE] bg-[#F3F8FC]')}>
+              <div key={version.id} className={cn('flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3', current && 'border-border bg-[#F3F8FC]')}>
                 <div>
                   <p className="flex flex-wrap items-center gap-2 font-medium">Versão {version.versao} · {version.modelo}{current && <Badge className="rounded-full border-transparent bg-gradient-primary text-white">Em uso</Badge>}</p>
                   <p className="text-xs text-muted-foreground">Publicada em {formatDate(version.created_at)}</p>
@@ -323,7 +323,7 @@ export default function PlatformIA() {
               </div>
             );
           }) : (
-            <p className="rounded-xl border border-dashed border-[#BFD8EE] p-6 text-center text-sm text-muted-foreground">Ainda não há versões publicadas no histórico. Publique a configuração acima para criar a primeira.</p>
+            <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Ainda não há versões publicadas no histórico. Publique a configuração acima para criar a primeira.</p>
           )}
         </CardContent>
       </Card>

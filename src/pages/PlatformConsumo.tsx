@@ -315,8 +315,8 @@ export default function PlatformConsumo() {
                   className={cn(
                     'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     highlight && 'border-transparent bg-gradient-primary text-white',
-                    filtro === value && !highlight && 'border-[#1080CA] ring-1 ring-[#1080CA]/30',
-                    filtro === value && highlight && 'ring-2 ring-[#1080CA]/40 ring-offset-2',
+                    filtro === value && !highlight && 'border-primary ring-1 ring-primary/30',
+                    filtro === value && highlight && 'ring-2 ring-primary/40 ring-offset-2',
                   )}
                 >
                   <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', highlight ? 'bg-white/20 text-white' : color)}><Icon className="h-5 w-5" /></span>
@@ -331,7 +331,7 @@ export default function PlatformConsumo() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar clínica" aria-label="Buscar clínica" className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]" />
+              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar clínica" aria-label="Buscar clínica" className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
             </div>
             {hasFilter && <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={clearFilters}>Limpar filtros</Button>}
             <p className="text-xs text-muted-foreground sm:ml-auto" aria-live="polite">{visibleClinics.length} de {clinics.length}</p>

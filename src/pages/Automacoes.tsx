@@ -518,7 +518,7 @@ export default function Automacoes() {
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {[
             { key: 'fila', label: 'Na fila de envio', value: filaPendenteCount, icon: ListChecks, escuro: true, color: '', bg: '' },
-            { key: 'automacoes', label: 'Automações ativas', value: automacoesAtivasCount, icon: Bot, escuro: false, color: 'text-[#1080CA]', bg: 'bg-[#1080CA]/10' },
+            { key: 'automacoes', label: 'Automações ativas', value: automacoesAtivasCount, icon: Bot, escuro: false, color: 'text-primary', bg: 'bg-primary/10' },
             { key: 'logs', label: 'Falhas nos logs', value: logsComErroCount, icon: AlertTriangle, escuro: false, color: 'text-warning', bg: 'bg-warning/10' },
             { key: 'erros-app', label: 'Erros do navegador', value: errosAppCount, icon: XCircle, escuro: false, color: 'text-destructive', bg: 'bg-destructive/10' },
           ].map((indicator) => {
@@ -531,10 +531,10 @@ export default function Automacoes() {
                 aria-pressed={isActive}
                 onClick={() => changeTab(indicator.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
+                  'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
                   indicator.escuro && 'border-transparent bg-gradient-primary text-white',
-                  !indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
-                  indicator.escuro && isActive && 'ring-2 ring-[#1080CA]',
+                  !indicator.escuro && isActive && 'ring-2 ring-primary',
+                  indicator.escuro && isActive && 'ring-2 ring-primary',
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -741,8 +741,8 @@ export default function Automacoes() {
                   aria-pressed={isActive}
                   onClick={() => setFilaStatusFilter(current => current === status ? 'todos' : String(status))}
                   className={cn(
-                    'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1080CA] focus-visible:ring-offset-2',
-                    isActive && 'ring-2 ring-[#1080CA]',
+                    'rounded-2xl border border-border/60 bg-card p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                    isActive && 'ring-2 ring-primary',
                   )}
                 >
                   <div className="flex items-center justify-between">
@@ -783,7 +783,7 @@ export default function Automacoes() {
                     placeholder="Buscar por destinatário..."
                     value={filaSearch}
                     onChange={(event) => setFilaSearch(event.target.value)}
-                    className="h-10 rounded-full pl-9 focus-visible:ring-[#1080CA]"
+                    className="h-10 rounded-full pl-9 focus-visible:ring-primary"
                   />
                 </div>
                 {filaTemFiltro && (

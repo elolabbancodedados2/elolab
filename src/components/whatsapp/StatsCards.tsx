@@ -11,9 +11,9 @@ export function StatsCards({ sessions, stats }: StatsCardsProps) {
   const activeSessions = sessions.filter(s => s.status === 'connected').length;
   const cards = [
     { label: 'Sessões Ativas', value: activeSessions, icon: Smartphone, color: 'text-white', surface: 'bg-white/20', destaque: true },
-    { label: 'Mensagens Hoje', value: stats?.messages, icon: MessageSquare, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
+    { label: 'Mensagens Hoje', value: stats?.messages, icon: MessageSquare, color: 'text-primary', surface: 'bg-primary/10' },
     { label: 'Conversas Hoje', value: stats?.conversations, icon: Users, color: 'text-info', surface: 'bg-info/10' },
-    { label: 'Ações do Agente Hoje', value: stats?.actions, icon: Activity, color: 'text-[#1080CA]', surface: 'bg-[#1080CA]/10' },
+    { label: 'Ações do Agente Hoje', value: stats?.actions, icon: Activity, color: 'text-primary', surface: 'bg-primary/10' },
     { label: 'Agendamentos pela IA hoje', value: stats?.ai_bookings, icon: CalendarPlus, color: 'text-success', surface: 'bg-success/10' },
     { label: 'Confirmadas na agenda hoje', value: stats?.confirmed_today, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10' },
     { label: 'Faltas na agenda hoje', value: stats?.no_shows_today, icon: UserX, color: 'text-warning', surface: 'bg-warning/10' },
