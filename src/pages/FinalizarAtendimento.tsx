@@ -146,6 +146,33 @@ export default function FinalizarAtendimento() {
     },
   });
   const evolucoes = evolucaoQuery.data;
+
+  // Retorno já registrado no prontuário para este atendimento: a finalização
+  // não cria outro (o RPC reaproveita o retorno com o mesmo agendamento).
+  const retornoQuery = useQuery({
+    queryKey: ['atendimento-finalizacao-retorno', clinicaId, agendamentoId],
+    enabled: Boolean(clinicaId && agendamentoId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('retornos')
+        .select('id, data_retorno_prevista')
+        .eq('clinica_id', clinicaId!)
+        .eq('agendamento_id', agendamentoId)
+        .neq('status', 'cancelado')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null; // perfil sem leitura de retornos: segue como antes
+      return data;
+    },
+  });
+  const retornoExistente = retornoQuery.data ?? null;
+  const dataRetornoExistente = retornoExistente?.data_retorno_prevista && parseDateOnly(retornoExistente.data_retorno_prevista)
+    ? formatWithDatePreference(parseDateOnly(retornoExistente.data_retorno_prevista)!, 'dd/MM/yyyy', { locale: ptBR })
+    : null;
+  useEffect(() => {
+    if (retornoExistente) setRetornoSelecionado(atual => atual || 'sem-retorno');
+  }, [retornoExistente]);
   const semEvolucao = podeVerEvolucao && !!evolucoes && evolucoes.length === 0;
   const evolucaoEmRascunho = podeVerEvolucao && !!evolucoes?.length && !evolucoes.some(e => e.assinado);
 
@@ -304,6 +331,12 @@ export default function FinalizarAtendimento() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-5">
+                  {retornoExistente && (
+                    <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                      <span className="font-medium">Retorno já registrado{dataRetornoExistente ? ` para ${dataRetornoExistente}` : ''}.</span>{' '}
+                      <span className="text-muted-foreground">A finalização não cria outro.</span>
+                    </p>
+                  )}
                   <fieldset disabled={salvando}>
                     <legend className="mb-3 text-sm font-medium">Escolha o prazo ou marque sem retorno</legend>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

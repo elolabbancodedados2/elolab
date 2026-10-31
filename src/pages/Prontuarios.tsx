@@ -3,7 +3,7 @@ import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Search, FileText, Plus, Save, CalendarCheck, FileDown, History, Loader2, RefreshCw,
+  Search, FileText, Plus, Save, CheckCircle2, CalendarCheck, FileDown, History, Loader2, RefreshCw,
   Heart, Thermometer, Activity, Scale, Ruler, Droplets,
   Stethoscope, Brain, Bone, Eye as EyeIcon, Pill, Paperclip,
   ClipboardList, AlertTriangle, User, Clock, ChevronDown, ChevronRight,
@@ -83,6 +83,12 @@ interface RascunhoNaFila {
   assinado: boolean | null;
   pacientes?: { nome?: string | null; nome_social?: string | null } | Array<{ nome?: string | null; nome_social?: string | null }> | null;
   [key: string]: unknown;
+}
+
+// Telas do fluxo do dia para onde o prontuário pode devolver o usuário.
+const ROTAS_OPERACIONAIS = ['/fila', '/recepcao', '/agenda'];
+function rotaOperacional(valor: unknown): valor is string {
+  return typeof valor === 'string' && ROTAS_OPERACIONAIS.some(rota => valor === rota || valor.startsWith(`${rota}?`));
 }
 
 interface ContextoAgendamentoProntuario {
@@ -1018,7 +1024,7 @@ export default function Prontuarios() {
       if (telaProntuario === 'anexo-portal' && routeAnexoId) params.set('anexo', routeAnexoId);
     }
     const routeState = location.state as { returnTo?: unknown } | null;
-    const returnTo = isEvolucaoWorkspace && typeof routeState?.returnTo === 'string'
+    const returnTo = (isEvolucaoWorkspace || rotaOperacional(routeState?.returnTo)) && typeof routeState?.returnTo === 'string'
       ? routeState.returnTo
       : `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`;
     navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo, ...(contexto ? { contextoAgendamento: contexto } : {}) } });
@@ -1833,6 +1839,31 @@ export default function Prontuarios() {
     params.set('paciente', selectedPaciente.id);
     navigateAfterEvolucao(`/prontuarios/retornos/novo?${params.toString()}`);
   };
+  // Salva a evolução e segue para a finalização do atendimento ligado a ela,
+  // sem o médico precisar voltar à Fila.
+  const handleSalvarEFinalizar = async () => {
+    const agendamentoId = currentProntuario.agendamento_id as string | null;
+    if (salvandoProntuario || !agendamentoId) return;
+    const versaoAntesDeSalvar = changeVersionRef.current;
+    setSalvandoProntuario(true);
+    try {
+      const id = await performSave(true);
+      if (!id) return;
+      if (changeVersionRef.current !== versaoAntesDeSalvar) {
+        toast.warning('O prontuário foi salvo, mas houve novas alterações.', {
+          description: 'Revise e salve novamente antes de finalizar.',
+        });
+        return;
+      }
+      const routeState = location.state as { returnTo?: unknown } | null;
+      const voltarPara = rotaOperacional(routeState?.returnTo) ? routeState.returnTo : '/fila';
+      const origem = voltarPara.startsWith('/recepcao') ? 'recepcao' : voltarPara.startsWith('/agenda') ? 'agenda' : 'fila';
+      navigationAllowedRef.current = true;
+      navigate(`/atendimentos/${encodeURIComponent(agendamentoId)}/finalizar?origem=${origem}`, { state: { returnTo: voltarPara } });
+    } finally {
+      setSalvandoProntuario(false);
+    }
+  };
   const handleSave = async () => {
     if (salvandoProntuario) return;
     const versaoAntesDeSalvar = changeVersionRef.current;
@@ -1968,7 +1999,7 @@ export default function Prontuarios() {
   // ─── Exam solicitation ───
   const handleSolicitarExame = () => {
     if (!currentProntuario.id || !medicoId || !selectedPacienteId) {
-      toast.error('N?o foi poss?vel identificar o paciente, o m?dico ou salvar a evolu??o antes de solicitar exames.');
+      toast.error('Não foi possível identificar o paciente, o médico ou salvar a evolução antes de solicitar exames.');
       return;
     }
     const params = new URLSearchParams({
@@ -2827,6 +2858,7 @@ export default function Prontuarios() {
               {!isReadOnly && (
                 <AtalhosDocumentos
                   pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
+                  prontuarioId={currentProntuario.id ?? null}
                   onReceita={() => changeProntuarioSection('prescricao')}
                 />
               )}
@@ -3293,6 +3325,9 @@ export default function Prontuarios() {
                   <TestTube className="h-3.5 w-3.5" />Solicitar Exame
                 </Button>
                 <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="rounded-xl text-xs">Cancelar</Button>
+                {!isReadOnly && currentProntuario.agendamento_id && (
+                  <Button variant="outline" onClick={() => { void handleSalvarEFinalizar(); }} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />Salvar e finalizar</Button>
+                )}
                 {!isReadOnly && (
                   <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
                 )}

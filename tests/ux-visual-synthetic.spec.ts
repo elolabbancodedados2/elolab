@@ -2300,6 +2300,7 @@ test('reception check-in keeps context through queue triage and applies the clin
   await expect(prontuarioWorkspace.getByText('Ana Souza', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(startPayload).toEqual({ p_agendamento_id: appointmentId, p_fila_id: queueId });
+  await expect(prontuarioWorkspace.getByRole('button', { name: 'Salvar e finalizar' })).toBeVisible();
   const faixaTriagem = prontuarioWorkspace.getByRole('button', { name: /^Triagem \d{2}:\d{2}: PA 120\/80 mmHg/ });
   await expect(faixaTriagem).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-queue-clinical-handoff-1280.png'), animations: 'disabled' });
