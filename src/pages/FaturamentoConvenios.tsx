@@ -263,9 +263,9 @@ export default function FaturamentoConvenios() {
     {convenios.length === 0 && <p role="status" className="rounded-2xl border border-[#DCE6F2] bg-[#F3F8FC] p-3 text-sm text-muted-foreground">Cadastre e ative um <Link to="/convenios" className="font-medium text-primary underline underline-offset-4">convênio</Link> para criar lotes TISS. Registre glosas depois de marcar um lote como enviado.</p>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
       { label: 'Apresentado', legenda: 'lotes enviados à operadora', value: resumo.apresentado, icon: FileStack, cor: '' },
-      { label: 'Pago', legenda: 'recebido das operadoras', value: resumo.pago, icon: BadgeCheck, cor: 'bg-success/10 text-success' },
+      { label: 'Pago', legenda: 'recebido das operadoras', value: resumo.pago, icon: BadgeCheck, cor: 'bg-secondary text-foreground' },
       { label: 'Glosado', legenda: 'glosas não canceladas', value: resumo.glosado, icon: AlertTriangle, cor: 'bg-destructive/10 text-destructive' },
-      { label: 'Recuperado', legenda: 'revertido em recurso', value: resumo.recuperado, icon: RotateCcw, cor: 'bg-info/10 text-info' },
+      { label: 'Recuperado', legenda: 'revertido em recurso', value: resumo.recuperado, icon: RotateCcw, cor: 'bg-secondary text-foreground' },
     ].map(({ label, legenda, value, icon: Icon, cor }) => {
       const destaque = label === 'Apresentado';
       return <Card key={label} className={cn('h-full rounded-2xl shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card')}><CardContent className="flex items-center gap-3 p-4"><span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}><Icon className="h-5 w-5" /></span><div className="min-w-0"><p className="truncate text-lg font-bold tabular-nums sm:text-2xl">{brl(value)}</p><p className={cn('text-[11px]', destaque ? 'text-white/80' : 'text-muted-foreground')}>{label} · {legenda}</p></div></CardContent></Card>;
