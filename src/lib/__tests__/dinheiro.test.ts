@@ -92,3 +92,34 @@ describe('arredondarReais', () => {
     expect(arredondarReais(10.005)).toBe(10.01);
   });
 });
+
+describe('parseMoneyInput', () => {
+  it('aceita formato brasileiro e decimal', async () => {
+    const { parseMoneyInput } = await import('@/lib/dinheiro');
+    expect(parseMoneyInput('1.234,56')).toBe(1234.56);
+    expect(parseMoneyInput('1234,5')).toBe(1234.5);
+    expect(parseMoneyInput('99.90')).toBe(99.9);
+    expect(parseMoneyInput(' 10 ')).toBe(10);
+  });
+
+  it('recusa vazio, letras, negativos e mais de duas casas', async () => {
+    const { parseMoneyInput } = await import('@/lib/dinheiro');
+    expect(parseMoneyInput('')).toBeNull();
+    expect(parseMoneyInput('abc')).toBeNull();
+    expect(parseMoneyInput('-5')).toBeNull();
+    expect(parseMoneyInput('1,234')).toBeNull();
+  });
+});
+
+describe('valorPorExtenso', () => {
+  it('escreve reais e centavos', async () => {
+    const { valorPorExtenso } = await import('@/lib/dinheiro');
+    expect(valorPorExtenso(1)).toBe('um real');
+    expect(valorPorExtenso(0.5)).toBe('cinquenta centavos');
+    expect(valorPorExtenso(100)).toBe('cem reais');
+    expect(valorPorExtenso(150.75)).toBe('cento e cinquenta reais e setenta e cinco centavos');
+    expect(valorPorExtenso(1234.56)).toBe('mil duzentos e trinta e quatro reais e cinquenta e seis centavos');
+    expect(valorPorExtenso(1100)).toBe('mil e cem reais');
+    expect(valorPorExtenso(2000000)).toBe('dois milhões de reais');
+  });
+});
