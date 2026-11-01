@@ -12,9 +12,12 @@ import {
   ShieldCheck, BookOpen, FileCheck, Brain, Bone, Eye as EyeIcon,
   Thermometer, Scale, Ruler, Paperclip, Shield, Clipboard,
   Clock, TestTube, DollarSign, CalendarPlus, RefreshCw, Wallet,
-  FileSpreadsheet, MessageCircle, GitMerge,
+  FileSpreadsheet, GitMerge, EyeOff, Printer, Power,
 } from 'lucide-react';
-import { linkWhatsApp } from '@/lib/whatsapp';
+import { WhatsAppModelosMenu } from '@/components/patients/WhatsAppModelosMenu';
+import { DocumentosDoPaciente } from '@/components/patients/DocumentosDoPaciente';
+import { gerarFichaPacientePDF } from '@/lib/pdfPacientes';
+import { TERMO_LGPD } from '@/lib/patientConsent';
 import { addDays, subYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
@@ -59,6 +62,12 @@ import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/li
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { isPatientTimelineSummaryNavigation } from '@/lib/patientTimelineSummaryNavigation';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
+import { formatCsvCell } from '@/lib/csv';
+import {
+  TIPOS_AGENDAMENTO, cpfMascarado, diferencasCadastro, duracaoDoTipo, formatarCpf, juntarLista, nomesDoPaciente,
+  rotuloMotivoDuplicidade, rotuloStatusAgendamento, rotuloStatusExame, rotuloTipoAgendamento, separarConsultas,
+  separarLista, sexoPorExtenso, situacaoCarteirinha, textoIdade, horarioJaPassou,
+} from '@/lib/pacienteFicha';
 import {
   describeContactVerification,
   type PatientContactChannel,
@@ -206,6 +215,13 @@ export default function Pacientes() {
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(null);
   const [selectedPacienteUpdatedAt, setSelectedPacienteUpdatedAt] = useState<string | null>(null);
   const [formData, setFormData] = useState<PacienteFormData>(initialFormData);
+  // Texto livre dos campos de lista: só vira itens ao sair do campo ou salvar,
+  // para a vírgula digitada não sumir antes do próximo item.
+  const [alergiasTexto, setAlergiasTexto] = useState('');
+  const [comorbidadesTexto, setComorbidadesTexto] = useState('');
+  const [errosCampo, setErrosCampo] = useState<Record<string, string>>({});
+  const [initialFormSource, setInitialFormSource] = useState<Record<string, unknown> | null>(null);
+  const [cpfVisivel, setCpfVisivel] = useState(false);
   const [isEtiquetaOpen, setIsEtiquetaOpen] = useState(false);
   const [viewTab, setViewTab] = useState('dados');
 
@@ -378,6 +394,8 @@ export default function Pacientes() {
     : conveniosAtivos;
   const { data: medicos = [], error: medicosError, refetch: refetchMedicos } = useSupabaseQuery<any>('medicos', { select: 'id, nome, crm, especialidade', orderBy: { column: 'nome', ascending: true } });
   const medicosParaAtendimento = isMedicoOnly ? medicos.filter(m => m.id === medicoId) : medicos;
+  // Duração cadastrada por tipo; sem ela, vale a referência local (lib/pacienteFicha).
+  const { data: tiposConsulta = [] } = useSupabaseQuery<any>('tipos_consulta', { select: 'id, nome, duracao_minutos, ativo', orderBy: { column: 'nome', ascending: true } });
 
   /**
    * Guarda qual paciente está aberto AGORA.
@@ -516,6 +534,7 @@ export default function Pacientes() {
     setLoadingMaisExames(false);
     setExamesLoadError(null);
     setViewTab('dados');
+    setCpfVisivel(false);
     setProntuarioTab('lista');
     setActiveProntuario(null);
     setIsEditingProntuario(false);
@@ -586,6 +605,8 @@ export default function Pacientes() {
     setProntuarioPrescricoes((prescs || []).map((p: any) => ({
       medicamento: p.medicamento, dosagem: p.dosagem || '', posologia: p.posologia || '',
       duracao: p.duracao || '', quantidade: p.quantidade || '', observacoes: p.observacoes || '',
+      // Editar o prontuário não pode reemitir a receita com a data de hoje.
+      data_emissao: p.data_emissao || null, tipo: p.tipo || 'simples',
     })));
     setActiveProntuario(pront);
     setIsEditingProntuario(false);
@@ -674,8 +695,8 @@ export default function Pacientes() {
               duracao: presc.duracao || null,
               quantidade: presc.quantidade || null,
               observacoes: presc.observacoes || null,
-              data_emissao: todaySaoPauloDateOnly(),
-              tipo: 'simples',
+              data_emissao: presc.data_emissao || todaySaoPauloDateOnly(),
+              tipo: presc.tipo || 'simples',
             })),
           }
         );
@@ -689,7 +710,7 @@ export default function Pacientes() {
         action: activeProntuario?.id ? 'update' : 'create',
         collection: 'prontuarios',
         recordId: prontuarioId,
-        recordName: pacientes.find(p => p.id === selectedPacienteId)?.nome || '',
+        recordName: selectedPaciente?.nome || pacientes.find(p => p.id === selectedPacienteId)?.nome || '',
         userId: authProfile?.id || undefined,
         userName: authProfile?.nome || undefined,
       });
@@ -832,7 +853,7 @@ export default function Pacientes() {
       p.data_nascimento ? formatDate(p.data_nascimento, 'short') : '', getConvenioNome(p.convenio_id), p.ativo === false ? 'Inativo' : 'Ativo',
     ]);
     const csv = [['Nome', 'Nome social', 'CPF', 'Telefone', 'E-mail', 'Nascimento', 'Convênio', 'Status'], ...linhas]
-      .map(cols => cols.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
+      .map(cols => cols.map(formatCsvCell).join(';'))
       .join('\r\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -862,6 +883,10 @@ export default function Pacientes() {
     setSelectedPacienteId(null);
     setSelectedPacienteUpdatedAt(null);
     setFormData(initialFormData);
+    setAlergiasTexto('');
+    setComorbidadesTexto('');
+    setErrosCampo({});
+    setInitialFormSource(null);
     setInitialFormSnapshot(JSON.stringify(initialFormData));
     setFormSection('pessoal');
     setIsFormOpen(true);
@@ -930,6 +955,10 @@ export default function Pacientes() {
       is_menor: !!paciente.nome_responsavel || isMinor(paciente.data_nascimento || ''),
     };
     setFormData(loadedForm);
+    setAlergiasTexto(juntarLista(loadedForm.alergias));
+    setComorbidadesTexto(juntarLista(loadedForm.comorbidades));
+    setErrosCampo({});
+    setInitialFormSource({ ...paciente, comorbidades: loadedForm.comorbidades });
     setInitialFormSnapshot(JSON.stringify(loadedForm));
     setFormSection('pessoal');
     setIsFormOpen(true);
@@ -1000,12 +1029,13 @@ export default function Pacientes() {
   };
 
   /** Outro paciente da clínica com o mesmo CPF (só dígitos), excluindo a ficha em edição. */
+  // `cpf_digitos` é mantido pelo banco só com dígitos: acha o CPF em qualquer
+  // formato gravado ("123.456.789-00", "12345678900", com espaço...).
   const buscarPacientePorCpf = async (cpfDigits: string) => {
-    const mascarado = `${cpfDigits.slice(0, 3)}.${cpfDigits.slice(3, 6)}.${cpfDigits.slice(6, 9)}-${cpfDigits.slice(9)}`;
     let consulta = supabase.from('pacientes')
       .select('id, nome, nome_social, cpf')
       .eq('clinica_id', authProfile!.clinica_id)
-      .in('cpf', [cpfDigits, mascarado]);
+      .eq('cpf_digitos', cpfDigits);
     if (selectedPacienteId) consulta = consulta.neq('id', selectedPacienteId);
     const { data, error } = await consulta.limit(1);
     if (error) throw error;
@@ -1019,6 +1049,31 @@ export default function Pacientes() {
     });
   };
 
+  const CAMPO_ID: Record<string, string> = {
+    nome: 'paciente-nome', cpf: 'paciente-cpf', email: 'paciente-email', telefone: 'paciente-telefone',
+    data_nascimento: 'paciente-nascimento', profissao: 'paciente-profissao', horario_contato: 'paciente-inicio-contato',
+    nome_responsavel: 'paciente-responsavel-nome', cpf_responsavel: 'paciente-responsavel-cpf',
+    validade_carteira: 'paciente-validade-carteira',
+  };
+  /** Erro ao lado do campo, com foco nele; o toast só resume. */
+  const falharCampo = (secao: string, campo: string, titulo: string, descricao: string) => {
+    setFormSection(secao);
+    setErrosCampo({ [campo]: descricao });
+    toast.error(titulo, { description: descricao });
+    window.setTimeout(() => document.getElementById(CAMPO_ID[campo] ?? '')?.focus(), 0);
+  };
+  const erroCampo = (campo: string) => errosCampo[campo]
+    ? { 'aria-invalid': true as const, 'aria-describedby': `${CAMPO_ID[campo]}-erro` }
+    : {};
+  const mensagemCampo = (campo: string) => errosCampo[campo]
+    ? <p id={`${CAMPO_ID[campo]}-erro`} role="alert" className="text-xs text-destructive">{errosCampo[campo]}</p>
+    : null;
+  const atualizarCampo = <K extends keyof PacienteFormData>(campo: K, valor: PacienteFormData[K]) => {
+    setFormData(prev => ({ ...prev, [campo]: valor }));
+    const chave = campo === 'horario_contato_inicio' || campo === 'horario_contato_fim' ? 'horario_contato' : String(campo);
+    if (errosCampo[chave]) setErrosCampo(prev => { const resto = { ...prev }; delete resto[chave]; return resto; });
+  };
+
   const handleSave = async () => {
     if (pacienteSaveLockRef.current) return;
     if (!authProfile?.clinica_id) {
@@ -1026,14 +1081,12 @@ export default function Pacientes() {
       return;
     }
     if (!formData.nome.trim()) {
-      setFormSection('pessoal');
-      toast.error('Nome obrigatório', { description: 'Preencha o nome do paciente para salvar o cadastro.' });
+      falharCampo('pessoal', 'nome', 'Nome obrigatório', 'Preencha o nome do paciente para salvar o cadastro.');
       return;
     }
 
     if (formData.cpf && !cpfValido(formData.cpf)) {
-      setFormSection('pessoal');
-      toast.error('CPF inválido', { description: 'Informe um CPF válido com 11 dígitos.' });
+      falharCampo('pessoal', 'cpf', 'CPF inválido', 'Informe um CPF válido com 11 dígitos.');
       return;
     }
     const cpfDigits = formData.cpf.replace(/\D/g, '');
@@ -1042,71 +1095,62 @@ export default function Pacientes() {
       : null;
     if (pacienteComMesmoCpf) {
       setFormSection('pessoal');
+      setErrosCampo({ cpf: 'Este CPF já pertence a outra ficha desta clínica.' });
       avisarCpfDuplicado(pacienteComMesmoCpf);
       return;
     }
     if (formData.cpf_responsavel && !cpfValido(formData.cpf_responsavel)) {
-      setFormSection('pessoal');
-      toast.error('CPF do responsável inválido', { description: 'Informe um CPF válido com 11 dígitos.' });
+      falharCampo('pessoal', 'cpf_responsavel', 'CPF do responsável inválido', 'Informe um CPF válido com 11 dígitos.');
       return;
     }
     if (formData.profissao.trim().length > 120) {
-      toast.error('Profissão muito longa', { description: 'Use no máximo 120 caracteres.' });
-      setFormSection('pessoal');
+      falharCampo('pessoal', 'profissao', 'Profissão muito longa', 'Use no máximo 120 caracteres.');
       return;
     }
 
-    // Validate email only if provided
     if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      setFormSection('pessoal');
-      toast.error('E-mail inválido', { description: 'Informe um e-mail válido.' });
+      falharCampo('pessoal', 'email', 'E-mail inválido', 'Informe um e-mail válido.');
       return;
     }
 
-    // Validate birthdate only if provided
     if (formData.data_nascimento && !isValidDateOnly(formData.data_nascimento)) {
-      setFormSection('pessoal');
-      toast.error('Data inválida', { description: 'Confira a data de nascimento informada.' });
+      falharCampo('pessoal', 'data_nascimento', 'Data inválida', 'Confira a data de nascimento informada.');
       return;
     }
     if (formData.data_nascimento && formData.data_nascimento > todaySaoPauloDateOnly()) {
-      setFormSection('pessoal');
-      toast.error('Data inválida', { description: 'A data de nascimento não pode ser no futuro.' });
+      falharCampo('pessoal', 'data_nascimento', 'Data inválida', 'A data de nascimento não pode ser no futuro.');
       return;
     }
     if (formData.data_nascimento && dataNascimentoImplausivel(formData.data_nascimento)) {
-      setFormSection('pessoal');
-      toast.error('Data de nascimento inválida', { description: `Informe uma data a partir de 01/01/${ANO_MINIMO_NASCIMENTO} e idade de até ${IDADE_MAXIMA_PACIENTE} anos.` });
+      falharCampo('pessoal', 'data_nascimento', 'Data de nascimento inválida', `Informe uma data a partir de 01/01/${ANO_MINIMO_NASCIMENTO} e idade de até ${IDADE_MAXIMA_PACIENTE} anos.`);
       return;
     }
     if (formData.validade_carteira && !isValidDateOnly(formData.validade_carteira)) {
-      setFormSection('convenio');
-      toast.error('Validade inválida', { description: 'Confira a data de validade da carteirinha.' });
+      falharCampo('convenio', 'validade_carteira', 'Validade inválida', 'Confira a data de validade da carteirinha.');
       return;
     }
 
     if (exigeResponsavel && !formData.nome_responsavel.trim()) {
-      toast.error('Responsável obrigatório', { description: 'Informe o nome do responsável por pacientes menores ou dependentes.' });
-      setFormSection('pessoal');
+      falharCampo('pessoal', 'nome_responsavel', 'Responsável obrigatório', 'Informe o nome do responsável por pacientes menores ou dependentes.');
       return;
     }
 
-    // Validate phone only if provided
     if (formData.telefone) {
       const phoneDigits = formData.telefone.replace(/\D/g, '');
       if (phoneDigits.length > 0 && (phoneDigits.length < 10 || phoneDigits.length > 11)) {
-        setFormSection('pessoal');
-        toast.error('Telefone inválido', { description: 'O telefone deve ter 10 ou 11 dígitos.' });
+        falharCampo('pessoal', 'telefone', 'Telefone inválido', 'O telefone deve ter 10 ou 11 dígitos.');
         return;
       }
     }
     if (!formData.horario_contato_inicio || !formData.horario_contato_fim || formData.horario_contato_inicio === formData.horario_contato_fim) {
-      setFormSection('pessoal');
-      toast.error('Janela de contato inválida', { description: 'Informe horários diferentes para início e fim da janela de lembretes.' });
+      falharCampo('pessoal', 'horario_contato', 'Janela de contato inválida', 'Informe horários diferentes para início e fim da janela de lembretes.');
       return;
     }
+    setErrosCampo({});
 
-    const comorbidadesParaSalvar = [...formData.comorbidades];
+    // O texto ainda pode não ter sido convertido (salvar sem sair do campo).
+    const alergiasParaSalvar = separarLista(alergiasTexto);
+    const comorbidadesParaSalvar = separarLista(comorbidadesTexto);
     pacienteSaveLockRef.current = true;
     setIsSubmitting(true);
     try {
@@ -1119,12 +1163,14 @@ export default function Pacientes() {
           return;
         }
       }
-      if (!selectedPacienteId && !duplicateReviewConfirmedRef.current) {
+      // Também na edição: trocar telefone ou nascimento pode transformar esta
+      // ficha na duplicata de outra. `p_excluir` tira a própria ficha da busca.
+      if (!duplicateReviewConfirmedRef.current) {
         const { data: matches, error: duplicateCheckError } = await supabase.rpc('buscar_possiveis_duplicidades_paciente', {
           p_nome: formData.nome.trim(),
           p_data_nascimento: formData.data_nascimento || null,
           p_telefone: formData.telefone,
-          p_excluir: null,
+          p_excluir: selectedPacienteId ?? null,
         });
         if (duplicateCheckError) {
           toast.error('Não foi possível conferir cadastros parecidos', {
@@ -1143,7 +1189,7 @@ export default function Pacientes() {
       const dataToSave: any = {
         nome: formData.nome.trim(),
         nome_social: formData.nome_social || null,
-        cpf: formData.cpf || null,
+        cpf: cpfDigits ? formatarCpf(cpfDigits) : null,
         data_nascimento: formData.data_nascimento || null,
         telefone: formData.telefone || null,
         email: formData.email.trim().toLocaleLowerCase('pt-BR') || null,
@@ -1165,12 +1211,12 @@ export default function Pacientes() {
         convenio_id: formData.convenio_id && formData.convenio_id !== '' && formData.convenio_id !== 'none' && formData.convenio_id !== 'pending' ? formData.convenio_id : null,
         numero_carteira: formData.numero_carteira || null,
         validade_carteira: formData.validade_carteira || null,
-        alergias: (formData.alergias || []).map((a: string) => sanitizeText(a) || 'Alergia').filter(Boolean),
+        alergias: alergiasParaSalvar.map((a: string) => sanitizeText(a)).filter(Boolean),
         gestante: formData.gestante,
         amamentando: formData.amamentando,
         observacoes: sanitizeText(formData.observacoes),
         nome_responsavel: formData.nome_responsavel || null,
-        cpf_responsavel: formData.cpf_responsavel || null,
+        cpf_responsavel: formData.cpf_responsavel ? formatarCpf(formData.cpf_responsavel) : null,
         parentesco_responsavel: formData.parentesco_responsavel || null,
         clinica_id: authProfile.clinica_id,
       };
@@ -1194,6 +1240,25 @@ export default function Pacientes() {
         setSelectedPacienteUpdatedAt(data.updated_at);
         pacienteId = selectedPacienteId;
         acao = 'atualizado';
+        // Diferença salva na trilha: quem mudou o quê no cadastro.
+        if (initialFormSource) {
+          const mudancas = diferencasCadastro(
+            { ...initialFormSource, comorbidades: initialFormSource.comorbidades },
+            { ...dataToSave, comorbidades: comorbidadesParaSalvar },
+            ['clinica_id', 'updated_at', 'created_at', 'id', 'cpf_digitos', 'telefone_digitos', 'foto_url', 'ativo'],
+          ).filter(m => m.field in dataToSave || m.field === 'comorbidades');
+          if (mudancas.length) {
+            void logAudit({
+              action: 'update',
+              collection: 'pacientes',
+              recordId: selectedPacienteId,
+              recordName: dataToSave.nome,
+              changes: mudancas,
+              userId: authProfile?.id || undefined,
+              userName: authProfile?.nome || undefined,
+            });
+          }
+        }
       } else {
         // `.select('id').single()` porque as comorbidades vão para outra tabela
         // e precisam do id que o banco acabou de gerar.
@@ -1296,6 +1361,149 @@ export default function Pacientes() {
     return c?.nome || 'Particular';
   };
 
+  const fichaUnificadaEm: string | null = (selectedPaciente as any)?.mesclado_em_paciente_id ?? null;
+  const nomesFicha = nomesDoPaciente(selectedPaciente ?? {});
+  const carteirinhaFicha = selectedPaciente?.convenio_id ? situacaoCarteirinha(selectedPaciente.validade_carteira) : null;
+  const proximaConsultaTexto = useMemo(() => {
+    const proxima = separarConsultas(agendamentosList).proximas[0];
+    if (!proxima) return null;
+    const [, mes, dia] = String(proxima.data).split('-');
+    return `${dia}/${mes} às ${String(proxima.hora_inicio || '').slice(0, 5)}`;
+  }, [agendamentosList]);
+  const [imprimindoFicha, setImprimindoFicha] = useState(false);
+
+  // Ver o CPF inteiro fica registrado: a tela mostra só o trecho do meio.
+  const alternarCpfVisivel = async () => {
+    if (cpfVisivel || !selectedPaciente) { setCpfVisivel(false); return; }
+    setCpfVisivel(true);
+    void logAudit({
+      action: 'access',
+      collection: 'pacientes',
+      recordId: selectedPaciente.id,
+      recordName: selectedPaciente.nome,
+      changes: [{ field: 'cpf_exibido' }],
+      userId: authProfile?.id || undefined,
+      userName: authProfile?.nome || undefined,
+    });
+  };
+
+  const abrirAgendamentoFicha = () => {
+    setViewTab('consultas');
+    setAgendamentoForm({ data: todaySaoPauloDateOnly(), hora_inicio: '', medico_id: medicoId || '', tipo: 'consulta', observacoes: '' });
+    setShowAgendamentoForm(true);
+    window.setTimeout(() => document.getElementById('ficha-agendamento-data')?.focus(), 50);
+  };
+
+  const imprimirFicha = async () => {
+    if (!selectedPaciente || imprimindoFicha) return;
+    setImprimindoFicha(true);
+    try {
+      const doc = await gerarFichaPacientePDF(selectedPaciente, getConvenioNome(selectedPaciente.convenio_id), TERMO_LGPD);
+      openPDF(doc);
+    } catch (error) {
+      toast.error('Não foi possível gerar a ficha para impressão.', { description: mensagemDeErro(error) });
+    } finally {
+      setImprimindoFicha(false);
+    }
+  };
+
+  const duracaoAgendamentoFicha = duracaoDoTipo(agendamentoForm.tipo || 'consulta', tiposConsulta);
+  const consultasSeparadas = useMemo(() => separarConsultas(agendamentosList), [agendamentosList]);
+
+  const salvarAgendamentoFicha = async () => {
+    if (savingAgendamento) return;
+    if (isMedicoOnly && (!vinculoMedicoValido || agendamentoForm.medico_id !== medicoId)) {
+      toast.error('Você pode agendar apenas em sua própria agenda.');
+      return;
+    }
+    if (!agendamentoForm.data || !agendamentoForm.hora_inicio || !agendamentoForm.medico_id) {
+      toast.error('Preencha data, horário e médico');
+      return;
+    }
+    if (!authProfile?.clinica_id || !selectedPacienteId) {
+      toast.error('Não foi possível identificar a clínica deste usuário.');
+      return;
+    }
+    const duracao = duracaoAgendamentoFicha;
+    const inicioMin = minutosDaHora(agendamentoForm.hora_inicio);
+    if (!isValidDateOnly(agendamentoForm.data) || inicioMin === null || inicioMin + duracao >= 24 * 60) {
+      toast.error('Informe uma data e um horário válidos. A consulta deve terminar antes da meia-noite.');
+      return;
+    }
+    if (horarioJaPassou(agendamentoForm.data, agendamentoForm.hora_inicio)) {
+      toast.error('Este horário já passou', { description: 'Escolha uma data e um horário a partir de agora (horário de Brasília).' });
+      return;
+    }
+    const fimMin = inicioMin + duracao;
+    setSavingAgendamento(true);
+    try {
+      const [{ data: doDia, error: erroDoDia }, { data: bloqueios, error: erroBloqueios }] = await Promise.all([
+        supabase.from('agendamentos')
+          .select('id, hora_inicio, hora_fim, status')
+          .eq('clinica_id', authProfile.clinica_id)
+          .eq('medico_id', agendamentoForm.medico_id)
+          .eq('data', agendamentoForm.data),
+        (supabase.from('bloqueios_agenda' as any)
+          .select('id, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
+          .eq('clinica_id', authProfile.clinica_id)
+          .eq('medico_id', agendamentoForm.medico_id)
+          .lte('data_inicio', agendamentoForm.data)
+          .gte('data_fim', agendamentoForm.data) as any),
+      ]);
+      if (erroDoDia) throw erroDoDia;
+      if (erroBloqueios) throw erroBloqueios;
+
+      const conflito = (doDia || []).find((ag: any) => {
+        if (ag.status === 'cancelado' || ag.status === 'faltou') return false;
+        const inicioExistente = minutosDaHora(ag.hora_inicio);
+        const fimExistente = minutosDaHora(ag.hora_fim) ?? (inicioExistente === null ? null : inicioExistente + 30);
+        return inicioExistente !== null && fimExistente !== null && inicioExistente < fimMin && fimExistente > inicioMin;
+      });
+      if (conflito) throw new Error('Este médico já tem uma consulta neste horário. Escolha outro horário.');
+
+      const bloqueio = (bloqueios || []).find((item: any) => {
+        if (item.dia_inteiro) return true;
+        const inicioBloqueio = minutosDaHora(item.hora_inicio);
+        const fimBloqueio = minutosDaHora(item.hora_fim);
+        return inicioBloqueio !== null && fimBloqueio !== null && inicioBloqueio < fimMin && fimBloqueio > inicioMin;
+      });
+      if (bloqueio) {
+        throw new Error(`Este médico está bloqueado neste horário${bloqueio.motivo ? `: ${bloqueio.motivo}` : bloqueio.tipo ? ` (${bloqueio.tipo})` : '.'}`);
+      }
+
+      const { error } = await supabase.from('agendamentos').insert({
+        paciente_id: selectedPacienteId,
+        medico_id: agendamentoForm.medico_id,
+        data: agendamentoForm.data,
+        hora_inicio: agendamentoForm.hora_inicio,
+        hora_fim: `${String(Math.floor(fimMin / 60)).padStart(2, '0')}:${String(fimMin % 60).padStart(2, '0')}:00`,
+        tipo: agendamentoForm.tipo || 'consulta',
+        observacoes: agendamentoForm.observacoes || null,
+        status: 'agendado',
+        clinica_id: authProfile.clinica_id,
+      });
+      if (error) throw error;
+      const [ano, mes, dia] = agendamentoForm.data.split('-');
+      toast.success('Consulta agendada', { description: `${dia}/${mes}/${ano} às ${agendamentoForm.hora_inicio}.` });
+      setShowAgendamentoForm(false);
+      void loadAgendamentos(selectedPacienteId);
+      // Agenda, painel lateral e resumo do dia leem as consultas por conta própria.
+      void queryClient.invalidateQueries({
+        predicate: (query) => {
+          const chave = String(query.queryKey[0] ?? '');
+          return chave.includes('agendamento') || chave.includes('agenda') || chave.includes('consultas');
+        },
+      });
+    } catch (err: any) {
+      const mensagem = mensagemDeErro(err);
+      toast.error('Erro ao agendar', {
+        description: err?.code === '23P01' || mensagem.includes('agendamentos_sem_sobreposicao')
+          ? 'O horário acabou de ser ocupado. Atualize a agenda e tente novamente.'
+          : mensagem,
+      });
+    } finally { setSavingAgendamento(false); }
+  };
+
   useEffect(() => {
     const path = location.pathname;
     if (!patientTaskPage) {
@@ -1322,11 +1530,14 @@ export default function Pacientes() {
       });
     } else {
       handleViewWithProntuario(pacienteDeepLink);
-      const allowedTabs = ['dados', 'consultas', 'exames', 'sinais', 'endereco', 'lgpd'];
+      const allowedTabs = ['dados', 'consultas', 'exames', 'documentos'];
       if (podeVerTimelinePaciente) allowedTabs.push('historico');
       if (podeVerExtratoFinanceiroPaciente) allowedTabs.push('financeiro');
       if (podeVerProntuario) allowedTabs.push('prontuario');
-      const requestedTab = searchParams.get('timeline') === 'summary' ? 'historico' : searchParams.get('tab') || 'dados';
+      // Abas antigas continuam valendo nos links salvos e nas telas de retorno.
+      const apelidos: Record<string, string> = { endereco: 'dados', sinais: 'exames', lgpd: 'documentos' };
+      const pedida = searchParams.get('timeline') === 'summary' ? 'historico' : searchParams.get('tab') || 'dados';
+      const requestedTab = apelidos[pedida] ?? pedida;
       setViewTab(allowedTabs.includes(requestedTab) ? requestedTab : 'dados');
       setTaskReadyFor(path);
     }
@@ -1376,7 +1587,9 @@ export default function Pacientes() {
   return (
     <div className="space-y-5 sm:space-y-6">
       {patientTaskPage && <UnsavedChangesGuard key={location.pathname} completed={completedTask}
-        dirty={patientFormPage ? JSON.stringify(formData) !== initialFormSnapshot : isEditingProntuario || showAgendamentoForm || showExameForm}
+        dirty={patientFormPage
+          ? JSON.stringify(formData) !== initialFormSnapshot || alergiasTexto !== juntarLista(formData.alergias) || comorbidadesTexto !== juntarLista(formData.comorbidades)
+          : isEditingProntuario || showAgendamentoForm || showExameForm}
         busy={isSubmitting || savingProntuario || savingAgendamento || savingExame}
         allowNavigation={isPatientTimelineSummaryNavigation} />}
       {conveniosError && <ErrorState compact error={conveniosError} title="Convênios indisponíveis" description="A lista de convênios não carregou. Você pode continuar consultando pacientes, mas não deve alterar o convênio até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
@@ -1578,6 +1791,7 @@ export default function Pacientes() {
             onRevokePortalLinks={(id, nome) => setPortalRevokeTarget({ id, nome })}
             podeGerarLinkPortal={podeGerarLinkPortal}
             podeExcluirPaciente={isAdmin()}
+            podeVerFinanceiro={podeVerExtratoFinanceiroPaciente}
             getConvenioNome={getConvenioNome}
             calcularIdade={calcularIdade}
           />
@@ -1595,7 +1809,7 @@ export default function Pacientes() {
 
           <fieldset disabled={isSubmitting} className="min-w-0 space-y-6 border-0 p-0">
           {/* Section nav */}
-          <div className="flex gap-1 flex-wrap border-b pb-2">
+          <div role="group" aria-label="Seções do cadastro" className="-mx-1 flex gap-1 overflow-x-auto border-b px-1 pb-2">
             {[
               { key: 'pessoal', label: 'Dados Pessoais', icon: User2 },
               { key: 'endereco', label: 'Endereço', icon: MapPin },
@@ -1604,9 +1818,11 @@ export default function Pacientes() {
             ].map(s => (
               <Button
                 key={s.key}
+                type="button"
                 variant={formSection === s.key ? 'default' : 'ghost'}
                 size="sm"
-                className="gap-1.5 text-xs"
+                aria-pressed={formSection === s.key}
+                className="h-11 shrink-0 gap-1.5 text-sm"
                 onClick={() => setFormSection(s.key)}
               >
                 <s.icon className="h-3.5 w-3.5" />
@@ -1619,10 +1835,28 @@ export default function Pacientes() {
             {/* Dados Pessoais */}
             {formSection === 'pessoal' && (
               <div className="space-y-4">
+                {selectedPacienteId ? (
+                  <div className="flex items-center gap-3 rounded-lg border p-3">
+                    <PatientPhoto
+                      pacienteId={selectedPacienteId}
+                      pacienteNome={formData.nome}
+                      currentPhotoUrl={(pacienteDeepLink as any)?.foto_url}
+                      size="lg"
+                      onPhotoChange={() => atualizarListasPacientes()}
+                    />
+                    <div className="min-w-0 text-sm">
+                      <p className="font-medium">Foto do paciente</p>
+                      <p className="text-muted-foreground">Toque na foto para tirar pela câmera ou enviar um arquivo. Ajuda a identificar o paciente na recepção.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">A foto pode ser tirada depois de salvar o cadastro.</p>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="paciente-nome">Nome Completo <span className="text-destructive">*</span></Label>
-                    <Input id="paciente-nome" value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Nome completo" />
+                    <Input id="paciente-nome" autoComplete="name" autoCapitalize="words" value={formData.nome} onChange={e => atualizarCampo('nome', e.target.value)} placeholder="Nome completo" {...erroCampo('nome')} />
+                    {mensagemCampo('nome')}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-nome-social" className="flex items-center gap-1.5">
@@ -1633,13 +1867,13 @@ export default function Pacientes() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-cpf">CPF</Label>
-                    <Input id="paciente-cpf" value={formData.cpf} onChange={e => {
-                      setFormData({ ...formData, cpf: mascararCpf(e.target.value) });
-                    }} placeholder="000.000.000-00" />
+                    <Input id="paciente-cpf" inputMode="numeric" autoComplete="off" value={formData.cpf} onChange={e => atualizarCampo('cpf', mascararCpf(e.target.value))} placeholder="000.000.000-00" {...erroCampo('cpf')} />
+                    {mensagemCampo('cpf')}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-nascimento">Data de Nascimento</Label>
-                    <Input id="paciente-nascimento" type="date" min={DATA_MINIMA_NASCIMENTO} max={todaySaoPauloDateOnly()} value={formData.data_nascimento} onChange={e => setFormData({ ...formData, data_nascimento: e.target.value })} />
+                    <Input id="paciente-nascimento" type="date" autoComplete="bday" min={DATA_MINIMA_NASCIMENTO} max={todaySaoPauloDateOnly()} value={formData.data_nascimento} onChange={e => atualizarCampo('data_nascimento', e.target.value)} {...erroCampo('data_nascimento')} />
+                    {mensagemCampo('data_nascimento')}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-sexo">Sexo</Label>
@@ -1652,19 +1886,21 @@ export default function Pacientes() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-telefone">Telefone</Label>
-                    <Input id="paciente-telefone" value={formData.telefone} onChange={e => {
+                    <Input id="paciente-telefone" type="tel" inputMode="tel" autoComplete="tel-national" {...erroCampo('telefone')} value={formData.telefone} onChange={e => {
                       const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
                       let masked = digits;
                       if (digits.length > 0) masked = `(${digits.slice(0, 2)}`;
                       if (digits.length > 2) masked = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
                       if (digits.length > 7) masked = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
                       else if (digits.length > 6) masked = `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-                      setFormData({ ...formData, telefone: masked });
+                      atualizarCampo('telefone', masked);
                     }} placeholder="(00) 00000-0000" />
+                    {mensagemCampo('telefone')}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-email">Email</Label>
-                    <Input id="paciente-email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" />
+                    <Input id="paciente-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={formData.email} onChange={e => atualizarCampo('email', e.target.value)} placeholder="email@exemplo.com" {...erroCampo('email')} />
+                    {mensagemCampo('email')}
                   </div>
                   <div className="md:col-span-2 rounded-lg border p-4 space-y-3">
                     <div>
@@ -1683,11 +1919,12 @@ export default function Pacientes() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="paciente-inicio-contato">A partir de</Label>
-                        <Input id="paciente-inicio-contato" type="time" value={formData.horario_contato_inicio} onChange={e => setFormData({ ...formData, horario_contato_inicio: e.target.value })} />
+                        <Input id="paciente-inicio-contato" type="time" value={formData.horario_contato_inicio} onChange={e => atualizarCampo('horario_contato_inicio', e.target.value)} {...erroCampo('horario_contato')} />
+                        {mensagemCampo('horario_contato')}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="paciente-fim-contato">Até (exclusive)</Label>
-                        <Input id="paciente-fim-contato" type="time" value={formData.horario_contato_fim} onChange={e => setFormData({ ...formData, horario_contato_fim: e.target.value })} />
+                        <Input id="paciente-fim-contato" type="time" value={formData.horario_contato_fim} onChange={e => atualizarCampo('horario_contato_fim', e.target.value)} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="paciente-fuso-contato">Fuso horário</Label>
@@ -1715,7 +1952,8 @@ export default function Pacientes() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-profissao">Profissão</Label>
-                    <Input id="paciente-profissao" value={formData.profissao} onChange={e => setFormData({ ...formData, profissao: e.target.value })} placeholder="Profissão do paciente" maxLength={120} />
+                    <Input id="paciente-profissao" autoComplete="organization-title" value={formData.profissao} onChange={e => atualizarCampo('profissao', e.target.value)} placeholder="Profissão do paciente" maxLength={120} {...erroCampo('profissao')} />
+                    {mensagemCampo('profissao')}
                   </div>
                 </div>
 
@@ -1750,11 +1988,13 @@ export default function Pacientes() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="paciente-responsavel-nome">Nome do Responsável *</Label>
-                        <Input id="paciente-responsavel-nome" value={formData.nome_responsavel} onChange={e => setFormData({ ...formData, nome_responsavel: e.target.value })} placeholder="Nome completo" />
+                        <Input id="paciente-responsavel-nome" autoComplete="off" value={formData.nome_responsavel} onChange={e => atualizarCampo('nome_responsavel', e.target.value)} placeholder="Nome completo" {...erroCampo('nome_responsavel')} />
+                        {mensagemCampo('nome_responsavel')}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="paciente-responsavel-cpf">CPF do Responsável</Label>
-                        <Input id="paciente-responsavel-cpf" value={formData.cpf_responsavel} onChange={e => setFormData({ ...formData, cpf_responsavel: mascararCpf(e.target.value) })} placeholder="000.000.000-00" />
+                        <Input id="paciente-responsavel-cpf" inputMode="numeric" autoComplete="off" value={formData.cpf_responsavel} onChange={e => atualizarCampo('cpf_responsavel', mascararCpf(e.target.value))} placeholder="000.000.000-00" {...erroCampo('cpf_responsavel')} />
+                        {mensagemCampo('cpf_responsavel')}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="paciente-responsavel-parentesco">Parentesco</Label>
@@ -1784,6 +2024,8 @@ export default function Pacientes() {
                   <div className="relative">
                     <Input
                       id="paciente-cep"
+                      inputMode="numeric"
+                      autoComplete="postal-code"
                       value={formData.cep}
                       onChange={e => {
                         cepLookupRef.current += 1;
@@ -1811,23 +2053,23 @@ export default function Pacientes() {
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="paciente-logradouro">Logradouro</Label>
-                  <Input id="paciente-logradouro" value={formData.logradouro} onChange={e => setFormData({ ...formData, logradouro: e.target.value })} />
+                  <Input id="paciente-logradouro" autoComplete="address-line1" value={formData.logradouro} onChange={e => setFormData({ ...formData, logradouro: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="paciente-numero">Número</Label>
-                  <Input id="paciente-numero" value={formData.numero} onChange={e => setFormData({ ...formData, numero: e.target.value })} />
+                  <Input id="paciente-numero" inputMode="numeric" autoComplete="off" value={formData.numero} onChange={e => setFormData({ ...formData, numero: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="paciente-complemento">Complemento</Label>
-                  <Input id="paciente-complemento" value={formData.complemento} onChange={e => setFormData({ ...formData, complemento: e.target.value })} placeholder="Apto, Bloco, etc." />
+                  <Input id="paciente-complemento" autoComplete="address-line2" value={formData.complemento} onChange={e => setFormData({ ...formData, complemento: e.target.value })} placeholder="Apto, Bloco, etc." />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="paciente-bairro">Bairro</Label>
-                  <Input id="paciente-bairro" value={formData.bairro} onChange={e => setFormData({ ...formData, bairro: e.target.value })} />
+                  <Input id="paciente-bairro" autoComplete="address-level3" value={formData.bairro} onChange={e => setFormData({ ...formData, bairro: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="paciente-cidade">Cidade</Label>
-                  <Input id="paciente-cidade" value={formData.cidade} onChange={e => setFormData({ ...formData, cidade: e.target.value })} />
+                  <Input id="paciente-cidade" autoComplete="address-level2" value={formData.cidade} onChange={e => setFormData({ ...formData, cidade: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="paciente-estado">Estado</Label>
@@ -1896,11 +2138,16 @@ export default function Pacientes() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="paciente-numero-carteira">Número da Carteira</Label>
-                      <Input id="paciente-numero-carteira" value={formData.numero_carteira} onChange={e => setFormData({ ...formData, numero_carteira: e.target.value })} placeholder="Número da carteirinha" />
+                      <Input id="paciente-numero-carteira" autoComplete="off" value={formData.numero_carteira} onChange={e => setFormData({ ...formData, numero_carteira: e.target.value })} placeholder="Número da carteirinha" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="paciente-validade-carteira">Validade da Carteira</Label>
-                      <Input id="paciente-validade-carteira" type="date" value={formData.validade_carteira} onChange={e => setFormData({ ...formData, validade_carteira: e.target.value })} />
+                      <Input id="paciente-validade-carteira" type="date" value={formData.validade_carteira} onChange={e => atualizarCampo('validade_carteira', e.target.value)} {...erroCampo('validade_carteira')} />
+                      {mensagemCampo('validade_carteira')}
+                      {(() => {
+                        const carteira = situacaoCarteirinha(formData.validade_carteira);
+                        return carteira ? <p role="status" className={cn('text-xs', carteira.nivel === 'vencida' ? 'text-destructive' : 'text-warning-foreground')}>{carteira.texto}</p> : null;
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1926,8 +2173,13 @@ export default function Pacientes() {
                   <Label htmlFor="paciente-alergias">Alergias (separadas por vírgula)</Label>
                   <Input
                     id="paciente-alergias"
-                    value={formData.alergias.join(', ')}
-                    onChange={e => setFormData({ ...formData, alergias: e.target.value.split(',').map(a => a.trim()).filter(Boolean) })}
+                    value={alergiasTexto}
+                    onChange={e => setAlergiasTexto(e.target.value)}
+                    onBlur={() => {
+                      const itens = separarLista(alergiasTexto);
+                      setFormData(prev => ({ ...prev, alergias: itens }));
+                      setAlergiasTexto(juntarLista(itens));
+                    }}
                     placeholder="Penicilina, Dipirona, Ibuprofeno, etc."
                   />
                 </div>
@@ -1959,11 +2211,13 @@ export default function Pacientes() {
                   <Label htmlFor="paciente-comorbidades">Comorbidades (separadas por vírgula)</Label>
                   <Input
                     id="paciente-comorbidades"
-                    value={formData.comorbidades.join(', ')}
-                    onChange={e => setFormData({
-                      ...formData,
-                      comorbidades: e.target.value.split(',').map(c => c.trim()).filter(Boolean),
-                    })}
+                    value={comorbidadesTexto}
+                    onChange={e => setComorbidadesTexto(e.target.value)}
+                    onBlur={() => {
+                      const itens = separarLista(comorbidadesTexto);
+                      setFormData(prev => ({ ...prev, comorbidades: itens }));
+                      setComorbidadesTexto(juntarLista(itens));
+                    }}
                     placeholder="Hipertensão, Diabetes tipo 2, Insuficiência renal, etc."
                   />
                   <p className="text-xs text-muted-foreground">
@@ -1994,16 +2248,22 @@ export default function Pacientes() {
 
       {patientId && !editPatientPage && isViewOpen && <section className="mx-auto max-w-6xl space-y-5 pb-6">
           <header className="space-y-3 border-b border-border pb-5">
-            <Button variant="ghost" className="-ml-3" onClick={leavePatientTask}>← Voltar à lista</Button>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h1 className="text-2xl font-semibold tracking-tight">Ficha do Paciente</h1>
-              {podeEditarPaciente && selectedPaciente && <Button variant="outline" onClick={() => handleEdit(selectedPaciente)}>Editar cadastro</Button>}
-            </div>
+            <Button variant="ghost" className="-ml-3 h-11" onClick={leavePatientTask}>← Voltar à lista</Button>
+            <h1 className="text-2xl font-semibold tracking-tight">Ficha do paciente</h1>
           </header>
           {selectedPaciente && (
             <div className="min-w-0 space-y-4">
+              {fichaUnificadaEm && (
+                <div role="status" className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold">Esta ficha foi unificada em outro cadastro</p>
+                    <p className="text-muted-foreground">O histórico foi levado para a ficha principal. Consulte e registre novos atendimentos por lá.</p>
+                  </div>
+                  <Button className="h-11 shrink-0" onClick={() => openPatientTask(`/pacientes/${encodeURIComponent(fichaUnificadaEm)}`)}>Abrir ficha principal</Button>
+                </div>
+              )}
               {/* Patient header summary */}
-              <div className="flex flex-wrap items-center gap-3 px-1 py-2 flex-shrink-0 sm:flex-nowrap">
+              <div className="flex flex-wrap items-start gap-3 px-1 py-2 flex-shrink-0 sm:flex-nowrap">
                 <PatientPhoto
                   pacienteId={selectedPaciente.id}
                   pacienteNome={selectedPaciente.nome}
@@ -2011,48 +2271,81 @@ export default function Pacientes() {
                   size="md"
                   editable={false}
                 />
-                <div className="min-w-[180px] flex-1">
-                  <h3 className="break-words text-base font-bold">{(selectedPaciente as any).nome_social || selectedPaciente.nome}</h3>
-                  <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                    <span>{selectedPaciente.data_nascimento
-                      ? Number.isFinite(calcularIdade(selectedPaciente.data_nascimento)) && calcularIdade(selectedPaciente.data_nascimento) >= 0
-                        ? `${calcularIdade(selectedPaciente.data_nascimento)}a`
-                        : 'Nascimento inválido'
-                      : 'Idade N/I'}</span>
-                    {selectedPaciente.sexo && <span>• {selectedPaciente.sexo === 'M' ? '♂' : selectedPaciente.sexo === 'F' ? '♀' : '⚧'}</span>}
-                    {selectedPaciente.cpf && <span>• {selectedPaciente.cpf}</span>}
-                    <span>• {getConvenioNome(selectedPaciente.convenio_id)}</span>
+                <div className="min-w-[180px] flex-1 space-y-1">
+                  <h2 className="break-words text-lg font-semibold">{nomesFicha.principal}</h2>
+                  {nomesFicha.registro && <p className="text-xs text-muted-foreground">Nome de registro: {nomesFicha.registro}</p>}
+                  <div className="flex items-center gap-x-2 gap-y-1 flex-wrap text-sm text-muted-foreground">
+                    <span>{textoIdade(selectedPaciente.data_nascimento)}</span>
+                    {sexoPorExtenso(selectedPaciente.sexo) && <span>· {sexoPorExtenso(selectedPaciente.sexo)}</span>}
+                    {selectedPaciente.cpf && (
+                      <span className="inline-flex items-center gap-1">
+                        · CPF <span className="tabular-nums">{cpfVisivel ? formatarCpf(selectedPaciente.cpf) : cpfMascarado(selectedPaciente.cpf)}</span>
+                        <Button type="button" variant="ghost" size="icon" className="h-11 w-11" onClick={() => void alternarCpfVisivel()}
+                          aria-label={cpfVisivel ? 'Ocultar CPF' : 'Mostrar CPF completo'} aria-pressed={cpfVisivel}>
+                          {cpfVisivel ? <EyeOff className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+                        </Button>
+                      </span>
+                    )}
+                    <span>· {getConvenioNome(selectedPaciente.convenio_id)}</span>
+                    {selectedPaciente.ativo === false && <Badge variant="secondary">Inativo</Badge>}
                   </div>
+                  {carteirinhaFicha && (
+                    <p role="status" className={cn('inline-flex items-center gap-1.5 text-xs font-medium', carteirinhaFicha.nivel === 'vencida' ? 'text-destructive' : 'text-warning-foreground')}>
+                      <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />{carteirinhaFicha.texto}
+                    </p>
+                  )}
                 </div>
                 {selectedPaciente.alergias && selectedPaciente.alergias.length > 0 && (
                   <AllergyAlert alergias={selectedPaciente.alergias} compact />
                 )}
-                {(() => {
-                  const whatsapp = linkWhatsApp(selectedPaciente.telefone, `Olá, ${String((selectedPaciente as any).nome_social || selectedPaciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
-                  return whatsapp ? (
-                    <Button asChild variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
-                      <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${selectedPaciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
-                    </Button>
-                  ) : null;
-                })()}
               </div>
 
+              {/* Ações da ficha num lugar só */}
+              {!fichaUnificadaEm && (
+                <div role="toolbar" aria-label="Ações da ficha" className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-2">
+                  {podeEditarPaciente && (
+                    <Button variant="outline" className="h-11 gap-1.5" onClick={() => handleEdit(selectedPaciente)}>
+                      <Edit aria-hidden="true" className="h-4 w-4" />Editar cadastro
+                    </Button>
+                  )}
+                  {selectedPaciente.ativo !== false && (
+                    <Button variant="outline" className="h-11 gap-1.5" disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido)} onClick={abrirAgendamentoFicha}>
+                      <CalendarPlus aria-hidden="true" className="h-4 w-4" />Agendar
+                    </Button>
+                  )}
+                  <WhatsAppModelosMenu paciente={{ ...selectedPaciente, proximaConsulta: proximaConsultaTexto }} />
+                  {podeGerarLinkPortal && selectedPaciente.ativo !== false && (
+                    <Button variant="outline" className="h-11 gap-1.5" onClick={() => handleGeneratePortalLink(selectedPaciente.id)}>
+                      <Link aria-hidden="true" className="h-4 w-4" />Link do portal
+                    </Button>
+                  )}
+                  <Button variant="outline" className="h-11 gap-1.5" disabled={imprimindoFicha} onClick={() => void imprimirFicha()}>
+                    {imprimindoFicha ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Printer aria-hidden="true" className="h-4 w-4" />}Imprimir ficha
+                  </Button>
+                  {podeGerenciarStatusPaciente && (
+                    <Button variant="ghost" className="h-11 gap-1.5" onClick={() => navigate(`/pacientes/${encodeURIComponent(selectedPaciente.id)}/status`, {
+                      state: { returnTo: patientReturnTo, patientFilters },
+                    })}>
+                      <Power aria-hidden="true" className="h-4 w-4" />{selectedPaciente.ativo === false ? 'Reativar' : 'Inativar'}
+                    </Button>
+                  )}
+                </div>
+              )}
+
               <Tabs value={viewTab} onValueChange={setViewTab} className="min-w-0">
-                <div className="flex-shrink-0">
-                  <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/40 p-1 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-start">
-                    <TabsTrigger value="dados" className="text-[11px] gap-1 py-1.5 rounded-lg"><User2 className="h-3 w-3" />Dados</TabsTrigger>
-                    <TabsTrigger value="consultas" className="text-[11px] gap-1 py-1.5 rounded-lg"><Calendar className="h-3 w-3" />Consultas</TabsTrigger>
-                    <TabsTrigger value="exames" className="text-[11px] gap-1 py-1.5 rounded-lg"><TestTube className="h-3 w-3" />Exames</TabsTrigger>
+                <div className="-mx-1 overflow-x-auto px-1">
+                  <TabsList className="inline-flex h-auto min-w-full justify-start gap-1 rounded-xl bg-muted/40 p-1">
+                    <TabsTrigger value="dados" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><User2 aria-hidden="true" className="h-4 w-4" />Dados</TabsTrigger>
+                    <TabsTrigger value="consultas" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><Calendar aria-hidden="true" className="h-4 w-4" />Consultas</TabsTrigger>
+                    <TabsTrigger value="exames" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><TestTube aria-hidden="true" className="h-4 w-4" />Exames e sinais</TabsTrigger>
                     {podeVerProntuario && (
-                      <TabsTrigger value="prontuario" className="text-[11px] gap-1 py-1.5 rounded-lg"><Stethoscope className="h-3 w-3" />Prontuário</TabsTrigger>
+                      <TabsTrigger value="prontuario" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><Stethoscope aria-hidden="true" className="h-4 w-4" />Prontuário</TabsTrigger>
                     )}
-                  {podeVerTimelinePaciente && <TabsTrigger value="historico" className="text-[11px] gap-1 py-1.5 rounded-lg"><History className="h-3 w-3" />Timeline</TabsTrigger>}
-                    <TabsTrigger value="sinais" className="text-[11px] gap-1 py-1.5 rounded-lg"><Activity className="h-3 w-3" />Sinais</TabsTrigger>
-                    <TabsTrigger value="endereco" className="text-[11px] gap-1 py-1.5 rounded-lg"><MapPin className="h-3 w-3" />Endereço</TabsTrigger>
+                    {podeVerTimelinePaciente && <TabsTrigger value="historico" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><History aria-hidden="true" className="h-4 w-4" />Linha do tempo</TabsTrigger>}
                     {podeVerExtratoFinanceiroPaciente && (
-                      <TabsTrigger value="financeiro" className="text-[11px] gap-1 py-1.5 rounded-lg"><Wallet className="h-3 w-3" />Financeiro</TabsTrigger>
+                      <TabsTrigger value="financeiro" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><Wallet aria-hidden="true" className="h-4 w-4" />Financeiro</TabsTrigger>
                     )}
-                    <TabsTrigger value="lgpd" className="text-[11px] gap-1 py-1.5 rounded-lg"><ShieldCheck className="h-3 w-3" />LGPD</TabsTrigger>
+                    <TabsTrigger value="documentos" className="h-11 shrink-0 gap-1.5 rounded-lg px-3 text-sm"><FileText aria-hidden="true" className="h-4 w-4" />Documentos e LGPD</TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -2067,7 +2360,7 @@ export default function Pacientes() {
                         <Wallet className="h-3.5 w-3.5" />
                         Extrato do paciente
                       </span>
-                      <ExtratoDoPaciente pacienteId={selectedPaciente.id} />
+                      <ExtratoDoPaciente pacienteId={selectedPaciente.id} paciente={selectedPaciente} />
                     </TabsContent>
                   )}
 
@@ -2075,7 +2368,8 @@ export default function Pacientes() {
                       componente `ConsentimentoLGPD` existia mas ninguém
                       chamava, e `consentimentos_lgpd` ficou zerado nas 12
                       clínicas. Agora aparece na ficha, ao lado do resto. */}
-                  <TabsContent value="lgpd" className="mt-0 space-y-3">
+                  <TabsContent value="documentos" className="mt-0 space-y-6">
+                    <DocumentosDoPaciente pacienteId={selectedPaciente.id} podeVerDocumentosClinicos={podeVerProntuario} />
                     <ConsentimentoLGPD
                       consentimentos={consentimentosPacienteQuery.data ?? []}
                       isLoading={consentimentosPacienteQuery.isLoading}
@@ -2088,7 +2382,8 @@ export default function Pacientes() {
                   {/* Tab: Dados */}
                   <TabsContent value="dados" className="space-y-5 pt-1 mt-0">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                      <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf} />
+                      <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf ? (cpfVisivel ? formatarCpf(selectedPaciente.cpf) : cpfMascarado(selectedPaciente.cpf)) : null} />
+                      <InfoField icon={User2} label="Sexo" value={sexoPorExtenso(selectedPaciente.sexo)} />
                       <InfoField icon={Calendar} label="Nascimento" value={selectedPaciente.data_nascimento ? formatDate(selectedPaciente.data_nascimento, 'short') : null} />
                       <div className="space-y-1.5">
                         <InfoField icon={Phone} label="Telefone" value={selectedPaciente.telefone} />
@@ -2115,10 +2410,22 @@ export default function Pacientes() {
                         )}
                       </div>
                       <InfoField icon={Building2} label="Convênio" value={getConvenioNome(selectedPaciente.convenio_id)} />
-                      <InfoField icon={CreditCard} label="Carteira" value={selectedPaciente.numero_carteira} />
+                      <InfoField icon={CreditCard} label="Carteira" value={selectedPaciente.numero_carteira ? `${selectedPaciente.numero_carteira}${selectedPaciente.validade_carteira ? ` · validade ${formatDate(selectedPaciente.validade_carteira, 'short')}` : ''}` : null} />
                       <InfoField icon={Users} label="Estado civil" value={ESTADO_CIVIL_OPTIONS.find(option => option.value === selectedPaciente.estado_civil)?.label} />
                       <InfoField icon={Briefcase} label="Profissão" value={selectedPaciente.profissao} />
                       <InfoField icon={Droplets} label="Tipo sanguíneo informado" value={selectedPaciente.tipo_sanguineo} />
+                    </div>
+
+                    <Separator />
+                    <div>
+                      <h4 className="mb-2 flex items-center gap-2 text-sm font-medium"><MapPin aria-hidden="true" className="h-4 w-4" />Endereço</h4>
+                      <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-3">
+                        <InfoField icon={MapPin} label="CEP" value={selectedPaciente.cep} />
+                        <InfoField icon={MapPin} label="Logradouro" value={[selectedPaciente.logradouro, selectedPaciente.numero].filter(Boolean).join(', ')} />
+                        <InfoField icon={MapPin} label="Complemento" value={(selectedPaciente as any).complemento} />
+                        <InfoField icon={MapPin} label="Bairro" value={selectedPaciente.bairro} />
+                        <InfoField icon={MapPin} label="Cidade" value={[selectedPaciente.cidade, selectedPaciente.estado].filter(Boolean).join('/')} />
+                      </div>
                     </div>
 
                     {selectedPaciente.convenio_id && (
@@ -2148,7 +2455,7 @@ export default function Pacientes() {
                           <h4 className="font-medium text-sm mb-2 flex items-center gap-2"><Baby className="h-4 w-4 text-warning" /> Responsável Legal</h4>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                             <InfoField icon={User2} label="Nome" value={selectedPaciente.nome_responsavel} />
-                            <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf_responsavel} />
+                            <InfoField icon={FileText} label="CPF" value={selectedPaciente.cpf_responsavel ? (cpfVisivel ? formatarCpf(selectedPaciente.cpf_responsavel) : cpfMascarado(selectedPaciente.cpf_responsavel)) : null} />
                             <InfoField icon={Users} label="Parentesco" value={selectedPaciente.parentesco_responsavel} />
                           </div>
                         </div>
@@ -2172,143 +2479,50 @@ export default function Pacientes() {
                         <Calendar className="h-3.5 w-3.5" />
                         Consultas ({agendamentosList.length}{temMaisAgendamentos ? '+' : ''})
                       </span>
-                      <Button size="sm" disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido)} onClick={() => { setAgendamentoForm({ data: todaySaoPauloDateOnly(), hora_inicio: '08:00', medico_id: medicoId || '', tipo: 'consulta', observacoes: '' }); setShowAgendamentoForm(true); }} className="gap-1.5 rounded-xl text-xs">
-                        <CalendarPlus className="h-3.5 w-3.5" />Agendar Consulta
+                      <Button disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido) || !!fichaUnificadaEm || selectedPaciente.ativo === false} onClick={abrirAgendamentoFicha} className="h-11 gap-1.5">
+                        <CalendarPlus className="h-4 w-4" />Agendar consulta
                       </Button>
                     </div>
 
                     {showAgendamentoForm && (
                       <div className="border rounded-xl p-4 bg-muted/20 space-y-3">
-                        <h4 className="text-sm font-semibold">Nova Consulta</h4>
-                        <div className="grid grid-cols-2 gap-3">
+                        <h4 className="text-sm font-semibold">Nova consulta</h4>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div className="space-y-1">
-                            <Label className="text-xs">Data *</Label>
-                            <Input type="date" value={agendamentoForm.data || ''} onChange={e => setAgendamentoForm(p => ({ ...p, data: e.target.value }))} className="h-8 text-xs" />
+                            <Label htmlFor="ficha-agendamento-data">Data *</Label>
+                            <Input id="ficha-agendamento-data" type="date" min={todaySaoPauloDateOnly()} value={agendamentoForm.data || ''} onChange={e => setAgendamentoForm(p => ({ ...p, data: e.target.value }))} className="h-11" />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Horário *</Label>
-                            <Input type="time" value={agendamentoForm.hora_inicio || ''} onChange={e => setAgendamentoForm(p => ({ ...p, hora_inicio: e.target.value }))} className="h-8 text-xs" />
+                            <Label htmlFor="ficha-agendamento-hora">Horário *</Label>
+                            <Input id="ficha-agendamento-hora" type="time" value={agendamentoForm.hora_inicio || ''} onChange={e => setAgendamentoForm(p => ({ ...p, hora_inicio: e.target.value }))} className="h-11" />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Médico *</Label>
+                            <Label htmlFor="ficha-agendamento-medico">Médico *</Label>
                             <Select value={agendamentoForm.medico_id || ''} disabled={isMedicoOnly} onValueChange={v => setAgendamentoForm(p => ({ ...p, medico_id: v }))}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                              <SelectTrigger id="ficha-agendamento-medico" className="h-11"><SelectValue placeholder="Selecione" /></SelectTrigger>
                               <SelectContent>
                                 {medicosParaAtendimento.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm} - {m.especialidade || 'Geral'}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Tipo</Label>
+                            <Label htmlFor="ficha-agendamento-tipo">Tipo</Label>
                             <Select value={agendamentoForm.tipo || 'consulta'} onValueChange={v => setAgendamentoForm(p => ({ ...p, tipo: v }))}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectTrigger id="ficha-agendamento-tipo" className="h-11"><SelectValue /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="consulta">Consulta</SelectItem>
-                                <SelectItem value="retorno">Retorno</SelectItem>
-                                <SelectItem value="exame">Exame</SelectItem>
-                                <SelectItem value="coleta">Coleta Laboratorial</SelectItem>
-                                <SelectItem value="procedimento">Procedimento</SelectItem>
-                                <SelectItem value="cirurgia">Cirurgia</SelectItem>
-                                <SelectItem value="avaliacao">Avaliação</SelectItem>
-                                <SelectItem value="checkup">Check-up</SelectItem>
-                                <SelectItem value="triagem">Triagem</SelectItem>
-                                <SelectItem value="enfermagem">Atendimento Enfermagem</SelectItem>
-                                <SelectItem value="vacina">Vacinação</SelectItem>
-                                <SelectItem value="curativo">Curativo</SelectItem>
-                                <SelectItem value="outro">Outro</SelectItem>
+                                {TIPOS_AGENDAMENTO.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Observações</Label>
-                            <Textarea value={agendamentoForm.observacoes || ''} onChange={e => setAgendamentoForm(p => ({ ...p, observacoes: e.target.value }))} rows={2} className="text-xs" placeholder="Observações sobre a consulta..." />
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="ficha-agendamento-obs">Observações</Label>
+                            <Textarea id="ficha-agendamento-obs" value={agendamentoForm.observacoes || ''} onChange={e => setAgendamentoForm(p => ({ ...p, observacoes: e.target.value }))} rows={2} placeholder="Observações sobre a consulta..." />
                           </div>
                         </div>
-                        <p className="text-[11px] text-muted-foreground">Este agendamento reserva 30 minutos. Conflitos e bloqueios do médico serão conferidos ao salvar.</p>
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setShowAgendamentoForm(false)} className="text-xs h-7">Cancelar</Button>
-                          <LoadingButton size="sm" className="text-xs h-7" isLoading={savingAgendamento} loadingText="Salvando..." onClick={async () => {
-                            if (isMedicoOnly && (!vinculoMedicoValido || agendamentoForm.medico_id !== medicoId)) {
-                              toast.error('Você pode agendar apenas em sua própria agenda.');
-                              return;
-                            }
-                            if (!agendamentoForm.data || !agendamentoForm.hora_inicio || !agendamentoForm.medico_id) {
-                              toast.error('Preencha data, horário e médico');
-                              return;
-                            }
-                            if (!authProfile?.clinica_id) {
-                              toast.error('Não foi possível identificar a clínica deste usuário.');
-                              return;
-                            }
-                            const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(agendamentoForm.data)
-                              && !Number.isNaN(new Date(`${agendamentoForm.data}T12:00:00Z`).getTime())
-                              && new Date(`${agendamentoForm.data}T12:00:00Z`).toISOString().slice(0, 10) === agendamentoForm.data;
-                            const inicioMin = minutosDaHora(agendamentoForm.hora_inicio);
-                            if (!dataValida || inicioMin === null || inicioMin + 30 >= 24 * 60) {
-                              toast.error('Informe uma data e um horário válidos. A consulta deve terminar antes da meia-noite.');
-                              return;
-                            }
-                            const fimMin = inicioMin + 30;
-                            setSavingAgendamento(true);
-                            try {
-                              const [{ data: doDia, error: erroDoDia }, { data: bloqueios, error: erroBloqueios }] = await Promise.all([
-                                supabase.from('agendamentos')
-                                  .select('id, hora_inicio, hora_fim, status')
-                                  .eq('clinica_id', authProfile.clinica_id)
-                                  .eq('medico_id', agendamentoForm.medico_id)
-                                  .eq('data', agendamentoForm.data),
-                                (supabase.from('bloqueios_agenda' as any)
-                                  .select('id, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
-                                  .eq('clinica_id', authProfile.clinica_id)
-                                  .eq('medico_id', agendamentoForm.medico_id)
-                                  .lte('data_inicio', agendamentoForm.data)
-                                  .gte('data_fim', agendamentoForm.data) as any),
-                              ]);
-                              if (erroDoDia) throw erroDoDia;
-                              if (erroBloqueios) throw erroBloqueios;
-
-                              const conflito = (doDia || []).find((ag: any) => {
-                                if (ag.status === 'cancelado' || ag.status === 'faltou') return false;
-                                const inicioExistente = minutosDaHora(ag.hora_inicio);
-                                const fimExistente = minutosDaHora(ag.hora_fim) ?? (inicioExistente === null ? null : inicioExistente + 30);
-                                return inicioExistente !== null && fimExistente !== null && inicioExistente < fimMin && fimExistente > inicioMin;
-                              });
-                              if (conflito) throw new Error('Este médico já tem uma consulta neste horário. Escolha outro horário.');
-
-                              const bloqueio = (bloqueios || []).find((item: any) => {
-                                if (item.dia_inteiro) return true;
-                                const inicioBloqueio = minutosDaHora(item.hora_inicio);
-                                const fimBloqueio = minutosDaHora(item.hora_fim);
-                                return inicioBloqueio !== null && fimBloqueio !== null && inicioBloqueio < fimMin && fimBloqueio > inicioMin;
-                              });
-                              if (bloqueio) {
-                                throw new Error(`Este médico está bloqueado neste horário${bloqueio.motivo ? `: ${bloqueio.motivo}` : bloqueio.tipo ? ` (${bloqueio.tipo})` : '.'}`);
-                              }
-
-                              const { error } = await supabase.from('agendamentos').insert({
-                                paciente_id: selectedPacienteId!,
-                                medico_id: agendamentoForm.medico_id,
-                                data: agendamentoForm.data,
-                                hora_inicio: agendamentoForm.hora_inicio,
-                                hora_fim: `${String(Math.floor(fimMin / 60)).padStart(2, '0')}:${String(fimMin % 60).padStart(2, '0')}:00`,
-                                tipo: agendamentoForm.tipo || 'consulta',
-                                observacoes: agendamentoForm.observacoes || null,
-                                status: 'agendado',
-                                clinica_id: authProfile?.clinica_id || null,
-                              });
-                              if (error) throw error;
-                              toast.info('Consulta agendada!');
-                              setShowAgendamentoForm(false);
-                              loadAgendamentos(selectedPacienteId!);
-                            } catch (err: any) {
-                              const mensagem = mensagemDeErro(err);
-                              toast.error('Erro ao agendar', {
-                                description: err?.code === '23P01' || mensagem.includes('agendamentos_sem_sobreposicao')
-                                  ? 'O horário acabou de ser ocupado. Atualize a agenda e tente novamente.'
-                                  : mensagem,
-                              });
-                            } finally { setSavingAgendamento(false); }
-                          }}>Agendar</LoadingButton>
+                        <p className="text-xs text-muted-foreground">Este agendamento reserva {duracaoAgendamentoFicha} minutos ({rotuloTipoAgendamento(agendamentoForm.tipo)}). Conflitos e bloqueios do médico serão conferidos ao salvar.</p>
+                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                          <Button variant="outline" onClick={() => setShowAgendamentoForm(false)} className="h-11">Cancelar</Button>
+                          <LoadingButton className="h-11" isLoading={savingAgendamento} loadingText="Salvando..." onClick={() => void salvarAgendamentoFicha()}>Agendar</LoadingButton>
                         </div>
                       </div>
                     )}
@@ -2320,38 +2534,33 @@ export default function Pacientes() {
                     ) : agendamentosList.length === 0 ? (
                       <div className="flex flex-col items-center py-14 text-muted-foreground">
                         <Calendar className="h-8 w-8 opacity-20 mb-2" />
-                        <p className="text-xs">Nenhuma consulta agendada</p>
+                        <p className="text-sm">Nenhuma consulta agendada</p>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        {agendamentosList.map((a) => {
-                          const statusColors: Record<string, string> = {
-                            agendado: 'bg-info/10 text-info',
-                            confirmado: 'bg-success/10 text-success',
-                            cancelado: 'bg-destructive/10 text-destructive',
-                            realizado: 'bg-muted text-muted-foreground',
-                            em_atendimento: 'bg-warning/10 text-warning',
-                          };
-                          return (
-                            <div key={a.id} className="border border-border/40 rounded-xl p-3 hover:border-primary/30 transition-colors">
-                              <div className="flex justify-between items-start">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <Badge className={cn("text-[10px] px-1.5 py-0", statusColors[a.status] || 'bg-muted text-muted-foreground')}>
-                                      {a.status?.replace('_', ' ')}
-                                    </Badge>
-                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{a.tipo || 'consulta'}</Badge>
-                                  </div>
-                                  <p className="text-xs font-semibold">
-                                    {format(new Date(a.data + 'T12:00'), 'dd/MM/yyyy', { locale: ptBR })} às {a.hora_inicio?.slice(0, 5)}
-                                  </p>
-                                  {a.medicos && <p className="text-[11px] text-muted-foreground">{nomeMedico(a.medicos.nome || a.medicos.crm)}</p>}
-                                  {a.observacoes && <p className="text-[11px] text-muted-foreground line-clamp-1">{a.observacoes}</p>}
+                      <div className="space-y-5">
+                        {([
+                          ['Próximas', consultasSeparadas.proximas, 'Nenhuma consulta futura.'],
+                          ['Histórico', consultasSeparadas.historico, 'Nenhuma consulta anterior.'],
+                        ] as const).map(([titulo, lista, vazio]) => (
+                          <section key={titulo} aria-labelledby={`consultas-${titulo}`} className="space-y-2">
+                            <h4 id={`consultas-${titulo}`} className="text-sm font-semibold">{titulo} <span className="font-normal text-muted-foreground">({lista.length})</span></h4>
+                            {lista.length === 0 ? <p className="text-sm text-muted-foreground">{vazio}</p> : lista.map((a: any) => (
+                              <div key={a.id} className="rounded-xl border border-border bg-card p-3">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <Badge variant="outline" className={cn('text-[11px]', a.status === 'cancelado' || a.status === 'faltou' ? 'border-destructive/30 text-destructive' : '')}>
+                                    {rotuloStatusAgendamento(a.status)}
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-[11px]">{rotuloTipoAgendamento(a.tipo)}</Badge>
                                 </div>
+                                <p className="mt-1 text-sm font-semibold tabular-nums">
+                                  {format(new Date(a.data + 'T12:00'), 'dd/MM/yyyy', { locale: ptBR })} às {a.hora_inicio?.slice(0, 5)}
+                                </p>
+                                {a.medicos && <p className="text-xs text-muted-foreground">{nomeMedico(a.medicos.nome || a.medicos.crm)}</p>}
+                                {a.observacoes && <p className="text-xs text-muted-foreground line-clamp-2">{a.observacoes}</p>}
                               </div>
-                            </div>
-                          );
-                        })}
+                            ))}
+                          </section>
+                        ))}
                       </div>
                     )}
                     {temMaisAgendamentos && !agendamentosLoadError && selectedPacienteId && (
@@ -2371,40 +2580,40 @@ export default function Pacientes() {
                         <TestTube className="h-3.5 w-3.5" />
                         Exames ({examesList.length}{temMaisExames ? '+' : ''})
                       </span>
-                      <Button size="sm" disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido)} onClick={() => { setExameForm({ tipo_exame: '', medico_solicitante_id: medicoId || '', observacoes: '' }); setShowExameForm(true); }} className="gap-1.5 rounded-xl text-xs">
-                        <Plus className="h-3.5 w-3.5" />Solicitar Exame
+                      <Button disabled={!!medicosError || (isMedicoOnly && !vinculoMedicoValido) || !!fichaUnificadaEm} onClick={() => { setExameForm({ tipo_exame: '', medico_solicitante_id: medicoId || '', observacoes: '' }); setShowExameForm(true); }} className="h-11 gap-1.5">
+                        <Plus className="h-4 w-4" />Solicitar exame
                       </Button>
                     </div>
 
                     {showExameForm && (
                       <div className="border rounded-xl p-4 bg-muted/20 space-y-3">
-                        <h4 className="text-sm font-semibold">Novo Pedido de Exame</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1 col-span-2">
-                            <Label className="text-xs">Tipo de Exame *</Label>
-                            <Input value={exameForm.tipo_exame || ''} onChange={e => setExameForm(p => ({ ...p, tipo_exame: e.target.value }))} placeholder="Ex: Hemograma, Glicemia..." className="h-8 text-xs" />
+                        <h4 className="text-sm font-semibold">Novo pedido de exame</h4>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="ficha-exame-tipo">Tipo de exame *</Label>
+                            <Input id="ficha-exame-tipo" value={exameForm.tipo_exame || ''} onChange={e => setExameForm(p => ({ ...p, tipo_exame: e.target.value }))} placeholder="Ex: Hemograma, Glicemia..." className="h-11" />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Médico Solicitante *</Label>
+                            <Label htmlFor="ficha-exame-medico">Médico solicitante *</Label>
                             <Select value={exameForm.medico_solicitante_id || ''} disabled={isMedicoOnly} onValueChange={v => setExameForm(p => ({ ...p, medico_solicitante_id: v }))}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                              <SelectTrigger id="ficha-exame-medico" className="h-11"><SelectValue placeholder="Selecione" /></SelectTrigger>
                               <SelectContent>
                                 {medicosParaAtendimento.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Data Agendamento</Label>
-                            <Input type="date" value={exameForm.data_agendamento || ''} onChange={e => setExameForm(p => ({ ...p, data_agendamento: e.target.value }))} className="h-8 text-xs" />
+                            <Label htmlFor="ficha-exame-data">Data do agendamento</Label>
+                            <Input id="ficha-exame-data" type="date" value={exameForm.data_agendamento || ''} onChange={e => setExameForm(p => ({ ...p, data_agendamento: e.target.value }))} className="h-11" />
                           </div>
-                          <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Observações / Justificativa</Label>
-                            <Textarea value={exameForm.observacoes || ''} onChange={e => setExameForm(p => ({ ...p, observacoes: e.target.value }))} rows={2} className="text-xs" placeholder="Indicação clínica, urgência..." />
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="ficha-exame-obs">Observações / justificativa</Label>
+                            <Textarea id="ficha-exame-obs" value={exameForm.observacoes || ''} onChange={e => setExameForm(p => ({ ...p, observacoes: e.target.value }))} rows={2} placeholder="Indicação clínica, urgência..." />
                           </div>
                         </div>
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setShowExameForm(false)} className="text-xs h-7">Cancelar</Button>
-                          <LoadingButton size="sm" className="text-xs h-7" isLoading={savingExame} loadingText="Salvando..." onClick={async () => {
+                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                          <Button variant="outline" onClick={() => setShowExameForm(false)} className="h-11">Cancelar</Button>
+                          <LoadingButton className="h-11" isLoading={savingExame} loadingText="Salvando..." onClick={async () => {
                             if (exameSaveLockRef.current) return;
                             if (isMedicoOnly && (!vinculoMedicoValido || exameForm.medico_solicitante_id !== medicoId)) {
                               toast.error('Você pode solicitar exames apenas em seu próprio nome.');
@@ -2461,19 +2670,12 @@ export default function Pacientes() {
                     ) : (
                       <div className="space-y-2">
                         {examesList.map((ex) => {
-                          const exStatusColors: Record<string, string> = {
-                            solicitado: 'bg-info/10 text-info',
-                            agendado: 'bg-warning/10 text-warning',
-                            em_andamento: 'bg-primary/10 text-primary',
-                            concluido: 'bg-success/10 text-success',
-                            cancelado: 'bg-destructive/10 text-destructive',
-                          };
                           return (
-                            <div key={ex.id} className="border border-border/40 rounded-xl p-3 hover:border-primary/30 transition-colors">
+                            <div key={ex.id} className="rounded-xl border border-border bg-card p-3">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <Badge className={cn("text-[10px] px-1.5 py-0", exStatusColors[ex.status] || 'bg-muted text-muted-foreground')}>
-                                    {ex.status?.replace('_', ' ')}
+                                  <Badge variant="outline" className={cn('text-[11px]', ex.status === 'cancelado' ? 'border-destructive/30 text-destructive' : '')}>
+                                    {rotuloStatusExame(ex.status)}
                                   </Badge>
                                   <span className="text-[10px] text-muted-foreground">
                                     {ex.data_solicitacao ? format(new Date(ex.data_solicitacao + 'T12:00'), 'dd/MM/yyyy') : ''}
@@ -2481,7 +2683,7 @@ export default function Pacientes() {
                                 </div>
                                 <p className="text-xs font-semibold">{ex.tipo_exame}</p>
                                 {ex.medicos && <p className="text-[11px] text-muted-foreground">Solicitante: {nomeMedico(ex.medicos.nome || ex.medicos.crm)}</p>}
-                                {ex.resultado && <p className="text-[11px] text-success">Resultado: {ex.resultado.substring(0, 80)}...</p>}
+                                {ex.resultado && <p className="text-xs text-foreground line-clamp-2">Resultado: {ex.resultado}</p>}
                                 {ex.observacoes && <p className="text-[11px] text-muted-foreground line-clamp-1">{ex.observacoes}</p>}
                               </div>
                             </div>
@@ -2497,6 +2699,10 @@ export default function Pacientes() {
                         </Button>
                       </div>
                     )}
+                    <section aria-labelledby="ficha-sinais" className="space-y-2 pt-4">
+                      <h4 id="ficha-sinais" className="flex items-center gap-2 text-sm font-semibold"><Activity aria-hidden="true" className="h-4 w-4" />Sinais vitais</h4>
+                      <VitalSignsChart pacienteId={selectedPaciente.id} />
+                    </section>
                   </TabsContent>
 
                   {/* Tab: Prontuário */}
@@ -2751,27 +2957,12 @@ export default function Pacientes() {
                     )}
                   </TabsContent>
 
-                  {/* Tab: Endereço */}
-                  <TabsContent value="endereco" className="pt-1 mt-0">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                      <InfoField icon={MapPin} label="CEP" value={selectedPaciente.cep} />
-                      <InfoField icon={MapPin} label="Logradouro" value={selectedPaciente.logradouro} />
-                      <InfoField icon={MapPin} label="Número" value={selectedPaciente.numero} />
-                      <InfoField icon={MapPin} label="Complemento" value={(selectedPaciente as any).complemento} />
-                      <InfoField icon={MapPin} label="Bairro" value={selectedPaciente.bairro} />
-                      <InfoField icon={MapPin} label="Cidade" value={selectedPaciente.cidade} />
-                      <InfoField icon={MapPin} label="Estado" value={selectedPaciente.estado} />
-                    </div>
-                  </TabsContent>
 
                   {podeVerTimelinePaciente && (
                     <TabsContent value="historico" className="pt-1 mt-0">
                       <PatientTimeline pacienteId={selectedPaciente.id} />
                     </TabsContent>
                   )}
-                  <TabsContent value="sinais" className="pt-1 mt-0">
-                    <VitalSignsChart pacienteId={selectedPaciente.id} />
-                  </TabsContent>
                 </div>
               </Tabs>
             </div>
@@ -2795,14 +2986,28 @@ export default function Pacientes() {
                   {candidate.data_nascimento ? `Nascimento: ${formatDate(candidate.data_nascimento, 'short')}` : 'Nascimento não informado'}
                   {candidate.telefone_final ? ` · Telefone termina em ${candidate.telefone_final}` : ''}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {candidate.motivos.map((reason) => reason === 'telefone' ? 'Telefone coincidente' : 'Nome e nascimento coincidem').join(' · ')}
-                </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {candidate.motivos.map((reason) => (
+                    <Badge key={reason} variant="outline" className="border-warning/40 text-[11px] text-warning-foreground">{rotuloMotivoDuplicidade(reason)}</Badge>
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto px-0 pt-1"
+                  className="h-11"
+                  onClick={() => {
+                    setPossibleDuplicatesOpen(false);
+                    setIsFormOpen(false);
+                    completedTask.current = true;
+                    navigate(`/pacientes/${encodeURIComponent(candidate.id)}`, { state: { returnTo: patientReturnTo, patientFilters } });
+                  }}
+                >
+                  Abrir ficha
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
                   onClick={() => {
                     setSearchTerm(candidate.nome);
                     setPossibleDuplicatesOpen(false);
@@ -2813,6 +3018,7 @@ export default function Pacientes() {
                 >
                   Localizar esta ficha na lista
                 </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -2826,7 +3032,7 @@ export default function Pacientes() {
                 void handleSave();
               }}
             >
-              Continuar com novo cadastro
+              {selectedPacienteId ? 'Salvar mesmo assim' : 'Continuar com novo cadastro'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

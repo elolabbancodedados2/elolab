@@ -98,6 +98,7 @@ describe('ConsentimentoLGPDTaskPage', () => {
     expect(await screen.findByRole('heading', { name: 'Novo consentimento' })).toBeVisible();
     await waitFor(() => expect(mocks.patientMaybeSingle).toHaveBeenCalled());
     await waitFor(() => expect(mocks.consentOrder).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Tratamento de Dados Pessoais/ }));
     fireEvent.click(await screen.findByRole('checkbox', { name: /Comunicações e Marketing/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar Consentimento' }));
 
@@ -108,6 +109,28 @@ describe('ConsentimentoLGPDTaskPage', () => {
       aceito: true,
     })));
     expect(await screen.findByTestId('returned-to-patient')).toBeVisible();
+  });
+
+  it('exige o tratamento de dados antes dos demais consentimentos', async () => {
+    renderTask('/pacientes/pac-1/consentimentos/novo');
+
+    await waitFor(() => expect(mocks.consentOrder).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Comunicações e Marketing/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar Consentimento' }));
+
+    expect(await screen.findByText(/ele é obrigatório para registrar os demais consentimentos/)).toBeVisible();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it('dispensa o tratamento de dados quando ele já foi aceito', async () => {
+    mocks.consentOrder.mockResolvedValue({ data: [consentimentoAceito], error: null });
+    renderTask('/pacientes/pac-1/consentimentos/novo');
+
+    await waitFor(() => expect(mocks.consentOrder).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Comunicações e Marketing/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar Consentimento' }));
+
+    await waitFor(() => expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ tipo_consentimento: 'comunicacao_marketing' })));
   });
 
   it('restores the patient list search context when returning from the task page', async () => {
@@ -131,6 +154,7 @@ describe('ConsentimentoLGPDTaskPage', () => {
     await screen.findByRole('heading', { name: 'Novo consentimento' });
     await waitFor(() => expect(mocks.patientMaybeSingle).toHaveBeenCalled());
     await waitFor(() => expect(mocks.consentOrder).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Tratamento de Dados Pessoais/ }));
     fireEvent.click(await screen.findByRole('checkbox', { name: /Comunicações e Marketing/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar Consentimento' }));
 
