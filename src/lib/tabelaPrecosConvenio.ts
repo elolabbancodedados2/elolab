@@ -68,7 +68,7 @@ const COLUNAS: Record<string, keyof ItemTabela> = {
  * filme, custo e repasse (com ou sem acento e prefixo "valor_").
  */
 export function lerCsvTabela(conteudo: string): { itens: ItemTabela[]; erros: ErroImportacao[] } {
-  const linhas = conteudo.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+  const linhas = conteudo.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
   if (linhas.length < 2) return { itens: [], erros: [{ linha: 1, mensagem: 'O arquivo precisa de cabeçalho e ao menos uma linha.' }] };
   const separador = (linhas[0].match(/;/g)?.length ?? 0) >= (linhas[0].match(/,/g)?.length ?? 0) ? ';' : ',';
   const cabecalho = dividirLinha(linhas[0], separador).map(c => COLUNAS[normalizarTexto(c).replace(/\s+/g, '_')]);
