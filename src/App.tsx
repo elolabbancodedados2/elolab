@@ -29,6 +29,9 @@ const MinhaFilaTarefas = lazy(() => import("@/pages/MinhaFilaTarefas"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const AppointmentPage = lazy(() => import("@/pages/AppointmentPage"));
 const BloqueioAgendaPage = lazy(() => import("@/components/agenda/BloqueioAgenda").then(module => ({ default: module.BloqueioAgenda })));
+const AgendaConfirmacoesPage = lazy(() => import("@/pages/AgendaConfirmacoesPage"));
+const AgendaImpressaoPage = lazy(() => import("@/pages/AgendaImpressaoPage"));
+const BuscarVagaPage = lazy(() => import("@/pages/BuscarVagaPage"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const ConsentimentoLGPDTaskPage = lazy(() => import("@/pages/ConsentimentoLGPDTaskPage"));
 const AutorizacoesConvenioPage = lazy(() => import("@/pages/AutorizacoesConvenioPage"));
@@ -393,6 +396,10 @@ function AppRoutes() {
                           <Route path="/agenda/configurar-cores" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AgendaColorSettingsPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="manage-blocks" /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="create-block" creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/bloqueios/:bloqueioId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="edit-block" creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/confirmacoes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><AgendaConfirmacoesPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/imprimir" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AgendaImpressaoPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/buscar-vaga" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><BuscarVagaPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:agendamentoId/corrigir-status" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><CorrigirStatusAgendamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />

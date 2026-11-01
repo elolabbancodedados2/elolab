@@ -27,6 +27,9 @@ const labelsByPath: Record<string, string> = {
   '/agenda/bloqueios': 'Bloqueios da agenda',
   '/agenda/bloqueios/novo': 'Novo bloqueio',
   '/agenda/nova': 'Nova consulta',
+  '/agenda/confirmacoes': 'Confirmação das consultas de amanhã',
+  '/agenda/imprimir': 'Imprimir agenda',
+  '/agenda/buscar-vaga': 'Buscar vaga',
   '/prontuarios': 'Prontuários',
   '/prontuarios/atendimento': 'Atendimento clínico',
   '/documentos-clinicos': 'Documentos clínicos',
@@ -198,6 +201,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/recepcao\/caixa\/lancamentos\/[^/]+\/editar$/.test(pathname)) return 'Editar lançamento do caixa';
   if (/^\/recepcao\/caixa\/vendas\/[^/]+\/estornar$/.test(pathname)) return 'Estornar venda do caixa';
   if (/^\/agenda\/[^/]+\/corrigir-status$/.test(pathname)) return 'Corrigir status da consulta';
+  if (/^\/agenda\/bloqueios\/[^/]+\/editar$/.test(pathname)) return 'Editar bloqueio';
   if (/^\/contas\/pagar\/[^/]+\/pagamento-anterior$/.test(pathname)) return 'Pagamento em data anterior';
   if (/^\/contas\/receber\/[^/]+\/recebimento$/.test(pathname)) return 'Receber pagamento';
   if (/^\/contas\/receber\/[^/]+\/estorno$/.test(pathname)) return 'Estornar pagamento';
