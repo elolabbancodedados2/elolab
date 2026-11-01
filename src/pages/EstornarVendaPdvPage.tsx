@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { parseDateOnly } from '@/lib/dateOnly';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
+import { dataHoraSP, rotuloForma } from '@/lib/caixaFormatacao';
 
 const moeda = (valor: number | string | null | undefined) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor ?? 0));
@@ -79,6 +80,7 @@ export default function EstornarVendaPdvPage() {
       toast.success(resultado?.repetido ? 'Esta venda já estava estornada' : 'Venda estornada', { description: partes.join(' • ') || undefined });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] }),
         queryClient.invalidateQueries({ queryKey: ['caixa-diario-eventos'] }),
         queryClient.invalidateQueries({ queryKey: ['vendas-pdv-caixa'] }),
         queryClient.invalidateQueries({ queryKey: ['estoque'] }),
@@ -108,7 +110,7 @@ export default function EstornarVendaPdvPage() {
       ) : !venda || !vendaQuery.data?.ehVenda ? (
         <Card role="status"><CardContent className="p-6 text-sm text-muted-foreground">Este lançamento não é uma venda do caixa desta clínica.</CardContent></Card>
       ) : vendaQuery.data.estornadoEm ? (
-        <Card role="status"><CardContent className="p-6 text-sm text-muted-foreground">Esta venda já foi estornada em {new Date(vendaQuery.data.estornadoEm).toLocaleString('pt-BR')}.</CardContent></Card>
+        <Card role="status"><CardContent className="p-6 text-sm text-muted-foreground">Esta venda já foi estornada em {dataHoraSP(vendaQuery.data.estornadoEm)}.</CardContent></Card>
       ) : (
         <Card>
           <CardHeader><CardTitle className="text-base">Venda</CardTitle></CardHeader>
@@ -116,18 +118,23 @@ export default function EstornarVendaPdvPage() {
             <dl className="grid gap-3 text-sm sm:grid-cols-3">
               <div className="sm:col-span-3"><dt className="text-xs text-muted-foreground">Descrição</dt><dd className="font-medium">{venda.descricao}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Valor pago</dt><dd className="font-semibold tabular-nums">{moeda(venda.valor_pago)}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Forma</dt><dd>{venda.forma_pagamento || '—'}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Forma</dt><dd>{rotuloForma(venda.forma_pagamento)}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Data da venda</dt><dd>{dataVenda ? format(dataVenda, 'dd/MM/yyyy') : '—'}</dd></div>
             </dl>
             <div className="space-y-2">
               <Label htmlFor="estorno-venda-motivo">Motivo do estorno *</Label>
-              <Textarea id="estorno-venda-motivo" rows={3} maxLength={500} value={motivo} onChange={e => setMotivo(e.target.value)} disabled={estornar.isPending}
+              <Textarea id="estorno-venda-motivo" rows={3} maxLength={500} value={motivo} onChange={e => { setMotivo(e.target.value); if (estornar.isError) estornar.reset(); }} disabled={estornar.isPending}
                 placeholder="Ex.: venda lançada para o paciente errado" />
               <p className="text-xs text-muted-foreground">Mínimo de 5 caracteres. Fica registrado no lançamento e no histórico.</p>
             </div>
             <p className="rounded-lg border border-border bg-secondary p-3 text-sm">
               A saída de {moeda(venda.valor_pago)} entra no caixa de hoje, na mesma forma de pagamento. O caixa de hoje precisa estar aberto.
             </p>
+            {estornar.isError && (
+              <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                Não foi possível estornar a venda. {mensagemDeErro(estornar.error)}
+              </div>
+            )}
             <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={() => navigate(returnTo)} disabled={estornar.isPending}>Cancelar</Button>
               <Button variant="destructive" onClick={() => estornar.mutate()} disabled={!motivoValido || estornar.isPending} className="gap-2">

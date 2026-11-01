@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/formatters';
+import { ErrorState } from '@/components/ErrorState';
 
 type Terminal = { id: string; pos_id: string | null; external_pos_id: string | null; operating_mode: string };
 type PointOrder = {
@@ -44,6 +45,40 @@ const statusLabels: Record<string, string> = {
   expired: 'Cobrança expirada',
   refunded: 'Pagamento estornado',
 };
+
+/** Detalhes que o Mercado Pago devolve em inglês; o resto aparece como veio. */
+const statusDetailLabels: Record<string, string> = {
+  cancel_requested: 'Cancelamento solicitado ao terminal',
+  canceled: 'Cancelada',
+  canceled_by_user: 'Cancelada no terminal',
+  expired: 'Tempo esgotado no terminal',
+  accredited: 'Pagamento creditado',
+  processed: 'Pagamento processado',
+  pending: 'Aguardando o pagamento',
+  pending_contingency: 'Em análise pelo Mercado Pago',
+  pending_review_manual: 'Em revisão manual pelo Mercado Pago',
+  cc_rejected_insufficient_amount: 'Recusado: saldo ou limite insuficiente',
+  cc_rejected_bad_filled_security_code: 'Recusado: código de segurança incorreto',
+  cc_rejected_bad_filled_date: 'Recusado: validade incorreta',
+  cc_rejected_call_for_authorize: 'Recusado: o cliente precisa autorizar com o banco',
+  cc_rejected_card_disabled: 'Recusado: cartão desativado',
+  cc_rejected_high_risk: 'Recusado por segurança',
+  cc_rejected_other_reason: 'Recusado pelo emissor do cartão',
+  rejected: 'Pagamento recusado',
+  refunded: 'Pagamento estornado',
+  failed: 'Falha no pagamento',
+};
+
+const operatingModeLabels: Record<string, string> = {
+  PDV: 'Integrado ao sistema',
+  STANDALONE: 'Avulso (fora do sistema)',
+  UNDEFINED: 'Modo não definido',
+};
+
+function rotuloStatusDetail(detalhe: string | null | undefined): string | null {
+  if (!detalhe) return null;
+  return statusDetailLabels[detalhe] ?? detalhe;
+}
 
 export function MercadoPagoPointPayment({
   clinicId,
@@ -102,7 +137,11 @@ export function MercadoPagoPointPayment({
       void client.invalidateQueries({ queryKey: ['lancamentos'] });
       void client.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
       void client.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-      void client.invalidateQueries({ queryKey: ['caixa-diario'] });
+      // Chaves usadas de fato pelo caixa e pela recepção ('caixa-diario' não existe).
+      void client.invalidateQueries({ queryKey: ['caixa-hoje'] });
+      void client.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
+      void client.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
+      void client.invalidateQueries({ queryKey: ['recepcao-pagamento'] });
     },
   });
   const cancelMutation = useMutation({
@@ -136,6 +175,11 @@ export function MercadoPagoPointPayment({
 
       {terminalsQuery.isLoading || ordersQuery.isLoading ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando a conta e os terminais…</p>
+      ) : terminalsQuery.isError || ordersQuery.isError ? (
+        // Falha de rede ou do servidor não é "conta desconectada": pedir para
+        // conectar a conta aqui levava a equipe a refazer uma integração que funcionava.
+        <ErrorState compact description="Não foi possível consultar o Mercado Pago agora. A conta continua conectada; tente novamente."
+          onRetry={() => { void terminalsQuery.refetch(); void ordersQuery.refetch(); }} />
       ) : !connected ? (
         <div className="rounded-lg bg-muted/70 p-3 text-xs">
           <p className="text-muted-foreground">A clínica pode receber normalmente pelos meios já disponíveis. Para cobrar no Point, conecte a própria conta Mercado Pago.</p>
@@ -165,7 +209,7 @@ export function MercadoPagoPointPayment({
           {cancellationPending && (
             <p role="status" className="text-xs text-muted-foreground">Cancelamento solicitado ao terminal; aguardando confirmação do Mercado Pago.</p>
           )}
-          {order.status_detail && !cancellationPending && <p className="text-[11px] text-muted-foreground">{order.status_detail}</p>}
+          {order.status_detail && !cancellationPending && <p className="text-[11px] text-muted-foreground">{rotuloStatusDetail(order.status_detail)}</p>}
           <div className="flex flex-wrap gap-2">
             {order.mp_order_id && !paymentRecorded && (
               <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => syncMutation.mutate(order.mp_order_id!)}>
@@ -188,7 +232,7 @@ export function MercadoPagoPointPayment({
             <SelectContent>
               {terminalsQuery.data?.terminals?.map(terminal => (
                 <SelectItem key={terminal.id} value={terminal.id}>
-                  {terminal.external_pos_id || terminal.pos_id || terminal.id} · {terminal.operating_mode}
+                  {terminal.external_pos_id || terminal.pos_id || terminal.id} · {operatingModeLabels[terminal.operating_mode] ?? terminal.operating_mode}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -200,9 +244,9 @@ export function MercadoPagoPointPayment({
         </div>
       )}
 
-      {(createMutation.error || syncMutation.error || cancelMutation.error || terminalsQuery.error || ordersQuery.error) && connected && (
+      {(createMutation.error || syncMutation.error || cancelMutation.error) && connected && (
         <p role="alert" className="text-xs text-destructive">
-          {(createMutation.error || syncMutation.error || cancelMutation.error || terminalsQuery.error || ordersQuery.error)?.message}
+          {(createMutation.error || syncMutation.error || cancelMutation.error)?.message}
         </p>
       )}
     </section>

@@ -20,9 +20,9 @@ for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/gestao-fluxo?origem=qa');
     await page.getByRole('textbox', { name: 'Buscar salas, leitos ou equipamentos' }).fill('Consultório QA');
-    await page.getByRole('button', { name: 'Nova Sala / Leito', exact: true }).click();
+    await page.getByRole('button', { name: 'Nova sala ou leito', exact: true }).click();
     await expect(page).toHaveURL('/gestao-fluxo/salas/nova');
-    await expect(page.getByRole('heading', { name: 'Nova Sala', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Nova sala', exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByLabel('Nome *', { exact: true }).fill('Sala sintética');
     await page.screenshot({ path: info.outputPath(`room-create-${width}.png`) });

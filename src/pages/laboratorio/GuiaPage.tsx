@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, Upload, ExternalLink, Loader2, ArrowRight, CalendarPlus, X, FlaskConical } from 'lucide-react';
+import { FileText, Upload, ExternalLink, Loader2, ArrowRight, CalendarPlus, X, FlaskConical, ClipboardList, ShieldAlert } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +19,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PreparoExamesAcoes } from '@/components/exames/PreparoExamesAcoes';
+import { exameDoTipoGravado } from '@/lib/catalogoExames';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { rotuloAutorizacao, situacaoAutorizacao, STATUS_GUIA_EM_ATENDIMENTO } from '@/lib/guiaExternaAutorizacao';
 
 const FORMATADOR_DATA_HORA = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit',
@@ -73,13 +79,19 @@ async function obterOuCriarPacienteDaGuia(guia: any, clinicaId: string | null | 
 
   const buscarPacientePorCpf = async () => {
     if (cpfDigitos.length !== 11 || cpfsPossiveis.size === 0) return null;
+    // maybeSingle() falhava com dois cadastros no mesmo CPF (com e sem máscara):
+    // usa o mais antigo e avisa para unificar.
     const { data, error } = await supabase.from('pacientes')
       .select('id')
       .eq('clinica_id', clinicaId)
       .in('cpf', [...cpfsPossiveis])
-      .maybeSingle();
+      .order('created_at', { ascending: true })
+      .limit(2);
     if (error) throw error;
-    return data?.id ?? null;
+    if ((data?.length ?? 0) > 1) {
+      toast.warning('Há mais de um cadastro com este CPF.', { description: 'A guia foi vinculada ao cadastro mais antigo. Unifique os cadastros em Pacientes.' });
+    }
+    return data?.[0]?.id ?? null;
   };
 
   const pacienteExistente = await buscarPacientePorCpf();
@@ -154,6 +166,16 @@ function GuiaWorkspace({ guia, onChanged }: any) {
   });
   const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(terceirizacao));
   const [uploadingRetorno, setUploadingRetorno] = useState(false);
+  const [confirmarCancelamento, setConfirmarCancelamento] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const navigate = useNavigate();
+  const { hasAnyRole } = useSupabaseAuth();
+  const podeCriarPedido = hasAnyRole(['admin', 'medico', 'enfermagem']);
+  const autorizacao = situacaoAutorizacao(guia.validade_autorizacao, todaySaoPauloDateOnly());
+  const rotuloAut = STATUS_GUIA_EM_ATENDIMENTO.has(guia.status) ? rotuloAutorizacao(autorizacao.situacao, autorizacao.dias) : null;
+  // Autorização vencida não pode seguir para coleta: o convênio glosa.
+  const autorizacaoBloqueia = autorizacao.situacao === 'vencida';
+  const nomesExames = ((guia.exames_solicitados as any[]) || []).map((ex) => String(ex?.nome || ex?.tipo || '').trim()).filter(Boolean);
   const laudosTemporariosRef = useRef<Set<string>>(new Set());
   const dialogMontadoRef = useRef(false);
   const anexoPersistidoInicialRef = useRef<string | null>(guia.laudo_externo_url || null);
@@ -265,8 +287,8 @@ function GuiaWorkspace({ guia, onChanged }: any) {
       if (error) throw error;
       if (!data) throw new Error('A guia mudou de estado ou não pertence à clínica atual. Atualize a lista.');
     },
-    onSuccess: async () => { await onChanged(); toast.success('Atualizado'); },
-    onError: (e: any) => toast.error(e.message),
+    onSuccess: async () => { await onChanged(); setConfirmarCancelamento(false); setMotivoCancelamento(''); toast.success('Guia atualizada'); },
+    onError: (e: any) => toast.error('Não foi possível atualizar a guia', { description: mensagemDeErro(e) }),
   });
 
   const enviarParaFila = useMutation({
@@ -275,6 +297,7 @@ function GuiaWorkspace({ guia, onChanged }: any) {
       if (!['recebida', 'em_analise', 'agendada'].includes(guia.status)) {
         throw new Error('Esta guia já foi encaminhada ou não aceita envio para a fila. Atualize a lista.');
       }
+      if (autorizacaoBloqueia) throw new Error('A autorização do convênio está vencida. Peça uma nova autorização antes de enviar para a coleta.');
       const pacienteId = await obterOuCriarPacienteDaGuia(guia, profile?.clinica_id);
       const { error } = await (supabase as any).rpc('encaminhar_guia_externa_para_fila', {
         p_guia_id: guia.id,
@@ -284,13 +307,14 @@ function GuiaWorkspace({ guia, onChanged }: any) {
       if (error) throw error;
     },
     onSuccess: async () => { await onChanged(); toast.success('Guia enviada para a fila de coleta'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error('Não foi possível enviar para a fila', { description: mensagemDeErro(e) }),
   });
 
   const gerarAgendamento = useMutation({
     mutationFn: async () => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
       if (!['recebida', 'em_analise'].includes(guia.status)) throw new Error('Esta guia já foi agendada ou encaminhada. Atualize a lista.');
+      if (autorizacaoBloqueia) throw new Error('A autorização do convênio está vencida. Peça uma nova autorização antes de agendar.');
       const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(dataAg)
         && !Number.isNaN(new Date(`${dataAg}T12:00:00`).getTime())
         && format(new Date(`${dataAg}T12:00:00`), 'yyyy-MM-dd') === dataAg;
@@ -306,7 +330,22 @@ function GuiaWorkspace({ guia, onChanged }: any) {
       if (error) throw error;
     },
     onSuccess: async () => { await onChanged(); toast.success('Coleta agendada'); setAgendando(false); setDataAg(''); setHoraAg(''); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error('Não foi possível agendar a coleta', { description: mensagemDeErro(e) }),
+  });
+
+  // 42: transforma os exames soltos da guia em pedido de exames do paciente.
+  const converterEmPedido = useMutation({
+    mutationFn: async () => {
+      if (!nomesExames.length) throw new Error('A guia não tem exames para converter.');
+      return obterOuCriarPacienteDaGuia(guia, profile?.clinica_id);
+    },
+    onSuccess: (pacienteId: string) => {
+      const repetirExames = nomesExames.map((nome) => exameDoTipoGravado(nome));
+      navigate(`/exames/nova?paciente=${encodeURIComponent(pacienteId)}`, {
+        state: { returnTo: '/exames', repetirExames, repetirIndicacao: guia.observacoes || '' },
+      });
+    },
+    onError: (e: any) => toast.error('Não foi possível converter em pedido', { description: mensagemDeErro(e) }),
   });
 
   const openAnexo = async () => {
@@ -324,23 +363,24 @@ function GuiaWorkspace({ guia, onChanged }: any) {
     }
   };
 
-  const busy = uploadingRetorno || salvarTerceirizacao.isPending || updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending;
+  const busy = uploadingRetorno || salvarTerceirizacao.isPending || updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || converterEmPedido.isPending;
   const dirty = JSON.stringify(terceirizacao) !== savedSnapshot || (agendando && !!(dataAg || horaAg));
   return <div className="mx-auto max-w-6xl space-y-6 pb-24 lg:pb-8">
     <UnsavedChangesGuard dirty={dirty} busy={busy} completed={completed} />
     <PageHeader title="Guia externa" icon={<FileText className="h-5 w-5" />} description={`Recebida em ${formatarDataHoraSaoPaulo(guia.data_recebimento, true)} · ${ORIGEM_LABEL[guia.origem] || guia.origem}`} actions={<Button asChild variant="outline"><Link to="/guias-externas" state={{ guiaFilters: location.state?.guiaFilters }}>Voltar às guias</Link></Button>} />
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4"><h2 className="text-2xl font-semibold break-words">{guia.paciente_nome}</h2><Badge variant="outline">{STATUS_LABEL[guia.status]?.label || guia.status}</Badge></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4"><h2 className="text-2xl font-semibold break-words">{guia.paciente_nome}</h2><div className="flex flex-wrap gap-2">{rotuloAut && <Badge variant="outline" className={autorizacao.situacao === 'vencida' ? 'gap-1 border-destructive/40 bg-destructive/10 text-destructive' : 'gap-1 border-warning/40 bg-warning/10 text-warning-foreground'}><ShieldAlert aria-hidden="true" className="h-3 w-3" />{rotuloAut}</Badge>}<Badge variant="outline">{STATUS_LABEL[guia.status]?.label || guia.status}</Badge></div></div>
+    {autorizacaoBloqueia && STATUS_GUIA_EM_ATENDIMENTO.has(guia.status) && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">A autorização do convênio venceu. Agendamento e envio para a fila ficam bloqueados até uma nova autorização ser registrada.</p>}
     <fieldset disabled={busy} className="min-w-0 space-y-6" aria-busy={busy}>
         <div className="space-y-4">
           <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4 text-sm">
             <Info label="CPF" value={guia.paciente_cpf} />
-            <Info label="Nascimento" value={guia.paciente_nascimento} />
+            <Info label="Nascimento" value={guia.paciente_nascimento ? guia.paciente_nascimento.split('-').reverse().join('/') : null} />
             <Info label="Telefone" value={guia.paciente_telefone} />
             <Info label="Convênio" value={guia.convenio_nome} />
             <Info label="Médico solicitante" value={guia.medico_externo_nome} />
             <Info label="CRM" value={guia.medico_externo_crm ? `${guia.medico_externo_crm}/${guia.medico_externo_uf || ''}` : null} />
             <Info label="Nº autorização" value={guia.numero_autorizacao} />
-            <Info label="Validade autorização" value={guia.validade_autorizacao} />
+            <Info label="Validade da autorização" value={guia.validade_autorizacao ? guia.validade_autorizacao.split('-').reverse().join('/') : null} />
           </div>
 
           <div>
@@ -357,6 +397,13 @@ function GuiaWorkspace({ guia, onChanged }: any) {
           </div>
 
           {guia.observacoes && <Info label="Observações" value={guia.observacoes} />}
+
+          {nomesExames.length > 0 && guia.status !== 'cancelada' && (
+            <section aria-labelledby={`guia-${guia.id}-preparo`} className="space-y-2">
+              <h3 id={`guia-${guia.id}-preparo`} className="text-sm font-semibold">Preparo do paciente</h3>
+              <PreparoExamesAcoes exames={nomesExames} pacienteNome={guia.paciente_nome || 'paciente'} telefone={guia.paciente_telefone} />
+            </section>
+          )}
 
           <section className="border-y">
             <CardHeader className="border-b px-0 py-4"><CardTitle className="text-sm">Acompanhamento do laboratório parceiro</CardTitle><CardDescription>Parceiro, prazo, custo e retorno ficam vinculados a esta guia da clínica.</CardDescription></CardHeader>
@@ -411,15 +458,21 @@ function GuiaWorkspace({ guia, onChanged }: any) {
         <div className="flex flex-wrap justify-end gap-2 border-t pt-4 scroll-mb-24">
           {guia.status !== 'cancelada' && guia.status !== 'finalizada' && guia.status !== 'encaminhada_fila' && (
             <>
-              <Button variant="outline" onClick={() => updateStatus.mutate({ status: 'cancelada' })} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || uploadingRetorno}>
-                <X className="h-4 w-4 mr-1" /> Cancelar guia
+              <Button variant="outline" onClick={() => { setMotivoCancelamento(''); setConfirmarCancelamento(true); }} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || uploadingRetorno}>
+                <X aria-hidden="true" className="h-4 w-4 mr-1" /> Cancelar guia
               </Button>
+              {podeCriarPedido && nomesExames.length > 0 && (
+                <Button variant="outline" className="gap-1.5" onClick={() => converterEmPedido.mutate()} disabled={converterEmPedido.isPending || uploadingRetorno}>
+                  {converterEmPedido.isPending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ClipboardList aria-hidden="true" className="h-4 w-4" />}
+                  Converter em pedido
+                </Button>
+              )}
               {!agendando && ['recebida', 'em_analise'].includes(guia.status) && (
-                <Button variant="outline" onClick={() => setAgendando(true)} disabled={updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || uploadingRetorno} className="gap-1.5">
+                <Button variant="outline" onClick={() => setAgendando(true)} disabled={autorizacaoBloqueia || updateStatus.isPending || enviarParaFila.isPending || gerarAgendamento.isPending || uploadingRetorno} className="gap-1.5">
                   <CalendarPlus className="h-4 w-4" /> Agendar coleta
                 </Button>
               )}
-              <Button onClick={() => enviarParaFila.mutate()} disabled={enviarParaFila.isPending || gerarAgendamento.isPending || updateStatus.isPending || uploadingRetorno} className="gap-1.5">
+              <Button onClick={() => enviarParaFila.mutate()} disabled={autorizacaoBloqueia || enviarParaFila.isPending || gerarAgendamento.isPending || updateStatus.isPending || uploadingRetorno} className="gap-1.5">
                 {enviarParaFila.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 Enviar para fila de coleta
               </Button>
@@ -427,6 +480,27 @@ function GuiaWorkspace({ guia, onChanged }: any) {
           )}
         </div>
     </fieldset>
+    <ConfirmDialog
+      open={confirmarCancelamento}
+      onOpenChange={(aberto) => { if (!aberto && !updateStatus.isPending) setConfirmarCancelamento(false); }}
+      title="Cancelar esta guia externa?"
+      description="A guia sai da fila de atendimento. Informe o motivo; ele fica registrado nas observações da guia."
+      confirmLabel="Cancelar guia"
+      cancelLabel="Manter guia"
+      variant="destructive"
+      isLoading={updateStatus.isPending}
+      closeOnConfirm={false}
+      onConfirm={() => {
+        const motivo = motivoCancelamento.trim();
+        if (motivo.length < 5) { toast.error('Descreva o motivo do cancelamento (mínimo de 5 caracteres).'); return; }
+        updateStatus.mutate({ status: 'cancelada', observacoes: [guia.observacoes?.trim(), `Cancelamento: ${motivo}`].filter(Boolean).join('\n') });
+      }}
+    >
+      <div className="space-y-1.5 pt-2">
+        <Label htmlFor={`guia-${guia.id}-motivo-cancelamento`}>Motivo do cancelamento *</Label>
+        <Textarea id={`guia-${guia.id}-motivo-cancelamento`} value={motivoCancelamento} onChange={(event) => setMotivoCancelamento(event.target.value)} maxLength={300} rows={3} />
+      </div>
+    </ConfirmDialog>
   </div>;
 }
 

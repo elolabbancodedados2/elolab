@@ -1295,7 +1295,7 @@ test('queue presents the full care journey and keeps patients readable at deskto
     await page.setViewportSize(viewport);
     await page.goto('/fila');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Fila de atendimento' })).toBeVisible();
     await expect(main.getByRole('heading', { name: 'Jornada dos atendimentos' })).toBeVisible();
     await expect(main.locator('#fila-etapa-aguardando')).toContainText('2');
     await expect(main.locator('#fila-etapa-triagem')).toContainText('1');
@@ -3362,11 +3362,11 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
       }
       if (path === '/gestao-fluxo') {
         await expect(main.getByRole('heading', { name: 'Salas e Leitos', exact: true })).toBeVisible();
-        await expect(main.getByRole('button', { name: 'Nova Sala / Leito', exact: true })).toHaveCount(1);
-        const addRoom = main.getByRole('button', { name: 'Nova Sala / Leito', exact: true }).first();
+        await expect(main.getByRole('button', { name: 'Nova sala ou leito', exact: true })).toHaveCount(1);
+        const addRoom = main.getByRole('button', { name: 'Nova sala ou leito', exact: true }).first();
         await expect(addRoom).toBeVisible();
         await addRoom.click();
-        await expect(page.getByRole('heading', { name: 'Nova Sala', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Nova sala', exact: true })).toBeVisible();
         await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
         await expect(page.getByRole('dialog')).not.toBeVisible();
       }
@@ -3413,7 +3413,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         });
       }
       if (path === '/gestao-fluxo') {
-        await main.getByRole('tab', { name: 'Lista de Espera' }).click();
+        await main.getByRole('tab', { name: 'Lista de espera' }).click();
         await expect(main.getByRole('heading', { name: 'Lista de Espera' })).toBeVisible();
         await expect(main.getByText('Nenhum paciente na lista de espera')).toBeVisible();
         await expect(main.getByRole('button', { name: 'Adicionar à Lista', exact: true })).toHaveCount(1);
@@ -3509,7 +3509,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
     await expect(reservedRoom).toContainText('Bruno Almeida');
     await expect(reservedRoom).toContainText('Reservada');
     if (viewport.width === 1280) {
-      await main.getByRole('button', { name: 'Nova Sala / Leito' }).click();
+      await main.getByRole('button', { name: 'Nova sala ou leito' }).click();
       const colorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(colorPicker.getByRole('button')).toHaveCount(5);
       await expect(colorPicker.getByRole('button', { name: /roxo/i })).toHaveCount(0);
@@ -3536,7 +3536,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
     }
     await page.screenshot({ path: testInfo.outputPath(`room-workspace-${viewport.width}.png`), animations: 'disabled' });
 
-    await main.getByRole('tab', { name: 'Lista de Espera' }).click();
+    await main.getByRole('tab', { name: 'Lista de espera' }).click();
     await expect(page).toHaveURL(/origem=qa.*tab=espera|tab=espera.*origem=qa/);
     await expect(main.getByText('Nenhum paciente na lista de espera', { exact: true })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Adicionar à Lista', exact: true })).toHaveCount(1);
@@ -3709,7 +3709,7 @@ test('queue check-in opens its own page and keeps the check-in validation visibl
   await page.goto('/fila');
 
   const main = page.locator('#main-content');
-  await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+  await expect(main.getByRole('heading', { name: 'Fila de atendimento' })).toBeVisible();
   await main.getByRole('button', { name: 'Adicionar à fila' }).click();
 
   await expect(page).toHaveURL('/fila/adicionar');

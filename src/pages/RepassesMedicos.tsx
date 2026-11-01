@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, BadgeCheck, CheckCircle2, Clock3, Download, HandCoins, Play, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CheckCircle2, Clock3, Download, FileText, HandCoins, Play, RefreshCw, Save } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
+import { rotuloStatusRepasse } from '@/lib/tissStatus';
+import { mensagemDeErro } from '@/lib/erros';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,13 +24,13 @@ import { descreverRegraRepasse, podeAprovarRepasse, podePagarRepasse, receitaOri
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cn } from '@/lib/utils';
 import { downloadStringAsFile } from '@/lib/auditExport';
-import { demonstrativoRepassesCsv, subtotaisPorMedico } from '@/lib/repasseDemonstrativo';
+import { baixarDemonstrativoMedicoPdf, demonstrativoRepassesCsv, percentualBr, subtotaisPorMedico } from '@/lib/repasseDemonstrativo';
 
-type FiltroStatusRepasse = 'todos' | 'pendente' | 'aprovado' | 'pago' | 'aberto';
+type FiltroStatusRepasse = 'todos' | 'pendente' | 'aprovado' | 'pago' | 'aberto' | 'cancelado';
 
 type TipoRepasse = 'percentual' | 'fixo';
 interface MedicoRepasse { id: string; nome: string | null; crm: string; tipo_repasse: TipoRepasse | null; percentual_repasse: number | null; valor_repasse_fixo: number | null }
-interface Repasse { id: string; medico_id?: string | null; lancamento_id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; lancamento_pagamento_id?: string | null; lancamentos?: { status: string } | null; medicos?: { nome: string | null; crm: string } | null }
+interface Repasse { id: string; medico_id?: string | null; lancamento_id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; lancamento_pagamento_id?: string | null; lancamentos?: { status: string; data?: string | null; paciente_id?: string | null } | null; medicos?: { nome: string | null; crm: string } | null; paciente_nome?: string | null }
 
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
@@ -92,7 +96,7 @@ export function ConfiguracaoMedico({ medico, ultimaAlteracao, onSaved }: { medic
     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
       <div className="space-y-1.5"><Label htmlFor={`tipo-${medico.id}`}>Tipo de repasse</Label><Select value={tipo} onValueChange={(value) => trocarTipo(value as TipoRepasse)} disabled={saving}><SelectTrigger id={`tipo-${medico.id}`} className="min-h-11 rounded-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="percentual">Percentual da receita</SelectItem><SelectItem value="fixo">Valor fixo por atendimento</SelectItem></SelectContent></Select></div>
       <div className="space-y-1.5"><Label htmlFor={`valor-${medico.id}`}>{tipo === 'fixo' ? 'Valor fixo (R$)' : 'Percentual (%)'}</Label><Input id={`valor-${medico.id}`} className="min-h-11 rounded-full" type="number" min="0" max={tipo === 'percentual' ? 100 : undefined} step="0.01" value={valor} onChange={(event) => { alteradoLocalmenteRef.current = true; setValor(event.target.value); }} disabled={saving} /></div>
-      <Button className="h-11 gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={pedirConfirmacao} disabled={saving}>{saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar</Button>
+      <Button className="h-11 gap-2 rounded-full" onClick={pedirConfirmacao} disabled={saving}>{saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar</Button>
     </div>
     {ultimaAlteracao && <p className="text-xs text-muted-foreground">Última alteração por {ultimaAlteracao.alterado_por_nome || 'usuário removido'} em {new Date(ultimaAlteracao.alterado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })}.</p>}
     <ConfirmDialog
@@ -145,9 +149,13 @@ export default function RepassesMedicos() {
   const repassesQuery = useQuery({ queryKey: ['repasses-medicos', profile?.clinica_id ?? null, competencia], enabled: competenciaValida && !!user && !!profile?.clinica_id, queryFn: async () => {
     const inicio = `${competencia}-01`;
     const fim = toDateOnly(new Date(Number(competencia.slice(0, 4)), Number(competencia.slice(5, 7)), 1));
-    return buscarEmBlocos<Repasse>(() => (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm),lancamentos!repasses_medicos_lancamento_id_fkey(status)')
+    const linhas = await buscarEmBlocos<Repasse>(() => (supabase as any).from('repasses_medicos').select('*,medicos(nome,crm),lancamentos!repasses_medicos_lancamento_id_fkey(status,data,paciente_id)')
       .eq('clinica_id', profile?.clinica_id ?? '').gte('competencia', inicio).lt('competencia', fim)
       .order('created_at').order('id'));
+    // Nome do paciente para o demonstrativo; sem ele o item continua, só sem nome.
+    const ids = [...new Set(linhas.map(r => r.lancamentos?.paciente_id).filter((id): id is string => !!id))];
+    const pacientes = ids.length ? await buscarDadosBasicosPacientes(ids).catch(() => new Map()) : new Map();
+    return linhas.map(r => ({ ...r, paciente_nome: r.lancamentos?.paciente_id ? pacientes.get(r.lancamentos.paciente_id)?.nome ?? null : null }));
   }});
   const repasses = repassesQuery.data ?? [];
   const repassesAtingiramLimite = repasses.length >= LIMITE_BUSCA_EM_BLOCOS;
@@ -164,6 +172,7 @@ export default function RepassesMedicos() {
     if (filtroMedico !== 'todos' && r.medico_id !== filtroMedico) return false;
     if (filtroStatus === 'todos') return true;
     if (filtroStatus === 'aberto') return r.status === 'pendente' || r.status === 'aprovado';
+    if (filtroStatus === 'cancelado') return r.status === 'cancelado';
     return r.status === filtroStatus;
   }), [repasses, filtroStatus, filtroMedico]);
   const subtotais = useMemo(() => subtotaisPorMedico(repassesFiltrados, repasseValido), [repassesFiltrados]);
@@ -172,6 +181,11 @@ export default function RepassesMedicos() {
     for (const r of repasses) if (r.medico_id && !mapa.has(r.medico_id)) mapa.set(r.medico_id, r.medicos?.nome || r.medicos?.crm || 'Médico');
     return [...mapa.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
   }, [repasses]);
+  const quantidadeCancelados = repasses.filter(r => r.status === 'cancelado').length;
+  const exportarPdfMedico = (medicoId: string) => {
+    void baixarDemonstrativoMedicoPdf(repassesFiltrados, competencia, medicoId, repasseValido)
+      .catch(error => toast.error('Não foi possível gerar o PDF do médico.', { description: mensagemDeErro(error) }));
+  };
   const exportarDemonstrativo = () => {
     try {
       downloadStringAsFile({
@@ -230,12 +244,13 @@ export default function RepassesMedicos() {
   const descricaoHeader = repasses.length === 0
     ? 'Configure valor fixo ou percentual e concilie honorários sobre receitas quitadas.'
     : `${repasses.length} repasse(s) na competência · ${moeda(emAberto)} em aberto`;
-  const atualizarTudo = () => { void medicosQuery.refetch(); void repassesQuery.refetch(); };
+  const atualizarTudo = () => { void medicosQuery.refetch(); void repassesQuery.refetch(); void historicoRegrasQuery.refetch(); };
+  const atualizando = medicosQuery.isFetching || repassesQuery.isFetching || historicoRegrasQuery.isFetching;
 
   const kpis = [
     { key: 'aberto' as const, label: 'Em aberto', value: emAberto, icon: Clock3, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'pendente + aprovado a pagar' },
-    { key: 'pendente' as const, label: 'Pendente', value: totais.pendente, icon: AlertTriangle, color: 'text-warning', surface: 'bg-warning/10', escuro: false, caption: 'aguardando aprovação' },
-    { key: 'aprovado' as const, label: 'Aprovado', value: totais.aprovado, icon: BadgeCheck, color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'aguardando pagamento' },
+    { key: 'pendente' as const, label: 'Pendente', value: totais.pendente, icon: AlertTriangle, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'aguardando aprovação' },
+    { key: 'aprovado' as const, label: 'Aprovado', value: totais.aprovado, icon: BadgeCheck, color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'aguardando pagamento' },
     { key: 'pago' as const, label: 'Pago', value: totais.pago, icon: CheckCircle2, color: 'text-success', surface: 'bg-success/10', escuro: false, caption: 'já pago na competência' },
   ];
 
@@ -246,11 +261,11 @@ export default function RepassesMedicos() {
       icon={<HandCoins />}
       actions={(
         <>
-          <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={atualizarTudo} aria-label="Atualizar repasses" title="Atualizar repasses">
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-full" onClick={atualizarTudo} aria-label="Atualizar repasses" title="Atualizar repasses" disabled={atualizando}>
+            <RefreshCw className={cn('h-4 w-4', atualizando && 'animate-spin')} />
           </Button>
           <Button
-            className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110"
+            className="min-h-11 shrink-0 gap-2 rounded-full"
             onClick={gerar}
             disabled={processing || !competenciaValida}
           >
@@ -275,10 +290,8 @@ export default function RepassesMedicos() {
             aria-pressed={ativo}
             onClick={() => setFiltroStatus(ativo ? 'todos' : kpi.key)}
             className={cn(
-              'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-              kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-              ativo && !kpi.escuro && 'border-primary/50 ring-1 ring-primary/30',
-              ativo && kpi.escuro && 'ring-2 ring-primary/60',
+              'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              ativo && 'border-foreground ring-1 ring-foreground',
             )}
           >
             <div className="flex items-start justify-between gap-2 p-4">
@@ -295,6 +308,13 @@ export default function RepassesMedicos() {
         );
       })}
     </section>
+    {quantidadeCancelados > 0 && <div className="flex flex-wrap gap-2">
+      <button type="button" aria-pressed={filtroStatus === 'cancelado'} onClick={() => setFiltroStatus(filtroStatus === 'cancelado' ? 'todos' : 'cancelado')}
+        className={cn('min-h-11 rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          filtroStatus === 'cancelado' ? 'border-transparent bg-foreground text-background' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>
+        Cancelados <span className="tabular-nums opacity-80">{quantidadeCancelados}</span>
+      </button>
+    </div>}
     <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
@@ -305,7 +325,7 @@ export default function RepassesMedicos() {
         </CardTitle>
         <CardDescription>Escolha uma regra e salve. Cada alteração pede confirmação, registra quem alterou e quando, e vale para novas conciliações.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 xl:grid-cols-2">{medicosQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando médicos…</p> : medicos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum médico ativo cadastrado para esta clínica.</p> : medicos.map(medico => <ConfiguracaoMedico key={medico.id} medico={medico} ultimaAlteracao={ultimaAlteracaoPorMedico.get(medico.id)} onSaved={() => { void queryClient.invalidateQueries({ queryKey: ['medicos-repasse'] }); void queryClient.invalidateQueries({ queryKey: ['historico-regras-repasse'] }); }} />)}</CardContent>
+      <CardContent className="grid gap-3 xl:grid-cols-2">{medicosQuery.isLoading ? <><Skeleton className="h-40 rounded-2xl" /><Skeleton className="h-40 rounded-2xl" /></> : medicos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum médico ativo cadastrado para esta clínica.</p> : medicos.map(medico => <ConfiguracaoMedico key={medico.id} medico={medico} ultimaAlteracao={ultimaAlteracaoPorMedico.get(medico.id)} onSaved={() => { void queryClient.invalidateQueries({ queryKey: ['medicos-repasse'] }); void queryClient.invalidateQueries({ queryKey: ['historico-regras-repasse'] }); }} />)}</CardContent>
     </Card>
     <Card className="overflow-hidden rounded-2xl border-border/60 shadow-xs">
       <CardHeader>
@@ -314,13 +334,13 @@ export default function RepassesMedicos() {
             <HandCoins className="h-4 w-4" />
           </span>
           Fechamento
-          <Badge variant="outline" className="rounded-full border-border text-primary">{repassesFiltrados.length} de {repasses.length}</Badge>
+          <Badge variant="outline" className="rounded-full border-border text-foreground">{repassesFiltrados.length} de {repasses.length}</Badge>
         </CardTitle>
         <CardDescription>O pagamento registrado gera uma despesa no Fluxo de Caixa. A transferência ao médico é realizada fora do EloLab.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         {repassesAtingiramLimite && <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros. Os totais podem não incluir todos os repasses.</p></div>}
-        {repassesQuery.isLoading ? <p>Carregando…</p> : repasses.length === 0 ? (
+        {repassesQuery.isLoading ? <div className="space-y-2" aria-busy="true" aria-label="Carregando repasses"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div> : repasses.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">
             <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
               <HandCoins className="h-7 w-7" />
@@ -339,15 +359,16 @@ export default function RepassesMedicos() {
         ) : (
           <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
-              <TableHeader><TableRow><TableHead>Médico</TableHead><TableHead className="text-right">Base</TableHead><TableHead className="text-right">Repasse</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Médico</TableHead><TableHead className="hidden md:table-cell">Atendimento</TableHead><TableHead className="text-right">Base</TableHead><TableHead className="text-right">Repasse</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader>
               <TableBody>{repassesFiltrados.map(r => <TableRow key={r.id}>
-                <TableCell>{r.medicos?.nome || r.medicos?.crm}<p className="text-xs text-muted-foreground">{r.tipo_calculo === 'fixo' ? `${moeda(r.valor_configurado || r.valor_repasse)} fixo` : `${r.percentual}%`}</p></TableCell>
+                <TableCell>{r.medicos?.nome || r.medicos?.crm}<p className="text-xs text-muted-foreground">{r.tipo_calculo === 'fixo' ? `${moeda(r.valor_configurado || r.valor_repasse)} fixo` : percentualBr(r.percentual)}</p></TableCell>
+                <TableCell className="hidden text-sm md:table-cell">{r.lancamentos?.data ? r.lancamentos.data.slice(0, 10).split('-').reverse().join('/') : '—'}<p className="text-xs text-muted-foreground">{r.paciente_nome || ''}</p></TableCell>
                 <TableCell className="text-right">{moeda(r.valor_base)}</TableCell>
                 <TableCell className="text-right font-medium">{moeda(r.valor_repasse)}</TableCell>
-                <TableCell><Badge variant="outline" className={cn('rounded-full', r.status === 'pago' ? 'border-success/40 bg-success/10 text-success-foreground' : r.status === 'aprovado' ? 'border-border bg-primary/10 text-primary' : 'border-warning/40 bg-warning/10 text-warning-foreground')}>{r.status === 'pago' ? 'Pago' : r.status === 'aprovado' ? 'Aprovado' : 'Pendente'}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
+                <TableCell><Badge variant="outline" className={cn('rounded-full', r.status === 'pago' ? 'border-success/40 bg-success/10 text-success-foreground' : r.status === 'pendente' ? 'border-warning/40 bg-warning/10 text-warning-foreground' : r.status === 'cancelado' ? 'border-border bg-muted text-muted-foreground' : 'border-border bg-secondary text-foreground')}>{rotuloStatusRepasse(r.status)}</Badge>{r.status === 'pago' && !r.lancamento_pagamento_id && <p className="mt-1 text-[10px] text-warning">Pago antes do vínculo automático</p>}</TableCell>
                 <TableCell>
-                  {podeAprovarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id)} className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110">Aprovar</Button>}
-                  {podePagarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => navigate(`/repasses-medicos/${r.id}/pagamento`, { state: { competencia } })} className="h-9 gap-1 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110"><CheckCircle2 className="h-3.5 w-3.5" />Registrar pagamento</Button>}
+                  {podeAprovarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => void mudarStatus(r.id)} className="min-h-11 rounded-full text-xs">Aprovar</Button>}
+                  {podePagarRepasse(r.status, r.lancamentos?.status) && <Button size="sm" disabled={statusProcessingId !== null} onClick={() => navigate(`/repasses-medicos/${r.id}/pagamento`, { state: { competencia } })} className="min-h-11 gap-1 rounded-full text-xs"><CheckCircle2 className="h-3.5 w-3.5" />Registrar pagamento</Button>}
                   {r.status !== 'pago' && r.status !== 'cancelado' && !receitaOrigemQuitada(r.lancamentos?.status) && <span className="text-xs text-destructive">Receita estornada</span>}
                 </TableCell>
               </TableRow>)}</TableBody>
@@ -357,13 +378,14 @@ export default function RepassesMedicos() {
         {subtotais.length > 0 && (
           <section aria-label="Subtotais por médico" className="mt-4 overflow-hidden rounded-xl border border-border/60">
             <Table>
-              <TableHeader><TableRow><TableHead>Subtotal por médico</TableHead><TableHead className="text-right">Itens</TableHead><TableHead className="text-right">Devido</TableHead><TableHead className="text-right">Pago</TableHead><TableHead className="text-right">Em aberto</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Subtotal por médico</TableHead><TableHead className="text-right">Itens</TableHead><TableHead className="text-right">Devido</TableHead><TableHead className="text-right">Pago</TableHead><TableHead className="text-right">Em aberto</TableHead><TableHead><span className="sr-only">Demonstrativo</span></TableHead></TableRow></TableHeader>
               <TableBody>{subtotais.map(s => <TableRow key={s.medicoId}>
                 <TableCell className="font-medium">{s.nome}{s.crm && <p className="text-xs font-normal text-muted-foreground">CRM {s.crm}</p>}</TableCell>
                 <TableCell className="text-right tabular-nums">{s.quantidade}</TableCell>
                 <TableCell className="text-right tabular-nums">{moeda(s.devido)}</TableCell>
                 <TableCell className="text-right tabular-nums">{moeda(s.pago)}</TableCell>
                 <TableCell className="text-right font-medium tabular-nums">{moeda(s.emAberto)}</TableCell>
+                <TableCell className="text-right"><Button variant="ghost" size="sm" className="min-h-11 gap-1.5 rounded-full" aria-label={`Baixar demonstrativo em PDF de ${s.nome}`} onClick={() => exportarPdfMedico(s.medicoId)}><FileText className="h-4 w-4" />PDF</Button></TableCell>
               </TableRow>)}</TableBody>
             </Table>
           </section>

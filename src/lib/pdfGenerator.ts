@@ -8,7 +8,7 @@ import QRCode from 'qrcode';
 
 import { supabase } from '@/integrations/supabase/client';
 import { formatDateTimeSaoPaulo, parseDateOnly } from '@/lib/dateOnly';
-import { formatarReferenciaLaudo, procedenciaResultadoLaudo } from '@/lib/laudoWorkflow';
+import { formatarReferenciaLaudo, parseResultadoNumerico, procedenciaResultadoLaudo } from '@/lib/laudoWorkflow';
 
 /**
  * Carrega jsPDF e jspdf-autotable só quando alguém vai realmente gerar um PDF.
@@ -1091,8 +1091,9 @@ export interface LaudoData {
 }
 
 function isResultadoAlterado(resultado: { resultado: string; valorReferenciaMin?: number; valorReferenciaMax?: number }): boolean {
-  const numResult = parseFloat(resultado.resultado);
-  if (isNaN(numResult)) return false;
+  // "5,8" e "1.234,56" são o formato brasileiro: parseFloat lia só "5" e "1".
+  const numResult = parseResultadoNumerico(resultado.resultado);
+  if (numResult === null) return false;
   return (
     (resultado.valorReferenciaMin != null && numResult < resultado.valorReferenciaMin) ||
     (resultado.valorReferenciaMax != null && numResult > resultado.valorReferenciaMax)

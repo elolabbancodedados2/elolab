@@ -26,7 +26,9 @@ import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useSupabaseQuery } from '@/hooks/useSupabaseData';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { chamarPacienteNaFila } from '@/lib/filaChamada';
+import { dataHoraSP } from '@/lib/caixaFormatacao';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
@@ -38,11 +40,23 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { buildTriagensFilters, filtrarAgendamentosAguardandoTriagem, temCheckinAtivo } from '@/lib/triageQueue';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { formatWithDatePreference } from '@/lib/datePreference';
-import { alturaEmCentimetros, normalizarPressaoArterial, riscoBaixo, sinaisCriticos } from '@/lib/triagemSinais';
+import {
+  alturaEmCentimetros, normalizarPressaoArterial, riscoBaixo, sinaisCriticos, sugerirRisco, tendenciaSinal,
+  type SinaisParaAlerta, type Tendencia,
+} from '@/lib/triagemSinais';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { mensagemDeErro } from '@/lib/erros';
 
 const FUSO_CLINICA = 'America/Sao_Paulo';
+
+/** Número clínico com vírgula decimal, como se lê no Brasil. */
+const numeroBR = (valor: unknown, casas = 1): string => {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero.toLocaleString('pt-BR', { maximumFractionDigits: casas }) : '—';
+};
+
+const TEXTO_TENDENCIA: Record<Tendencia, string> = { subiu: 'subiu', caiu: 'caiu', 'estável': 'estável' };
 
 const ocorreuNaDataDaClinica = (dataHora: string | null | undefined, data: string) => {
   if (!dataHora) return false;
@@ -67,14 +81,16 @@ const RISCO = {
   vermelho: {
     label: 'Emergência',
     sublabel: 'Imediato',
+    barra: 'border-l-red-600',
     bg: 'bg-red-600 text-white',
     border: 'border-red-500',
     light: 'bg-red-50 border-red-200',
     dot: 'bg-red-500 animate-pulse',
   },
   laranja: {
-    label: 'Muito Urgente',
+    label: 'Muito urgente',
     sublabel: '10 min',
+    barra: 'border-l-orange-600',
     bg: 'bg-orange-700 text-white',
     border: 'border-orange-400',
     light: 'bg-orange-50 border-orange-200',
@@ -83,22 +99,25 @@ const RISCO = {
   amarelo: {
     label: 'Urgente',
     sublabel: '30 min',
+    barra: 'border-l-yellow-400',
     bg: 'bg-yellow-400 text-yellow-900',
     border: 'border-yellow-400',
     light: 'bg-yellow-50 border-yellow-200',
     dot: 'bg-yellow-400',
   },
   verde: {
-    label: 'Pouco Urgente',
+    label: 'Pouco urgente',
     sublabel: '120 min',
+    barra: 'border-l-green-600',
     bg: 'bg-green-700 text-white',
     border: 'border-green-400',
     light: 'bg-green-50 border-green-200',
     dot: 'bg-green-500',
   },
   azul: {
-    label: 'Não Urgente',
+    label: 'Não urgente',
     sublabel: '240 min',
+    barra: 'border-l-blue-600',
     bg: 'bg-blue-700 text-white',
     border: 'border-blue-400',
     light: 'bg-blue-50 border-blue-200',
@@ -263,7 +282,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
   const agendamentosQuery = useAgendamentos(today);
   const { data: agendamentos = [] } = agendamentosQuery;
   const filaQuery = useSupabaseQuery<any>('fila_atendimento', {
-    select: 'id, agendamento_id, status, horario_chegada',
+    select: 'id, agendamento_id, status, horario_chegada, prioridade, updated_at, sala_id',
     filters: [
       { column: 'horario_chegada', operator: 'gte', value: inicioDoDia },
       { column: 'horario_chegada', operator: 'lt', value: inicioDoProximoDia },
@@ -331,8 +350,51 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
         .filter((t: any) => ocorreuNaDataDaClinica(t.data_hora, today))
         .map((t: any) => t.agendamento_id)
     );
-    return filtrarAgendamentosAguardandoTriagem(agendamentos, fila, [...jaTriados], today);
+    return filtrarAgendamentosAguardandoTriagem(agendamentos, fila, [...jaTriados], today)
+      .map(agendamento => ({
+        ...agendamento,
+        prioridade: (fila as any[]).find((item: any) => item.agendamento_id === agendamento.id && item.status !== 'finalizado')?.prioridade ?? null,
+      }));
   }, [agendamentos, fila, triagens, today]);
+
+  // Sala de triagem cadastrada: é para onde o painel manda o paciente chamado.
+  const salaTriagemQuery = useSupabaseQuery<any>('salas', {
+    select: 'id, nome, tipo, status',
+    filters: [{ column: 'tipo', operator: 'eq', value: 'triagem' }],
+    enabled: !creationPage && podeRegistrarTriagem,
+    staleTime: 1000 * 60 * 5,
+    suppressGlobalErrorToast: true,
+  });
+  const salaTriagem = (salaTriagemQuery.data ?? []).find((sala: any) => sala.status !== 'manutencao') ?? null;
+  const [chamandoTriagemId, setChamandoTriagemId] = useState<string | null>(null);
+  const chamarParaTriagem = async (agendamentoId: string) => {
+    const entrada = (fila as any[]).find((item: any) => item.agendamento_id === agendamentoId && ['aguardando', 'chamado'].includes(item.status));
+    if (!entrada || !profile?.clinica_id) {
+      toast.error('O paciente não está aguardando na fila. Atualize a lista.');
+      return;
+    }
+    setChamandoTriagemId(agendamentoId);
+    try {
+      const resultado = await chamarPacienteNaFila({
+        filaId: entrada.id,
+        clinicaId: profile.clinica_id,
+        versao: entrada.updated_at,
+        salaId: salaTriagem?.id,
+      });
+      if (resultado === 'mudou') {
+        toast.warning('Outra pessoa já mexeu neste atendimento. A lista foi atualizada.');
+      } else if (salaTriagem) {
+        toast.success(`Paciente chamado para a ${salaTriagem.nome}.`);
+      } else {
+        toast.success('Paciente chamado no painel.', { description: 'Cadastre uma sala do tipo Triagem para o painel indicar o local.' });
+      }
+      void filaQuery.refetch();
+    } catch (erro) {
+      toast.error('Não foi possível chamar o paciente', { description: mensagemDeErro(erro) });
+    } finally {
+      setChamandoTriagemId(null);
+    }
+  };
 
   const pendingTriagemCount = aguardandoTriagem.length;
 
@@ -495,7 +557,10 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
 
     // Sinal crítico com risco verde/azul costuma ser erro de classificação:
     // pede confirmação explícita antes de gravar.
-    const criticos = sinaisCriticos({ saturacao: sat, sistolica, diastolica, temperatura: temp });
+    const criticos = sinaisCriticos({
+      saturacao: sat, sistolica, diastolica, temperatura: temp,
+      frequenciaCardiaca: fc, frequenciaRespiratoria: fr, glicemia: glic, dor,
+    });
     if (!sinaisCriticosConfirmados && riscoBaixo(formData.classificacao_risco) && criticos.length > 0) {
       setConfirmacaoCritica(criticos);
       return;
@@ -603,7 +668,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           filaAtualizada = true;
         } catch (error) {
           const detalhe = error instanceof Error ? error.message : 'Erro desconhecido';
-          avisosComplementares.push(`A fila não foi atualizada (${detalhe}). Verifique a Fila de Atendimento.`);
+          avisosComplementares.push(`A fila não foi atualizada (${detalhe}). Verifique a fila de atendimento.`);
         }
 
         // Auto-notify doctor for urgent cases. A falha no aviso não desfaz a
@@ -671,6 +736,103 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
       onConfirm={() => { void handleSave(true); }}
     />
   );
+
+  // Contexto do paciente na ficha: alergias e a última triagem, para a
+  // enfermagem comparar os sinais de agora com os anteriores.
+  const pacienteFichaId = creationPage ? formData.paciente_id : '';
+  const contextoPacienteQuery = useQuery({
+    queryKey: ['triagem-contexto-paciente', profile?.clinica_id, pacienteFichaId],
+    enabled: Boolean(pacienteFichaId && profile?.clinica_id),
+    staleTime: 60_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const clinicaId = profile!.clinica_id!;
+      const [paciente, anteriores] = await Promise.all([
+        supabase.from('pacientes').select('id, alergias').eq('id', pacienteFichaId).eq('clinica_id', clinicaId).maybeSingle(),
+        supabase.from('triagens')
+          .select('id, data_hora, pressao_arterial, frequencia_cardiaca, temperatura, saturacao, peso, classificacao_risco')
+          .eq('clinica_id', clinicaId)
+          .eq('paciente_id', pacienteFichaId)
+          .order('data_hora', { ascending: false })
+          .limit(3),
+      ]);
+      if (paciente.error) throw paciente.error;
+      if (anteriores.error) throw anteriores.error;
+      return { alergias: (paciente.data?.alergias ?? []) as string[], triagens: (anteriores.data ?? []) as any[] };
+    },
+  });
+  const ultimaTriagem = (contextoPacienteQuery.data?.triagens ?? []).find((t: any) => t.id !== corrigirId) ?? null;
+
+  const numeroDoCampo = (valor: string) => {
+    const numero = valor.trim() ? parseValorClinico(valor) : Number.NaN;
+    return Number.isFinite(numero) ? numero : null;
+  };
+  const paLive = normalizarPressaoArterial(formData.pressao_arterial);
+  const sinaisLive: SinaisParaAlerta = {
+    saturacao: numeroDoCampo(formData.saturacao),
+    sistolica: paLive.sistolica ?? null,
+    diastolica: paLive.diastolica ?? null,
+    temperatura: numeroDoCampo(formData.temperatura),
+    frequenciaCardiaca: numeroDoCampo(formData.frequencia_cardiaca),
+    frequenciaRespiratoria: numeroDoCampo(formData.frequencia_respiratoria),
+    glicemia: numeroDoCampo(formData.glicemia),
+    dor: numeroDoCampo(formData.dor_escala),
+  };
+  const sugestaoRisco = sugerirRisco(sinaisLive);
+  const sistolicaAnterior = ultimaTriagem ? normalizarPressaoArterial(String(ultimaTriagem.pressao_arterial ?? '')).sistolica : undefined;
+  const tendencias = ultimaTriagem ? [
+    { rotulo: 'PA sistólica', valor: tendenciaSinal(sinaisLive.sistolica, sistolicaAnterior, 5) },
+    { rotulo: 'FC', valor: tendenciaSinal(sinaisLive.frequenciaCardiaca, ultimaTriagem.frequencia_cardiaca, 5) },
+    { rotulo: 'Temperatura', valor: tendenciaSinal(sinaisLive.temperatura, ultimaTriagem.temperatura, 0.2) },
+    { rotulo: 'SpO₂', valor: tendenciaSinal(sinaisLive.saturacao, ultimaTriagem.saturacao, 1) },
+    { rotulo: 'Peso', valor: tendenciaSinal(numeroDoCampo(formData.peso), ultimaTriagem.peso, 0.5) },
+  ].filter((item): item is { rotulo: string; valor: Tendencia } => item.valor !== null) : [];
+
+  const contextoPaciente = pacienteFichaId ? (
+    <section aria-labelledby="triagem-contexto" className="max-w-5xl rounded-xl border border-border bg-card px-4 py-4 sm:px-6">
+      <h2 id="triagem-contexto" className="text-sm font-semibold text-foreground">Antes de triar</h2>
+      {contextoPacienteQuery.isLoading ? (
+        <p role="status" className="mt-2 text-sm text-muted-foreground">Carregando alergias e última triagem…</p>
+      ) : contextoPacienteQuery.isError ? (
+        <p role="alert" className="mt-2 text-sm text-warning-foreground">Não foi possível carregar alergias e triagens anteriores. Confirme com o paciente.</p>
+      ) : (
+        <div className="mt-2 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Alergias</p>
+            {(contextoPacienteQuery.data?.alergias ?? []).length > 0 ? (
+              <p className="mt-0.5 flex items-start gap-1.5 font-medium text-destructive">
+                <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                {contextoPacienteQuery.data!.alergias.join(', ')}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-foreground">Nenhuma alergia registrada</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Última triagem</p>
+            {ultimaTriagem ? (
+              <>
+                <p className="mt-0.5 text-foreground">
+                  {dataHoraSP(ultimaTriagem.data_hora)}
+                  {ultimaTriagem.classificacao_risco && RISCO[ultimaTriagem.classificacao_risco as Risco] ? ` · ${RISCO[ultimaTriagem.classificacao_risco as Risco].label}` : ''}
+                </p>
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  PA {ultimaTriagem.pressao_arterial || '—'} · FC {numeroBR(ultimaTriagem.frequencia_cardiaca, 0)} · T {numeroBR(ultimaTriagem.temperatura)} °C · SpO₂ {numeroBR(ultimaTriagem.saturacao, 0)}% · Peso {numeroBR(ultimaTriagem.peso)} kg
+                </p>
+                {tendencias.length > 0 && (
+                  <p className="mt-1 text-xs text-foreground" aria-live="polite">
+                    Em relação à anterior: {tendencias.map(item => `${item.rotulo} ${TEXTO_TENDENCIA[item.valor]}`).join(' · ')}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-0.5 text-foreground">Primeira triagem do paciente</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  ) : null;
 
   const getPacienteNome = (triagem: any) =>
     triagem.pacientes?.nome_social || triagem.pacientes?.nome || '—';
@@ -778,9 +940,9 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           <p className="mt-1 text-xs text-muted-foreground">Pressão arterial e queixa principal são obrigatórias.</p>
         </header>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <VitalInput icon={Heart} label="Pressão Arterial *" value={formData.pressao_arterial} onChange={setField('pressao_arterial')} placeholder="120/80" unit="mmHg" color="text-destructive" inputMode="text" />
-          <VitalInput icon={Activity} label="Freq. Cardíaca" value={formData.frequencia_cardiaca} onChange={setField('frequencia_cardiaca')} placeholder="80" unit="bpm" color="text-primary" />
-          <VitalInput icon={Wind} label="Freq. Respiratória" value={formData.frequencia_respiratoria} onChange={setField('frequencia_respiratoria')} placeholder="16" unit="irpm" />
+          <VitalInput icon={Heart} label="Pressão arterial *" value={formData.pressao_arterial} onChange={setField('pressao_arterial')} placeholder="120/80" unit="mmHg" color="text-destructive" inputMode="text" />
+          <VitalInput icon={Activity} label="Freq. cardíaca" value={formData.frequencia_cardiaca} onChange={setField('frequencia_cardiaca')} placeholder="80" unit="bpm" color="text-primary" />
+          <VitalInput icon={Wind} label="Freq. respiratória" value={formData.frequencia_respiratoria} onChange={setField('frequencia_respiratoria')} placeholder="16" unit="irpm" />
           <VitalInput icon={Thermometer} label="Temperatura" value={formData.temperatura} onChange={setField('temperatura')} placeholder="36,5" unit="°C" color={parseValorClinico(formData.temperatura) >= 37.5 ? 'text-destructive' : 'text-muted-foreground'} />
           <VitalInput icon={Droplets} label="Saturação O₂" value={formData.saturacao} onChange={setField('saturacao')} placeholder="98" unit="%" color={parseValorClinico(formData.saturacao) < 94 ? 'text-destructive' : 'text-success'} inputMode="numeric" />
           <VitalInput icon={Activity} label="Glicemia" value={formData.glicemia} onChange={setField('glicemia')} placeholder="100" unit="mg/dL" />
@@ -811,6 +973,19 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           <h2 id="triagem-risco" className="text-sm font-semibold text-foreground">Classificação de risco (Manchester) *</h2>
           <p className="mt-1 text-xs text-muted-foreground">Selecione a prioridade clínica definida pelo profissional.</p>
         </header>
+        {sugestaoRisco && (
+          <div role="status" className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-foreground">
+              <span className="font-semibold">Sugestão pelos sinais: {RISCO[sugestaoRisco.risco].label}</span>
+              <span className="text-muted-foreground"> · {sugestaoRisco.motivos.join(', ')}. A decisão é da enfermagem.</span>
+            </p>
+            {formData.classificacao_risco !== sugestaoRisco.risco && (
+              <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 rounded-md" onClick={() => setField('classificacao_risco')(sugestaoRisco.risco)}>
+                Usar sugestão
+              </Button>
+            )}
+          </div>
+        )}
         <div role="group" aria-labelledby="triagem-risco" className="flex flex-wrap gap-2">
           {Object.entries(RISCO).map(([key, cfg]) => (
             <button
@@ -878,6 +1053,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           />
         ) : (
         <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-6">
+          {contextoPaciente}
           <div className="max-w-5xl rounded-xl border border-border bg-card px-4 py-5 sm:px-6">
             {triageFields}
           </div>
@@ -932,7 +1108,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
               <RefreshCw className="h-4 w-4" />
             </Button>
             {podeRegistrarTriagem && <Button className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={() => handleOpenTriagePage()}>
-              <Plus className="h-4 w-4" /> Nova Triagem
+              <Plus className="h-4 w-4" /> Nova triagem
             </Button>}
           </>
         )}
@@ -962,6 +1138,8 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           loading={carregandoAgenda}
           appointments={aguardandoTriagem}
           onTriage={(pacienteId, agendamentoId) => handleOpenTriagePage(pacienteId, agendamentoId, 'triagem')}
+          onCall={podeRegistrarTriagem ? (agendamentoId) => { void chamarParaTriagem(agendamentoId); } : undefined}
+          callingId={chamandoTriagemId}
         />
       )}
 
@@ -1089,7 +1267,39 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
               )}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-border/60">
+            <>
+            {/* Celular: uma ficha por paciente, com a cor de Manchester na borda. */}
+            <ul aria-label="Triagens de hoje" className="space-y-2 md:hidden">
+              {filtered.map(t => {
+                const cfg = RISCO[t.classificacao_risco as Risco] ?? RISCO.verde;
+                return (
+                  <li key={t.id} className={cn('rounded-lg border border-l-4 border-border bg-card p-3', cfg.barra)}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{getPacienteNome(t)}</p>
+                        <p className="text-xs text-muted-foreground">{cfg.label} · {horaDaClinica(t.data_hora)}</p>
+                      </div>
+                      {podeRegistrarTriagem && (
+                        <Button asChild variant="ghost" size="sm" className="min-h-11 shrink-0 gap-1.5 rounded-md text-xs">
+                          <Link to={`/triagem/nova?corrigir=${t.id}&origem=triagem`} aria-label={`Corrigir triagem de ${getPacienteNome(t)}`}>
+                            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />Corrigir
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                    <dl className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                      <div><dt>PA</dt><dd className="font-semibold text-foreground">{t.pressao_arterial || '—'}</dd></div>
+                      <div><dt>FC</dt><dd className="font-semibold text-foreground">{t.frequencia_cardiaca ? `${numeroBR(t.frequencia_cardiaca, 0)} bpm` : '—'}</dd></div>
+                      <div><dt>Temp.</dt><dd className="font-semibold text-foreground">{t.temperatura ? `${numeroBR(t.temperatura)} °C` : '—'}</dd></div>
+                      <div><dt>SpO₂</dt><dd className="font-semibold text-foreground">{t.saturacao ? `${numeroBR(t.saturacao, 0)}%` : '—'}</dd></div>
+                      <div><dt>IMC</dt><dd className="font-semibold text-foreground">{numeroBR(t.imc)}</dd></div>
+                    </dl>
+                    {t.queixa_principal && <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{t.queixa_principal}</p>}
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
@@ -1118,13 +1328,6 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                             </div>
                             <span className="font-medium text-sm">{getPacienteNome(t)}</span>
                           </div>
-                          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground md:hidden">
-                            <span>PA: <strong className="text-foreground">{t.pressao_arterial || '—'}</strong></span>
-                            <span>FC: <strong className="text-foreground">{t.frequencia_cardiaca ? `${t.frequencia_cardiaca} bpm` : '—'}</strong></span>
-                            <span>Temp: <strong className="text-foreground">{t.temperatura ? `${t.temperatura}°C` : '—'}</strong></span>
-                            <span>SpO₂: <strong className="text-foreground">{t.saturacao ? `${t.saturacao}%` : '—'}</strong></span>
-                            <span>IMC: <strong className="text-foreground">{t.imc ?? '—'}</strong></span>
-                          </div>
                         </TableCell>
                         <TableCell>
                           <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5', cfg.light, cfg.border)}>
@@ -1143,7 +1346,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                         <TableCell className="hidden md:table-cell">
                           {t.temperatura ? (
                             <span className={cn('text-sm font-medium', t.temperatura >= 37.5 ? 'text-destructive' : 'text-success')}>
-                              {t.temperatura}°C
+                              {numeroBR(t.temperatura)} °C
                             </span>
                           ) : '—'}
                         </TableCell>
@@ -1154,7 +1357,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                             </span>
                           ) : '—'}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell text-sm">{t.imc ?? '—'}</TableCell>
+                        <TableCell className="hidden lg:table-cell text-sm">{numeroBR(t.imc)}</TableCell>
                         <TableCell className="max-w-[180px]">
                           <p className="text-sm truncate text-muted-foreground">{t.queixa_principal || '—'}</p>
                         </TableCell>
@@ -1176,6 +1379,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

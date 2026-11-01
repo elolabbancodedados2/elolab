@@ -11,6 +11,8 @@
  * R$ 200 + R$ 500 = R$ 700, e a RPC recusaria por exceder o saldo.
  */
 
+import { parseMoneyInput } from '@/lib/dinheiro';
+
 export interface FormaExtra {
   forma: string;
   valor: number;
@@ -23,8 +25,10 @@ export interface PagamentoParaRpc {
 
 /** Returns the entered installment when it is a valid portion of the balance. */
 export function validarValorRecebido(valor: string, saldo: number): number | null {
-  if (!valor.trim()) return null;
-  const centavos = Math.round(Number(valor) * 100);
+  // Aceita "150,00" e "1.234,56", além de "150.00".
+  const numero = parseMoneyInput(valor);
+  if (numero === null) return null;
+  const centavos = Math.round(numero * 100);
   const saldoCentavos = emCentavos(saldo);
   if (!Number.isFinite(centavos) || centavos <= 0 || centavos > saldoCentavos) return null;
   return centavos / 100;
@@ -82,4 +86,18 @@ export function resumirPagamentos(
   return pagamentos
     .map((pagamento) => `${rotulos[pagamento.forma_pagamento] || pagamento.forma_pagamento}: ${moeda.format(pagamento.valor)}`)
     .join(' + ');
+}
+
+/**
+ * Formas que ainda podem ser escolhidas numa linha do pagamento dividido:
+ * sem a principal e sem as já usadas nas outras linhas.
+ */
+export function formasDisponiveis<T extends { value: string }>(todas: T[], principal: string, extras: FormaExtra[], indice: number): T[] {
+  const usadas = new Set([principal, ...extras.filter((_, i) => i !== indice).map(e => e.forma)].filter(Boolean));
+  return todas.filter(f => !usadas.has(f.value));
+}
+
+/** Quanto fica na forma principal depois das formas adicionais. */
+export function restanteDaPrincipal(valorRecebido: number, extras: FormaExtra[]): number {
+  return Math.max(0, emCentavos(valorRecebido) - Math.round(somaDasExtras(extras) * 100)) / 100;
 }
