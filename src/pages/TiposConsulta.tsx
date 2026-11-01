@@ -43,7 +43,7 @@ const fmt = (v: number) =>
 const temNoMaximoDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
 
-const CORES = ['#1456C0', '#0B2346', '#06B6D4', '#61748B'];
+const CORES = ['#3B3E44', '#1456C0', '#0B2346', '#06B6D4', '#61748B'];
 
 interface TipoConsulta {
   id: string;
@@ -77,7 +77,7 @@ interface TipoForm {
 
 const initialForm: TipoForm = {
   nome: '', descricao: '', instrucoes_preparo: '', duracao_minutos: 30,
-  cor: '#1456C0', ativo: true, valor_particular: 0,
+  cor: '#3B3E44', ativo: true, valor_particular: 0,
 };
 
 export default function TiposConsulta({ creationPage = false, pricesPage = false }: { creationPage?: boolean; pricesPage?: boolean }) {
@@ -400,7 +400,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
               const precosConv = precos.filter(p => p.tipo_consulta_id === tipo.id);
               return (
                 <div key={tipo.id} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
-                  <Card className="group rounded-2xl border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:border-[#9CC7EC] hover:shadow-md">
+                  <Card className="group rounded-2xl border-border/60 bg-card shadow-xs transition-all hover:-translate-y-0.5 hover:border-foreground/25 hover:shadow-md">
                     <CardContent className="pt-5 pb-4 px-5">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2.5">

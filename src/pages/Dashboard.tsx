@@ -291,8 +291,8 @@ function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]
 
   const kpis = [
     { label: 'Consultas hoje', value: agenda.length, note: `${confirmadas} confirmadas`, tone: 'bg-card border border-border/60', href: '/agenda' },
-    { label: 'Na fila agora', value: fila.length, note: esperaMedia !== null ? `espera média de ${esperaMedia} min` : 'ninguém aguardando', tone: 'bg-highlight text-highlight-foreground', href: '/fila' },
-    { label: 'Finalizadas', value: finalizadas, note: agenda.length ? `${Math.round(finalizadas / agenda.length * 100)}% do dia` : 'sem atendimentos', tone: 'bg-foreground text-background', href: '/fila' },
+    { label: 'Na fila agora', value: fila.length, note: esperaMedia !== null ? `espera média de ${esperaMedia} min` : 'ninguém aguardando', tone: 'bg-card border border-border/60', href: '/fila' },
+    { label: 'Finalizadas', value: finalizadas, note: agenda.length ? `${Math.round(finalizadas / agenda.length * 100)}% do dia` : 'sem atendimentos', tone: 'bg-card border border-border/60', href: '/fila' },
   ];
 
   return <div className="space-y-5 pb-8">

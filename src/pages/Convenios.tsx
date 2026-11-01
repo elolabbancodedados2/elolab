@@ -758,7 +758,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
             { key: 'ativos' as FiltroConvenio, icon: CheckCircle2, label: 'Ativos', value: totalAtivos, caption: 'aceitos no atendimento', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
             { key: 'inativos' as FiltroConvenio, icon: XCircle, label: 'Inativos', value: totalInativos, caption: 'histórico preservado', color: 'text-muted-foreground', surface: 'bg-muted', escuro: false },
             { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
-            { key: 'todos' as FiltroConvenio, icon: Layers, label: 'Todos', value: totalConvenios, caption: 'convênios cadastrados', color: 'text-foreground', surface: 'bg-[#EEF4FA]', escuro: false },
+            { key: 'todos' as FiltroConvenio, icon: Layers, label: 'Todos', value: totalConvenios, caption: 'convênios cadastrados', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
           ]).map(s => {
             const Icon = s.icon;
             const ativo = filtroStatus === s.key;
@@ -819,7 +819,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                     onClick={() => setFiltroStatus(opt.key)}
                     className={cn(
                       'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                     )}
                   >
                     {opt.label}

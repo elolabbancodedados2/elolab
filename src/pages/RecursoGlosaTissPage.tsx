@@ -235,7 +235,7 @@ export default function RecursoGlosaTissPage() {
         {!pendingDocument && documentError && <p role="alert" className="text-sm text-destructive">Não foi possível enviar o documento: {documentError}</p>}
       </CardContent>
     </Card>
-    <div role="note" className="rounded-lg border border-[#DFE7F0] bg-[#F5F8FC] p-3 text-sm text-[#172B4D]">Depois de salvar, a lista permite registrar que o recurso foi enviado. Essa marcação deve ocorrer somente após o envio pelo canal oficial da operadora.</div>
+    <div role="note" className="rounded-lg border border-border bg-secondary p-3 text-sm text-foreground">Depois de salvar, a lista permite registrar que o recurso foi enviado. Essa marcação deve ocorrer somente após o envio pelo canal oficial da operadora.</div>
     <UnsavedChangesGuard dirty={dirty} busy={busy} completed={completed} />
   </div>;
 }

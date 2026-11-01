@@ -794,7 +794,7 @@ export default function Configuracoes() {
                 <h3 className="font-semibold text-sm">Dias de Funcionamento</h3>
                 <div className="flex flex-wrap gap-2">
                   {diasSemana.map(dia => (
-                    <button key={dia.value} type="button" aria-pressed={configClinica.diasFuncionamento.includes(dia.value)} onClick={() => toggleDia(dia.value)} className={cn('h-8 min-w-[48px] rounded-full border px-3 text-xs transition-colors', configClinica.diasFuncionamento.includes(dia.value) ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card hover:border-[#9CC7EC]')}>
+                    <button key={dia.value} type="button" aria-pressed={configClinica.diasFuncionamento.includes(dia.value)} onClick={() => toggleDia(dia.value)} className={cn('h-8 min-w-[48px] rounded-full border px-3 text-xs transition-colors', configClinica.diasFuncionamento.includes(dia.value) ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card hover:border-foreground/25')}>
                       {dia.label}
                     </button>
                   ))}

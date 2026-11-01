@@ -79,7 +79,7 @@ export default function PlatformIntegracoes(){
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-full pl-9 focus-visible:ring-primary" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar clínica" aria-label="Buscar clínica" /></div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" aria-pressed={onlyAlerts} onClick={() => setOnlyAlerts(v => !v)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', onlyAlerts ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card hover:border-[#9CC7EC]')}>Somente com alerta</button>
+            <button type="button" aria-pressed={onlyAlerts} onClick={() => setOnlyAlerts(v => !v)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', onlyAlerts ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card hover:border-foreground/25')}>Somente com alerta</button>
             {filtered && <Button variant="outline" size="sm" className="rounded-full" onClick={() => { setSearch(''); setOnlyAlerts(false); }}>Limpar filtros</Button>}
             <p className="text-xs text-muted-foreground" aria-live="polite">{clinics.length} de {total} clínicas</p>
           </div>

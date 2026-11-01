@@ -55,7 +55,7 @@ const PILULAS_GLOSA = [
 ];
 const pilulaClasse = (ativo: boolean) => cn(
   'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-  ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+  ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
 );
 
 const escapeXml = (v: unknown) => String(v ?? '').replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]!));
@@ -271,7 +271,7 @@ export default function FaturamentoConvenios() {
       const destaque = false;
       return <Card key={label} className={cn('h-full rounded-2xl shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md', destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card')}><CardContent className="flex items-center gap-3 p-4"><span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}><Icon className="h-5 w-5" /></span><div className="min-w-0"><p className="truncate text-lg font-bold tabular-nums sm:text-2xl">{brl(value)}</p><p className={cn('text-[11px]', destaque ? 'text-white/80' : 'text-muted-foreground')}>{label} · {legenda}</p></div></CardContent></Card>;
     })}</div>
-    <Tabs value={activeTab} onValueChange={setActiveTab}><TabsList className="h-auto flex-wrap rounded-full border border-border bg-[#EEF4FA] p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="guias">Guias ({guiasQuery.data?.length ?? 0})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
+    <Tabs value={activeTab} onValueChange={setActiveTab}><TabsList className="h-auto flex-wrap rounded-full border border-border bg-secondary p-1 [&>button]:rounded-full"><TabsTrigger value="lotes">Lotes ({lotes.length})</TabsTrigger><TabsTrigger value="guias">Guias ({guiasQuery.data?.length ?? 0})</TabsTrigger><TabsTrigger value="glosas">Glosas ({glosas.length})</TabsTrigger><TabsTrigger value="conciliacao">Conciliação</TabsTrigger><TabsTrigger value="relatorio">Por competência</TabsTrigger></TabsList>
       <TabsContent value="lotes">
         <Card className="rounded-2xl border-border/60 shadow-xs">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base font-semibold"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><FileStack className="h-4 w-4" /></span>Lotes registrados<FieldHelp term="lote_tiss" /></CardTitle></CardHeader>

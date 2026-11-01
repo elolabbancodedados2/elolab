@@ -377,7 +377,7 @@ export default function CobrancaInadimplentes() {
                     onClick={() => setFiltroFaixa(ativo ? 'todas' : faixa.id)}
                     className={cn(
                       'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-foreground hover:border-[#9CC7EC]',
+                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-foreground hover:border-foreground/25',
                     )}
                   >
                     {faixa.label} · {resumo.quantidade} · {resumo.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}

@@ -46,7 +46,7 @@ const planConfig: Record<string, {
     icon: <Crown className="h-7 w-7" />,
     gradient: 'from-primary/5 via-transparent to-transparent',
     iconBg: 'bg-primary/10 text-primary',
-    borderAccent: 'border-[#DCE6F2] hover:border-[#9CC7EC]',
+    borderAccent: 'border-border hover:border-foreground/25',
     btnClass: '',
   },
   'elolab-ultra': {
@@ -180,7 +180,7 @@ export default function Planos() {
           </p>
         </div>
         {!hasActivePlan && elegibilidadeTesteConhecida && planos.some((plano) => Number(plano.trial_dias) > 0) && (
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-[#F3F8FC] px-4 py-2.5 text-sm font-medium text-primary">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-primary">
             <Gift className="h-4 w-4" />
             {temTesteElegivel
               ? 'Há um teste grátis disponível para esta conta'
@@ -192,7 +192,7 @@ export default function Planos() {
       {hasActivePlan && <AvisoAlteracaoPlano />}
 
       {loadingBilling && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-[#F3F8FC] px-4 py-3 text-sm text-primary">
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-primary">
           <Clock className="h-4 w-4" /> Confirmando a forma de cobrança da sua assinatura…
         </div>
       )}
@@ -205,7 +205,7 @@ export default function Planos() {
         </div>
       )}
       {pedidoAberto && (
-        <div role="status" className="flex flex-col gap-3 rounded-xl border border-border bg-[#F3F8FC] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-border bg-secondary p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <span>Há um pagamento pendente para {planos?.find((plano) => plano.slug === pedidoAberto.plano_slug)?.nome ?? 'um plano'}. Conclua ou cancele esse pedido antes de escolher outro plano.</span>
           <Button type="button" size="sm" className="shrink-0 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
             Continuar pagamento

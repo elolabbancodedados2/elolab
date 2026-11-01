@@ -129,7 +129,7 @@ export default function ConfiguracaoHistoricoPage() {
       actions={<Button variant="outline" onClick={() => navigate(returnTo)} disabled={restoring}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às configurações</Button>}
     />
 
-    <div role="note" className="rounded-lg border border-[#DFE7F0] bg-[#F5F8FC] p-3 text-sm text-[#172B4D]">
+    <div role="note" className="rounded-lg border border-border bg-secondary p-3 text-sm text-foreground">
       Restaurar grava uma nova versão para esta clínica. O sistema verifica a versão atual antes de aplicar a mudança para evitar sobrescrever uma edição simultânea.
     </div>
 

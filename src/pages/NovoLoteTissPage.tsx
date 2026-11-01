@@ -131,7 +131,7 @@ export default function NovoLoteTissPage() {
   return <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
     <PageHeader title="Novo lote TISS" description="Consolide a competência, o volume de guias e o valor que será apresentado à operadora." icon={<FileStack />} actions={<Button variant="outline" onClick={() => navigate(retorno.pathname, { state: retorno.state })} disabled={criarLote.isPending}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} />
     {convenios.length === 0 ? <Card><CardContent className="space-y-3 pt-6"><p className="text-sm text-muted-foreground">Não há convênios ativos nesta clínica. Cadastre ou ative um convênio antes de criar o lote.</p><Button variant="outline" onClick={() => navigate('/convenios')}>Abrir convênios</Button></CardContent></Card> : <>
-      <div role="note" className="rounded-lg border border-[#DFE7F0] bg-[#F5F8FC] p-3 text-sm text-[#172B4D]">O lote será criado como rascunho. O EloLab não gera arquivo TISS homologado nem transmite o lote à operadora.</div>
+      <div role="note" className="rounded-lg border border-border bg-secondary p-3 text-sm text-foreground">O lote será criado como rascunho. O EloLab não gera arquivo TISS homologado nem transmite o lote à operadora.</div>
       <Card>
         <CardHeader className="border-b border-border/70"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">Identificação do lote</CardTitle><p className="mt-1 text-sm text-muted-foreground">Os dados serão vinculados à clínica ativa.</p></div><Badge variant="outline">Rascunho ao salvar</Badge></div></CardHeader>
         <CardContent className="space-y-5 pt-5">

@@ -546,7 +546,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                       onClick={() => setStatusFilter(opt.key)}
                       className={cn(
                         'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                       )}
                     >
                       {opt.label}

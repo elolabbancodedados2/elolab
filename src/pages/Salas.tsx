@@ -88,7 +88,8 @@ const EQUIPAMENTOS_SUGERIDOS = [
 ];
 
 const CORES_IDENTIFICACAO = {
-  '#1456C0': 'Azul primário',
+  '#3B3E44': 'Grafite',
+  '#1456C0': 'Azul',
   '#0B2346': 'Azul-marinho',
   '#06B6D4': 'Ciano',
   '#61748B': 'Cinza-azulado',
@@ -116,7 +117,7 @@ interface SalaForm {
 const initialForm: SalaForm = {
   nome: '', tipo: 'consultorio', capacidade: 1, status: 'disponivel',
   medico_responsavel: '', equipamentos: [], setor: '', andar: '',
-  horario_inicio: '07:00', horario_fim: '19:00', cor: '#1456C0',
+  horario_inicio: '07:00', horario_fim: '19:00', cor: '#3B3E44',
   genero: '', numero_cama: '', observacoes: '',
 };
 
@@ -211,7 +212,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
         status: sala.status || 'disponivel', medico_responsavel: sala.medico_responsavel || '',
         equipamentos: sala.equipamentos || [], setor: sala.setor || '', andar: sala.andar || '',
         horario_inicio: sala.horario_inicio || '07:00', horario_fim: sala.horario_fim || '19:00',
-        cor: sala.cor || '#1456C0', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
+        cor: sala.cor || '#3B3E44', genero: sala.genero || '', numero_cama: sala.numero_cama || '',
         observacoes: sala.observacoes || '',
       } : initialForm;
     baseline.current = JSON.stringify(value);
@@ -557,7 +558,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                       statusExibido === 'reservada' && 'border-primary/40 ring-1 ring-primary/20',
                     )}
                   >
-                    <div aria-hidden="true" className="absolute left-0 right-0 top-0 h-1.5" style={{ backgroundColor: sala.cor || '#1456C0' }} />
+                    <div aria-hidden="true" className="absolute left-0 right-0 top-0 h-1.5" style={{ backgroundColor: sala.cor || '#3B3E44' }} />
                     <CardContent className="space-y-3 p-4 pt-5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">

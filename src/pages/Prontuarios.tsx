@@ -671,7 +671,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {badge && <Badge className={`text-xs px-1.5 py-0 rounded-full ${badgeClass}`}>{badge}</Badge>}
         {href && (
-          <Link to={href} className="h-7 px-2 rounded-full text-xs text-primary border border-border hover:bg-[#EEF4FA] flex items-center gap-1 transition-colors">
+          <Link to={href} className="h-7 px-2 rounded-full text-xs text-primary border border-border hover:bg-secondary flex items-center gap-1 transition-colors">
             <ExternalLink className="h-3 w-3" />Abrir
           </Link>
         )}
@@ -2362,7 +2362,7 @@ export default function Prontuarios() {
                               key={draft.id}
                               type="button"
                               variant="ghost"
-                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border bg-white px-2.5 py-2 text-left hover:border-[#9CC7EC] hover:bg-[#EEF4FA]"
+                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border bg-white px-2.5 py-2 text-left hover:border-foreground/25 hover:bg-secondary"
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 requestPatientContextChange(draft.paciente_id, 'picker');

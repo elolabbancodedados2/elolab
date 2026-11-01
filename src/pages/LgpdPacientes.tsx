@@ -398,7 +398,7 @@ export default function LgpdPacientes() {
             {!isLoading && !isDebouncing && !error && filtered.map((p: PacienteLGPD) => (
               <div
                 key={p.id}
-                className="flex flex-col gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-[#9CC7EC] hover:bg-secondary sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-xl border border-border/60 p-3 transition-colors hover:border-foreground/25 hover:bg-secondary sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-medium truncate">{p.nome}</p>
