@@ -241,4 +241,25 @@ describe('SupabaseProtectedRoute', () => {
     );
     expect(screen.getByText('Escolha de plano')).toBeInTheDocument();
   });
+  it('falha de rede ao carregar o perfil oferece tentar de novo e sair, não "Acesso Pendente"', async () => {
+    const refreshProfile = vi.fn(async () => undefined);
+    const signOut = vi.fn(async () => undefined);
+    mockUseSupabaseAuth.mockReturnValue({
+      user: { id: 'u1', email: 'ana@example.test', user_metadata: {} },
+      profile: null,
+      profileError: new Error('Failed to fetch'),
+      isLoading: false,
+      hasAnyRole: () => false,
+      isPlatformAdmin: false,
+      refreshProfile,
+      signOut,
+    });
+    renderWithRouter(<SupabaseProtectedRoute><div>Conteúdo</div></SupabaseProtectedRoute>);
+    expect(screen.getByText('Não foi possível carregar seu acesso')).toBeInTheDocument();
+    expect(screen.queryByText('Acesso Pendente')).not.toBeInTheDocument();
+    screen.getByRole('button', { name: 'Tentar novamente' }).click();
+    expect(refreshProfile).toHaveBeenCalledTimes(1);
+    screen.getByRole('button', { name: 'Sair' }).click();
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
 });

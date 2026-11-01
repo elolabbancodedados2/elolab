@@ -1,3 +1,4 @@
+import { formatCPF, formatPhone } from '@/lib/formatters';
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
@@ -534,6 +535,8 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
     if (!normalizedData.nome) { toast.error('Preencha o nome.'); return; }
     if (normalizedData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedData.email)) { toast.error('E-mail inválido.'); return; }
     if (normalizedData.cpf.trim() && !validateCPF(normalizedData.cpf)) { toast.error('CPF inválido.'); return; }
+    const digitosTelefone = (normalizedData.telefone || '').replace(/\D/g, '');
+    if (digitosTelefone && ![10, 11].includes(digitosTelefone.length)) { toast.error('Telefone inválido: informe DDD e número.'); return; }
     const registroExigido = TIPO_FUNCIONARIO_CONFIG.find(tipo => tipo.value === normalizedData.tipo_funcionario)?.registroLabel;
     if (registroExigido && !normalizedData.registro_profissional.trim()) {
       toast.error(`Informe o número do ${registroExigido}.`);
@@ -849,7 +852,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="func-cpf" className="text-xs">CPF</Label>
-                  <Input id="func-cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} placeholder="000.000.000-00" />
+                  <Input id="func-cpf" inputMode="numeric" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} placeholder="000.000.000-00" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="func-data-nascimento" className="text-xs">Data de Nascimento</Label>
@@ -869,7 +872,7 @@ function FuncionariosWorkspace({ task }: { task?: EmployeeTask }) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="func-telefone" className="text-xs">Telefone</Label>
-                  <Input id="func-telefone" value={formData.telefone} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} placeholder="(11) 99999-9999" />
+                  <Input id="func-telefone" type="tel" inputMode="tel" value={formData.telefone} onChange={(e) => setFormData({ ...formData, telefone: formatPhone(e.target.value) })} placeholder="(11) 99999-9999" />
                 </div>
               </div>
             </div>

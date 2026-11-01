@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   roles: ['enfermagem'] as string[],
   tabelas: {} as Record<string, unknown[]>,
   rpc: vi.fn(),
-  updates: [] as { tabela: string; dados: unknown }[],
+  updates: [] as { tabela: string; dados: unknown; filtros: unknown[][] }[],
 }));
 
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
@@ -18,8 +18,11 @@ vi.mock('@/integrations/supabase/client', () => {
   const builder = (tabela: string) => {
     const resultado = () => ({ data: mocks.tabelas[tabela] ?? [], error: null });
     const b: Record<string, unknown> = {};
-    for (const metodo of ['select', 'eq', 'in', 'order', 'limit', 'insert', 'upsert', 'delete']) b[metodo] = () => b;
-    b.update = (dados: unknown) => { mocks.updates.push({ tabela, dados }); return b; };
+    let atualizacao: { tabela: string; dados: unknown; filtros: unknown[][] } | null = null;
+    for (const metodo of ['select', 'eq', 'in', 'order', 'limit', 'insert', 'upsert', 'delete']) {
+      b[metodo] = (...args: unknown[]) => { atualizacao?.filtros.push([metodo, ...args]); return b; };
+    }
+    b.update = (dados: unknown) => { atualizacao = { tabela, dados, filtros: [] }; mocks.updates.push(atualizacao); return b; };
     b.maybeSingle = () => Promise.resolve({ data: (mocks.tabelas[tabela] ?? [])[0] ?? null, error: null });
     b.single = b.maybeSingle;
     b.then = (ok: (v: unknown) => unknown, erro?: (e: unknown) => unknown) => Promise.resolve(resultado()).then(ok, erro);
@@ -122,6 +125,20 @@ describe('Compras', () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: 'Confirmar recebimento' }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('receber_pedido_compra', { p_pedido_id: 'pd1' }));
+  });
+
+  it('cancela só pedido emitido da clínica e confere a linha alterada', async () => {
+    mocks.roles = ['admin'];
+    renderizar('/compras?aba=pedidos');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar pedido' }));
+    await waitFor(() => expect(mocks.updates.some(u => u.tabela === 'pedidos_compra')).toBe(true));
+    const atualizacao = mocks.updates.find(u => u.tabela === 'pedidos_compra')!;
+    expect(atualizacao.dados).toEqual({ status: 'cancelado' });
+    expect(atualizacao.filtros).toEqual(expect.arrayContaining([
+      ['eq', 'id', 'pd1'], ['eq', 'clinica_id', 'clinica-1'], ['eq', 'status', 'emitido'], ['select', 'id'],
+    ]));
   });
 
   it('financeiro consulta sem ações de escrita', async () => {

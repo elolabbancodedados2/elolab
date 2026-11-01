@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { ErrorState } from '@/components/ErrorState';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { mesmoValor } from '@/lib/dinheiro';
 import { PageHeader } from '@/components/PageHeader';
 import { FieldHelp } from '@/components/ContextualHelp';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -45,6 +46,17 @@ const STATUS_GLOSA_COR: Record<string, string> = {
   mantida: 'border-destructive/30 bg-destructive/10 text-destructive',
   cancelada: 'border-border bg-muted text-muted-foreground',
 };
+const STATUS_LOTE_LABEL: Record<string, string> = {
+  rascunho: 'Rascunho', enviado: 'Enviado', processando: 'Processando', pago_parcial: 'Pago parcial',
+  pago: 'Pago', rejeitado: 'Rejeitado', cancelado: 'Cancelado',
+};
+const STATUS_GLOSA_LABEL: Record<string, string> = {
+  pendente: 'Pendente', recurso_preparacao: 'Preparando recurso', recurso_enviado: 'Recurso enviado',
+  aceita: 'Aceita', mantida: 'Mantida', cancelada: 'Cancelada',
+};
+const rotuloStatus = (mapa: Record<string, string>, status: string | null | undefined) =>
+  status ? mapa[status] ?? status.replace(/_/g, ' ') : '—';
+const COLUNAS_GUIA = 'id,lote_id,numero_guia,numero_carteira,paciente_id,autorizacao_id,data_atendimento,codigo_procedimento,tipo_servico,quantidade,valor_total';
 const PILULAS_LOTE = [
   { value: 'todos', label: 'Todos' }, { value: 'rascunho', label: 'Rascunho' }, { value: 'enviado', label: 'Enviado' },
   { value: 'pago_parcial', label: 'Pago parcial' }, { value: 'pago', label: 'Pago' },
@@ -77,6 +89,8 @@ export default function FaturamentoConvenios() {
   const [statusLote, setStatusLote] = useState(filtrosRestaurados?.statusLote ?? 'todos');
   const [buscaGlosa, setBuscaGlosa] = useState(filtrosRestaurados?.buscaGlosa ?? '');
   const [statusGlosa, setStatusGlosa] = useState(filtrosRestaurados?.statusGlosa ?? 'todos');
+  const [competenciaResumo, setCompetenciaResumo] = useState('todas');
+  const [convenioResumo, setConvenioResumo] = useState('todos');
 
   const conveniosQuery = useQuery({ queryKey: ['convenios-faturamento', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
     const { data, error } = await supabase.from('convenios').select('id,nome,versao_tiss').eq('clinica_id', profile?.clinica_id ?? '').eq('ativo', true).order('nome');
@@ -90,7 +104,7 @@ export default function FaturamentoConvenios() {
   const lotes = lotesQuery.data ?? [];
   const lotesComNomeConvenio = useMemo(() => lotes.map((l: any) => ({ ...l, convenio_nome: l.convenios?.nome ?? 'Convênio sem nome' })), [lotes]);
   const lotesComDivergenciaFinanceira = lotes.filter((lote: any) =>
-    Number(lote.valor_pago || 0) !== Number(lote.valor_conciliado_financeiro || 0),
+    !mesmoValor(Number(lote.valor_pago || 0), Number(lote.valor_conciliado_financeiro || 0)),
   );
   const lotesParaRegistrarGlosa = lotes.filter((lote: any) => ['enviado', 'processando', 'pago_parcial', 'pago'].includes(lote.status));
   const glosasQuery = useQuery({ queryKey: ['glosas-convenio', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
@@ -99,7 +113,7 @@ export default function FaturamentoConvenios() {
   }});
   const glosas = glosasQuery.data ?? [];
   const guiasQuery = useQuery({ queryKey: ['lote-tiss-guias', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
-    return buscarEmBlocos<GuiaLote & { lote_id: string }>(() => supabase.from('lote_tiss_guias').select('*')
+    return buscarEmBlocos<GuiaLote & { lote_id: string }>(() => supabase.from('lote_tiss_guias').select(COLUNAS_GUIA)
       .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: true }).order('id', { ascending: true }));
   }});
   const autorizacoesQuery = useQuery({ queryKey: ['autorizacoes-faturamento', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
@@ -140,18 +154,28 @@ export default function FaturamentoConvenios() {
     || glosas.length >= LIMITE_BUSCA_EM_BLOCOS;
   const isLoading = conveniosQuery.isLoading || lotesQuery.isLoading || glosasQuery.isLoading || guiasQuery.isLoading || autorizacoesQuery.isLoading;
 
-  const resumo = useMemo(() => ({
-    apresentado: lotes.filter((l: any) => ['enviado', 'processando', 'pago_parcial', 'pago', 'rejeitado'].includes(l.status))
-      .reduce((s: number, l: any) => s + Number(l.valor_apresentado || 0), 0),
-    pago: lotes.reduce((s: number, l: any) => s + Number(l.valor_pago || 0), 0),
-    glosado: glosas.filter((g: any) => g.status !== 'cancelada').reduce((s: number, g: any) => s + Number(g.valor_glosado || 0), 0),
-    recuperado: glosas.filter((g: any) => g.status !== 'cancelada').reduce((s: number, g: any) => s + Number(g.valor_recuperado || 0), 0),
-  }), [lotes, glosas]);
+  const competenciasDisponiveis = useMemo(() => [...new Set(lotes.map((l: any) => String(l.competencia || '').slice(0, 7)).filter(Boolean))].sort().reverse() as string[], [lotes]);
+  // Os indicadores seguem a competência e o convênio escolhidos acima deles.
+  const resumo = useMemo(() => {
+    const lotesDoResumo = lotes.filter((l: any) =>
+      (competenciaResumo === 'todas' || String(l.competencia || '').startsWith(competenciaResumo))
+      && (convenioResumo === 'todos' || l.convenio_id === convenioResumo));
+    const idsLotes = new Set(lotesDoResumo.map((l: any) => l.id));
+    const glosasDoResumo = glosas.filter((g: any) => idsLotes.has(g.lote_id) && g.status !== 'cancelada');
+    return {
+      apresentado: lotesDoResumo.filter((l: any) => ['enviado', 'processando', 'pago_parcial', 'pago', 'rejeitado'].includes(l.status))
+        .reduce((s: number, l: any) => s + Number(l.valor_apresentado || 0), 0),
+      pago: lotesDoResumo.filter((l: any) => !['cancelado', 'rejeitado'].includes(l.status))
+        .reduce((s: number, l: any) => s + Number(l.valor_pago || 0), 0),
+      glosado: glosasDoResumo.reduce((s: number, g: any) => s + Number(g.valor_glosado || 0), 0),
+      recuperado: glosasDoResumo.reduce((s: number, g: any) => s + Number(g.valor_recuperado || 0), 0),
+    };
+  }, [lotes, glosas, competenciaResumo, convenioResumo]);
 
   const lotesFiltrados = useMemo(() => {
     const termo = buscaLote.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR');
     return lotes.filter((lote: any) => {
-      const texto = [lote.numero_lote, lote.convenios?.nome, lote.competencia, lote.status?.replaceAll('_', ' ')]
+      const texto = [lote.numero_lote, lote.convenios?.nome, lote.competencia, rotuloStatus(STATUS_LOTE_LABEL, lote.status)]
         .filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
       return (!termo || texto.includes(termo)) && (statusLote === 'todos' || lote.status === statusLote);
     });
@@ -262,9 +286,20 @@ export default function FaturamentoConvenios() {
     {lotesComDivergenciaFinanceira.length > 0 && <div role="status" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0"/><p>{lotesComDivergenciaFinanceira.length} lote(s) têm diferença entre o total recebido e o conciliado no financeiro. Confira lançamentos existentes antes de conciliar, para evitar duplicidade.</p></div>}
     {consultasAtingiramLimite && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning"/><p>A lista atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros. Os indicadores podem não incluir todos os lotes ou glosas.</p></div>}
     {convenios.length === 0 && <p role="status" className="rounded-2xl border border-border bg-secondary p-3 text-sm text-muted-foreground">Cadastre e ative um <Link to="/convenios" className="font-medium text-primary underline underline-offset-4">convênio</Link> para criar lotes TISS. Registre glosas depois de marcar um lote como enviado.</p>}
+    {lotes.length > 0 && <div role="group" aria-label="Filtrar indicadores" className="flex flex-wrap items-center gap-2">
+      <Select value={competenciaResumo} onValueChange={setCompetenciaResumo}><SelectTrigger aria-label="Competência dos indicadores" className="h-9 rounded-full sm:w-48"><SelectValue /></SelectTrigger><SelectContent>
+        <SelectItem value="todas">Todas as competências</SelectItem>
+        {competenciasDisponiveis.map(c => <SelectItem key={c} value={c}>{format(new Date(`${c}-01T12:00:00`), 'MM/yyyy')}</SelectItem>)}
+      </SelectContent></Select>
+      <Select value={convenioResumo} onValueChange={setConvenioResumo}><SelectTrigger aria-label="Convênio dos indicadores" className="h-9 rounded-full sm:w-56"><SelectValue /></SelectTrigger><SelectContent>
+        <SelectItem value="todos">Todos os convênios</SelectItem>
+        {convenios.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+      </SelectContent></Select>
+      {(competenciaResumo !== 'todas' || convenioResumo !== 'todos') && <Button size="sm" variant="ghost" className="h-8 rounded-full text-xs" onClick={() => { setCompetenciaResumo('todas'); setConvenioResumo('todos'); }}>Limpar</Button>}
+    </div>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
       { label: 'Apresentado', legenda: 'lotes enviados à operadora', value: resumo.apresentado, icon: FileStack, cor: '' },
-      { label: 'Pago', legenda: 'recebido das operadoras', value: resumo.pago, icon: BadgeCheck, cor: 'bg-secondary text-foreground' },
+      { label: 'Pago', legenda: 'recebido das operadoras, sem lotes cancelados ou rejeitados', value: resumo.pago, icon: BadgeCheck, cor: 'bg-secondary text-foreground' },
       { label: 'Glosado', legenda: 'glosas não canceladas', value: resumo.glosado, icon: AlertTriangle, cor: 'bg-destructive/10 text-destructive' },
       { label: 'Recuperado', legenda: 'revertido em recurso', value: resumo.recuperado, icon: RotateCcw, cor: 'bg-secondary text-foreground' },
     ].map(({ label, legenda, value, icon: Icon, cor }) => {
@@ -294,7 +329,7 @@ export default function FaturamentoConvenios() {
               <TableCell>{l.convenios?.nome}</TableCell>
               <TableCell>{format(new Date(`${l.competencia}T12:00:00`), 'MM/yyyy')}</TableCell>
               <TableCell className="text-right"><span>{brl(l.valor_apresentado)}</span><p className="text-xs text-muted-foreground">Recebido: {brl(l.valor_pago)}</p><p className="text-xs text-muted-foreground">No financeiro: {brl(l.valor_conciliado_financeiro || 0)}</p></TableCell>
-              <TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_LOTE_COR[l.status])}>{l.status.replaceAll('_', ' ')}</Badge>{(() => {
+              <TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_LOTE_COR[l.status])}>{rotuloStatus(STATUS_LOTE_LABEL, l.status)}</Badge>{(() => {
                 const erros = (pendenciasPorLote.get(l.id) ?? []).filter(p => p.gravidade === 'erro').length;
                 return envioBloqueado(l.id) ? <p className="mt-1 text-xs font-medium text-destructive">{erros} pendência(s) a corrigir</p> : null;
               })()}</TableCell>
@@ -316,7 +351,7 @@ export default function FaturamentoConvenios() {
           {filtroGlosaAtivo && <Button size="sm" variant="outline" className="h-8 rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}
           <p className="ml-auto text-xs tabular-nums text-muted-foreground">Mostrando {glosasFiltradas.length} de {glosas.length} glosas.</p>
         </div>}
-        {glosasFiltradas.length > 0 ? <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}<ResumoRecurso glosa={g} responsavel={responsaveisQuery.data?.find(r => r.id === g.recurso_responsavel_id)?.nome} documentos={documentosPorGlosa.get(g.id)?.length ?? 0} /></TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_GLOSA_COR[g.status])}>{g.status.replaceAll('_',' ')}</Badge></TableCell><TableCell className="space-x-1 space-y-1">{g.status === 'pendente' && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/recurso', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/recurso', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Revisar recurso</Button><Button size="sm" className="h-9 rounded-full bg-primary text-xs text-white hover:bg-primary hover:brightness-110" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10 || !g.recurso_prazo || !g.recurso_responsavel_id} title={!g.recurso_prazo || !g.recurso_responsavel_id ? 'Defina prazo e responsável antes de enviar' : undefined} onClick={() => void updateGlosa(g.id)}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/retorno', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table></div></div> : <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground"><ShieldCheck className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
+        {glosasFiltradas.length > 0 ? <div className="overflow-hidden rounded-xl border border-border/60"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código / motivo</TableHead><TableHead>Lote</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead>Status</TableHead><TableHead>Ação</TableHead></TableRow></TableHeader><TableBody>{glosasFiltradas.map((g: any) => <TableRow key={g.id}><TableCell><b>{g.codigo_glosa}</b>{g.guia_referencia && <p className="text-xs text-muted-foreground">Guia: {g.guia_referencia}</p>}<p className="max-w-sm text-xs text-muted-foreground">{g.motivo}</p>{g.recurso_justificativa && <p className="mt-1 max-w-sm text-xs text-muted-foreground">Recurso: {g.recurso_justificativa}</p>}<ResumoRecurso glosa={g} responsavel={responsaveisQuery.data?.find(r => r.id === g.recurso_responsavel_id)?.nome} documentos={documentosPorGlosa.get(g.id)?.length ?? 0} /></TableCell><TableCell>{g.lotes_tiss?.numero_lote}<p className="text-[10px]">{g.lotes_tiss?.convenios?.nome}</p></TableCell><TableCell className="text-right">{brl(g.valor_glosado)}</TableCell><TableCell className="text-right">{brl(g.valor_recuperado)}</TableCell><TableCell><Badge variant="outline" className={cn('whitespace-nowrap rounded-full', STATUS_GLOSA_COR[g.status])}>{rotuloStatus(STATUS_GLOSA_LABEL, g.status)}</Badge></TableCell><TableCell className="space-x-1 space-y-1">{g.status === 'pendente' && <Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/recurso', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Preparar recurso</Button>}{g.status === 'recurso_preparacao' && <><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/recurso', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Revisar recurso</Button><Button size="sm" className="h-9 rounded-full bg-primary text-xs text-white hover:bg-primary hover:brightness-110" disabled={glosaAtualizandoId !== null || String(g.recurso_justificativa || '').trim().length < 10 || !g.recurso_prazo || !g.recurso_responsavel_id} title={!g.recurso_prazo || !g.recurso_responsavel_id ? 'Defina prazo e responsável antes de enviar' : undefined} onClick={() => void updateGlosa(g.id)}>Marcar enviado</Button></>}{g.status === 'recurso_enviado' && <Button size="sm" className="h-9 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" disabled={glosaAtualizandoId !== null} onClick={() => navigate('/faturamento-convenios/glosas/' + g.id + '/retorno', { state: { filtros: { tab: activeTab, buscaLote, statusLote, buscaGlosa, statusGlosa } } })}>Registrar retorno</Button>}</TableCell></TableRow>)}</TableBody></Table></div></div> : <div className="flex flex-col items-center gap-2 py-8 text-center"><span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground"><ShieldCheck className="h-7 w-7" /></span><p className="text-sm text-muted-foreground">{glosas.length === 0 ? 'Nenhuma glosa registrada nesta clínica.' : 'Nenhuma glosa corresponde à busca e aos filtros.'}</p>{glosas.length > 0 && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setBuscaGlosa(''); setStatusGlosa('todos'); }}>Limpar filtros</Button>}</div>}
       </CardContent></Card></TabsContent>
       <TabsContent value="guias">
         <GuiasPorAutorizacao guias={guiasQuery.data ?? []} lotes={lotes} autorizacoes={autorizacoesQuery.data ?? []} />

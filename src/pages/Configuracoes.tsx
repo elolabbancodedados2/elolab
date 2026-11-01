@@ -466,7 +466,7 @@ export default function Configuracoes() {
           <>
             <Badge variant="outline" role="status" className={cn('w-fit gap-1.5 rounded-full', isCloudSynced ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground')}>
               {isCloudSynced ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
-              {isCloudSynced ? 'Sincronizado' : 'Local'}
+              {isCloudSynced ? 'Salvo na nuvem' : 'Ainda não salvo'}
             </Badge>
             <Button asChild variant="outline" size="sm" className="rounded-full">
               <Link to="/configuracoes-avancadas">Configurações avançadas</Link>
@@ -570,7 +570,7 @@ export default function Configuracoes() {
                 <FluxoDoAtendimento />
 
                 <Separator />
-                <SaveBtn configKey="config_clinica" label="Dados da clínica" configValue={configClinica} />
+                <SaveBtn configKey="config_clinica" label="Dados da clínica" configValue={configClinica} validate={() => validarHorarioClinica(configClinica)} />
               </CardContent>
             </Card>
           </div>
@@ -583,7 +583,7 @@ export default function Configuracoes() {
             <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
-                <CardDescription>Visualize e gerencie sua subscrição</CardDescription>
+                <CardDescription>Veja e gerencie sua assinatura</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {loadingPlanoAtual ? (
@@ -618,12 +618,12 @@ export default function Configuracoes() {
                         <Label className="text-xs text-muted-foreground">Status</Label>
                         {isTrial ? (
                           <>
-                            <Badge className="w-fit rounded-full border-transparent bg-secondary text-foreground">⏰ Em Teste</Badge>
+                            <Badge className="w-fit rounded-full border-transparent bg-secondary text-foreground">Em teste</Badge>
                             <p className="text-xs text-muted-foreground">Restam {trialDaysLeft} dia{trialDaysLeft !== 1 ? 's' : ''}</p>
                           </>
                         ) : (
                           <>
-                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">✓ Ativo</Badge>
+                            <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">Ativo</Badge>
                             <p className="text-xs text-muted-foreground">{resumoPeriodo}</p>
                           </>
                         )}
@@ -639,7 +639,7 @@ export default function Configuracoes() {
                             <p className="text-sm text-muted-foreground">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
                           </div>
                           <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
-                            ✕ Cancelar teste grátis
+                            Cancelar teste grátis
                           </Button>
                         </div>
                       </>
@@ -699,7 +699,7 @@ export default function Configuracoes() {
                       </Button>
                       {!isTrial && assinaturaAtual?.cobranca_modalidade !== 'pre_pago' && (
                         <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
-                          ✕ Cancelar Plano
+                          Cancelar plano
                         </Button>
                       )}
                     </div>
@@ -773,30 +773,12 @@ export default function Configuracoes() {
 
                 <Separator />
                 <h3 className="font-semibold text-sm">Consultas</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label id="duracao-consulta-label">Duração Padrão</Label>
-                    <Select value={configClinica.duracaoConsulta.toString()} onValueChange={v => setConfigClinica({ ...configClinica, duracaoConsulta: parseInt(v) })}>
-                      <SelectTrigger aria-labelledby="duracao-consulta-label"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {[10, 15, 20, 25, 30, 40, 45, 50, 60].map(m => (
-                          <SelectItem key={m} value={m.toString()}>{m} minutos</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label id="intervalo-consultas-label">Intervalo entre Consultas</Label>
-                    <Select value={configClinica.intervaloConsultas.toString()} onValueChange={v => setConfigClinica({ ...configClinica, intervaloConsultas: parseInt(v) })}>
-                      <SelectTrigger aria-labelledby="intervalo-consultas-label"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {[0, 5, 10, 15, 20, 30].map(m => (
-                          <SelectItem key={m} value={m.toString()}>{m === 0 ? 'Sem intervalo' : `${m} minutos`}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                {/* Duração e intervalo daqui não eram lidos por nada: a agenda e o agendamento
+                    online usam a duração de cada tipo de consulta. */}
+                <p className="rounded-lg border border-border bg-secondary p-3 text-sm text-muted-foreground">
+                  A duração de cada consulta vem do seu tipo (consulta, retorno, exame…). Ajuste em{' '}
+                  <Link to="/precos-servicos" className="font-medium text-foreground underline underline-offset-4">Preços e serviços</Link>.
+                </p>
 
                 <Separator />
                 <h3 className="font-semibold text-sm">Dias de Funcionamento</h3>

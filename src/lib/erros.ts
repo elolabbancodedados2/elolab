@@ -49,14 +49,35 @@ function colunaCitada(msg: string): string | null {
   );
 }
 
+export const MENSAGEM_ERRO_GENERICA = 'Não foi possível concluir. Tente de novo.';
+
 /**
  * Frase pronta para mostrar ao usuário. Sempre devolve algo útil — nunca
  * string vazia, porque toast sem texto é pior que toast com texto genérico.
  */
 export function mensagemDeErro(erro: unknown): string {
-  if (!erro) return 'Não foi possível concluir. Tente de novo.';
+  if (!erro) return MENSAGEM_ERRO_GENERICA;
+  const conhecida = mensagemConhecidaDeErro(erro);
+  if (conhecida) return conhecida;
 
   const e = erro as ErroApi & { error_description?: string };
+  const msg = String(e.message ?? e.error_description ?? erro);
+  // Mensagem própria do app (lançada com new Error) costuma já estar em
+  // português e ser específica — vale mais do que qualquer genérico.
+  if (msg && !/^\[object/.test(msg) && msg.length < 200) return msg;
+
+  return MENSAGEM_ERRO_GENERICA;
+}
+
+/**
+ * Tradução para um erro reconhecido (código do Postgres/PostgREST, sessão,
+ * rede, permissão...). Devolve `null` quando o erro não é de um tipo
+ * conhecido, para quem chama decidir o texto genérico do próprio contexto.
+ */
+export function mensagemConhecidaDeErro(erro: unknown): string | null {
+  if (!erro) return null;
+
+  const e = erro as ErroApi & { error_description?: string; status?: number };
   const msg = String(e.message ?? e.error_description ?? erro);
   const coluna = colunaCitada(msg);
   const campo = coluna ? nomeAmigavel(coluna) : 'um campo obrigatório';
@@ -97,7 +118,10 @@ export function mensagemDeErro(erro: unknown): string {
   }
 
   // Sem código: cair para padrões conhecidos do texto.
-  if (/permission denied|row-level security|violates row-level/i.test(msg)) {
+  if (e.status === 401 || /jwt expired|invalid jwt|jwt|not authenticated|refresh token/i.test(msg)) {
+    return 'Sua sessão expirou. Entre de novo.';
+  }
+  if (e.status === 403 || /permission denied|row-level security|violates row-level/i.test(msg)) {
     return 'Você não tem permissão para esta ação. Peça a um administrador da clínica.';
   }
   if (/rate limit|too many requests/i.test(msg)) {
@@ -118,12 +142,11 @@ export function mensagemDeErro(erro: unknown): string {
   if (/failed to fetch|networkerror|load failed/i.test(msg)) {
     return 'Sem conexão com o servidor. Verifique a internet e tente de novo.';
   }
+  if (/timeout|timed out|demorou mais que o esperado/i.test(msg)) {
+    return 'A consulta demorou mais que o esperado. Tente de novo.';
+  }
 
-  // Mensagem própria do app (lançada com new Error) costuma já estar em
-  // português e ser específica — vale mais do que qualquer genérico.
-  if (msg && !/^\[object/.test(msg) && msg.length < 200) return msg;
-
-  return 'Não foi possível concluir. Tente de novo.';
+  return null;
 }
 
 /**

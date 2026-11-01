@@ -111,7 +111,7 @@ export function AbasTelas() {
               type="button"
               onClick={() => fechar(aba.path)}
               aria-label={`Fechar aba ${rotulo}`}
-              className={cn('grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted', ativa ? 'opacity-70' : 'opacity-0 group-hover:opacity-70 focus-visible:opacity-100')}
+              className={cn('grid h-7 w-7 shrink-0 place-items-center rounded hover:bg-muted [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', ativa ? 'opacity-70' : 'opacity-0 group-hover:opacity-70 focus-visible:opacity-100')}
             >
               <X aria-hidden="true" className="h-3 w-3" />
             </button>

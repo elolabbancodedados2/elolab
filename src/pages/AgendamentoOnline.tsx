@@ -120,6 +120,27 @@ export default function AgendamentoOnline() {
     }
   };
 
+  // Fechar a aba ou sair da página libera o horário para outra pessoa.
+  useEffect(() => {
+    const aoSair = () => liberarReserva();
+    window.addEventListener('pagehide', aoSair);
+    return () => { window.removeEventListener('pagehide', aoSair); aoSair(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A reserva vale cinco minutos; ao vencer, a pessoa é avisada e escolhe de novo.
+  useEffect(() => {
+    if (!holdToken) return;
+    const timer = window.setTimeout(() => {
+      liberarReserva();
+      setHora('');
+      setErro('A reserva de cinco minutos terminou. Escolha o horário de novo para continuar.');
+      setRecarregar((n) => n + 1);
+    }, 5 * 60_000 - 5_000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdToken]);
+
   useEffect(() => {
     // O roteador pode reutilizar esta página quando o link muda de clínica.
     // Dados pessoais e consentimento pertencem ao contexto da clínica anterior.

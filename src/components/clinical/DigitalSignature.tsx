@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { supabase } from '@/integrations/supabase/client';
 
 interface DigitalSignatureProps {
@@ -67,7 +67,6 @@ export function DigitalSignature({
   const [signatureData, setSignatureData] = useState<SignatureData | null>(null);
   const [verificationCode, setVerificationCode] = useState<string | null>(null);
   const [signError, setSignError] = useState<string | null>(null);
-  const { toast } = useToast();
 
   useEffect(() => {
     if (disabledReason) setIsDialogOpen(false);

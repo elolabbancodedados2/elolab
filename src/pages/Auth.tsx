@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { destinoAposLogin } from '@/lib/destinoAposLogin';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -84,6 +85,7 @@ export default function Auth() {
   /** Fator TOTP a confirmar: senha aceita, sessão ainda em AAL1. */
   const [pendingFactorId, setPendingFactorId] = useState<string | null>(null);
 
+  const location = useLocation();
   const urlCodigo = searchParams.get('codigo') || '';
   const urlEmail = searchParams.get('email') || '';
   const urlMpStatus = searchParams.get('status') || '';
@@ -93,7 +95,8 @@ export default function Auth() {
   const urlPlanMode = searchParams.get('modo') || '';
   const hasPlanIntent = /^[a-z0-9-]+$/i.test(urlPlan) && ['trial', 'buy'].includes(urlPlanMode);
   const hasAnyPlanIntent = Boolean(urlPlan || urlPlanMode);
-  const destinoSemPlano = urlCadastro ? '/onboarding' : '/dashboard';
+  // Volta para a página que a rota protegida guardou, se for interna e segura.
+  const destinoSemPlano = urlCadastro ? '/onboarding' : destinoAposLogin((location.state as { from?: unknown } | null)?.from);
   const { data: planos = [], isLoading: loadingPlanos, isError: erroPlanos } = usePlanos(hasPlanIntent);
   const planoSelecionado = planos.find((plano) => plano.slug === urlPlan);
   const planoIntentIndisponivel = hasAnyPlanIntent && (!hasPlanIntent || (!loadingPlanos && (erroPlanos || !planoSelecionado)));

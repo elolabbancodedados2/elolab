@@ -123,15 +123,14 @@ describe('busca e preferências do menu lateral', () => {
     expect(screen.getByRole('link', { name: 'Prontuários' })).toBeInTheDocument();
   });
 
-  it('abre e foca a busca com Ctrl+K mesmo quando o menu está recolhido', async () => {
+  it('deixa Ctrl+K para a busca global e não expande o menu recolhido', async () => {
     const user = userEvent.setup();
     renderSidebar('/dashboard', false);
     await user.click(screen.getByRole('button', { name: 'Recolher menu lateral' }));
 
-    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'k', code: 'KeyK', ctrlKey: true });
 
-    const search = screen.getByRole('textbox', { name: 'Buscar no menu' });
-    expect(search).toHaveFocus();
+    expect(screen.queryByRole('textbox', { name: 'Buscar no menu' })).not.toBeInTheDocument();
   });
 
   it('limpa a busca ao pressionar Escape', async () => {

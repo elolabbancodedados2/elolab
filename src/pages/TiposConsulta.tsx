@@ -203,7 +203,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       toast.error('A lista atingiu o limite de leitura. Não é possível validar nomes duplicados com segurança.');
       return;
     }
-    if (typeof duracaoMinutos !== 'number' || !Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) { toast.error('Informe uma duração inteira maior que zero.'); return; }
+    if (typeof duracaoMinutos !== 'number' || !Number.isInteger(duracaoMinutos) || duracaoMinutos < 5 || duracaoMinutos > 480) { toast.error('Informe uma duração entre 5 e 480 minutos.'); return; }
     if (typeof valorParticular !== 'number' || !Number.isFinite(valorParticular) || valorParticular < 0) { toast.error('Informe um valor particular válido, igual ou maior que zero.'); return; }
     if (Math.abs(valorParticular * 100 - Math.round(valorParticular * 100)) > 1e-7) { toast.error('Informe o valor particular com no máximo duas casas decimais.'); return; }
     if (form.instrucoes_preparo.length > 2000) { toast.error('As instruções de preparo podem ter até 2.000 caracteres.'); return; }

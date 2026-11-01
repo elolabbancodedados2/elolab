@@ -1,11 +1,13 @@
 import { Suspense, lazy } from "react";
 import { MotionConfig } from "framer-motion";
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/components/ErrorState";
+import { mensagemDeErro } from "@/lib/erros";
+import { criarTratadorSessaoExpirada, deveRepetirConsulta, ehFalhaDeSessao } from "@/lib/falhasDeConsulta";
+import { supabase } from "@/integrations/supabase/client";
 import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
 import { useWhatsAppBookingNotifications } from "@/hooks/useWhatsAppBookingNotifications";
@@ -197,20 +199,89 @@ import { CookieConsent } from "@/components/CookieConsent";
 import { BrandLoadingScreen } from "@/components/BrandLoadingScreen";
 import { MobileTableAdapter } from "@/components/ui/table";
 
+// Sessão vencida: tenta renovar uma vez; sem renovação, encerra só a sessão
+// deste navegador. O SIGNED_OUT limpa o estado e a rota protegida leva a
+// /auth guardando a página atual em `from`.
+const tratarSessaoExpirada = criarTratadorSessaoExpirada({
+  temSessao: async () => {
+    const { data } = await supabase.auth.getSession();
+    return Boolean(data.session);
+  },
+  renovarSessao: async () => {
+    const { data, error } = await supabase.auth.refreshSession();
+    return { ok: !error && Boolean(data.session) };
+  },
+  encerrarSessaoLocal: async () => {
+    await supabase.auth.signOut({ scope: 'local' });
+  },
+  avisarSessaoExpirada: () => {
+    toast.error('Sua sessão expirou. Entre de novo para continuar.', { id: 'sessao-expirada' });
+  },
+});
+// Evita ciclo renovar → repetir → falhar quando o 401 não é de sessão.
+const repeticoesAposRenovacao = new Map<string, number>();
+const JANELA_REPETICAO_MS = 30_000;
+
+function lidarComFalhaDeSessao(chave: string, repetir: () => void, avisarErroComum: () => void) {
+  void tratarSessaoExpirada().then((resultado) => {
+    if (resultado === 'sem-sessao') { avisarErroComum(); return; }
+    if (resultado !== 'renovada') return;
+    const ultima = repeticoesAposRenovacao.get(chave) ?? 0;
+    // Já repetiu há pouco e falhou de novo: o 401 não é de sessão vencida.
+    if (Date.now() - ultima < JANELA_REPETICAO_MS) { avisarErroComum(); return; }
+    repeticoesAposRenovacao.set(chave, Date.now());
+    repetir();
+  });
+}
+
 const queryClient = new QueryClient({
   // Falha de carregamento nunca deve virar tela em branco silenciosa:
   // o usuário recebe uma mensagem clara (uma única vez por erro).
   queryCache: new QueryCache({
     onError: (error, query) => {
-      if (query.meta?.suppressGlobalErrorToast === true) return;
-      toast.error(friendlyErrorMessage(error), { id: `query-error-${friendlyErrorMessage(error)}` });
+      const avisar = () => {
+        if (query.meta?.suppressGlobalErrorToast === true) return;
+        toast.error(friendlyErrorMessage(error), { id: `query-error-${friendlyErrorMessage(error)}` });
+      };
+      if (ehFalhaDeSessao(error)) {
+        lidarComFalhaDeSessao(query.queryHash, () => {
+          void queryClient.invalidateQueries({ queryKey: query.queryKey, exact: true });
+        }, avisar);
+        return;
+      }
+      avisar();
+    },
+  }),
+  // Plano B: mutação sem onError próprio não pode falhar em silêncio. Quem
+  // trata o erro por outro caminho (mutateAsync com try/catch, onError no
+  // mutate) marca meta.suppressGlobalErrorToast.
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      const avisar = () => {
+        if (mutation.options.onError || mutation.meta?.suppressGlobalErrorToast === true) return;
+        const mensagem = mensagemDeErro(error);
+        toast.error(mensagem, { id: `mutation-error-${mensagem}` });
+      };
+      // A mutação não é repetida automaticamente (pode não ser idempotente):
+      // renova a sessão para a próxima tentativa da pessoa ou leva a /auth.
+      if (ehFalhaDeSessao(error)) {
+        lidarComFalhaDeSessao(
+          `mutation:${mutation.mutationId}`,
+          () => toast.error('Sua sessão foi renovada. Tente a ação de novo.', { id: 'sessao-renovada-mutacao' }),
+          avisar,
+        );
+        return;
+      }
+      avisar();
     },
   }),
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
       gcTime: 1000 * 60 * 10, // 10 minutes garbage collection
-      retry: 1,
+      // Uma nova tentativa só para falhas transitórias; sessão, permissão e
+      // erros da própria requisição (4xx, 42501) não melhoram ao repetir.
+      retry: deveRepetirConsulta,
       refetchOnWindowFocus: false,
     },
   },
@@ -469,7 +540,8 @@ function AppRoutes() {
                           <Route path="/contas/receber/:lancamentoId/recebimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
-                          <Route path="/contas/pagar/:lancamentoId/pagamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarPagamentoPage /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/pagar/:lancamentoId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/pagar/:lancamentoId/pagamento"element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarPagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><HistoricoLancamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas-receber" element={<Navigate to="/contas?tab=receber" replace />} />
@@ -590,7 +662,6 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <TooltipProvider>
-            <Toaster />
             <Sonner />
             <RouterProvider router={router} />
           </TooltipProvider>

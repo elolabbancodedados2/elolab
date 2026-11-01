@@ -1,3 +1,4 @@
+import { useConfirmacao } from '@/hooks/useConfirmacao';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +42,7 @@ interface Props {
 const db = supabase as any;
 
 export function MedicoAvailabilityManager({ medico_id, medico_nome, protectChanges = false }: Props) {
+  const [confirmar, dialogoConfirmacao] = useConfirmacao();
   const [availabilities, setAvailabilities] = useState<Availability[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -143,7 +145,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome, protectChang
 
   const handleDelete = async (id: string) => {
     if (writeLock.current) return;
-    if (!window.confirm('Remover este horário?')) return;
+    if (!(await confirmar({ titulo: 'Remover este horário?', descricao: 'O horário sai da disponibilidade do médico e deixa de aparecer no agendamento online.', confirmar: 'Remover' }))) return;
     writeLock.current = true;
     setSaving(true);
     try {
@@ -167,6 +169,7 @@ export function MedicoAvailabilityManager({ medico_id, medico_nome, protectChang
 
   return (
     <Card>
+      {dialogoConfirmacao}
       {protectChanges && <UnsavedChangesGuard dirty={!!editing} busy={saving} completed={completed} />}
       <CardHeader>
         <CardTitle className="flex items-center gap-2">

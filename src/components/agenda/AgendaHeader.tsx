@@ -35,6 +35,8 @@ interface Props {
   onStatusFilterChange: (s: string[]) => void;
   onMedicoFilterChange: (s: string[]) => void;
   onNewAppointment: () => void;
+  /** Desabilita "Nova consulta" quando faltam dados de apoio (convênios, tipos, salas). */
+  newAppointmentDisabled?: boolean;
   onNewBlock: () => void;
   onOpenColorScheme: () => void;
   onToggleWaiting: () => void;
@@ -210,7 +212,7 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" onClick={p.onNewAppointment} aria-label="Nova consulta" className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:brightness-110 sm:h-10 sm:flex-none sm:px-4">
+          <Button size="sm" onClick={p.onNewAppointment} disabled={p.newAppointmentDisabled} aria-label="Nova consulta"className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:brightness-110 sm:h-10 sm:flex-none sm:px-4">
             <Plus className="mr-1.5 h-4 w-4" /> <span className="whitespace-nowrap">Nova consulta</span>
           </Button>
         </div>

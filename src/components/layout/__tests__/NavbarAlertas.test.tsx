@@ -29,6 +29,7 @@ vi.mock('@/components/GlobalSearch', () => ({ GlobalSearch: () => <div /> }));
 vi.mock('@/components/KeyboardShortcutsDialog', () => ({ KeyboardShortcutsDialog: () => null }));
 vi.mock('@/components/ContextualHelp', () => ({ ContextualHelp: () => null }));
 vi.mock('../BarraHorario', () => ({ BarraHorario: () => null }));
+vi.mock('@/hooks/useSubscriptionPlan', () => ({ useUserPlan: () => ({ hasFeature: () => true, isLoading: false, isError: false }) }));
 
 describe('sino de notificações', () => {
   it('lista as pendências da central e conta só as não lidas', async () => {

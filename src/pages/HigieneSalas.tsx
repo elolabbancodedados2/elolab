@@ -137,7 +137,8 @@ export default function HigieneSalas() {
     : 'Checklists, inspeções e liberação segura de ambientes';
 
   if (query.isLoading) return <main className="space-y-5"><PageHeader title="Higienização de salas" description="Checklists, inspeções e liberação segura de ambientes" icon={<SprayCan />} /><div className="grid grid-cols-2 gap-2 md:grid-cols-4">{[0, 1, 2, 3].map((i) => <Card key={i} className="h-24 animate-pulse rounded-2xl border-border/60" />)}</div><div className="grid gap-3 lg:grid-cols-2"><Card className="h-36 animate-pulse rounded-2xl border-border/60" /><Card className="h-36 animate-pulse rounded-2xl border-border/60" /></div></main>;
-  if (query.error) return <ErrorState title="Não foi possível carregar a higienização" description="A operação foi pausada para evitar liberar uma sala com estado desatualizado." error={query.error} onRetry={() => void query.refetch()} />;
+  // Com dados já na tela, uma falha de atualização vira aviso; sem dados, a tela pausa.
+  if (query.error && !query.data) return <ErrorState title="Não foi possível carregar a higienização" description="A operação foi pausada para evitar liberar uma sala com estado desatualizado." error={query.error} onRetry={() => void query.refetch()} />;
 
   const indicadores: Array<{ key: Etapa; icon: typeof SprayCan; label: string; caption: string; color: string; surface: string }> = [
     { key: 'aguardando', icon: SprayCan, label: 'Aguardando limpeza', caption: 'marcadas como limpeza em Salas e leitos', color: 'text-info', surface: 'bg-info/10' },
@@ -163,6 +164,13 @@ export default function HigieneSalas() {
         </Button>}
       </>}
     />
+
+    {query.error && (
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
+        <span className="text-sm text-muted-foreground">Não foi possível atualizar a higienização. O estado das salas pode estar desatualizado; atualize antes de liberar uma sala.</span>
+        <Button size="sm" variant="outline" onClick={() => void query.refetch()}>Tentar novamente</Button>
+      </div>
+    )}
 
     <section role="group" aria-label="Situação da higienização" className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">

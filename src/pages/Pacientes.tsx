@@ -52,6 +52,7 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { loadPatientConsentRecords } from '@/lib/patientConsentRecords';
 import { gerarProntuarioPDF, downloadPDF, openPDF } from '@/lib/pdfGenerator';
 import { ageFromDateOnly, isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { ANO_MINIMO_NASCIMENTO, DATA_MINIMA_NASCIMENTO, IDADE_MAXIMA_PACIENTE, dataNascimentoImplausivel } from '@/lib/dataNascimento';
 import { logAudit } from '@/lib/auditTrail';
 import { cpfValido } from '@/lib/importacao/campos';
 import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/lib/patientBasicData';
@@ -404,7 +405,7 @@ export default function Pacientes() {
     try {
       await autorizarLeituraHistoricoPaciente(pacienteId);
     } catch (error) {
-      if (carregarMais) toast.error('Nao foi possivel autorizar a leitura do historico clinico.', { description: mensagemDeErro(error) });
+      if (carregarMais) toast.error('Não foi possível autorizar a leitura do histórico clínico.', { description: mensagemDeErro(error) });
       else setProntuariosLoadError(error);
       if (carregarMais) setLoadingMaisProntuarios(false); else setLoadingProntuarios(false);
       return;
@@ -598,7 +599,7 @@ export default function Pacientes() {
       return;
     }
     if (!prontuarioForm.queixa_principal) {
-      toast.error('Erro', { description: 'Preencha a queixa principal.' });
+      toast.error('Queixa principal obrigatória', { description: 'Preencha a queixa principal para salvar o prontuário.' });
       return;
     }
     setSavingProntuario(true);
@@ -998,6 +999,26 @@ export default function Pacientes() {
     if (error) throw error;
   };
 
+  /** Outro paciente da clínica com o mesmo CPF (só dígitos), excluindo a ficha em edição. */
+  const buscarPacientePorCpf = async (cpfDigits: string) => {
+    const mascarado = `${cpfDigits.slice(0, 3)}.${cpfDigits.slice(3, 6)}.${cpfDigits.slice(6, 9)}-${cpfDigits.slice(9)}`;
+    let consulta = supabase.from('pacientes')
+      .select('id, nome, nome_social, cpf')
+      .eq('clinica_id', authProfile!.clinica_id)
+      .in('cpf', [cpfDigits, mascarado]);
+    if (selectedPacienteId) consulta = consulta.neq('id', selectedPacienteId);
+    const { data, error } = await consulta.limit(1);
+    if (error) throw error;
+    return (data ?? [])[0] ?? null;
+  };
+
+  const avisarCpfDuplicado = (paciente: { id: string; nome?: string | null; nome_social?: string | null }) => {
+    toast.error('Este CPF já está cadastrado nesta clínica', {
+      description: `O cadastro pertence a ${paciente.nome_social || paciente.nome || 'outro paciente'}. Abra a ficha existente para evitar duplicidade.`,
+      action: { label: 'Abrir ficha', onClick: () => handleView(paciente) },
+    });
+  };
+
   const handleSave = async () => {
     if (pacienteSaveLockRef.current) return;
     if (!authProfile?.clinica_id) {
@@ -1006,7 +1027,7 @@ export default function Pacientes() {
     }
     if (!formData.nome.trim()) {
       setFormSection('pessoal');
-      toast.error('Erro', { description: 'O campo Nome é obrigatório.' });
+      toast.error('Nome obrigatório', { description: 'Preencha o nome do paciente para salvar o cadastro.' });
       return;
     }
 
@@ -1021,10 +1042,7 @@ export default function Pacientes() {
       : null;
     if (pacienteComMesmoCpf) {
       setFormSection('pessoal');
-      toast.error('Este CPF já está cadastrado nesta clínica', {
-        description: `O cadastro pertence a ${(pacienteComMesmoCpf as any).nome_social || pacienteComMesmoCpf.nome}. Abra a ficha existente para evitar duplicidade.`,
-        action: { label: 'Abrir ficha', onClick: () => handleView(pacienteComMesmoCpf) },
-      });
+      avisarCpfDuplicado(pacienteComMesmoCpf);
       return;
     }
     if (formData.cpf_responsavel && !cpfValido(formData.cpf_responsavel)) {
@@ -1054,6 +1072,11 @@ export default function Pacientes() {
     if (formData.data_nascimento && formData.data_nascimento > todaySaoPauloDateOnly()) {
       setFormSection('pessoal');
       toast.error('Data inválida', { description: 'A data de nascimento não pode ser no futuro.' });
+      return;
+    }
+    if (formData.data_nascimento && dataNascimentoImplausivel(formData.data_nascimento)) {
+      setFormSection('pessoal');
+      toast.error('Data de nascimento inválida', { description: `Informe uma data a partir de 01/01/${ANO_MINIMO_NASCIMENTO} e idade de até ${IDADE_MAXIMA_PACIENTE} anos.` });
       return;
     }
     if (formData.validade_carteira && !isValidDateOnly(formData.validade_carteira)) {
@@ -1087,6 +1110,15 @@ export default function Pacientes() {
     pacienteSaveLockRef.current = true;
     setIsSubmitting(true);
     try {
+      // A lista na tela é só a página visível: confere o CPF na clínica toda.
+      if (cpfDigits) {
+        const existente = await buscarPacientePorCpf(cpfDigits);
+        if (existente) {
+          setFormSection('pessoal');
+          avisarCpfDuplicado(existente);
+          return;
+        }
+      }
       if (!selectedPacienteId && !duplicateReviewConfirmedRef.current) {
         const { data: matches, error: duplicateCheckError } = await supabase.rpc('buscar_possiveis_duplicidades_paciente', {
           p_nome: formData.nome.trim(),
@@ -1197,16 +1229,18 @@ export default function Pacientes() {
       const duplicidadeCpf = error?.code === '23505'
         && String(error?.message || '').includes('pacientes_cpf_por_clinica');
       if (duplicidadeCpf) {
-        toast.error('Este CPF já está cadastrado nesta clínica', {
+        const existente = cpfDigits ? await buscarPacientePorCpf(cpfDigits).catch(() => null) : null;
+        if (existente) avisarCpfDuplicado(existente);
+        else toast.error('Este CPF já está cadastrado nesta clínica', {
           description: 'Outro usuário pode ter cadastrado o paciente agora. Atualize a lista e abra a ficha existente.',
         });
         atualizarListasPacientes();
         return;
       }
-      // A mensagem do banco costuma dizer exatamente o que faltou (campo
-      // obrigatório, CPF duplicado, permissão). Esconder isso obriga a adivinhar.
-      toast.error('Erro ao salvar paciente', {
-        description: error?.message || error?.details || 'Verifique os dados e tente novamente.',
+      // mensagemDeErro traduz o código do banco (campo obrigatório, permissão)
+      // em instrução, sem despejar o texto cru do Postgres.
+      toast.error('Não foi possível salvar o paciente', {
+        description: mensagemDeErro(error),
       });
     } finally {
       pacienteSaveLockRef.current = false;
@@ -1605,7 +1639,7 @@ export default function Pacientes() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-nascimento">Data de Nascimento</Label>
-                    <Input id="paciente-nascimento" type="date" value={formData.data_nascimento} onChange={e => setFormData({ ...formData, data_nascimento: e.target.value })} />
+                    <Input id="paciente-nascimento" type="date" min={DATA_MINIMA_NASCIMENTO} max={todaySaoPauloDateOnly()} value={formData.data_nascimento} onChange={e => setFormData({ ...formData, data_nascimento: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paciente-sexo">Sexo</Label>

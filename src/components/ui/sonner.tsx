@@ -1,14 +1,15 @@
-import { useTheme } from "next-themes";
 import { Toaster as Sonner, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
+/**
+ * Único sistema de toasts do app. O tema é sempre claro (visual aprovado em
+ * branco gelo); antes dependia de next-themes sem o provider correspondente.
+ */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme="light"
       className="toaster group"
       // No desktop, à esquerda sobre a barra lateral: os botões de salvar ficam à direita e não podem ser cobertos.
       position="bottom-left"

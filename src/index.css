@@ -230,6 +230,18 @@
   box-shadow: none;
 }
 
+/* Peças com fundo de cartão dentro da barra (agenda de hoje) voltam às cores
+   normais do tema: com o par trocado acima, text-foreground ficava gelo claro
+   sobre branco, praticamente invisível. */
+.navbar-gelo .agenda-toolbar {
+  --foreground: 220 8% 7%;
+  --background: 210 33% 98%;
+}
+
+html[data-contrast='high'] .navbar-gelo .agenda-toolbar {
+  --foreground: 217 54% 12%;
+}
+
 /* Preferência pessoal de densidade: reduz espaços sem comprometer alvos de toque. */
 html[data-density='compact'] main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
   margin-top: 1rem;

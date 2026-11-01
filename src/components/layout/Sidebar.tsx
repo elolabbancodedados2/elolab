@@ -48,7 +48,6 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   const location = useLocation();
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const focusSearchAfterExpandRef = useRef(false);
   const navigationMode = isPlatformAdmin && !profile?.clinica_id
     ? 'platform'
     : getNavigationMode(location.pathname, isPlatformAdmin);
@@ -72,29 +71,8 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
   });
   const isCollapsed = collapsed && !forceExpanded;
 
-  useEffect(() => {
-    if (!isCollapsed && focusSearchAfterExpandRef.current) {
-      searchInputRef.current?.focus();
-      focusSearchAfterExpandRef.current = false;
-    }
-  }, [isCollapsed]);
-
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        if (isCollapsed) {
-          focusSearchAfterExpandRef.current = true;
-          setCollapsed(false);
-        } else {
-          searchInputRef.current?.focus();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleShortcut);
-    return () => window.removeEventListener('keydown', handleShortcut);
-  }, [isCollapsed]);
+  // Ctrl/Cmd+K pertence só à busca global (GlobalSearch). A busca do menu
+  // não registra atalho próprio para não disputar a mesma tecla.
 
   const roleFilteredMenuGroups = getFilteredMenuGroups(
     profile?.roles || [],
@@ -192,7 +170,6 @@ export function Sidebar({ forceExpanded = false, onNavigate }: SidebarProps) {
             <Input
               ref={searchInputRef}
               aria-label="Buscar no menu"
-              aria-keyshortcuts="Control+K Meta+K"
               name="menu-search"
               autoComplete="off"
               placeholder="Buscar no menu"
@@ -307,7 +284,7 @@ function SidebarMenuGroup({ group, collapsed, isOpen, onToggle, onExpand, curren
             aria-expanded={!collapsed && isOpen}
             aria-controls={!collapsed && isOpen ? groupPanelId : undefined}
             className={cn(
-              'w-full flex min-h-8 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
+              'w-full flex min-h-8 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
               collapsed && 'justify-center',
               hasActiveChild ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground',
             )}

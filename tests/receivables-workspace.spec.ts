@@ -316,13 +316,13 @@ test('receivable creation keeps the selected patient and draft after an error', 
   await page.getByRole('combobox', { name: 'Paciente (opcional)' }).click();
   await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo QA');
   await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
-  await page.getByLabel('Descricao da receita').fill('Consulta de avaliação sintética');
+  await page.getByLabel('Descrição da receita').fill('Consulta de avaliação sintética');
   await page.getByLabel('Valor da receita em reais').fill('184,75');
   await page.getByLabel('Vencimento da receita').fill('2026-11-20');
 
   await page.getByRole('button', { name: 'Salvar receita', exact: true }).click();
   await expect(page.getByText('Falha sintética ao cadastrar receita', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Descricao da receita')).toHaveValue('Consulta de avaliação sintética');
+  await expect(page.getByLabel('Descrição da receita')).toHaveValue('Consulta de avaliação sintética');
   await expect(page.getByRole('combobox', { name: 'Paciente (opcional)' })).toContainText('Pessoa Exemplo QA');
   await expect(page).toHaveURL('/contas/receber/nova');
 
@@ -344,14 +344,14 @@ test('receivable creation keeps the selected patient and draft after an error', 
 test('receivable page protects and discards unsaved form without writing', async ({ page }) => {
   const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false });
   await page.goto('/contas/receber/nova');
-  await page.getByLabel('Descricao da receita').fill('Rascunho de receita QA');
+  await page.getByLabel('Descrição da receita').fill('Rascunho de receita QA');
 
   await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
   const discard = page.getByRole('alertdialog');
   await expect(discard).toContainText('Alterações não salvas');
   await discard.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(page).toHaveURL('/contas/receber/nova');
-  await expect(page.getByLabel('Descricao da receita')).toHaveValue('Rascunho de receita QA');
+  await expect(page.getByLabel('Descrição da receita')).toHaveValue('Rascunho de receita QA');
 
   await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();

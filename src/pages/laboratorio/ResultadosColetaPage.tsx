@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { AlertTriangle, FlaskConical, Loader2 } from 'lucide-react';
+import { AlertTriangle, FlaskConical, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -24,6 +25,11 @@ function parseNumeroOpcional(valor: unknown): number | null {
   if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalizado)) return Number.NaN;
   return Number(normalizado);
 }
+
+const FORM_RESULTADO_VAZIO = {
+  parametro: '', resultado: '', unidade: '', valor_referencia_min: '',
+  valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false,
+};
 
 export default function ResultadosColetaPage() {
   const { coletaId } = useParams();
@@ -87,10 +93,9 @@ function ResultadosWorkspace() {
   });
   const resultados = resultadosQuery.data;
 
-  const [newResultForm, setNewResultForm] = useState({
-    parametro: '', resultado: '', unidade: '', valor_referencia_min: '',
-    valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false,
-  });
+  const [newResultForm, setNewResultForm] = useState(FORM_RESULTADO_VAZIO);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [removendo, setRemovendo] = useState<{ id: string; parametro: string } | null>(null);
 
   const addResultado = useMutation({
     mutationFn: async (form: any) => {
@@ -115,25 +120,86 @@ function ResultadosWorkspace() {
       if (!coleta || !['coletado', 'em_analise'].includes(coleta.status)) {
         throw new Error('Só é possível registrar resultado em uma amostra coletada que ainda esteja em análise.');
       }
+      const { id: resultadoId, ...campos } = form;
+      if (resultadoId) {
+        // Correção de um resultado já lançado, enquanto a amostra está aberta.
+        const { data, error } = await supabase.from('resultados_laboratorio').update({
+          parametro: String(campos.parametro).trim(),
+          resultado: String(campos.resultado).trim(),
+          unidade: campos.unidade,
+          valor_referencia_min: referenciaMinima,
+          valor_referencia_max: referenciaMaxima,
+          valor_referencia_texto: campos.valor_referencia_texto,
+          metodo: campos.metodo,
+          critico: campos.critico,
+        }).eq('id', resultadoId).eq('clinica_id', profile.clinica_id).eq('coleta_id', form.coleta_id).select('id');
+        if (error) throw error;
+        if (!data?.length) throw new Error('O resultado não foi encontrado nesta amostra ou não pode mais ser alterado.');
+        return 'editado' as const;
+      }
       const { error } = await supabase.from('resultados_laboratorio').insert({
-        ...form,
-        parametro: String(form.parametro).trim(),
-        resultado: String(form.resultado).trim(),
+        ...campos,
+        parametro: String(campos.parametro).trim(),
+        resultado: String(campos.resultado).trim(),
         valor_referencia_min: referenciaMinima,
         valor_referencia_max: referenciaMaxima,
         paciente_id: coleta.paciente_id,
         clinica_id: profile.clinica_id,
       });
       if (error) throw error;
+      return 'adicionado' as const;
     },
-    onSuccess: () => {
+    onSuccess: (acao) => {
       queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
-      setNewResultForm({ parametro: '', resultado: '', unidade: '', valor_referencia_min: '', valor_referencia_max: '', valor_referencia_texto: '', metodo: '', critico: false });
-      toast.success('Resultado adicionado!');
+      setNewResultForm(FORM_RESULTADO_VAZIO);
+      setEditandoId(null);
+      toast.success(acao === 'editado' ? 'Resultado corrigido' : 'Resultado adicionado!');
     },
-    onError: (e) => toast.error('Erro ao adicionar resultado', { description: mensagemDeErro(e) }),
+    onError: (e) => toast.error(editandoId ? 'Não foi possível corrigir o resultado' : 'Não foi possível adicionar o resultado', { description: mensagemDeErro(e) }),
     onSettled: () => { saveLock.current = false; },
   });
+
+  const removerResultado = useMutation({
+    mutationFn: async (resultado: { id: string }) => {
+      if (!profile?.clinica_id || !showResultados) throw new Error('Clínica não identificada.');
+      const { data: coleta, error: coletaError } = await supabase.from('coletas_laboratorio')
+        .select('status').eq('id', showResultados).eq('clinica_id', profile.clinica_id).maybeSingle();
+      if (coletaError) throw coletaError;
+      if (!coleta || !podeRegistrarResultado(coleta.status)) {
+        throw new Error('A amostra não está mais aberta para alterações.');
+      }
+      const { data, error } = await supabase.from('resultados_laboratorio')
+        .delete()
+        .eq('id', resultado.id).eq('clinica_id', profile.clinica_id).eq('coleta_id', showResultados)
+        .select('id');
+      if (error) throw error;
+      if (!data?.length) throw new Error('O resultado não foi encontrado ou já foi removido.');
+    },
+    onSuccess: (_dados, resultado) => {
+      queryClient.invalidateQueries({ queryKey: ['resultados-laboratorio', profile?.clinica_id] });
+      if (editandoId === resultado.id) { setEditandoId(null); setNewResultForm(FORM_RESULTADO_VAZIO); }
+      setRemovendo(null);
+      toast.success('Resultado removido');
+    },
+    onError: (e) => toast.error('Não foi possível remover o resultado', { description: mensagemDeErro(e) }),
+  });
+
+  const iniciarEdicao = (r: any) => {
+    setEditandoId(r.id);
+    setNewResultForm({
+      parametro: r.parametro ?? '',
+      resultado: r.resultado ?? '',
+      unidade: r.unidade ?? '',
+      valor_referencia_min: r.valor_referencia_min == null ? '' : String(r.valor_referencia_min),
+      valor_referencia_max: r.valor_referencia_max == null ? '' : String(r.valor_referencia_max),
+      valor_referencia_texto: r.valor_referencia_texto ?? '',
+      metodo: r.metodo ?? '',
+      critico: r.critico === true,
+    });
+    window.setTimeout(() => document.getElementById('lab-resultado-parametro')?.focus(), 0);
+  };
+  const cancelarEdicao = () => { setEditandoId(null); setNewResultForm(FORM_RESULTADO_VAZIO); };
+  const amostraAberta = podeRegistrarResultado(coletaQuery.data?.status);
 
   const dirty = Object.entries(newResultForm).some(([field, value]) => field === 'critico' ? value === true : value !== '');
   return <div className="space-y-5 pb-24 lg:pb-8">
@@ -176,16 +242,26 @@ function ResultadosWorkspace() {
                       </p>
                     </div>
                   </div>
+                  {amostraAberta && (
+                    <div className="mt-2 flex justify-end gap-2">
+                      <Button type="button" size="sm" variant="outline" className="h-11 gap-1.5 sm:h-8" aria-label={`Editar resultado ${r.parametro}`} disabled={addResultado.isPending || removerResultado.isPending || editandoId === r.id} onClick={() => iniciarEdicao(r)}>
+                        <Pencil aria-hidden="true" className="h-3.5 w-3.5" />Editar
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-11 gap-1.5 text-destructive sm:h-8" aria-label={`Remover resultado ${r.parametro}`} disabled={addResultado.isPending || removerResultado.isPending} onClick={() => setRemovendo({ id: r.id, parametro: r.parametro })}>
+                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remover
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             {perfilCatalogoQuery.isError && <ErrorState compact description="Não foi possível carregar o perfil do exame. Tente novamente ou informe os valores manualmente conforme o método utilizado." onRetry={() => void perfilCatalogoQuery.refetch()} />}
             {/* Add resultado form */}
-            {podeRegistrarResultado(coletaQuery.data?.status) ? <Card>
-              <CardHeader className="flex flex-col sm:flex-row items-center justify-between gap-3"><div><CardTitle className="text-sm">Adicionar Resultado</CardTitle><p className="mt-1 text-xs text-muted-foreground">Informe resultado e referência definidos para este método.</p></div>{perfilCatalogoQuery.data && <Button type="button" size="sm" variant="outline" disabled={perfilCatalogoQuery.isLoading || addResultado.isPending} onClick={() => setNewResultForm(current => ({ ...current, unidade: perfilCatalogoQuery.data?.unidade_padrao || current.unidade, valor_referencia_min: perfilCatalogoQuery.data?.referencia_min == null ? current.valor_referencia_min : String(perfilCatalogoQuery.data.referencia_min), valor_referencia_max: perfilCatalogoQuery.data?.referencia_max == null ? current.valor_referencia_max : String(perfilCatalogoQuery.data.referencia_max), valor_referencia_texto: perfilCatalogoQuery.data?.referencia_texto || current.valor_referencia_texto, metodo: perfilCatalogoQuery.data?.metodo_padrao || current.metodo }))}>Usar perfil do exame</Button>}</CardHeader>
+            {amostraAberta ? <Card>
+              <CardHeader className="flex flex-col sm:flex-row items-center justify-between gap-3"><div><CardTitle className="text-sm">{editandoId ? 'Corrigir resultado' : 'Adicionar Resultado'}</CardTitle><p className="mt-1 text-xs text-muted-foreground">{editandoId ? 'Altere os campos e salve a correção. A alteração fica registrada na auditoria.' : 'Informe resultado e referência definidos para este método.'}</p></div>{perfilCatalogoQuery.data && <Button type="button" size="sm" variant="outline" disabled={perfilCatalogoQuery.isLoading || addResultado.isPending} onClick={() => setNewResultForm(current => ({ ...current, unidade: perfilCatalogoQuery.data?.unidade_padrao || current.unidade, valor_referencia_min: perfilCatalogoQuery.data?.referencia_min == null ? current.valor_referencia_min : String(perfilCatalogoQuery.data.referencia_min), valor_referencia_max: perfilCatalogoQuery.data?.referencia_max == null ? current.valor_referencia_max : String(perfilCatalogoQuery.data.referencia_max), valor_referencia_texto: perfilCatalogoQuery.data?.referencia_texto || current.valor_referencia_texto, metodo: perfilCatalogoQuery.data?.metodo_padrao || current.metodo }))}>Usar perfil do exame</Button>}</CardHeader>
               <CardContent>
-                <form aria-label="Adicionar resultado" onSubmit={(e) => {
+                <form aria-label={editandoId ? 'Corrigir resultado' : 'Adicionar resultado'} onSubmit={(e) => {
                   e.preventDefault();
                   if (!showResultados) return;
                   // O botão não era desabilitado durante a mutation: dois
@@ -195,6 +271,7 @@ function ResultadosWorkspace() {
                   saveLock.current = true;
                   const coleta = coletaQuery.data;
                   addResultado.mutate({
+                    id: editandoId ?? undefined,
                     coleta_id: showResultados,
                     clinica_id: profile?.clinica_id,
                     paciente_id: coleta?.paciente_id,
@@ -218,6 +295,7 @@ function ResultadosWorkspace() {
                   <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3"><Checkbox id="resultado-critico" checked={newResultForm.critico} disabled={addResultado.isPending} onCheckedChange={(checked) => setNewResultForm(p => ({ ...p, critico: checked === true }))} /><div><Label htmlFor="resultado-critico" className="cursor-pointer text-sm font-medium">Resultado crítico</Label><p className="text-xs text-muted-foreground">Sinaliza para revisão prioritária conforme o protocolo da clínica.</p></div></div>
                   <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3 border-t pt-4 scroll-mb-24">
                     <span role="status" className="mr-auto text-xs text-muted-foreground">{addResultado.isPending ? 'Registrando resultado…' : dirty ? 'Alterações não salvas' : 'Sem alterações'}</span>
+                    {editandoId && <Button type="button" size="sm" variant="outline" disabled={addResultado.isPending} onClick={cancelarEdicao}>Cancelar correção</Button>}
                     <Button
                       type="submit"
                       size="sm"
@@ -225,7 +303,7 @@ function ResultadosWorkspace() {
                       className="gap-2"
                     >
                       {addResultado.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      Adicionar
+                      {editandoId ? 'Salvar correção' : 'Adicionar'}
                     </Button>
                   </div>
                 </form>
@@ -238,5 +316,16 @@ function ResultadosWorkspace() {
           </div>
       </>}
     </div>
+    <ConfirmDialog
+      open={removendo !== null}
+      onOpenChange={(aberto) => { if (!aberto && !removerResultado.isPending) setRemovendo(null); }}
+      title="Remover resultado?"
+      description={removendo ? `O parâmetro "${removendo.parametro}" será removido desta amostra. A remoção fica registrada na auditoria.` : ''}
+      confirmLabel="Remover resultado"
+      variant="destructive"
+      isLoading={removerResultado.isPending}
+      closeOnConfirm={false}
+      onConfirm={() => { if (removendo) removerResultado.mutate({ id: removendo.id }); }}
+    />
   </div>;
 }

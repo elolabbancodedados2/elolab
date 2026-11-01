@@ -33,7 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
@@ -142,7 +142,6 @@ export function EncaminhamentoMedico({
   });
   const baseline = useRef(formData);
   const dirty = JSON.stringify(formData) !== JSON.stringify(baseline.current);
-  const { toast } = useToast();
   const { profile } = useSupabaseAuth();
 
   useEffect(() => {

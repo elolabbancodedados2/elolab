@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { inicioDoDiaEmFusoIso } from '@/lib/dateOnly';
 import { downloadStringAsFile } from '@/lib/auditExport';
 import { currentFinanceMonth, formatFinanceMonth, parseFinanceMonth } from '@/lib/financeRouteState';
@@ -132,14 +132,25 @@ export default function DrePlanoContas() {
     },
   });
 
+  // Só o mês e o anterior: pela data, pela data de pagamento (caixa) ou pela competência.
+  const fimInclusivo = format(endOfMonth(competencia), 'yyyy-MM-dd');
+  const mesSeguinte = formatFinanceMonth(addMonths(competencia, 1));
   const lancamentosQuery = useQuery({
-    queryKey: ['dre-lancamentos', clinicaId],
+    queryKey: ['dre-lancamentos', clinicaId, inicio, fimInclusivo],
     enabled: !!clinicaId,
-    queryFn: () => buscarEmBlocos<LancamentoRealizavel>(() => supabase.from('lancamentos')
-      .select('id,tipo,categoria,status,valor,valor_pago,desconto,acrescimo,competencia,data,data_pagamento')
-      .eq('clinica_id', clinicaId!)
-      .in('tipo', ['receita', 'despesa'])
-      .order('id')),
+    queryFn: async () => {
+      const linhas = await buscarEmBlocos<LancamentoRealizavel>(() => supabase.from('lancamentos')
+        .select('id,tipo,categoria,status,valor,valor_pago,desconto,acrescimo,competencia,data,data_pagamento')
+        .eq('clinica_id', clinicaId!)
+        .in('tipo', ['receita', 'despesa'])
+        .or([
+          `and(data.gte.${inicio},data.lte.${fimInclusivo})`,
+          `and(data_pagamento.gte.${inicio},data_pagamento.lte.${fimInclusivo})`,
+          `and(competencia.gte.${mesAnterior},competencia.lt.${mesSeguinte})`,
+        ].join(','))
+        .order('id'), { teto: LIMITE_BUSCA_EM_BLOCOS + 1 });
+      return { linhas: linhas.slice(0, LIMITE_BUSCA_EM_BLOCOS), excedeuLimite: linhas.length > LIMITE_BUSCA_EM_BLOCOS };
+    },
   });
 
   const pagamentosQuery = useQuery({
@@ -163,7 +174,8 @@ export default function DrePlanoContas() {
 
   const contas = useMemo(() => contasQuery.data ?? [], [contasQuery.data]);
   const vinculos = useMemo(() => vinculosQuery.data ?? [], [vinculosQuery.data]);
-  const lancamentos = useMemo(() => lancamentosQuery.data ?? [], [lancamentosQuery.data]);
+  const lancamentos = useMemo(() => lancamentosQuery.data?.linhas ?? [], [lancamentosQuery.data]);
+  const limiteAtingido = Boolean(lancamentosQuery.data?.excedeuLimite) || (pagamentosQuery.data?.length ?? 0) >= LIMITE_BUSCA_EM_BLOCOS;
   const pagamentos = useMemo(() => pagamentosQuery.data ?? [], [pagamentosQuery.data]);
 
   const dre = useMemo(() => {
@@ -276,6 +288,16 @@ export default function DrePlanoContas() {
           </>
         )}
       />
+
+      {limiteAtingido && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <p>
+            A DRE carregou o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} registros do período. Os totais podem estar incompletos;
+            confira os relatórios antes de usar estes valores para fechamento.
+          </p>
+        </div>
+      )}
 
       <Tabs value={aba} onValueChange={valor => atualizarParam('aba', parseAba(valor))} className="space-y-4">
         <TabsList>

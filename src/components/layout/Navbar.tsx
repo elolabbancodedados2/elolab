@@ -31,6 +31,7 @@ import { BarraHorario } from './BarraHorario';
 import logoHorizontalWhite from '@/assets/elolab-logo-identidade.png';
 import logoMark from '@/assets/elolab-symbol-identidade.png';
 import { getNavigationMode } from '@/config/sidebarMenu';
+import { useUserPlan } from '@/hooks/useSubscriptionPlan';
 
 const roleLabels: Record<AppRole, string> = {
   admin: 'Admin',
@@ -39,6 +40,29 @@ const roleLabels: Record<AppRole, string> = {
   enfermagem: 'Enfermagem',
   financeiro: 'Financeiro',
 };
+
+/**
+ * Ações do botão "Novo". Cada uma leva direto à tela de criação e só aparece
+ * para os papéis que a rota correspondente aceita em App.tsx.
+ */
+const ACOES_RAPIDAS: ReadonlyArray<{ to: string; label: string; roles: readonly AppRole[]; planFeature?: string }> = [
+  { to: '/agenda/nova', label: 'Nova consulta', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
+  { to: '/pacientes/novo', label: 'Novo paciente', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
+  { to: '/documentos-clinicos/nova-prescricao', label: 'Nova prescrição', roles: ['admin', 'medico'] },
+  { to: '/exames/nova', label: 'Solicitar exame', roles: ['admin', 'medico', 'enfermagem'], planFeature: 'exames' },
+];
+
+const ICONES_ACOES: Record<string, typeof Plus> = {
+  '/agenda/nova': CalendarPlus,
+  '/pacientes/novo': UserPlus,
+  '/documentos-clinicos/nova-prescricao': FileText,
+  '/exames/nova': FlaskConical,
+};
+
+/** Papéis que podem ver os envios recentes (contém nome, e-mail e telefone de pacientes). */
+const PAPEIS_ENVIADOS: readonly AppRole[] = ['admin', 'recepcao'];
+/** Situações de envio que pedem atenção de alguém. */
+const STATUS_ENVIO_COM_PROBLEMA = new Set(['erro', 'incerto']);
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -55,6 +79,13 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
     : getNavigationMode(location.pathname, isPlatformAdmin);
   const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
   const operationalSeenRef = useRef<{ owner: string; initialized: boolean; ids: Set<string> }>({ owner: '', initialized: false, ids: new Set() });
+  const roles = profile?.roles ?? [];
+  const podeVerEnviados = roles.some(role => PAPEIS_ENVIADOS.includes(role));
+  const { hasFeature, isLoading: planLoading, isError: planError } = useUserPlan();
+  const acoesRapidas = ACOES_RAPIDAS.filter(acao =>
+    roles.some(role => acao.roles.includes(role)) &&
+    (!acao.planFeature || (!planLoading && !planError && hasFeature(acao.planFeature))),
+  );
 
   const { data: activeClinic } = useQuery({
     queryKey: ['navbar-clinic-context', profile?.clinica_id],
@@ -92,14 +123,14 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!profile?.clinica_id,
+    enabled: !!profile?.clinica_id && podeVerEnviados,
     refetchInterval: 60_000,
   });
 
   const { data: operationalNotifications = [], isError: operationalNotificationsError } = useQuery({
     queryKey: ['central-notificacoes', user?.id, profile?.clinica_id],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('central_notificacoes_usuario', { p_limit: 250 });
+      const { data, error } = await supabase.rpc('central_notificacoes_usuario', { p_limit: 250 });
       if (error) throw error;
       return (data ?? []) as Array<{ source_type: string; source_id: string; title: string; message: string; severity: 'info' | 'warning' | 'error'; href: string; is_read: boolean }>;
     },
@@ -142,11 +173,15 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
     });
   }, [operationalNotifications, user?.id, profile?.clinica_id, navigate]);
 
-  const queueUnread = queueNotifications.filter((n: any) => n.status !== 'lida').length;
+  // A fila de envios não tem estado "lida": só envios com problema pedem
+  // atenção. Contar todo envio deixava o sino pulsando o tempo todo.
+  const queueProblems = podeVerEnviados
+    ? queueNotifications.filter((n) => STATUS_ENVIO_COM_PROBLEMA.has(n.status)).length
+    : 0;
   // A aba Alertas mostra a mesma central operacional da tela de notificações.
   const operationalUnread = operationalNotifications.filter((item) => !item.is_read).length;
   const alertasUnread = operationalUnread + systemUnread;
-  const totalUnread = alertasUnread + queueUnread;
+  const totalUnread = alertasUnread + queueProblems;
   type OperationalItem = (typeof operationalNotifications)[number];
   const markOperationalRead = useMutation({
     mutationFn: async (item: OperationalItem) => {
@@ -273,8 +308,8 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       {/* Right actions */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
         <ContextualHelp className="hidden text-background/85 hover:bg-background/10 hover:text-background sm:inline-flex" />
-        {/* Quick Add */}
-        <DropdownMenu>
+        {/* Quick Add: some para quem não tem nenhuma ação de criação (ex.: financeiro). */}
+        {acoesRapidas.length > 0 && <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
@@ -290,36 +325,23 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
             <TooltipContent side="bottom" className="text-xs">Ação rápida</TooltipContent>
           </Tooltip>
           <DropdownMenuContent data-elo-font-preview="shell" align="end" className="w-56 rounded-xl p-1.5">
-            <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-[0.1em] px-2">
-              Ações Rápidas
+            <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.1em] px-2">
+              Ações rápidas
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2.5">
-              <Link to="/agenda">
-                <CalendarPlus className="h-4 w-4 text-primary" />
-                Nova Consulta
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2.5">
-              <Link to="/pacientes">
-                <UserPlus className="h-4 w-4 text-success" />
-                Novo Paciente
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2.5">
-              <Link to="/prescricoes">
-                <FileText className="h-4 w-4 text-info" />
-                Nova Prescrição
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="rounded-lg gap-2.5 py-2.5">
-              <Link to="/exames">
-                <FlaskConical className="h-4 w-4 text-warning" />
-                Solicitar Exame
-              </Link>
-            </DropdownMenuItem>
+            {acoesRapidas.map(({ to, label }) => {
+              const Icon = ICONES_ACOES[to] ?? Plus;
+              return (
+                <DropdownMenuItem key={to} asChild className="rounded-lg gap-2.5 py-2.5">
+                  <Link to={to}>
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    {label}
+                  </Link>
+                </DropdownMenuItem>
+              );
+            })}
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
 
         {/* Unified Notification Center */}
         <DropdownMenu>
@@ -349,21 +371,23 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
           <DropdownMenuContent data-elo-font-preview="shell" align="end" className="w-[min(24rem,calc(100vw-1rem))] rounded-2xl p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
             <Tabs defaultValue="alertas" className="w-full">
               <div className="px-3 pt-3 pb-0">
-                <TabsList className="w-full grid grid-cols-2 h-9">
+                <TabsList className={cn('w-full grid h-9', podeVerEnviados ? 'grid-cols-2' : 'grid-cols-1')}>
                   <TabsTrigger value="alertas" className="text-xs gap-1.5">
                     <Bell className="h-3.5 w-3.5" />
                     Alertas
                     {alertasUnread > 0 && (
-                      <Badge variant="secondary" className="text-[9px] rounded-full px-1.5 h-4 min-w-4">{alertasUnread > 99 ? '99+' : alertasUnread}</Badge>
+                      <Badge variant="secondary" className="text-[11px] rounded-full px-1.5 h-5 min-w-5">{alertasUnread > 99 ? '99+' : alertasUnread}</Badge>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="enviados" className="text-xs gap-1.5">
-                    <Mail className="h-3.5 w-3.5" />
-                    Enviados
-                    {queueUnread > 0 && (
-                      <Badge variant="secondary" className="text-[9px] rounded-full px-1.5 h-4 min-w-4">{queueUnread}</Badge>
-                    )}
-                  </TabsTrigger>
+                  {podeVerEnviados && (
+                    <TabsTrigger value="enviados" className="text-xs gap-1.5">
+                      <Mail className="h-3.5 w-3.5" />
+                      Enviados
+                      {queueProblems > 0 && (
+                        <Badge variant="destructive" className="text-[11px] rounded-full px-1.5 h-5 min-w-5" aria-label={`${queueProblems} envios com problema`}>{queueProblems}</Badge>
+                      )}
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </div>
 
@@ -392,67 +416,73 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                     </DropdownMenuItem>
                   ))}
                   {systemNotifications.length > 0 ? systemNotifications.map((notification) => (
-                    <div
+                    <DropdownMenuItem
                       key={notification.id}
+                      asChild
                       className={cn(
-                        'flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg mb-0.5 hover:bg-accent/50 transition-colors',
+                        'flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg mb-0.5 focus:bg-accent/50',
                         !notification.read && 'bg-accent/30'
                       )}
                     >
-                      <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', getNotificationColor(notification.type))} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{notification.title}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{notification.message}</p>
-                        <p className="text-[10px] text-muted-foreground/40 mt-1">{notification.time}</p>
-                      </div>
-                    </div>
+                      <Link to="/notificacoes">
+                        <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', getNotificationColor(notification.type))} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{notification.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{notification.message}</p>
+                          <p className="text-[11px] text-muted-foreground mt-1">{notification.time}</p>
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
                   )) : operationalNotifications.length === 0 && !operationalNotificationsError && (
-                    <div className="py-10 text-center text-sm text-muted-foreground/40">
-                      <Bell className="h-7 w-7 mx-auto mb-2 opacity-10" />
+                    <div className="py-10 text-center text-sm text-muted-foreground">
+                      <Bell className="h-7 w-7 mx-auto mb-2 opacity-20" />
                       Sem alertas
                     </div>
                   )}
                 </ScrollArea>
               </TabsContent>
 
-              <TabsContent value="enviados" className="mt-0 p-1.5">
+              {podeVerEnviados && <TabsContent value="enviados" className="mt-0 p-1.5">
                 <ScrollArea className="h-[280px]">
-                  {queueNotifications.length > 0 ? queueNotifications.map((notif: any) => (
-                    <div
+                  {queueNotifications.length > 0 ? queueNotifications.map((notif) => (
+                    <DropdownMenuItem
                       key={notif.id}
+                      asChild
                       className={cn(
-                        'flex items-start gap-2.5 p-2.5 rounded-lg mb-0.5 hover:bg-accent/50 transition-colors cursor-pointer',
-                        notif.status !== 'lida' && 'bg-accent/30'
+                        'flex items-start gap-2.5 p-2.5 rounded-lg mb-0.5 cursor-pointer focus:bg-accent/50',
+                        STATUS_ENVIO_COM_PROBLEMA.has(notif.status) && 'bg-destructive/5'
                       )}
                     >
-                      <div className="mt-0.5">{getQueueIcon(notif.tipo)}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{notif.assunto || notif.tipo}</p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {notif.destinatario_nome || notif.destinatario_email || notif.destinatario_telefone}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-[9px] h-4 px-1.5">
-                            {notif.status === 'enviado' ? '✓ Enviado' : notif.status === 'erro' ? '✕ Erro' : notif.status}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground/40">
-                            {formatDate(notif.created_at, 'short')}
-                          </span>
+                      <Link to="/notificacoes">
+                        <div className="mt-0.5">{getQueueIcon(notif.tipo)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{notif.assunto || notif.tipo}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {notif.destinatario_nome || notif.destinatario_email || notif.destinatario_telefone}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant={STATUS_ENVIO_COM_PROBLEMA.has(notif.status) ? 'destructive' : 'outline'} className="text-[11px] h-5 px-1.5">
+                              {notif.status === 'enviado' ? 'Enviado' : notif.status === 'erro' ? 'Erro no envio' : notif.status === 'incerto' ? 'Verificar envio' : notif.status}
+                            </Badge>
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatDate(notif.created_at, 'short')}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      </Link>
+                    </DropdownMenuItem>
                   )) : queueNotificationsError ? (
                     <div className="py-10 text-center text-sm text-muted-foreground" role="alert">
                       Não foi possível carregar os envios recentes.
                     </div>
                   ) : (
-                    <div className="py-10 text-center text-sm text-muted-foreground/40">
-                      <Mail className="h-7 w-7 mx-auto mb-2 opacity-10" />
+                    <div className="py-10 text-center text-sm text-muted-foreground">
+                      <Mail className="h-7 w-7 mx-auto mb-2 opacity-20" />
                       Nenhum envio recente
                     </div>
                   )}
                 </ScrollArea>
-              </TabsContent>
+              </TabsContent>}
             </Tabs>
             <DropdownMenuSeparator className="my-0" />
             <DropdownMenuItem asChild className="cursor-pointer justify-center rounded-none py-2 text-xs font-medium text-primary focus:bg-primary/5">
@@ -475,10 +505,11 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
               </Avatar>
               <div className="hidden md:flex flex-col items-start">
                 <span className="text-sm font-semibold leading-tight">{primeiroNome(profile?.nome)}</span>
-                <span className="flex items-center gap-1 text-xs text-background/80 font-medium leading-tight">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                  Online
-                </span>
+                {profile?.role && (
+                  <span className="text-xs text-background/80 font-medium leading-tight">
+                    {roleLabels[profile.role]}
+                  </span>
+                )}
               </div>
             </button>
           </DropdownMenuTrigger>
@@ -493,14 +524,10 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                 <p className="font-semibold text-sm truncate">{profile?.nome}</p>
                 <p className="text-[11px] text-muted-foreground truncate">{profile?.email}</p>
                 {profile?.clinica_id && profile.role && (
-                  <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                  <p className="mt-1 text-[11px] leading-tight text-muted-foreground">
                     {activeClinic?.nome || 'Clínica ativa'} · {roleLabels[profile.role]}
                   </p>
                 )}
-                <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] text-primary font-medium">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  Online
-                </span>
               </div>
             </div>
             <DropdownMenuSeparator />

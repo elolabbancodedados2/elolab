@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { SessionTimeoutDialog } from '@/components/SessionTimeoutDialog';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Sidebar } from './Sidebar';
 import { RodapeLegal } from './RodapeLegal';
@@ -23,7 +25,9 @@ import { AbasTelas } from './AbasTelas';
 export function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
-  useSessionTimeout();
+  const navigate = useNavigate();
+  const { signOut } = useSupabaseAuth();
+  const inatividade = useSessionTimeout();
   useRealtimeSubscription();
   useRealtimePushNotifications();
   useOperationalEvents();
@@ -93,6 +97,10 @@ export function MainLayout() {
       <BarraStatus />
       <ChatPanel />
       <OfflineIndicator />
+      <SessionTimeoutDialog
+        {...inatividade}
+        onSair={() => { void signOut().then(() => navigate('/auth')); }}
+      />
     </div>
   );
 }

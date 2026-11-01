@@ -38,6 +38,9 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { buildTriagensFilters, filtrarAgendamentosAguardandoTriagem, temCheckinAtivo } from '@/lib/triageQueue';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { formatWithDatePreference } from '@/lib/datePreference';
+import { alturaEmCentimetros, normalizarPressaoArterial, riscoBaixo, sinaisCriticos } from '@/lib/triagemSinais';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { mensagemDeErro } from '@/lib/erros';
 
 const FUSO_CLINICA = 'America/Sao_Paulo';
 
@@ -164,7 +167,8 @@ function formDaTriagem(t: any): TriagemForm {
     temperatura: textoDoValor(t.temperatura),
     saturacao: textoDoValor(t.saturacao),
     peso: textoDoValor(t.peso),
-    altura: textoDoValor(t.altura),
+    // Fichas antigas guardavam a altura em metros; a validação pede centímetros.
+    altura: textoDoValor(alturaEmCentimetros(t.altura)),
     queixa_principal: t.queixa_principal || '',
     classificacao_risco: (t.classificacao_risco || '') as Risco | '',
     observacoes: t.observacoes || '',
@@ -241,6 +245,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
   const formSeeded = useRef(false);
   const [search, setSearch] = useState('');
   const [filterRisco, setFilterRisco] = useState<'todos' | Risco>('todos');
+  const [confirmacaoCritica, setConfirmacaoCritica] = useState<string[] | null>(null);
 
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
@@ -296,15 +301,19 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
   const pacienteBuscaQuery = usePacienteResumo(pacienteBuscaId);
 
   // Realtime subscription for triagens
+  // Restrito à clínica da sessão: sem o filtro, cada triagem de qualquer
+  // clínica disparava um recarregamento aqui.
   React.useEffect(() => {
+    const clinicaId = profile?.clinica_id;
+    if (!clinicaId) return;
     const ch = supabase
       .channel(canalUnico('triagem-realtime'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens', filter: `clinica_id=eq.${clinicaId}` }, () => {
         queryClient.invalidateQueries({ queryKey: ['triagens'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [queryClient]);
+  }, [queryClient, profile?.clinica_id]);
 
   /**
    * A lista de trabalho da enfermagem: quem chegou hoje e ainda não foi triado.
@@ -335,6 +344,10 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
   // INSERT. Paciente e agendamento não mudam (o banco também barra).
   const corrigirId = creationPage ? searchParams.get('corrigir') : null;
   const triagemEmCorrecao = corrigirId ? triagens.find((t: any) => t.id === corrigirId) ?? null : null;
+  // A correção só vale para fichas de hoje. Fora disso o formulário abria vazio
+  // e sem explicação.
+  const fichaForaDeHoje = !!corrigirId && !isLoading && !erroTriagens
+    && (!triagemEmCorrecao || !ocorreuNaDataDaClinica(triagemEmCorrecao.data_hora, today));
   const returnPath = origem === 'fila' ? '/fila' : origem === 'recepcao' ? '/recepcao' : '/fila?tab=triagem';
   const formDirty = JSON.stringify(formData) !== JSON.stringify(formBaseline.current);
 
@@ -405,7 +418,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
     setSearchParams(nextParams, { replace: true });
   }, [pacienteBuscaId, pacienteBuscaQuery.data, pacienteBuscaQuery.isError, pacienteBuscaQuery.isSuccess, searchParams, setSearchParams]);
 
-  const handleSave = async () => {
+  const handleSave = async (sinaisCriticosConfirmados = false) => {
     if (saveLock.current) return;
     if (!formData.paciente_id || !formData.pressao_arterial || !formData.queixa_principal.trim()) {
       toast.error('Preencha paciente, pressão arterial e queixa principal.'); return;
@@ -426,12 +439,13 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
       toast.error('O paciente precisa fazer check-in na recepção antes da triagem.'); return;
     }
 
-    // Validate PA format (e.g. "120/80")
-    const paMatch = formData.pressao_arterial.match(/^(\d{2,3})\/(\d{2,3})$/);
-    if (!paMatch) {
+    // Aceita "120/80", "120 x 80" e a forma em cmHg ("12x8" → 120/80, com aviso).
+    const pa = normalizarPressaoArterial(formData.pressao_arterial);
+    if (!pa.valor || pa.sistolica === undefined || pa.diastolica === undefined) {
       toast.error('Pressão arterial deve estar no formato SIS/DIA (ex: 120/80).'); return;
     }
-    const [, sistolica, diastolica] = paMatch.map(Number);
+    const pressaoGravada = pa.valor;
+    const { sistolica, diastolica } = pa;
     if (sistolica < 50 || sistolica > 300 || diastolica < 20 || diastolica > 200) {
       toast.error('Pressão arterial fora da faixa aceitável (SIS: 50-300, DIA: 20-200).'); return;
     }
@@ -474,13 +488,27 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
       toast.error('Escala de dor deve estar entre 0 e 10.'); return;
     }
 
+    if (pressaoGravada !== formData.pressao_arterial) {
+      setFormData(prev => ({ ...prev, pressao_arterial: pressaoGravada }));
+      if (pa.aviso) toast.info(pa.aviso);
+    }
+
+    // Sinal crítico com risco verde/azul costuma ser erro de classificação:
+    // pede confirmação explícita antes de gravar.
+    const criticos = sinaisCriticos({ saturacao: sat, sistolica, diastolica, temperatura: temp });
+    if (!sinaisCriticosConfirmados && riscoBaixo(formData.classificacao_risco) && criticos.length > 0) {
+      setConfirmacaoCritica(criticos);
+      return;
+    }
+    setConfirmacaoCritica(null);
+
     saveLock.current = true;
     setIsSaving(true);
     try {
       if (corrigirId) {
         const imcCorrigido = calcularIMC(formData.peso, formData.altura);
         const { data: corrigida, error: erroCorrecao } = await supabase.from('triagens').update({
-          pressao_arterial: formData.pressao_arterial,
+          pressao_arterial: pressaoGravada,
           frequencia_cardiaca: fc,
           frequencia_respiratoria: fr,
           temperatura: temp,
@@ -538,7 +566,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
         paciente_id: formData.paciente_id,
         agendamento_id: formData.agendamento_id || null,
         enfermeiro_id: user?.id || '',
-        pressao_arterial: formData.pressao_arterial,
+        pressao_arterial: pressaoGravada,
         frequencia_cardiaca: fc,
         frequencia_respiratoria: fr,
         temperatura: temp,
@@ -588,7 +616,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
               const notificacaoResult = await autoNotificarMedico({
                 medicoId: ag.medico_id,
                 pacienteNome: pac?.nome_social || pac?.nome || 'Paciente',
-                motivo: `Triagem ${formData.classificacao_risco.toUpperCase()} — PA: ${formData.pressao_arterial}, FC: ${formData.frequencia_cardiaca || '—'}`,
+                motivo: `Triagem ${formData.classificacao_risco.toUpperCase()} — PA: ${pressaoGravada}, FC: ${formData.frequencia_cardiaca || '—'}`,
                 clinicaId: profile?.clinica_id || '',
               });
               if (notificacaoResult.success) {
@@ -623,13 +651,26 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           description: 'Atualize a lista e abra o registro existente para evitar uma ficha duplicada.',
         });
       } else {
-        toast.error('Erro: ' + e.message);
+        toast.error(corrigirId ? 'Não foi possível salvar a correção da triagem' : 'Não foi possível registrar a triagem', { description: mensagemDeErro(e) });
       }
     } finally {
       saveLock.current = false;
       setIsSaving(false);
     }
   };
+
+  const alertaCritico = (
+    <ConfirmDialog
+      open={confirmacaoCritica !== null}
+      onOpenChange={(aberto) => { if (!aberto) setConfirmacaoCritica(null); }}
+      title="Sinal crítico com risco baixo"
+      description={`A ficha tem ${confirmacaoCritica?.join(', ') ?? ''}, mas o risco escolhido é ${formData.classificacao_risco === 'azul' ? 'azul (não urgente)' : 'verde (pouco urgente)'}. Revise a classificação ou confirme para salvar assim mesmo.`}
+      confirmLabel="Salvar mesmo assim"
+      cancelLabel="Revisar classificação"
+      variant="warning"
+      onConfirm={() => { void handleSave(true); }}
+    />
+  );
 
   const getPacienteNome = (triagem: any) =>
     triagem.pacientes?.nome_social || triagem.pacientes?.nome || '—';
@@ -828,6 +869,14 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
         {agendamentosQuery.isError && <ErrorState compact title="Não foi possível carregar os agendamentos de hoje" description="A seleção de uma triagem vinculada está pausada até a agenda ser atualizada." error={agendamentosQuery.error} onRetry={() => void agendamentosQuery.refetch()} />}
         {filaQuery.isError && <ErrorState compact title="Não foi possível confirmar o check-in" description="Atualize a fila antes de registrar uma triagem vinculada a um agendamento." error={filaQuery.error} onRetry={() => void filaQuery.refetch()} />}
         {erroTriagens && <ErrorState compact title="Não foi possível conferir duplicidade de triagem" description="A gravação fica bloqueada até que os registros existentes possam ser consultados." error={triagensQuery.error || triagensAvulsasQuery.error} onRetry={() => { void triagensQuery.refetch(); void triagensAvulsasQuery.refetch(); }} />}
+        {fichaForaDeHoje ? (
+          <ErrorState
+            title="Só é possível corrigir fichas registradas hoje"
+            description="Esta ficha não está entre as triagens de hoje desta clínica. Para ajustar registros anteriores, use um adendo no prontuário."
+            onRetry={() => navigate(returnPath)}
+            retryLabel="Voltar à fila"
+          />
+        ) : (
         <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-6">
           <div className="max-w-5xl rounded-xl border border-border bg-card px-4 py-5 sm:px-6">
             {triageFields}
@@ -840,6 +889,8 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
             </Button>
           </div>
         </form>
+        )}
+        {alertaCritico}
       </div>
     );
   }

@@ -42,6 +42,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { minutosAgoraSaoPaulo, proximaVagaLivre } from '@/lib/proximaVagaLivre';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -125,6 +126,13 @@ function horaDaClinica(instant: Date): string {
     minute: '2-digit',
     hourCycle: 'h23',
   }).format(instant);
+}
+
+/** Encaixe registrado um pouco depois da chegada ainda é aceito. */
+const TOLERANCIA_ENCAIXE_PASSADO_MIN = 15;
+
+function horaDeMinutos(total: number): string {
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function minutosDaHora(hora: string | null | undefined): number | null {
@@ -215,6 +223,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    const [encaixePacienteId, setEncaixePacienteId] = useState('');
    const [encaixeMedicoId, setEncaixeMedicoId] = useState('');
    const [encaixeTipo, setEncaixeTipo] = useState('');
+   // Vazio = "agora" (acompanha o relógio). Preenchido = horário escolhido.
+   const [encaixeHora, setEncaixeHora] = useState('');
+   const [sugestaoEncaixe, setSugestaoEncaixe] = useState<string | null>(null);
    const [salvandoEncaixe, setSalvandoEncaixe] = useState(false);
    const encaixeCompleted = useRef(false);
    const encaixeSubmitLock = useRef(false);
@@ -480,37 +491,30 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
 
 
   // Realtime subscriptions
+  // agendamentos e fila_atendimento já são invalidados pelo canal global
+  // (useRealtimeSubscription). Aqui ficam só os caches próprios do balcão,
+  // sempre restritos à clínica da sessão.
   useEffect(() => {
     const clinicaId = profile?.clinica_id;
-    let channel = supabase
+    if (!clinicaId) return;
+    const filtro = `clinica_id=eq.${clinicaId}`;
+    const channel = supabase
       .channel(canalUnico('recepcao-realtime'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens', filter: filtro }, () => {
+        queryClient.invalidateQueries({ queryKey: ['recepcao-triagens-registradas', clinicaId] });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fila_atendimento' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
-        if (clinicaId) queryClient.invalidateQueries({ queryKey: ['recepcao-triagens-registradas', clinicaId] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos', filter: filtro }, () => {
         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_diario' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_diario', filter: filtro }, () => {
         queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
-      });
-
-    // Recebimentos e estornos também podem ser registrados em outra tela ou
-    // por outro operador. Sem este evento, o resumo do balcão só se atualizava
-    // depois de uma ação local ou de recarregar a página.
-    if (clinicaId) {
-      channel = channel.on('postgres_changes', {
-        event: '*', schema: 'public', table: 'pagamentos',
-        filter: `clinica_id=eq.${clinicaId}`,
-      }, () => {
+      })
+      // Recebimentos e estornos também podem ser registrados em outra tela ou
+      // por outro operador. Sem este evento, o resumo do balcão só se atualizava
+      // depois de uma ação local ou de recarregar a página.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagamentos', filter: filtro }, () => {
         queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia', clinicaId] });
       });
-    }
 
     const ch = channel.subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -828,9 +832,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       toast.success('Paciente chamado!');
     } catch (err: any) {
-      const msg = err?.message || 'Erro desconhecido';
       console.error('handleChamar error:', err);
-      toast.error('Erro ao chamar: ' + msg);
+      toast.error('Não foi possível chamar o paciente', { description: mensagemDeErro(err) });
     } finally {
       setIsProcessing(false);
     }
@@ -847,7 +850,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       toast.success('Atendimento iniciado!', { description: result.actions.join(' • ') });
     } catch (err: any) {
       console.error('handleIniciarAtendimento error:', err);
-      toast.error('Erro ao iniciar atendimento: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível iniciar o atendimento', { description: mensagemDeErro(err) });
     }
     setIsProcessing(false);
   }
@@ -1143,7 +1146,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       }
       navigate(returnTo, { replace: true });
     } catch (err: any) {
-      toast.error('Erro ao confirmar pagamento: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível confirmar o pagamento', { description: mensagemDeErro(err) });
     }
     setIsProcessing(false);
   }
@@ -1172,7 +1175,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       setPendingAction(null);
     } catch (err: any) {
       console.error('Erro ao concluir:', err);
-      toast.error('Erro ao concluir: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível concluir o atendimento', { description: mensagemDeErro(err) });
     }
     setIsProcessing(false);
   }
@@ -1257,16 +1260,21 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       if (erroMedico) throw erroMedico;
       if (!medicoAtivo) throw new Error('Este médico foi desativado. Atualize a lista e selecione um profissional ativo.');
 
-      const agora = new Date();
+      setSugestaoEncaixe(null);
       const tipoEscolhido = tiposConsulta.find((tipo: any) => tipo.nome === encaixeTipo);
       const duracao = Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
-      const fim = new Date(agora.getTime() + duracao * 60000);
-      const hhmm = (d: Date) => horaDaClinica(d);
-      const inicioMin = minutosDaHora(hhmm(agora));
-      const fimMin = minutosDaHora(hhmm(fim));
-      if (inicioMin === null || fimMin === null || fimMin <= inicioMin || fimMin >= 24 * 60) {
+      const agoraMin = minutosAgoraSaoPaulo();
+      const inicioMin = minutosDaHora(encaixeHora || horaDaClinica(new Date()));
+      if (inicioMin === null) throw new Error('Informe um horário de início válido.');
+      if (inicioMin < agoraMin - TOLERANCIA_ENCAIXE_PASSADO_MIN) {
+        throw new Error('O horário do encaixe já passou. Use o horário atual ou um horário mais tarde.');
+      }
+      const fimMin = inicioMin + duracao;
+      if (fimMin >= 24 * 60) {
         throw new Error('O encaixe precisa terminar antes da meia-noite.');
       }
+      const horaInicioEncaixe = horaDeMinutos(inicioMin);
+      const horaFimEncaixe = horaDeMinutos(fimMin);
 
       const [{ data: conflitos, error: erroConflitos }, { data: bloqueios, error: erroBloqueios }] = await Promise.all([
         supabase.from('agendamentos')
@@ -1275,7 +1283,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           .eq('medico_id', encaixeMedicoId)
           .eq('data', today),
         (supabase.from('bloqueios_agenda' as any)
-          .select('id, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
+          .select('id, data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro, motivo, tipo')
           .eq('clinica_id', profile.clinica_id)
           .eq('medico_id', encaixeMedicoId)
           .lte('data_inicio', today)
@@ -1290,18 +1298,33 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         const fimExistente = minutosDaHora(ag.hora_fim) ?? (inicioExistente === null ? null : inicioExistente + 30);
         return inicioExistente !== null && fimExistente !== null && inicioExistente < fimMin && fimExistente > inicioMin;
       });
-      if (conflito) {
-        throw new Error('Este médico já tem uma consulta neste horário. Atualize a agenda e escolha outro profissional.');
-      }
-
       const bloqueio = (bloqueios || []).find((item: any) => {
         if (item.dia_inteiro) return true;
         const inicioBloqueio = minutosDaHora(item.hora_inicio);
         const fimBloqueio = minutosDaHora(item.hora_fim);
         return inicioBloqueio !== null && fimBloqueio !== null && inicioBloqueio < fimMin && fimBloqueio > inicioMin;
       });
-      if (bloqueio) {
-        throw new Error(`Este médico está bloqueado neste horário${bloqueio.motivo ? `: ${bloqueio.motivo}` : bloqueio.tipo ? ` (${bloqueio.tipo})` : '.'}`);
+
+      if (conflito || bloqueio) {
+        // Sugere o próximo horário livre do mesmo médico hoje, a partir do
+        // horário pedido, em vez de mandar trocar de profissional.
+        const vaga = proximaVagaLivre({
+          hoje: today,
+          agoraMinutos: Math.max(inicioMin, agoraMin) - 1,
+          duracaoMinutos: duracao,
+          jornada: [{ dia_semana: new Date(`${today}T12:00:00Z`).getUTCDay(), hora_inicio: '00:00', hora_fim: '23:59' }],
+          agendamentos: (conflitos || []).map((ag: any) => ({ ...ag, data: today })),
+          bloqueios: (bloqueios || []).map((b: any) => ({ ...b, data_inicio: b.data_inicio ?? today, data_fim: b.data_fim ?? today })),
+          dias: 1,
+        });
+        const sugestao = vaga?.data === today ? vaga.hora_inicio : null;
+        setSugestaoEncaixe(sugestao);
+        const motivo = conflito
+          ? 'Este médico já tem uma consulta neste horário.'
+          : `Este médico está bloqueado neste horário${bloqueio?.motivo ? `: ${bloqueio.motivo}.` : bloqueio?.tipo ? ` (${bloqueio.tipo}).` : '.'}`;
+        throw new Error(sugestao
+          ? `${motivo} Próximo horário livre hoje: ${sugestao}.`
+          : `${motivo} Não há outro horário livre hoje para este médico; escolha outro profissional.`);
       }
 
       const { data: novo, error } = await supabase
@@ -1311,8 +1334,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           medico_id: encaixeMedicoId,
           tipo: encaixeTipo,
           data: today,
-          hora_inicio: hhmm(agora),
-          hora_fim: hhmm(fim),
+          hora_inicio: horaInicioEncaixe,
+          hora_fim: horaFimEncaixe,
           status: 'agendado',
           clinica_id: profile?.clinica_id,
         })
@@ -1328,6 +1351,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       setEncaixePacienteId('');
       setEncaixeMedicoId('');
       setEncaixeTipo('');
+      setEncaixeHora('');
+      setSugestaoEncaixe(null);
 
       // O check-in (fila + cobrança) segue o mesmo caminho do agendado, com o
       // item passado na mão porque a lista ainda não tem o agendamento novo.
@@ -1347,13 +1372,13 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }
 
   if (task === 'walk-in') {
-    const formDirty = Boolean(encaixePacienteId || encaixeMedicoId || encaixeTipo);
+    const formDirty = Boolean(encaixePacienteId || encaixeMedicoId || encaixeTipo || encaixeHora);
     return (
       <div className="space-y-6 pb-8">
         <UnsavedChangesGuard dirty={formDirty} busy={salvandoEncaixe || isProcessing} completed={encaixeCompleted} />
         <PageHeader
           title="Encaixe sem agendamento"
-          description={`Atendimento presencial para hoje, com início previsto às ${horaDaClinica(new Date(now))}.`}
+          description={`Atendimento presencial para hoje, com início previsto às ${encaixeHora || horaDaClinica(new Date(now))}.`}
           icon={<UserPlus />}
           actions={<Button type="button" variant="outline" className="rounded-full" onClick={() => navigate(returnTo)}>Voltar para a recepção</Button>}
         />
@@ -1386,7 +1411,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
 
               <div className="space-y-2">
                 <Label htmlFor="recepcao-encaixe-medico">Médico</Label>
-                <Select value={encaixeMedicoId} onValueChange={setEncaixeMedicoId} disabled={medicosQuery.isLoading || medicosQuery.isError}>
+                <Select value={encaixeMedicoId} onValueChange={value => { setEncaixeMedicoId(value); setSugestaoEncaixe(null); }} disabled={medicosQuery.isLoading || medicosQuery.isError}>
                   <SelectTrigger id="recepcao-encaixe-medico" aria-label="Médico"><SelectValue placeholder="Selecionar médico ativo..." /></SelectTrigger>
                   <SelectContent>
                     {(medicos as any[]).filter(m => m.ativo !== false).map(m => <SelectItem key={m.id} value={m.id}>{m.nome || m.crm}</SelectItem>)}
@@ -1404,6 +1429,24 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                   </SelectContent>
                 </Select>
                 {!tiposConsultaQuery.isLoading && !tiposConsultaQuery.isError && !(tiposConsulta as any[]).length && <p className="text-xs text-muted-foreground">Nenhum tipo de consulta ativo disponível.</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="recepcao-encaixe-hora">Horário de início</Label>
+                <Input
+                  id="recepcao-encaixe-hora"
+                  type="time"
+                  step={300}
+                  value={encaixeHora || horaDaClinica(new Date(now))}
+                  onChange={event => { setEncaixeHora(event.target.value); setSugestaoEncaixe(null); }}
+                />
+                <p className="text-xs text-muted-foreground">{encaixeHora ? 'Horário escolhido para hoje.' : 'Agora. Altere se o atendimento for mais tarde.'}</p>
+                {sugestaoEncaixe && (
+                  <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+                    <span>Próximo horário livre deste médico: <strong>{sugestaoEncaixe}</strong></span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => { setEncaixeHora(sugestaoEncaixe); setSugestaoEncaixe(null); }}>Usar {sugestaoEncaixe}</Button>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -1437,7 +1480,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         {pacientePagamentoQuery.isError && pagamentoLancamentoQuery.data?.paciente_id && <ErrorState compact title="Não foi possível confirmar o paciente desta cobrança" error={pacientePagamentoQuery.error} onRetry={() => void pacientePagamentoQuery.refetch()} />}
         {pacienteNaoLocalizado && <ErrorState compact title="Paciente não encontrado" description="A cobrança está vinculada a um cadastro que não está disponível nesta clínica. Confirme o vínculo antes de receber." />}
         {pagamentoLancamentoQuery.isSuccess && !pagamentoLancamentoQuery.data && <ErrorState compact title="Cobrança não encontrada" description="Ela pode ter sido removida ou pertencer a outra clínica." />}
-        {(pagamentoLancamentoQuery.isLoading || (pagamentoLancamentoQuery.data?.paciente_id && pacientePagamentoQuery.isLoading) || (pagamentoLancamentoQuery.data && !lancamento && !pacienteNaoLocalizado && !pacientePagamentoQuery.isError)) && <p role="status" className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">Carregando os dados da cobrança e do paciente?</p>}
+        {(pagamentoLancamentoQuery.isLoading || (pagamentoLancamentoQuery.data?.paciente_id && pacientePagamentoQuery.isLoading) || (pagamentoLancamentoQuery.data && !lancamento && !pacienteNaoLocalizado && !pacientePagamentoQuery.isError)) && <p role="status" className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">Carregando os dados da cobrança e do paciente…</p>}
 
         {lancamento && !pacienteNaoLocalizado && Number.isFinite(valorBase) && valorBase > 0 && saldo > 0 && (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">

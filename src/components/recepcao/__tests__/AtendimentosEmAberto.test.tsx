@@ -91,6 +91,15 @@ describe('atendimentos antigos em aberto', () => {
     expect(refetch).toHaveBeenCalledOnce();
   });
 
+  it('mostra nome social, data, hora e médico do atendimento', () => {
+    mocks.useQuery.mockReturnValue({ data: [{ ...atendimento, pacientes: { nome: 'Ana Silva', nome_social: 'Aninha' }, medicos: { nome: 'Júlia Prado' } }] });
+    render(<AtendimentosEmAberto onFinalizar={vi.fn()} />);
+
+    expect(screen.getByText('Aninha')).toBeInTheDocument();
+    expect(screen.getByText('30/09 às 10:00 · Dr(a). Júlia Prado')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Foi atendido' }).className).toContain('h-11');
+  });
+
   it('encaminha a finalização do atendimento antigo para a tela própria', () => {
     const onFinalizar = vi.fn();
     render(<AtendimentosEmAberto onFinalizar={onFinalizar} />);

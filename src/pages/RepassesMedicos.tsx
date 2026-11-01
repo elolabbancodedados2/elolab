@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, BadgeCheck, CheckCircle2, Clock3, HandCoins, Play, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CheckCircle2, Clock3, Download, HandCoins, Play, RefreshCw, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,12 +19,14 @@ import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { descreverRegraRepasse, podeAprovarRepasse, podePagarRepasse, receitaOrigemQuitada } from '@/lib/repasseWorkflow';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cn } from '@/lib/utils';
+import { downloadStringAsFile } from '@/lib/auditExport';
+import { demonstrativoRepassesCsv, subtotaisPorMedico } from '@/lib/repasseDemonstrativo';
 
 type FiltroStatusRepasse = 'todos' | 'pendente' | 'aprovado' | 'pago' | 'aberto';
 
 type TipoRepasse = 'percentual' | 'fixo';
 interface MedicoRepasse { id: string; nome: string | null; crm: string; tipo_repasse: TipoRepasse | null; percentual_repasse: number | null; valor_repasse_fixo: number | null }
-interface Repasse { id: string; lancamento_id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; lancamento_pagamento_id?: string | null; lancamentos?: { status: string } | null; medicos?: { nome: string | null; crm: string } | null }
+interface Repasse { id: string; medico_id?: string | null; lancamento_id: string; valor_base: number; valor_repasse: number; percentual: number; tipo_calculo: TipoRepasse; valor_configurado: number | null; status: string; lancamento_pagamento_id?: string | null; lancamentos?: { status: string } | null; medicos?: { nome: string | null; crm: string } | null }
 
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
@@ -122,6 +124,7 @@ export default function RepassesMedicos() {
     ? routeState.competencia
     : todaySaoPauloDateOnly().slice(0, 7));
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatusRepasse>('todos');
+  const [filtroMedico, setFiltroMedico] = useState('todos');
   const competenciaValida = /^\d{4}-(0[1-9]|1[0-2])$/.test(competencia);
   const [processing, setProcessing] = useState(false);
   const [statusProcessingId, setStatusProcessingId] = useState<string | null>(null);
@@ -158,10 +161,28 @@ export default function RepassesMedicos() {
     aprovado: repasses.filter(r => r.status === 'aprovado' && repasseValido(r)).reduce((s, r) => s + Number(r.valor_repasse), 0),
   }), [repasses]);
   const repassesFiltrados = useMemo(() => repasses.filter(r => {
+    if (filtroMedico !== 'todos' && r.medico_id !== filtroMedico) return false;
     if (filtroStatus === 'todos') return true;
     if (filtroStatus === 'aberto') return r.status === 'pendente' || r.status === 'aprovado';
     return r.status === filtroStatus;
-  }), [repasses, filtroStatus]);
+  }), [repasses, filtroStatus, filtroMedico]);
+  const subtotais = useMemo(() => subtotaisPorMedico(repassesFiltrados, repasseValido), [repassesFiltrados]);
+  const medicosComRepasse = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const r of repasses) if (r.medico_id && !mapa.has(r.medico_id)) mapa.set(r.medico_id, r.medicos?.nome || r.medicos?.crm || 'Médico');
+    return [...mapa.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [repasses]);
+  const exportarDemonstrativo = () => {
+    try {
+      downloadStringAsFile({
+        content: String.fromCharCode(0xfeff) + demonstrativoRepassesCsv(repassesFiltrados, competencia, repasseValido),
+        filename: `demonstrativo-repasses-${competencia}${filtroMedico !== 'todos' ? '-medico' : ''}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      });
+    } catch {
+      toast.error('Não foi possível gerar o demonstrativo. Tente novamente.');
+    }
+  };
 
   const gerar = async () => {
     if (!competenciaValida) { toast.error('Informe uma competência válida.'); return; }
@@ -238,7 +259,10 @@ export default function RepassesMedicos() {
         </>
       )}
     />
-    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-card p-4 shadow-xs"><div className="space-y-1.5"><Label htmlFor="competencia">Competência</Label><Input id="competencia" className="min-h-11 w-full rounded-full sm:w-52" type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} disabled={processing} />{!competenciaValida && <p className="text-xs text-destructive">Selecione uma competência válida.</p>}</div></div>
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-card p-4 shadow-xs"><div className="space-y-1.5"><Label htmlFor="competencia">Competência</Label><Input id="competencia" className="min-h-11 w-full rounded-full sm:w-52" type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} disabled={processing} />{!competenciaValida && <p className="text-xs text-destructive">Selecione uma competência válida.</p>}</div>
+      <div className="space-y-1.5"><Label htmlFor="filtro-medico-repasse">Médico</Label><Select value={filtroMedico} onValueChange={setFiltroMedico}><SelectTrigger id="filtro-medico-repasse" className="min-h-11 w-full rounded-full sm:w-64"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os médicos</SelectItem>{medicosComRepasse.map(([id, nome]) => <SelectItem key={id} value={id}>{nome}</SelectItem>)}</SelectContent></Select></div>
+      <Button variant="outline" className="min-h-11 gap-2 rounded-full sm:ml-auto" onClick={exportarDemonstrativo} disabled={repassesFiltrados.length === 0}><Download className="h-4 w-4" />Exportar demonstrativo</Button>
+    </div>
     {repassesComOrigemEstornada.length > 0 && <div role="alert" className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p>{repassesComOrigemEstornada.length} repasse(s) estão vinculados a receitas que não aparecem mais como quitadas. Aprovação e pagamento ficam bloqueados; revise os casos que já constam como pagos.</p></div>}
     <section role="group" aria-label="Resumo dos repasses" className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {kpis.map(kpi => {
@@ -310,7 +334,7 @@ export default function RepassesMedicos() {
               <HandCoins className="h-7 w-7" />
             </span>
             <p className="font-medium text-foreground">Nenhum repasse corresponde ao filtro selecionado</p>
-            <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={() => setFiltroStatus('todos')}>Limpar filtro</Button>
+            <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={() => { setFiltroStatus('todos'); setFiltroMedico('todos'); }}>Limpar filtro</Button>
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border/60">
@@ -329,6 +353,20 @@ export default function RepassesMedicos() {
               </TableRow>)}</TableBody>
             </Table>
           </div>
+        )}
+        {subtotais.length > 0 && (
+          <section aria-label="Subtotais por médico" className="mt-4 overflow-hidden rounded-xl border border-border/60">
+            <Table>
+              <TableHeader><TableRow><TableHead>Subtotal por médico</TableHead><TableHead className="text-right">Itens</TableHead><TableHead className="text-right">Devido</TableHead><TableHead className="text-right">Pago</TableHead><TableHead className="text-right">Em aberto</TableHead></TableRow></TableHeader>
+              <TableBody>{subtotais.map(s => <TableRow key={s.medicoId}>
+                <TableCell className="font-medium">{s.nome}{s.crm && <p className="text-xs font-normal text-muted-foreground">CRM {s.crm}</p>}</TableCell>
+                <TableCell className="text-right tabular-nums">{s.quantidade}</TableCell>
+                <TableCell className="text-right tabular-nums">{moeda(s.devido)}</TableCell>
+                <TableCell className="text-right tabular-nums">{moeda(s.pago)}</TableCell>
+                <TableCell className="text-right font-medium tabular-nums">{moeda(s.emAberto)}</TableCell>
+              </TableRow>)}</TableBody>
+            </Table>
+          </section>
         )}
       </CardContent>
     </Card>

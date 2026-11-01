@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Link } from 'react-router-dom';
 import { 
@@ -58,7 +58,6 @@ export function BackupRestore() {
   const [calculandoPrevia, setCalculandoPrevia] = useState(false);
   const [erroPrevia, setErroPrevia] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
   const { profile } = useSupabaseAuth();
 
   const calcularPrevia = async (backup: BackupData) => {

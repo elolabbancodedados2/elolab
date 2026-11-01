@@ -64,6 +64,9 @@ const STATUS_LABELS: Record<string, string> = {
   desistiu: 'Desistiu',
 };
 
+const STATUS_ATIVOS = ['aguardando', 'notificado', 'confirmado'];
+const LIMITE_HISTORICO = 500;
+
 const ESPECIALIDADES = [
   'Clínico Geral',
   'Cardiologia',
@@ -127,6 +130,8 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
   const medicosQuery = useMedicos();
   const { data: medicos = [], isLoading: loadingMedicos } = medicosQuery;
 
+  // Pedidos ativos vêm sempre; o histórico (agendados, desistências) só é
+  // buscado quando o filtro pede, do mais recente para o mais antigo.
   const listaQuery = useQuery({
     queryKey: ['lista_espera', user?.id ?? null, profile?.clinica_id ?? null],
     queryFn: async () => {
@@ -134,6 +139,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
         .from('lista_espera')
         .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(nome, crm, especialidade)')
         .eq('clinica_id', profile?.clinica_id ?? '')
+        .or(`status.is.null,status.in.(${STATUS_ATIVOS.join(',')})`)
         .order('data_cadastro', { ascending: true });
 
       if (error) throw error;
@@ -141,7 +147,29 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
     },
     enabled: !!user && !!profile?.clinica_id && !creationPage,
   });
-  const lista = useMemo(() => listaQuery.data ?? [], [listaQuery.data]);
+  const precisaHistorico = !STATUS_ATIVOS.includes(statusFilter);
+  const historicoQuery = useQuery({
+    queryKey: ['lista_espera', 'historico', user?.id ?? null, profile?.clinica_id ?? null, statusFilter],
+    queryFn: async () => {
+      let consulta = supabase
+        .from('lista_espera')
+        .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(nome, crm, especialidade)')
+        .eq('clinica_id', profile?.clinica_id ?? '');
+      consulta = statusFilter === 'todos'
+        ? consulta.not('status', 'in', `(${STATUS_ATIVOS.join(',')})`)
+        : consulta.eq('status', statusFilter);
+      const { data, error } = await consulta
+        .order('data_cadastro', { ascending: false })
+        .limit(LIMITE_HISTORICO);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && !!profile?.clinica_id && !creationPage && precisaHistorico,
+  });
+  const lista = useMemo(
+    () => [...(listaQuery.data ?? []), ...(precisaHistorico ? historicoQuery.data ?? [] : [])],
+    [listaQuery.data, historicoQuery.data, precisaHistorico],
+  );
   const podeRemoverPermanentemente = hasAnyRole(['admin']);
 
   const isLoading = listaQuery.isLoading || loadingMedicos;
@@ -383,7 +411,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
           { key: 'aguardando', icon: Clock, label: 'Aguardando', value: aguardando.length, caption: 'ainda sem contato', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
           { key: 'notificado', icon: Phone, label: 'Notificados', value: lista.filter(i => i.status === 'notificado').length, caption: 'aguardando resposta', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
           { key: 'confirmado', icon: CheckCircle, label: 'Confirmados', value: lista.filter(i => i.status === 'confirmado').length, caption: 'prontos para agendar', color: 'text-success', surface: 'bg-success/10', escuro: false },
-          { key: 'agendado', icon: CalendarPlus, label: 'Agendados', value: lista.filter(i => i.status === 'agendado').length, caption: `${lista.length} no total`, color: 'text-foreground', surface: 'bg-muted', escuro: false },
+          { key: 'agendado', icon: CalendarPlus, label: 'Agendados', value: precisaHistorico && historicoQuery.data ? lista.filter(i => i.status === 'agendado').length : '—', caption: precisaHistorico && historicoQuery.data ? `${lista.length} no total` : 'toque para ver o histórico', color: 'text-foreground', surface: 'bg-muted', escuro: false },
         ]).map(s => {
           const Icon = s.icon;
           const ativo = statusFilter === s.key;
@@ -474,6 +502,14 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-base">Pacientes na lista <span className="text-muted-foreground">({filteredLista.length})</span></CardTitle>
+              {precisaHistorico && historicoQuery.isFetching && <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p>}
+              {precisaHistorico && historicoQuery.isError && (
+                <p role="alert" className="text-xs text-destructive">
+                  Não foi possível carregar o histórico.{' '}
+                  <button type="button" className="underline" onClick={() => void historicoQuery.refetch()}>Tentar novamente</button>
+                </p>
+              )}
+              {precisaHistorico && (historicoQuery.data?.length ?? 0) >= LIMITE_HISTORICO && <p className="text-xs text-muted-foreground">Mostrando os {LIMITE_HISTORICO} registros mais recentes do histórico.</p>}
               <div className="flex flex-wrap items-center gap-2">
                 <Select value={ordenacao} onValueChange={(v: OrdenacaoEspera) => setOrdenacao(v)}>
                   <SelectTrigger className="h-10 w-48 rounded-full" aria-label="Ordenar lista de espera">

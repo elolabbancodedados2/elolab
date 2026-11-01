@@ -2,6 +2,7 @@ import { AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { mensagemConhecidaDeErro } from '@/lib/erros';
 
 interface ErrorStateProps {
   title?: string;
@@ -13,27 +14,19 @@ interface ErrorStateProps {
   compact?: boolean;
 }
 
-/** Traduz erros técnicos em mensagens que o usuário da clínica entende. */
-export function friendlyErrorMessage(error: unknown): string {
-  const raw =
-    typeof error === 'string'
-      ? error
-      : (error as { message?: string } | undefined)?.message || '';
-  const msg = raw.toLowerCase();
+export const MENSAGEM_CARREGAMENTO_GENERICA = 'Não conseguimos carregar estas informações agora. Tente novamente em instantes.';
 
-  if (!navigator.onLine || msg.includes('failed to fetch') || msg.includes('networkerror')) {
-    return 'Sem conexão com o servidor. Verifique sua internet e tente novamente.';
+/**
+ * Traduz erros de carregamento em mensagens que o usuário da clínica entende.
+ * Usa a mesma tradução de `mensagemDeErro` (src/lib/erros.ts) para os erros
+ * reconhecidos; para os demais mantém o texto genérico de carregamento, sem
+ * expor mensagens técnicas do servidor.
+ */
+export function friendlyErrorMessage(error: unknown): string {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return 'Sem conexão com o servidor. Verifique a internet e tente de novo.';
   }
-  if (msg.includes('jwt') || msg.includes('not authenticated') || msg.includes('401')) {
-    return 'Sua sessão expirou. Entre novamente para continuar.';
-  }
-  if (msg.includes('permission') || msg.includes('row-level security') || msg.includes('403')) {
-    return 'Você não tem permissão para ver estas informações.';
-  }
-  if (msg.includes('timeout') || msg.includes('timed out')) {
-    return 'A consulta demorou mais que o esperado. Tente novamente.';
-  }
-  return 'Não conseguimos carregar estas informações agora. Tente novamente em instantes.';
+  return mensagemConhecidaDeErro(error) ?? MENSAGEM_CARREGAMENTO_GENERICA;
 }
 
 export function ErrorState({

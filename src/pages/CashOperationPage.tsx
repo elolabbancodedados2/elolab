@@ -5,7 +5,7 @@ import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Loader2, TrendingDown } fr
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
-import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { ConfirmDialog, UnsavedChangesDialog } from '@/components/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { mensagemDeErro } from '@/lib/erros';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { calcularSaldoGaveta, type MovimentoCaixa } from '@/lib/caixaDiario';
+import { emCentavos } from '@/lib/dinheiro';
 import type { LancamentoInsert } from '@/types/supabase';
 
 export type CashOperation = 'sangria' | 'suprimento' | 'despesa';
@@ -112,6 +115,7 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
   const [category, setCategory] = useState('Outros');
   const [paymentMethod, setPaymentMethod] = useState<FormaPagamento>('dinheiro');
   const [submitError, setSubmitError] = useState('');
+  const [confirmarAcimaDaGaveta, setConfirmarAcimaDaGaveta] = useState(false);
   const idempotencyRef = useRef<{ clinicId: string; id: string } | null>(null);
   const navigationAllowed = useRef(false);
   const config = CONFIG[operation];
@@ -133,12 +137,37 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
     },
   });
 
+  // Saldo em dinheiro da gaveta: sangria não pode passar dele; despesa em dinheiro pede confirmação.
+  const precisaSaldoGaveta = operation === 'sangria' || operation === 'despesa';
+  const caixaAbertoData = cashQuery.data?.aberto ? cashQuery.data.data : null;
+  const saldoQuery = useQuery({
+    queryKey: ['cash-operation-drawer-balance', profile?.clinica_id ?? null, caixaAbertoData],
+    enabled: Boolean(precisaSaldoGaveta && profile?.clinica_id && caixaAbertoData),
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const linhas = await buscarEmBlocos<MovimentoCaixa>(
+        () => supabase.rpc('movimentos_caixa_diario', { p_data: caixaAbertoData! })
+          .order('created_at', { ascending: true }).order('id', { ascending: true }),
+        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
+      );
+      if (linhas.length > LIMITE_BUSCA_EM_BLOCOS) return null;
+      return calcularSaldoGaveta(Number(cashQuery.data?.valor_abertura ?? 0), linhas);
+    },
+  });
+  const saldoGaveta = typeof saldoQuery.data === 'number' ? saldoQuery.data : null;
+  const usaDinheiro = operation === 'sangria' || (operation === 'despesa' && paymentMethod === 'dinheiro');
+  const acimaDaGaveta = usaDinheiro && saldoGaveta !== null && amountValue !== null && !amountInvalid
+    && emCentavos(amountValue) > emCentavos(saldoGaveta);
+  const sangriaAcimaDaGaveta = operation === 'sangria' && acimaDaGaveta;
+  const formatarReais = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+
   const mutation = useMutation({
     mutationFn: async () => {
       const cash = cashQuery.data;
       if (!profile?.clinica_id || !cash?.id || !cash.aberto) throw new Error('O caixa de hoje não está aberto. Atualize os dados antes de registrar o movimento.');
       if (amountValue === null || amountInvalid) throw new Error('Informe um valor maior que zero, com até duas casas decimais.');
       if (operation === 'sangria' && !description.trim()) throw new Error('O motivo da retirada é obrigatório.');
+      if (operation === 'sangria' && sangriaAcimaDaGaveta) throw new Error('A sangria é maior que o dinheiro disponível na gaveta.');
       if (operation === 'despesa' && !description.trim()) throw new Error('Descreva a despesa antes de continuar.');
       if (idempotencyRef.current?.clinicId !== profile.clinica_id) {
         idempotencyRef.current = { clinicId: profile.clinica_id, id: newMovementId() };
@@ -175,6 +204,7 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
         queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
         queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['cash-operation-drawer-balance'] }),
       ]);
       navigationAllowed.current = true;
       navigate(returnTo, { replace: true, state: { cashTab: returnTab } });
@@ -207,7 +237,17 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
   const canSubmit = Boolean(cashQuery.data?.aberto && !cashQuery.isError && !busy && !amountInvalid
     && (operation !== 'sangria' || description.trim())
     && (operation !== 'despesa' || description.trim())
+    && !sangriaAcimaDaGaveta
+    && !(operation === 'sangria' && saldoQuery.isLoading)
     && !mutation.isPending);
+
+  const registrar = () => {
+    if (operation === 'despesa' && acimaDaGaveta) {
+      setConfirmarAcimaDaGaveta(true);
+      return;
+    }
+    mutation.mutate();
+  };
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
@@ -262,6 +302,13 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
               />
               <p id="cash-operation-amount-help" className="text-xs text-muted-foreground">Use um valor maior que zero e informe até duas casas decimais.</p>
               {amount.trim() && amountInvalid && <p role="alert" className="text-xs text-destructive">Informe um valor válido, maior que zero e com até duas casas decimais.</p>}
+              {usaDinheiro && (
+                <p className="text-xs text-muted-foreground" aria-live="polite">
+                  Disponível na gaveta: {saldoQuery.isLoading ? 'calculando…' : saldoGaveta === null ? 'não foi possível calcular' : <span className="font-medium tabular-nums text-foreground">{formatarReais(saldoGaveta)}</span>}
+                </p>
+              )}
+              {sangriaAcimaDaGaveta && <p role="alert" className="text-xs text-destructive">A retirada é maior que o dinheiro disponível na gaveta.</p>}
+              {operation === 'despesa' && acimaDaGaveta && <p className="text-xs text-warning-foreground">O valor é maior que o dinheiro disponível na gaveta. Você precisará confirmar.</p>}
             </div>
 
             {operation === 'sangria' && (
@@ -311,7 +358,7 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
             <Separator />
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={voltar} disabled={mutation.isPending}>Cancelar</Button>
-              <Button onClick={() => mutation.mutate()} disabled={!canSubmit} className="gap-2">
+              <Button onClick={registrar} disabled={!canSubmit} className="gap-2">
                 {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 {mutation.isPending ? 'Registrando…' : config.action}
               </Button>
@@ -319,6 +366,16 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={confirmarAcimaDaGaveta}
+        onOpenChange={setConfirmarAcimaDaGaveta}
+        title="Despesa maior que o dinheiro da gaveta"
+        description={`Disponível na gaveta: ${saldoGaveta === null ? '—' : formatarReais(saldoGaveta)}. A despesa de ${amountValue === null ? '—' : formatarReais(amountValue)} deixará o saldo esperado negativo. Confirme apenas se o dinheiro saiu de outro lugar.`}
+        confirmLabel="Registrar mesmo assim"
+        variant="warning"
+        onConfirm={() => { setConfirmarAcimaDaGaveta(false); mutation.mutate(); }}
+      />
 
       <UnsavedChangesDialog
         open={blocker.state === 'blocked'}

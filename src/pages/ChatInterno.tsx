@@ -42,7 +42,8 @@ const formatConvDate = (dateStr: string | null) => {
 
 const isOnline = (ultimoAcesso: string | null) => {
   if (!ultimoAcesso) return false;
-  return differenceInMinutes(new Date(), new Date(ultimoAcesso)) < 5;
+  // O último acesso é renovado a cada 5 min; com 5 de limite a pessoa piscava offline.
+  return differenceInMinutes(new Date(), new Date(ultimoAcesso)) < 8;
 };
 
 const QUICK_EMOJIS = ['👍', '❤️', '😊', '👋', '🙏', '✅'];

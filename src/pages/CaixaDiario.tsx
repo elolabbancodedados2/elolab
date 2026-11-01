@@ -33,6 +33,7 @@ import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
 import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { ehMovimentoDoCaixa, origemExternaDoMovimento } from '@/lib/origemMovimentoCaixa';
+import { dataHoraSP, FORMA_LABELS, horaSP, textoSeguroCsv } from '@/lib/caixaFormatacao';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -94,27 +95,19 @@ const FORMA_ICONS: Record<string, typeof Banknote> = {
   transferencia: ArrowUpFromLine,
 };
 
-const FORMA_LABELS: Record<string, string> = {
-  dinheiro: 'Dinheiro',
-  pix: 'PIX',
-  credito: 'Crédito',
-  cartao_credito: 'Crédito',
-  debito: 'Débito',
-  cartao_debito: 'Débito',
-  cheque: 'Cheque',
-  transferencia: 'Transferência',
-};
 
 
 const escapeHtml = (valor: unknown) => String(valor ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function abrirJanelaDeImpressao(titulo: string, corpoHtml: string) {
-  const janela = window.open('', '_blank', 'noopener,noreferrer,width=900,height=1000');
+  // Com "noopener" o navegador devolve null e não dá para escrever o relatório.
+  const janela = window.open('', '_blank', 'width=900,height=1000');
   if (!janela) {
     toast.error('O navegador bloqueou a janela de impressão.', { description: 'Permita pop-ups para este site e tente novamente.' });
     return;
   }
+  janela.opener = null;
   janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escapeHtml(titulo)}</title>
 <style>
   body{font-family:Inter,Arial,sans-serif;color:#111;margin:32px;font-size:13px}
@@ -332,7 +325,7 @@ export default function CaixaDiario() {
 
   // ─── Helpers ────────────────────────────────────
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const fmtTime = horaSP;
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
   const getTipoConfig = (tipo: LancamentoTipo) => ({
@@ -372,7 +365,7 @@ export default function CaixaDiario() {
     }).join('');
     const corpo = `
       <h1>Relatório de fechamento de caixa</h1>
-      <div class="muted">${escapeHtml(dataLonga)} · ${caixa.aberto ? 'Caixa ainda aberto (parcial)' : 'Caixa fechado'}${profile?.nome ? ` · emitido por ${escapeHtml(profile.nome)}` : ''} · ${escapeHtml(new Date().toLocaleString('pt-BR'))}</div>
+      <div class="muted">${escapeHtml(dataLonga)} · ${caixa.aberto ? 'Caixa ainda aberto (parcial)' : 'Caixa fechado'}${profile?.nome ? ` · emitido por ${escapeHtml(profile.nome)}` : ''} · ${escapeHtml(dataHoraSP(new Date()))}</div>
       <div class="grid">
         <div class="box">Abertura<b>${escapeHtml(fmt(caixa.valor_abertura))}</b><span class="muted">${escapeHtml(caixa.operador_abertura || '—')}</span></div>
         <div class="box">Receitas<b class="pos">${escapeHtml(fmt(t.receita))}</b></div>
@@ -400,10 +393,11 @@ export default function CaixaDiario() {
   };
 
   const exportarCsv = (movimentos: Lancamento[], data: string) => {
-    const cabecalho = ['Data', 'Hora', 'Tipo', 'Descrição', 'Forma de pagamento', 'Categoria', 'Valor'];
+    const cabecalho = ['Data', 'Hora', 'Tipo', 'Descrição', 'Paciente', 'Forma de pagamento', 'Categoria', 'Valor'];
     const linhas = movimentos.map(l => [
-      l.data, fmtTime(l.created_at), getTipoConfig(l.tipo).label, l.descricao,
-      FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento, l.categoria || '',
+      l.data, fmtTime(l.created_at), getTipoConfig(l.tipo).label, textoSeguroCsv(l.descricao),
+      textoSeguroCsv(l.paciente_nome || l.pacientes?.nome || ''),
+      textoSeguroCsv(FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento), textoSeguroCsv(l.categoria || ''),
       ((l.tipo === 'receita' || l.tipo === 'suprimento') ? l.valor : -l.valor).toFixed(2).replace('.', ','),
     ]);
     const csv = [cabecalho, ...linhas]
@@ -428,7 +422,8 @@ export default function CaixaDiario() {
     );
   }
 
-  if (erroCaixa || (caixaHoje?.data && erroLancamentos)) {
+  // Erro de atualização com dados já na tela vira aviso discreto (abaixo); só sem dados a tela inteira cede.
+  if ((erroCaixa && caixaHoje === undefined) || (caixaHoje?.data && erroLancamentos && !lancamentosData)) {
     return (
       <div className="space-y-4 p-4 md:p-6" role="alert">
         <h1 className="text-2xl font-bold text-foreground">Não foi possível carregar o caixa</h1>
@@ -497,6 +492,12 @@ export default function CaixaDiario() {
 
         {/* ═══ TAB HOJE ═══ */}
         <TabsContent value="hoje" className="space-y-5 mt-4">
+          {(erroCaixa || erroLancamentos) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3" role="status">
+              <span className="text-sm text-muted-foreground">Não foi possível atualizar o caixa agora. Os valores exibidos podem estar desatualizados.</span>
+              <Button size="sm" variant="outline" onClick={() => { void recarregarCaixa(); void recarregarLancamentos(); }}>Tentar novamente</Button>
+            </div>
+          )}
           {erroCaixasAbertosAntigos && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3" role="alert">
               <span className="text-sm text-destructive">Não foi possível conferir se há caixas de dias anteriores ainda abertos.</span>
@@ -746,8 +747,8 @@ export default function CaixaDiario() {
                         <TableRow className="bg-muted/50">
                           <TableHead className="text-xs">Tipo</TableHead>
                           <TableHead className="text-xs">Descrição</TableHead>
-                          <TableHead className="text-xs">Pagamento</TableHead>
-                          <TableHead className="text-xs">Hora</TableHead>
+                          <TableHead className="hidden text-xs sm:table-cell">Pagamento</TableHead>
+                          <TableHead className="hidden text-xs sm:table-cell">Hora</TableHead>
                           <TableHead className="text-xs text-right">Valor</TableHead>
                           <TableHead className="text-xs w-24">Ações</TableHead>
                         </TableRow>
@@ -765,14 +766,19 @@ export default function CaixaDiario() {
                                     <Icon className="h-3 w-3" /> {cfg.label}
                                   </div>
                                 </TableCell>
-                                <TableCell className="font-medium text-sm">{l.descricao}</TableCell>
-                                <TableCell>
+                                <TableCell className="font-medium text-sm">
+                                  {l.descricao}
+                                  <span className="mt-0.5 block text-xs font-normal text-muted-foreground sm:hidden">
+                                    {FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento} · {fmtTime(l.created_at)}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
                                   <Badge variant="outline" className="inline-flex items-center gap-1.5 rounded-full text-xs text-muted-foreground">
                                     <FormaIcon className="h-3 w-3" />
                                     {FORMA_LABELS[l.forma_pagamento] || l.forma_pagamento}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
+                                <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
                                   <div className="flex items-center gap-1">
                                     <Clock className="h-3 w-3" /> {fmtTime(l.created_at)}
                                   </div>
@@ -787,11 +793,11 @@ export default function CaixaDiario() {
                                     {l.tipo === 'receita' && (
                                       <>
                                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full"
-                                          title="Imprimir" onClick={() => printReceiptPdf(buildReceiptData(l))}>
+                                          title="Imprimir comprovante" aria-label="Imprimir comprovante" onClick={() => printReceiptPdf(buildReceiptData(l))}>
                                           <Printer className="h-3.5 w-3.5" />
                                         </Button>
                                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full"
-                                          title="Download" onClick={() => downloadReceiptPdf(buildReceiptData(l))}>
+                                          title="Baixar comprovante" aria-label="Baixar comprovante" onClick={() => downloadReceiptPdf(buildReceiptData(l))}>
                                           <Download className="h-3.5 w-3.5" />
                                         </Button>
                                         {vendasPdv?.has(l.id) && (vendasPdv.get(l.id) ? (
@@ -922,7 +928,7 @@ export default function CaixaDiario() {
                         <span className="font-medium">
                           {evento.tipo === 'abertura' ? 'Caixa aberto' : evento.tipo === 'fechamento' ? 'Caixa fechado' : 'Caixa reaberto'}
                         </span>
-                        <span className="text-xs text-muted-foreground">{new Date(evento.created_at).toLocaleString('pt-BR')}</span>
+                        <span className="text-xs text-muted-foreground">{dataHoraSP(evento.created_at)}</span>
                         {evento.user_nome && <span className="text-xs text-muted-foreground">por {evento.user_nome}</span>}
                       </div>
                       {evento.valor_informado !== null && (
@@ -950,7 +956,7 @@ export default function CaixaDiario() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <History className="h-4 w-4 text-primary" /> Últimos 30 dias
+                <History className="h-4 w-4 text-primary" /> Últimos 30 caixas
               </CardTitle>
             </CardHeader>
             <CardContent>

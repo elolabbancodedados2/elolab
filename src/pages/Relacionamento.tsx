@@ -265,8 +265,16 @@ export default function Relacionamento() {
     },
   });
 
+  // No celular o editor fica abaixo da tabela: rola até ele e foca o nome.
+  const focarEditor = () => window.setTimeout(() => {
+    const campo = document.getElementById('campanha-nome');
+    if (typeof campo?.scrollIntoView === 'function') campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    (campo as HTMLInputElement | null)?.focus({ preventScroll: true });
+  }, 50);
+
   const abrirEditor = (inicial: RascunhoCampanha) => {
     setRascunho(inicial);
+    focarEditor();
     trocarAba('campanhas');
   };
 
@@ -665,7 +673,7 @@ export default function Relacionamento() {
                               <TableCell className="text-right">
                                 <div className="flex justify-end gap-1">
                                   {c.status === 'rascunho' && (
-                                    <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => setRascunho({ ...c })}>
+                                    <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => { setRascunho({ ...c }); focarEditor(); }}>
                                       <Pencil className="h-3.5 w-3.5" /> Editar
                                     </Button>
                                   )}
@@ -767,7 +775,7 @@ export default function Relacionamento() {
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="campanha-data">Data de envio (opcional)</Label>
-                        <Input id="campanha-data" type="datetime-local" value={paraInputLocal(rascunho.agendada_para)}
+                        <Input id="campanha-data" type="datetime-local" min={paraInputLocal(new Date(Date.now() + 5 * 60_000).toISOString())} value={paraInputLocal(rascunho.agendada_para)}
                           onChange={(e) => atualizar({ agendada_para: e.target.value ? new Date(e.target.value).toISOString() : null })} />
                         <p className="text-[11px] text-muted-foreground">Sem data, o envio começa ao disparar, dentro da janela de contato de cada paciente.</p>
                       </div>

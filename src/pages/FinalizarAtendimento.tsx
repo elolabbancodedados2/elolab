@@ -15,6 +15,7 @@ import { autoFinalizarAtendimento } from '@/lib/workflowAutomation';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
 import { formatWithDatePreference } from '@/lib/datePreference';
+import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 
 type PatientSummary = {
   nome: string | null;
@@ -48,7 +49,16 @@ const STATUS_ROTULO: Record<string, string> = {
   agendado: 'Agendado',
   faltou: 'Faltou',
   cancelado: 'Cancelado',
+  aguardando_triagem: 'Aguardando triagem',
+  em_triagem: 'Em triagem',
+  fila_atendimento: 'Na fila de atendimento',
+  aguardando_pagamento: 'Aguardando pagamento',
+  aguardando_pagamento_adicional: 'Aguardando pagamento adicional',
+  pago: 'Pago',
 };
+
+/** Rótulo legível do status; nunca mostra o código cru do banco. */
+const rotuloStatus = (status: string) => STATUS_ROTULO[status] ?? formatAppointmentStatus(status);
 
 function relacaoUnica<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
@@ -174,6 +184,9 @@ export default function FinalizarAtendimento() {
     if (retornoExistente) setRetornoSelecionado(atual => atual || 'sem-retorno');
   }, [retornoExistente]);
   const semEvolucao = podeVerEvolucao && !!evolucoes && evolucoes.length === 0;
+  // Enquanto a evolução não foi conferida, não dá para saber se o aviso de
+  // "sem evolução" deveria aparecer: a confirmação fica bloqueada até lá.
+  const verificandoEvolucao = podeVerEvolucao && evolucaoQuery.isLoading;
   const evolucaoEmRascunho = podeVerEvolucao && !!evolucoes?.length && !evolucoes.some(e => e.assinado);
 
   const appointment = appointmentQuery.data;
@@ -189,7 +202,7 @@ export default function FinalizarAtendimento() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (submitLock.current || !appointment || !clinicaId || !retornoSelecionado) return;
+    if (submitLock.current || !appointment || !clinicaId || !retornoSelecionado || verificandoEvolucao) return;
     if (semEvolucao && !semEvolucaoConfirmado) return;
     if (appointment.status !== 'em_atendimento') {
       toast.error('Este atendimento mudou de estado', { description: 'Atualize a fila e confira o registro antes de tentar novamente.' });
@@ -308,7 +321,7 @@ export default function FinalizarAtendimento() {
             <div role="alert" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
               {appointment.status === 'finalizado'
                 ? 'Este atendimento já foi finalizado. Volte à fila ou à recepção para conferir o estado atualizado.'
-                : `O atendimento está como “${appointment.status}” e não pode ser finalizado neste estado. Atualize a fila antes de continuar.`}
+                : `O atendimento está como “${rotuloStatus(appointment.status)}” e não pode ser finalizado neste estado. Atualize a fila antes de continuar.`}
             </div>
           )}
 
@@ -321,7 +334,7 @@ export default function FinalizarAtendimento() {
                     <p className="mt-1 text-sm text-muted-foreground">Confirme o registro antes de concluir.</p>
                   </div>
                   <Badge variant={appointment.status === 'em_atendimento' ? 'default' : 'secondary'}>
-                    {STATUS_ROTULO[appointment.status] ?? appointment.status}
+                    {rotuloStatus(appointment.status)}
                   </Badge>
                 </div>
               </CardHeader>
@@ -426,9 +439,9 @@ export default function FinalizarAtendimento() {
 
                   <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 -mx-4 flex flex-col-reverse gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-0">
                     <Button type="button" variant="outline" onClick={() => navigate(returnTo)} disabled={salvando}>Voltar</Button>
-                    <Button type="submit" disabled={!retornoSelecionado || salvando || !statusFinalizavel || (semEvolucao && !semEvolucaoConfirmado)}>
-                      {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                      {salvando ? 'Finalizando…' : 'Confirmar finalização'}
+                    <Button type="submit" disabled={!retornoSelecionado || salvando || verificandoEvolucao || !statusFinalizavel || (semEvolucao && !semEvolucaoConfirmado)}>
+                      {salvando || verificandoEvolucao ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      {salvando ? 'Finalizando…' : verificandoEvolucao ? 'Verificando evolução…' : 'Confirmar finalização'}
                     </Button>
                   </div>
                 </form>

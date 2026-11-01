@@ -14,6 +14,7 @@ vi.mock('@/components/GlobalSearch', () => ({ GlobalSearch: () => <div /> }));
 vi.mock('@/components/KeyboardShortcutsDialog', () => ({ KeyboardShortcutsDialog: () => null }));
 vi.mock('@/components/ContextualHelp', () => ({ ContextualHelp: () => null }));
 vi.mock('../BarraHorario', () => ({ BarraHorario: () => null }));
+vi.mock('@/hooks/useSubscriptionPlan', () => ({ useUserPlan: () => ({ hasFeature: () => true, isLoading: false, isError: false }) }));
 
 describe('menu mobile da aplicação', () => {
   it('publica estado e associação do botão de navegação', () => {

@@ -6,6 +6,9 @@ import {
 } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { ptBR } from 'date-fns/locale';
+import { Ban } from 'lucide-react';
+import { bloqueiosDoDia, contaNaAgenda, rotuloBloqueio } from './resumoDiaAgenda';
 
 interface Props {
   date: string;
@@ -13,9 +16,13 @@ interface Props {
   colorFor: (a: any) => string;
   medicoById?: Record<string, any>;
   onDayClick: (day: string) => void;
+  /** Bloqueios do período; o dia bloqueado mostra "Bloqueado: motivo". */
+  bloqueios?: any[];
+  /** Médicos em exibição; limita quais bloqueios aparecem. */
+  medicosVisiveis?: string[];
 }
 
-export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick }: Props) {
+export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick, bloqueios = [], medicosVisiveis }: Props) {
   const days = useMemo(() => {
     const base = parseISO(date);
     const start = startOfWeek(startOfMonth(base), { weekStartsOn: 1 });
@@ -27,9 +34,59 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
   const base = parseISO(date);
   const today = todaySaoPauloDateOnly();
   const dayLabels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  const mostrarMedicoNoBloqueio = (medicosVisiveis?.length ?? 2) !== 1;
+  // Lista do celular: só os dias do mês com consultas ou bloqueios.
+  const diasDaLista = days
+    .filter(d => isSameMonth(d, base))
+    .map(d => {
+      const iso = format(d, 'yyyy-MM-dd');
+      return {
+        iso,
+        date: d,
+        ativos: agendamentos.filter(a => a.data === iso && contaNaAgenda(a)).sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio)),
+        bloqueios: bloqueiosDoDia(bloqueios, iso, medicosVisiveis),
+      };
+    })
+    .filter(dia => dia.ativos.length > 0 || dia.bloqueios.length > 0);
 
   return (
-    <div role="region" aria-label="Agenda mensal, deslize horizontal para ver a grade" tabIndex={0} className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <>
+    {/* Abaixo de sm a grade de 7 colunas não cabe: vira uma lista por dia. */}
+    <div role="region" aria-label="Agenda mensal em lista" className="space-y-2 sm:hidden">
+      {diasDaLista.length === 0 && (
+        <p className="rounded-2xl border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">Nenhuma consulta ou bloqueio neste mês.</p>
+      )}
+      {diasDaLista.map(dia => (
+        <button
+          key={dia.iso}
+          type="button"
+          onClick={() => onDayClick(dia.iso)}
+          className={cn('block min-h-11 w-full rounded-2xl border border-border bg-card px-3 py-2 text-left shadow-sm', dia.iso === today && 'border-primary/50')}
+        >
+          <span className="flex items-center justify-between gap-2">
+            <span className={cn('text-sm font-semibold capitalize', dia.iso === today && 'text-primary')}>
+              {format(dia.date, "EEEE, d 'de' MMM", { locale: ptBR })}{dia.iso === today ? ' · hoje' : ''}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {dia.ativos.length === 0 ? 'Sem consultas' : `${dia.ativos.length} consulta${dia.ativos.length === 1 ? '' : 's'}`}
+            </span>
+          </span>
+          {dia.bloqueios.map((b, i) => (
+            <span key={b.id ?? i} className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <Ban aria-hidden="true" className="h-3 w-3 shrink-0" />
+              <span className="truncate">{rotuloBloqueio(b, medicoById, mostrarMedicoNoBloqueio)}</span>
+            </span>
+          ))}
+          {dia.ativos.length > 0 && (
+            <span className="mt-1 block truncate text-xs text-muted-foreground">
+              {dia.ativos.slice(0, 3).map(a => `${a.hora_inicio.slice(0, 5)} ${a.pacientes?.nome_social || a.pacientes?.nome || 'Paciente'}`).join(' · ')}
+              {dia.ativos.length > 3 ? ` · +${dia.ativos.length - 3}` : ''}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+    <div role="region" aria-label="Agenda mensal, deslize horizontal para ver a grade" tabIndex={0} className="hidden overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:block">
       <div className="min-w-[770px]">
       <div className="grid grid-cols-7 border-b border-border/60 bg-muted/30">
         {dayLabels.map(d => (
@@ -40,7 +97,8 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
         {days.map(d => {
           const iso = format(d, 'yyyy-MM-dd');
           const inMonth = isSameMonth(d, base);
-          const dayAppts = agendamentos.filter(a => a.data === iso);
+          const dayAppts = agendamentos.filter(a => a.data === iso && contaNaAgenda(a));
+          const bloqueiosDia = bloqueiosDoDia(bloqueios, iso, medicosVisiveis);
           const isToday = iso === today;
           const weekend = isWeekend(d);
           const confirmed = dayAppts.filter(a => a.status === 'confirmado').length;
@@ -70,6 +128,12 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
                 )}
               </div>
               <div className="space-y-0.5">
+                {bloqueiosDia.length > 0 && (
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground" title={bloqueiosDia.map(b => rotuloBloqueio(b, medicoById, mostrarMedicoNoBloqueio)).join('\n')}>
+                    <Ban aria-hidden="true" className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{rotuloBloqueio(bloqueiosDia[0], medicoById, mostrarMedicoNoBloqueio)}{bloqueiosDia.length > 1 ? ` +${bloqueiosDia.length - 1}` : ''}</span>
+                  </div>
+                )}
                 {dayAppts.slice(0, 3).map(a => (
                   <div key={a.id} className="flex items-center gap-1 text-[10px] truncate">
                     <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: colorFor(a) }} />
@@ -95,5 +159,6 @@ export function MonthlyView({ date, agendamentos, colorFor, medicoById = {}, onD
       </div>
       </div>
     </div>
+    </>
   );
 }

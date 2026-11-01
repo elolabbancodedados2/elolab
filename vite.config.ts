@@ -74,6 +74,8 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     mode === "development" && componentTagger(),
+    // Manifesto único: gerado aqui e injetado no index.html pelo plugin.
+    // (Havia também public/manifest.webmanifest com outro nome e outras cores.)
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "favicon.png", "robots.txt", "pwa-192x192.png", "pwa-512x512.png"],
@@ -81,8 +83,9 @@ export default defineConfig(({ mode }) => ({
         name: "EloLab - Sistema de Gestão para Clínicas",
         short_name: "EloLab",
         description: "Sistema completo de gestão para clínicas e consultórios médicos. Agenda, prontuário, financeiro e mais.",
-        theme_color: "#0c1f54",
-        background_color: "#e0ebf2",
+        // Branco gelo do tema (src/index.css, --background).
+        theme_color: "#F7F9FB",
+        background_color: "#F7F9FB",
         display: "standalone",
         orientation: "any",
         scope: "/",
@@ -165,8 +168,10 @@ export default defineConfig(({ mode }) => ({
             },
           },
         ],
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api/, /^\/supabase/, /^\/~oauth/],
+        // Navegações são NetworkOnly (rota acima) e o index.html não está nos
+        // globPatterns: um navigateFallback para ele apontaria para um arquivo
+        // fora do precache e quebraria o registro do service worker.
+        navigateFallback: null,
       },
     }),
   ].filter(Boolean),

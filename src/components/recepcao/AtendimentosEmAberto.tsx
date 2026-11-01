@@ -34,6 +34,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { atomicMarkNoShow } from '@/lib/operationalTransitions';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { nomeMedico } from '@/lib/formatters';
 
 interface Aberto {
   id: string;
@@ -43,8 +44,19 @@ interface Aberto {
   observacoes?: string | null;
   paciente_id: string;
   medico_id: string | null;
-  pacientes: { nome: string } | null;
+  pacientes: { nome: string; nome_social?: string | null } | null;
+  medicos?: { nome: string | null } | null;
 }
+
+/** "30/09 às 10:00 · Dr(a). Fulano", para a recepção saber de qual consulta se trata. */
+function contextoDoAtendimento(a: Aberto): string {
+  const [, mes, dia] = a.data.split('-');
+  const partes = [`${dia}/${mes}${a.hora_inicio ? ` às ${a.hora_inicio.slice(0, 5)}` : ''}`];
+  if (a.medicos?.nome) partes.push(nomeMedico(a.medicos.nome));
+  return partes.join(' · ');
+}
+
+const nomeDoPaciente = (a: Aberto | null) => a?.pacientes?.nome_social || a?.pacientes?.nome || 'Paciente';
 
 export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendamentoId: string) => void }) {
   const { profile } = useSupabaseAuth();
@@ -69,7 +81,7 @@ export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendament
       // alarme falso é o que faz o alarme verdadeiro ser ignorado.
       const { data, error } = await supabase
         .from('agendamentos')
-        .select('id, data, hora_inicio, tipo, observacoes, paciente_id, medico_id, pacientes(nome)')
+        .select('id, data, hora_inicio, tipo, observacoes, paciente_id, medico_id, pacientes(nome, nome_social), medicos(nome)')
         .eq('clinica_id', profile!.clinica_id!)
         .eq('status', 'em_atendimento')
         .lt('data', hoje)
@@ -90,7 +102,7 @@ export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendament
       queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
     } catch (e: any) {
-      toast.error('Não foi possível atualizar', { description: e?.message });
+      toast.error('Não foi possível atualizar', { description: e?.message || 'Tente novamente.' });
     } finally {
       setOcupado(null);
       setAcaoOcupada(null);
@@ -147,15 +159,16 @@ export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendament
               key={a.id}
               className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 px-3 py-2 text-sm"
             >
-              <span className="min-w-0 flex-1 truncate font-medium">
-                {a.pacientes?.nome ?? 'Paciente'}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{nomeDoPaciente(a)}</span>
+                <span className="block truncate text-xs text-muted-foreground">{contextoDoAtendimento(a)}</span>
               </span>
               <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
                 {dias === 1 ? 'ontem' : `há ${dias} dias`}
               </Badge>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex w-full shrink-0 gap-1 sm:w-auto">
                 <Button
-                  size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                  size="sm" variant="outline" className="h-11 flex-1 gap-1 text-xs sm:h-8 sm:flex-none"
                   disabled={ocupado !== null}
                   onClick={() => onFinalizar(a.id)}
                 >
@@ -163,7 +176,7 @@ export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendament
                   Foi atendido
                 </Button>
                 <Button
-                  size="sm" variant="ghost" className="h-7 gap-1 text-xs text-muted-foreground"
+                  size="sm" variant="ghost" className="h-11 flex-1 gap-1 text-xs text-muted-foreground sm:h-8 sm:flex-none"
                   disabled={ocupado !== null}
                   onClick={() => setConfirmandoNaoRealizado(a)}
                 >
@@ -188,7 +201,7 @@ export function AtendimentosEmAberto({ onFinalizar }: { onFinalizar: (agendament
           <AlertDialogHeader>
             <AlertDialogTitle>Marcar como não realizado?</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmandoNaoRealizado?.pacientes?.nome ?? 'Este paciente'} será removido da fila. Se houver cobrança pendente, ela será cancelada. Um pagamento já registrado precisa ser estornado antes.
+              {confirmandoNaoRealizado ? `${nomeDoPaciente(confirmandoNaoRealizado)} (${contextoDoAtendimento(confirmandoNaoRealizado)})` : 'Este paciente'} será removido da fila. Se houver cobrança pendente, ela será cancelada. Um pagamento já registrado precisa ser estornado antes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

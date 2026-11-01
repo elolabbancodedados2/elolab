@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
+import { TEXTO_CONEXAO, useConexao } from '@/hooks/useConexao';
 
 // Barra de status do protótipo aprovado em 30/10/2026: conexão, clínica, usuário, hora e atalhos.
 const papeis: Record<string, string> = {
@@ -20,20 +21,12 @@ function horaAtual() {
 
 export function BarraStatus() {
   const { profile } = useSupabaseAuth();
-  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const { online } = useConexao();
   const [hora, setHora] = useState(horaAtual);
 
   useEffect(() => {
-    const ligar = () => setOnline(true);
-    const desligar = () => setOnline(false);
-    window.addEventListener('online', ligar);
-    window.addEventListener('offline', desligar);
     const relogio = window.setInterval(() => setHora(horaAtual()), 30_000);
-    return () => {
-      window.removeEventListener('online', ligar);
-      window.removeEventListener('offline', desligar);
-      window.clearInterval(relogio);
-    };
+    return () => window.clearInterval(relogio);
   }, []);
 
   // Mesma chave da barra superior: o React Query reaproveita a resposta.
@@ -50,16 +43,16 @@ export function BarraStatus() {
   });
 
   const item = 'flex h-full items-center gap-1.5 border-r border-border px-3';
-  const tecla = 'rounded border border-border bg-card px-1 font-sans text-[10px] font-semibold text-foreground';
+  const tecla = 'rounded border border-border bg-card px-1 font-sans text-[11px] font-semibold text-foreground';
 
   return (
     <footer
       aria-label="Barra de status"
       className="hidden h-7 shrink-0 items-stretch border-t border-border bg-secondary text-[11.5px] text-muted-foreground lg:flex"
     >
-      <span className={item}>
+      <span className={cn(item, !online && 'font-medium text-destructive')} role="status">
         <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', online ? 'bg-success' : 'bg-destructive')} />
-        {online ? 'Online' : 'Sem conexão: as alterações não serão salvas'}
+        {online ? TEXTO_CONEXAO.online : `${TEXTO_CONEXAO.offline}: nada será salvo até a conexão voltar`}
       </span>
       {clinica?.nome && <span className={cn(item, 'max-w-[280px] truncate')}>{clinica.nome}</span>}
       {profile?.nome && (

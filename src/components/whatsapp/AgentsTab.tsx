@@ -1,3 +1,4 @@
+import { useConfirmacao } from '@/hooks/useConfirmacao';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,7 @@ export function AgentsTab({
   onDeleteAgent,
   isCreating,
 }: AgentsTabProps) {
+  const [confirmar, dialogoConfirmacao] = useConfirmacao();
   const [selectedAgent, setSelectedAgent] = useState<WhatsAppAgent | null>(null);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [newAgentForm, setNewAgentForm] = useState<NewAgentForm>(defaultAgentForm);
@@ -56,9 +58,9 @@ export function AgentsTab({
     onUpdateAgent(selectedAgent);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedAgent) return;
-    if (confirm('Deseja realmente excluir este agente?')) {
+    if (await confirmar({ titulo: 'Excluir agente?', descricao: `O agente "${selectedAgent.nome ?? ''}" deixa de responder às conversas. Esta ação não pode ser desfeita.`, confirmar: 'Excluir' })) {
       onDeleteAgent(selectedAgent.id);
       setSelectedAgent(null);
     }
@@ -66,6 +68,7 @@ export function AgentsTab({
 
   return (
     <div className="space-y-4">
+      {dialogoConfirmacao}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Agentes de IA</h2>
         <Button onClick={() => setIsCreatingAgent(true)}>

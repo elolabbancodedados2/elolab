@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { loadPatientConsentRecords } from '@/lib/patientConsentRecords';
 import { supabase } from '@/integrations/supabase/client';
 import { type Consentimento, TERMO_LGPD, TIPOS_CONSENTIMENTO } from '@/lib/patientConsent';
@@ -52,7 +52,6 @@ export default function ConsentimentoLGPDTaskPage({ task }: { task: Task }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile } = useSupabaseAuth();
-  const { toast } = useToast();
   const clinicId = profile?.clinica_id;
   const [aceites, setAceites] = useState<Record<string, boolean>>({});
   const [motivoRevogacao, setMotivoRevogacao] = useState('');
