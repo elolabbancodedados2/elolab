@@ -3413,7 +3413,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         });
       }
       if (path === '/gestao-fluxo') {
-        await main.getByRole('tab', { name: 'Lista de Espera' }).click();
+        await main.getByRole('tab', { name: 'Lista de espera' }).click();
         await expect(main.getByRole('heading', { name: 'Lista de Espera' })).toBeVisible();
         await expect(main.getByText('Nenhum paciente na lista de espera')).toBeVisible();
         await expect(main.getByRole('button', { name: 'Adicionar à Lista', exact: true })).toHaveCount(1);
@@ -3536,7 +3536,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
     }
     await page.screenshot({ path: testInfo.outputPath(`room-workspace-${viewport.width}.png`), animations: 'disabled' });
 
-    await main.getByRole('tab', { name: 'Lista de Espera' }).click();
+    await main.getByRole('tab', { name: 'Lista de espera' }).click();
     await expect(page).toHaveURL(/origem=qa.*tab=espera|tab=espera.*origem=qa/);
     await expect(main.getByText('Nenhum paciente na lista de espera', { exact: true })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Adicionar à Lista', exact: true })).toHaveCount(1);
