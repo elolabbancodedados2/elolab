@@ -304,8 +304,8 @@ export default function Pacientes() {
   const [paginaPacientes, setPaginaPacientes] = useState<number>(() => location.state?.patientFilters?.page || 0);
   const patientFilters = { search: searchTerm, sexo: filterSexo, convenio: filterConvenio, idade: filterIdade, status: filterStatusPaciente, page: paginaPacientes };
   const requestedReturnTo = location.state?.returnTo;
-  const patientReturnTo = requestedReturnTo === '/recepcao'
-    ? '/recepcao'
+  const patientReturnTo = requestedReturnTo === '/recepcao' || requestedReturnTo === '/recepcao/encaixe'
+    ? requestedReturnTo
     : /^\/pacientes(?:\?|$)/.test(requestedReturnTo || '') ? requestedReturnTo : '/pacientes';
   const leavePatientTask = () => navigate(patientReturnTo, { replace: true, state: { patientFilters } });
   const openPatientTask = (path: string) => {
@@ -1288,7 +1288,12 @@ export default function Pacientes() {
       atualizarListasPacientes();
       setIsFormOpen(false);
       completedTask.current = true;
-      leavePatientTask();
+      // Cadastro aberto pelo encaixe: volta ao encaixe com o paciente já escolhido.
+      if (patientReturnTo === '/recepcao/encaixe' && acao === 'cadastrado') {
+        navigate('/recepcao/encaixe', { replace: true, state: { encaixePacienteId: pacienteId } });
+      } else {
+        leavePatientTask();
+      }
     } catch (error: any) {
       console.error('Erro ao salvar paciente:', error);
       const duplicidadeCpf = error?.code === '23505'

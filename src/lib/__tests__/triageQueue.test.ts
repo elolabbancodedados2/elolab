@@ -32,3 +32,21 @@ describe('fila de trabalho da triagem', () => {
     expect(buildTriagensFilters('inicio', 'fim', false, [])).toHaveLength(2);
   });
 });
+
+describe('ordem da triagem', () => {
+  it('põe urgente e preferencial à frente e respeita a chegada dentro da prioridade', () => {
+    const ags = [
+      { id: 'a', data: today, status: 'agendado', hora_inicio: '08:00' },
+      { id: 'b', data: today, status: 'agendado', hora_inicio: '09:00' },
+      { id: 'c', data: today, status: 'agendado', hora_inicio: '10:00' },
+      { id: 'd', data: today, status: 'agendado', hora_inicio: '07:00' },
+    ];
+    const fila = [
+      { agendamento_id: 'a', status: 'aguardando', prioridade: 'normal', horario_chegada: '2026-10-11T11:10:00Z' },
+      { agendamento_id: 'b', status: 'aguardando', prioridade: 'preferencial', horario_chegada: '2026-10-11T11:20:00Z' },
+      { agendamento_id: 'c', status: 'aguardando', prioridade: 'urgente', horario_chegada: '2026-10-11T11:30:00Z' },
+      { agendamento_id: 'd', status: 'aguardando', prioridade: 'normal', horario_chegada: '2026-10-11T11:05:00Z' },
+    ];
+    expect(filtrarAgendamentosAguardandoTriagem(ags, fila, [], today).map(item => item.id)).toEqual(['c', 'b', 'd', 'a']);
+  });
+});

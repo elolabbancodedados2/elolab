@@ -62,6 +62,7 @@ const CashOperationPage = lazy(() => import("@/pages/CashOperationPage").then(mo
 const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module => ({ default: module.CashierSalePage })));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
+const EstoqueInventario = lazy(() => import("@/pages/EstoqueInventario"));
 const Compras = lazy(() => import("@/pages/Compras"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
 const SalvarRelatorio = lazy(() => import("@/pages/SalvarRelatorioPage"));
@@ -501,6 +502,7 @@ function AppRoutes() {
                           <Route path="/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/gestao-fluxo/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/estoque/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/estoque/inventario" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><EstoqueInventario /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="edit" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/entrada" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="entry" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/saida" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="exit" /></SupabaseProtectedRoute>} />

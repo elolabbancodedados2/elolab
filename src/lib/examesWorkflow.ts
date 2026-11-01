@@ -42,3 +42,35 @@ export function preparosAusentesNaGuia(
 export function textoPreparosParaGuia(ausentes: PreparoAusente[]): string {
   return ausentes.map(item => `Preparo — ${item.exame}: ${item.preparo}`).join('\n');
 }
+
+/**
+ * Preparo configurado no catálogo para cada exame pedido. O nome gravado pode
+ * vir com o código na frente ("40302040 - Glicemia em Jejum"); o código é
+ * ignorado na comparação.
+ */
+export function preparosDosExames(
+  exames: string[],
+  catalogo: Array<{ nome: string; preparo: string | null }>,
+): PreparoAusente[] {
+  const preparoPorNome = new Map(catalogo.map(item => [normalizarTexto(item.nome), (item.preparo ?? '').trim()]));
+  const vistos = new Set<string>();
+  return exames.flatMap(nomeGravado => {
+    const nome = nomeGravado.replace(/^[A-Za-z0-9.]+\s+-\s+/, '').trim();
+    const chave = normalizarTexto(nome);
+    const preparo = preparoPorNome.get(chave) ?? preparoPorNome.get(normalizarTexto(nomeGravado)) ?? '';
+    if (!preparo || vistos.has(chave)) return [];
+    vistos.add(chave);
+    return [{ exame: nome, preparo }];
+  });
+}
+
+/** Mensagem curta para enviar o preparo ao paciente pelo WhatsApp. */
+export function mensagemPreparoWhatsApp(nomePaciente: string, preparos: PreparoAusente[], clinica?: string | null): string {
+  const primeiroNome = nomePaciente.trim().split(/\s+/)[0] || 'paciente';
+  const linhas = preparos.map(item => `• ${item.exame}: ${item.preparo}`);
+  return [
+    `Olá, ${primeiroNome}! Seguem as orientações de preparo para os seus exames${clinica ? ` na ${clinica}` : ''}:`,
+    ...linhas,
+    'Em caso de dúvida, responda esta mensagem.',
+  ].join('\n');
+}

@@ -16,6 +16,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
+import { buscarEmBlocos } from '@/lib/buscarEmBlocos';
+import { sugerirProximoNumeroLote, TAMANHO_MAXIMO_NUMERO_LOTE, validarNumeroLote } from '@/lib/tissStatus';
 
 interface Convenio { id: string; nome: string; versao_tiss: string | null }
 interface LoteExistente { id: string; numero_lote: string; convenio_id: string; competencia: string; quantidade_guias: number; valor_apresentado: number }
@@ -52,8 +54,18 @@ export default function NovoLoteTissPage() {
       return (data ?? []) as Convenio[];
     },
   });
+  const numerosQuery = useQuery({
+    queryKey: ['lotes-tiss', 'numeros', profile?.clinica_id ?? null],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => buscarEmBlocos<{ numero_lote: string; convenio_id: string }>(() => (supabase as any).from('lotes_tiss')
+      .select('numero_lote,convenio_id').eq('clinica_id', profile?.clinica_id ?? '').order('id', { ascending: true })),
+  });
   const convenios = conveniosQuery.data ?? [];
   const convenioSelecionado = convenios.find(item => item.id === formulario.convenioId);
+  const sugestaoNumero = formulario.convenioId && numerosQuery.data
+    ? sugerirProximoNumeroLote(numerosQuery.data.filter(item => item.convenio_id === formulario.convenioId).map(item => item.numero_lote))
+    : '';
+  const erroNumero = formulario.numero ? validarNumeroLote(formulario.numero) : null;
   const valor = Number(formulario.valor);
   const quantidade = Number(formulario.quantidade);
   const dirty = Boolean(formulario.convenioId || formulario.numero.trim() || formulario.quantidade || formulario.valor
@@ -67,6 +79,8 @@ export default function NovoLoteTissPage() {
     mutationFn: async (payload: LotePayload) => {
       if (!profile?.clinica_id) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
       if (!payload.p_convenio_id || !payload.p_numero_lote) throw new Error('Convênio e número do lote são obrigatórios.');
+      const problemaNumero = validarNumeroLote(payload.p_numero_lote);
+      if (problemaNumero) throw new Error(problemaNumero);
       if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])-01$/.test(payload.p_competencia)) throw new Error('Selecione uma competência válida.');
       if (!Number.isInteger(payload.p_quantidade_guias) || payload.p_quantidade_guias < 1 || !Number.isFinite(payload.p_valor_apresentado) || payload.p_valor_apresentado <= 0) {
         throw new Error('Informe ao menos uma guia e um valor apresentado maior que zero.');
@@ -137,13 +151,13 @@ export default function NovoLoteTissPage() {
         <CardContent className="space-y-5 pt-5">
           <div className="space-y-2"><Label htmlFor="tiss-convenio">Convênio</Label><Select value={formulario.convenioId} onValueChange={value => mudar('convenioId', value)} disabled={criarLote.isPending}><SelectTrigger id="tiss-convenio"><SelectValue placeholder="Selecione o convênio" /></SelectTrigger><SelectContent>{convenios.map(item => <SelectItem key={item.id} value={item.id}>{item.nome}</SelectItem>)}</SelectContent></Select>{convenioSelecionado?.versao_tiss && <p className="text-xs text-muted-foreground">Versão cadastrada: {convenioSelecionado.versao_tiss}</p>}</div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><Label htmlFor="tiss-numero">Número do lote</Label><Input id="tiss-numero" required maxLength={80} autoComplete="off" value={formulario.numero} onChange={event => mudar('numero', event.target.value)} disabled={criarLote.isPending} aria-invalid={!!erro && !formulario.numero.trim()} /></div>
+            <div className="space-y-2"><Label htmlFor="tiss-numero">Número do lote</Label><Input id="tiss-numero" required maxLength={TAMANHO_MAXIMO_NUMERO_LOTE} autoComplete="off" value={formulario.numero} onChange={event => mudar('numero', event.target.value)} disabled={criarLote.isPending} aria-invalid={!!erroNumero || (!!erro && !formulario.numero.trim())} aria-describedby="tiss-numero-ajuda" /><div id="tiss-numero-ajuda" className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span className={erroNumero ? 'text-destructive' : undefined}>{erroNumero ?? `Até ${TAMANHO_MAXIMO_NUMERO_LOTE} caracteres, como pede a TISS.`}</span><span className="tabular-nums">{formulario.numero.trim().length}/{TAMANHO_MAXIMO_NUMERO_LOTE}</span></div>{sugestaoNumero && sugestaoNumero !== formulario.numero.trim() && <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => mudar('numero', sugestaoNumero)} disabled={criarLote.isPending}>Usar o próximo número: {sugestaoNumero}</Button>}</div>
             <div className="space-y-2"><Label htmlFor="tiss-competencia">Competência</Label><Input id="tiss-competencia" type="month" required value={formulario.competencia.slice(0, 7)} onChange={event => mudar('competencia', event.target.value ? `${event.target.value}-01` : '')} disabled={criarLote.isPending} aria-invalid={!!erro && !/^[1-9]\d{3}-(0[1-9]|1[0-2])-01$/.test(formulario.competencia)} /></div>
             <div className="space-y-2"><Label htmlFor="tiss-guias">Quantidade de guias</Label><Input id="tiss-guias" type="number" min="1" step="1" required value={formulario.quantidade} onChange={event => mudar('quantidade', event.target.value)} disabled={criarLote.isPending} aria-invalid={!!erro && (!Number.isInteger(quantidade) || quantidade < 1)} /></div>
             <div className="space-y-2"><Label htmlFor="tiss-valor">Valor apresentado (R$)</Label><Input id="tiss-valor" type="number" min="0.01" step="0.01" required value={formulario.valor} onChange={event => mudar('valor', event.target.value)} disabled={criarLote.isPending} aria-invalid={!!erro && (!Number.isFinite(valor) || valor <= 0)} /><p className="text-xs text-muted-foreground">{numeroMoeda(Number.isFinite(valor) ? valor : 0)} · até duas casas decimais</p></div>
           </div>
           {erro && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p>{erro}</p><p className="mt-1 text-xs">Os campos foram preservados. Se a resposta anterior foi interrompida, confira o lote antes de repetir.</p></div>}
-          <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => navigate(retorno.pathname, { state: retorno.state })} disabled={criarLote.isPending}>Cancelar</Button><Button type="button" onClick={enviar} disabled={criarLote.isPending || !formulario.convenioId || !formulario.numero.trim() || !/^[1-9]\d{3}-(0[1-9]|1[0-2])-01$/.test(formulario.competencia) || !Number.isInteger(quantidade) || quantidade < 1 || !Number.isFinite(valor) || valor <= 0 || Math.abs(valor * 100 - Math.round(valor * 100)) >= 1e-7}>{criarLote.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar lote</Button></div>
+          <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => navigate(retorno.pathname, { state: retorno.state })} disabled={criarLote.isPending}>Cancelar</Button><Button type="button" onClick={enviar} disabled={criarLote.isPending || !formulario.convenioId || !formulario.numero.trim() || !!erroNumero || !/^[1-9]\d{3}-(0[1-9]|1[0-2])-01$/.test(formulario.competencia) || !Number.isInteger(quantidade) || quantidade < 1 || !Number.isFinite(valor) || valor <= 0 || Math.abs(valor * 100 - Math.round(valor * 100)) >= 1e-7}>{criarLote.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar lote</Button></div>
         </CardContent>
       </Card>
     </>}

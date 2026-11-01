@@ -48,19 +48,109 @@ export interface SinaisParaAlerta {
   sistolica?: number | null;
   diastolica?: number | null;
   temperatura?: number | null;
+  frequenciaCardiaca?: number | null;
+  frequenciaRespiratoria?: number | null;
+  glicemia?: number | null;
+  dor?: number | null;
 }
 
+const numeroBR = (valor: number) => String(valor).replace('.', ',');
+const valido = (valor: number | null | undefined): valor is number => valor != null && Number.isFinite(valor);
+
 /** Sinais que exigem confirmação quando o risco escolhido é verde ou azul. */
-export function sinaisCriticos({ saturacao, sistolica, diastolica, temperatura }: SinaisParaAlerta): string[] {
+export function sinaisCriticos({
+  saturacao, sistolica, diastolica, temperatura,
+  frequenciaCardiaca, frequenciaRespiratoria, glicemia, dor,
+}: SinaisParaAlerta): string[] {
   const achados: string[] = [];
-  if (saturacao != null && saturacao < 90) achados.push(`saturação de ${saturacao}%`);
-  if ((sistolica != null && sistolica >= 180) || (diastolica != null && diastolica >= 110)) {
+  if (valido(saturacao) && saturacao < 90) achados.push(`saturação de ${saturacao}%`);
+  if ((valido(sistolica) && sistolica >= 180) || (valido(diastolica) && diastolica >= 110)) {
     achados.push(`pressão de ${sistolica ?? '—'}/${diastolica ?? '—'} mmHg`);
+  } else if (valido(sistolica) && sistolica < 90) {
+    achados.push(`pressão de ${sistolica}/${diastolica ?? '—'} mmHg`);
   }
-  if (temperatura != null && temperatura >= 39) achados.push(`temperatura de ${String(temperatura).replace('.', ',')} °C`);
+  if (valido(temperatura) && temperatura >= 39) achados.push(`temperatura de ${numeroBR(temperatura)} °C`);
+  if (valido(frequenciaCardiaca) && (frequenciaCardiaca >= 130 || frequenciaCardiaca < 40)) {
+    achados.push(`frequência cardíaca de ${frequenciaCardiaca} bpm`);
+  }
+  if (valido(frequenciaRespiratoria) && (frequenciaRespiratoria >= 30 || frequenciaRespiratoria <= 8)) {
+    achados.push(`frequência respiratória de ${frequenciaRespiratoria} irpm`);
+  }
+  if (valido(glicemia) && (glicemia < 70 || glicemia >= 300)) achados.push(`glicemia de ${numeroBR(glicemia)} mg/dL`);
+  if (valido(dor) && dor >= 8) achados.push(`dor ${dor}/10`);
   return achados;
 }
 
 export function riscoBaixo(risco: string | null | undefined): boolean {
   return risco === 'verde' || risco === 'azul';
+}
+
+export type Tendencia = 'subiu' | 'caiu' | 'estável';
+
+/** Compara o valor de agora com o da triagem anterior; null sem os dois valores. */
+export function tendenciaSinal(
+  atual: number | null | undefined,
+  anterior: number | null | undefined,
+  tolerancia = 0,
+): Tendencia | null {
+  if (!valido(atual) || !valido(anterior)) return null;
+  const diferenca = atual - anterior;
+  if (Math.abs(diferenca) <= tolerancia) return 'estável';
+  return diferenca > 0 ? 'subiu' : 'caiu';
+}
+
+export type RiscoSugerido ='vermelho' | 'laranja' | 'amarelo';
+
+export interface SugestaoRisco {
+  risco: RiscoSugerido;
+  motivos: string[];
+}
+
+/**
+ * Sugestão de classificação a partir dos sinais vitais, inspirada nos
+ * discriminadores gerais de Manchester e nos limites do NEWS2. Serve só de
+ * apoio: a classificação continua sendo decisão da enfermagem. Devolve null
+ * quando nenhum sinal sai da faixa de atenção.
+ */
+export function sugerirRisco(sinais: SinaisParaAlerta): SugestaoRisco | null {
+  const { saturacao, sistolica, temperatura, frequenciaCardiaca, frequenciaRespiratoria, glicemia, dor, diastolica } = sinais;
+  const niveis: Record<RiscoSugerido, string[]> = { vermelho: [], laranja: [], amarelo: [] };
+
+  if (valido(saturacao)) {
+    if (saturacao < 85) niveis.vermelho.push(`saturação de ${saturacao}%`);
+    else if (saturacao < 92) niveis.laranja.push(`saturação de ${saturacao}%`);
+    else if (saturacao < 95) niveis.amarelo.push(`saturação de ${saturacao}%`);
+  }
+  if (valido(sistolica)) {
+    if (sistolica < 80) niveis.vermelho.push(`pressão sistólica de ${sistolica} mmHg`);
+    else if (sistolica < 90 || sistolica >= 220) niveis.laranja.push(`pressão sistólica de ${sistolica} mmHg`);
+    else if (sistolica >= 180 || (valido(diastolica) && diastolica >= 110)) niveis.amarelo.push(`pressão de ${sistolica}/${diastolica ?? '—'} mmHg`);
+  }
+  if (valido(frequenciaCardiaca)) {
+    if (frequenciaCardiaca < 40 || frequenciaCardiaca > 150) niveis.vermelho.push(`frequência cardíaca de ${frequenciaCardiaca} bpm`);
+    else if (frequenciaCardiaca >= 130) niveis.laranja.push(`frequência cardíaca de ${frequenciaCardiaca} bpm`);
+    else if (frequenciaCardiaca >= 111 || frequenciaCardiaca <= 50) niveis.amarelo.push(`frequência cardíaca de ${frequenciaCardiaca} bpm`);
+  }
+  if (valido(frequenciaRespiratoria)) {
+    if (frequenciaRespiratoria <= 8 || frequenciaRespiratoria >= 35) niveis.vermelho.push(`frequência respiratória de ${frequenciaRespiratoria} irpm`);
+    else if (frequenciaRespiratoria >= 25) niveis.laranja.push(`frequência respiratória de ${frequenciaRespiratoria} irpm`);
+    else if (frequenciaRespiratoria >= 21 || frequenciaRespiratoria <= 11) niveis.amarelo.push(`frequência respiratória de ${frequenciaRespiratoria} irpm`);
+  }
+  if (valido(temperatura)) {
+    if (temperatura >= 41 || temperatura < 35) niveis.laranja.push(`temperatura de ${numeroBR(temperatura)} °C`);
+    else if (temperatura >= 38.5) niveis.amarelo.push(`temperatura de ${numeroBR(temperatura)} °C`);
+  }
+  if (valido(glicemia)) {
+    if (glicemia < 50) niveis.laranja.push(`glicemia de ${numeroBR(glicemia)} mg/dL`);
+    else if (glicemia < 70 || glicemia >= 300) niveis.amarelo.push(`glicemia de ${numeroBR(glicemia)} mg/dL`);
+  }
+  if (valido(dor)) {
+    if (dor >= 8) niveis.laranja.push(`dor ${dor}/10`);
+    else if (dor >= 5) niveis.amarelo.push(`dor ${dor}/10`);
+  }
+
+  for (const risco of ['vermelho', 'laranja', 'amarelo'] as const) {
+    if (niveis[risco].length > 0) return { risco, motivos: niveis[risco] };
+  }
+  return null;
 }

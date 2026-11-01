@@ -58,6 +58,8 @@ import { obterIdentificacaoAssinante } from '@/lib/prontuarioSigner';
 import { lerConfigsClinica } from '@/lib/configClinica';
 import { buscarPorIdsEmLotes, buscarTodasAsPaginas, combinarEventosAuditoria, EventoAuditoriaExportavel, filtrarEventosAuditoria, gerarCsvAuditoria } from '@/lib/prontuarioAuditExport';
 import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { DispensacaoConfirmacao, type ItemDispensacaoConfirmado } from '@/components/clinical/DispensacaoConfirmacao';
+import type { PlanoDispensacaoItem } from '@/lib/workflowAutomation';
 import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { filtrarRascunhosAbertos, nomeAutorRascunho } from '@/lib/prontuarioDrafts';
@@ -845,12 +847,13 @@ export default function Prontuarios() {
   const [dispensando, setDispensando] = useState(false);
   const [exportacaoPendente, setExportacaoPendente] = useState<{ conteudo: string; nomeArquivo: string; tipo: 'application/json' | 'application/xml'; formato: 'FHIR R4 JSON' | 'XML clínico simplificado'; ids: string[] } | null>(null);
 
+  const [planoDispensacao, setPlanoDispensacao] = useState<PlanoDispensacaoItem[] | null>(null);
+  const [prontuarioDispensacaoId, setProntuarioDispensacaoId] = useState<string | null>(null);
+
   /**
-   * Dá baixa no estoque dos medicamentos que a clínica entregou em mãos.
-   *
-   * Só o que tem quantidade preenchida entra: sem quantidade não há o que
-   * descontar, e chutar "1" faria o estoque divergir do armário — que é pior
-   * que não controlar.
+   * Abre a prévia da dispensação: salva o atendimento, procura cada
+   * medicamento no estoque da clínica (só lotes dentro da validade) e deixa a
+   * pessoa confirmar item, lote e quantidade antes de qualquer baixa.
    */
   const dispensarNaClinica = async () => {
     const itens = prescricoes
@@ -861,6 +864,10 @@ export default function Prontuarios() {
       toast.error('Preencha a quantidade dos medicamentos entregues');
       return;
     }
+    if (!user?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a página antes de dar baixa.');
+      return;
+    }
 
     setDispensando(true);
     try {
@@ -868,25 +875,40 @@ export default function Prontuarios() {
       if (!prontuarioId) {
         throw new Error('Não foi possível salvar as prescrições. Revise o atendimento e tente novamente.');
       }
+      const { planejarDispensacao } = await import('@/lib/workflowAutomation');
+      const plano = await planejarDispensacao({ medicamentos: itens, clinicaId: user.clinica_id });
+      setProntuarioDispensacaoId(prontuarioId);
+      setPlanoDispensacao(plano);
+    } catch (e: any) {
+      toast.error('Não foi possível preparar a dispensação', { description: mensagemDeErro(e) });
+    } finally {
+      setDispensando(false);
+    }
+  };
 
+  const confirmarDispensacao = async (itens: ItemDispensacaoConfirmado[]) => {
+    if (!prontuarioDispensacaoId || !user?.clinica_id) return;
+    setDispensando(true);
+    try {
       const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
       const r = await autoDispensarMedicamentos({
         medicamentos: itens,
         pacienteId: selectedPaciente?.id ?? '',
         pacienteNome: selectedPaciente?.nome ?? 'Paciente',
-        prontuarioId,
+        prontuarioId: prontuarioDispensacaoId,
+        clinicaId: user.clinica_id,
         userId: user?.id,
       });
 
       if (!r.success) throw new Error(r.message);
       // Baixa parcial não é sucesso silencioso: o que não saiu precisa aparecer,
       // senão a clínica acha que descontou tudo.
-      const houveAlerta = r.actions.some(a => a.includes('não encontrado') || a.includes('insuficiente'));
-      if (houveAlerta) {
+      if (r.message.startsWith('Dispensação parcial')) {
         toast.warning(r.message, { description: r.actions.join(' • '), duration: 9000 });
       } else {
         toast.success(r.message, { description: r.actions.join(' • ') });
       }
+      setPlanoDispensacao(null);
     } catch (e: any) {
       toast.error('Não foi possível dar baixa', { description: mensagemDeErro(e) });
     } finally {
@@ -3682,6 +3704,13 @@ export default function Prontuarios() {
           </footer>
       </section>}
 
+      <DispensacaoConfirmacao
+        plano={planoDispensacao ?? []}
+        open={planoDispensacao !== null}
+        onOpenChange={aberto => { if (!aberto) setPlanoDispensacao(null); }}
+        onConfirm={itens => { void confirmarDispensacao(itens); }}
+        enviando={dispensando}
+      />
       <Dialog
         open={!!pendingPatientContextChange}
         onOpenChange={open => { if (!open) cancelPatientContextChange(); }}

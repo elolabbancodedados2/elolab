@@ -1,11 +1,14 @@
 import { useMemo, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, ClipboardList, Clock3, FilePlus2, History, Loader2, Plus, Search } from 'lucide-react';
+import { Activity, AlertTriangle, ClipboardList, Clock3, FilePlus2, History, Loader2, Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { normalizarExamesSolicitados } from '@/lib/laboratorio/pedidos';
+import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
+import { mensagemDeErro } from '@/lib/erros';
+import { contagem } from '@/lib/plural';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { ErrorState } from '@/components/ErrorState';
 import { Badge } from '@/components/ui/badge';
@@ -54,8 +57,9 @@ const statusLabel: Record<string, string> = {
 };
 const priorityLabel: Record<string, string> = { rotina: 'Rotina', urgente: 'Urgente', stat: 'STAT' };
 
+// Horário sempre no fuso da clínica (São Paulo), não no do navegador.
 function dataHora(valor: string) {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(valor));
+  return formatDateTimeSaoPaulo(valor);
 }
 
 type PedidoTask = 'new' | 'history';
@@ -178,7 +182,7 @@ function PedidosWorkspace({ task }: { task?: PedidoTask }) {
       completed.current = true;
       back();
     },
-    onError: (error) => toast.error('Não foi possível criar o pedido', { description: error.message }),
+    onError: (error) => toast.error('Não foi possível criar o pedido', { description: mensagemDeErro(error) }),
     onSettled: () => { saveLock.current = false; },
   });
 
@@ -207,15 +211,15 @@ function PedidosWorkspace({ task }: { task?: PedidoTask }) {
             <fieldset className="min-w-0 space-y-5" disabled={criarPedido.isPending || medicosQuery.isError || conveniosQuery.isError}><legend className="sr-only">Paciente e exames solicitados</legend>
             <div className="space-y-2"><Label htmlFor="pedido-lab-paciente">Paciente *</Label><PacienteCombobox id="pedido-lab-paciente" value={pacienteId} onChange={(id) => setPacienteId(id)} disabled={criarPedido.isPending} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Médico solicitante</Label><Select value={medicoId} onValueChange={setMedicoId} disabled={medicosQuery.isLoading || criarPedido.isPending}><SelectTrigger aria-label="Médico solicitante"><SelectValue placeholder="Selecione o médico" /></SelectTrigger><SelectContent>{(medicosQuery.data ?? []).map((medico) => <SelectItem key={medico.id} value={medico.id}>{medico.nome}{medico.crm ? ` · ${medico.crm}` : ''}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2"><Label>Convênio</Label><Select value={convenioId} onValueChange={setConvenioId} disabled={conveniosQuery.isLoading || criarPedido.isPending}><SelectTrigger aria-label="Convênio"><SelectValue placeholder="Particular / selecione" /></SelectTrigger><SelectContent>{(conveniosQuery.data ?? []).map((convenio) => <SelectItem key={convenio.id} value={convenio.id}>{convenio.nome}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label htmlFor="pedido-lab-medico">Médico solicitante</Label><Select value={medicoId} onValueChange={setMedicoId} disabled={medicosQuery.isLoading || criarPedido.isPending}><SelectTrigger id="pedido-lab-medico"><SelectValue placeholder="Selecione o médico" /></SelectTrigger><SelectContent>{(medicosQuery.data ?? []).map((medico) => <SelectItem key={medico.id} value={medico.id}>{medico.nome}{medico.crm ? ` · ${medico.crm}` : ''}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label htmlFor="pedido-lab-convenio">Convênio</Label><Select value={convenioId} onValueChange={setConvenioId} disabled={conveniosQuery.isLoading || criarPedido.isPending}><SelectTrigger id="pedido-lab-convenio"><SelectValue placeholder="Particular / selecione" /></SelectTrigger><SelectContent>{(conveniosQuery.data ?? []).map((convenio) => <SelectItem key={convenio.id} value={convenio.id}>{convenio.nome}</SelectItem>)}</SelectContent></Select></div>
             </div>
             <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
-              <div className="space-y-2"><Label>Prioridade *</Label><Select value={prioridade} onValueChange={(value: 'rotina' | 'urgente' | 'stat') => setPrioridade(value)}><SelectTrigger aria-label="Prioridade"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rotina">Rotina</SelectItem><SelectItem value="urgente">Urgente</SelectItem><SelectItem value="stat">STAT — imediato</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label htmlFor="pedido-lab-prioridade">Prioridade *</Label><Select value={prioridade} onValueChange={(value: 'rotina' | 'urgente' | 'stat') => setPrioridade(value)}><SelectTrigger id="pedido-lab-prioridade"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="rotina">Rotina</SelectItem><SelectItem value="urgente">Urgente</SelectItem><SelectItem value="stat">STAT — imediato</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label htmlFor="pedido-lab-indicacao">Indicação clínica</Label><Input id="pedido-lab-indicacao" value={indicacao} onChange={(event) => setIndicacao(event.target.value)} maxLength={500} placeholder="Motivo clínico ou informação relevante" /></div>
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between"><Label>Exames solicitados *</Label><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setExames((lista) => [...lista, { catalogId: '', nome: '' }])} disabled={exames.length >= 40 || criarPedido.isPending}><Plus className="h-3.5 w-3.5" /> Adicionar exame</Button></div>
+              <div className="flex items-center justify-between"><p className="text-sm font-medium" id="pedido-lab-exames">Exames solicitados *</p><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setExames((lista) => [...lista, { catalogId: '', nome: '' }])} disabled={exames.length >= 40 || criarPedido.isPending}><Plus className="h-3.5 w-3.5" /> Adicionar exame</Button></div>
               {catalogoQuery.isError && <ErrorState compact description="Não foi possível carregar o catálogo; você ainda pode informar o nome manualmente." error={catalogoQuery.error} onRetry={() => void catalogoQuery.refetch()} />}
               <div className="space-y-2">{exames.map((exame, index) => <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                 <Select value={exame.catalogId || '__manual__'} onValueChange={(value) => {
@@ -226,7 +230,7 @@ function PedidosWorkspace({ task }: { task?: PedidoTask }) {
                   <SelectContent><SelectItem value="__manual__">Informar exame manualmente</SelectItem>{(catalogoQuery.data ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.nome}{item.codigo_tuss ? ` · ${item.codigo_tuss}` : ''}</SelectItem>)}</SelectContent>
                 </Select>
                 {exame.catalogId ? <div className="flex min-h-10 items-center rounded-md border bg-muted/20 px-3 text-sm"><span className="truncate">{exame.nome}</span></div> : <Input value={exame.nome} maxLength={160} onChange={(event) => setExames((lista) => lista.map((item, itemIndex) => itemIndex === index ? { ...item, nome: event.target.value } : item))} placeholder={`Nome do exame ${index + 1}`} aria-label={`Nome do exame ${index + 1}`} />}
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remover exame ${index + 1}`} disabled={exames.length === 1 || criarPedido.isPending} onClick={() => setExames((lista) => lista.filter((_, itemIndex) => itemIndex !== index))}>×</Button>
+                <Button type="button" variant="ghost" size="icon" className="h-11 w-11" aria-label={`Remover exame ${index + 1}`} disabled={exames.length === 1 || criarPedido.isPending} onClick={() => setExames((lista) => lista.filter((_, itemIndex) => itemIndex !== index))}><X aria-hidden="true" className="h-4 w-4" /></Button>
               </div>)}</div>
               <p className="text-xs text-muted-foreground" role={!temExameValido ? 'status' : undefined}>{!temExameValido ? 'Informe pelo menos um exame para habilitar o registro.' : 'Os exames serão vinculados ao cadastro clínico existente e poderão ser processados pela worklist.'}</p>
             </div>
@@ -295,7 +299,7 @@ function PedidosWorkspace({ task }: { task?: PedidoTask }) {
                 <tbody className="divide-y divide-border/70">
                   {filtrados.map((pedido) => <tr key={pedido.id} className="transition-colors hover:bg-muted/20">
                     <td className="px-5 py-4"><p className="font-mono text-xs text-primary">{pedido.codigo}</p><p className="mt-1 font-medium">{pedido.pacientes?.nome ?? 'Paciente sem nome'}</p></td>
-                    <td className="max-w-[240px] px-4 py-4"><p className="line-clamp-2">{pedido.exames?.map((exame) => exame.tipo_exame).join(', ') || 'Sem exames vinculados'}</p><p className="mt-1 text-xs text-muted-foreground">{pedido.exames?.length ?? 0} exame(s)</p></td>
+                    <td className="max-w-[240px] px-4 py-4"><p className="line-clamp-2">{pedido.exames?.map((exame) => exame.tipo_exame).join(', ') || 'Sem exames vinculados'}</p><p className="mt-1 text-xs text-muted-foreground">{contagem(pedido.exames?.length ?? 0, 'exame')}</p></td>
                     <td className="px-4 py-4"><p>{pedido.medicos?.nome ?? 'Solicitante não informado'}</p><p className="mt-1 text-xs text-muted-foreground">{pedido.convenios?.nome ?? 'Particular'}</p></td>
                     <td className="px-4 py-4"><Badge variant={pedido.prioridade === 'stat' ? 'destructive' : 'secondary'} className={pedido.prioridade === 'urgente' ? 'border-warning/30 bg-warning/10 text-warning-foreground' : ''}>{priorityLabel[pedido.prioridade]}</Badge></td>
                     <td className="px-4 py-4"><Badge variant="outline">{statusLabel[pedido.status] ?? pedido.status}</Badge></td>
@@ -313,7 +317,7 @@ function PedidosWorkspace({ task }: { task?: PedidoTask }) {
                       <p className="font-mono text-xs font-semibold text-primary">{pedido.codigo}</p>
                       <p className="mt-1 break-words font-semibold">{pedido.pacientes?.nome ?? 'Paciente sem nome'}</p>
                       <p className="mt-1 break-words text-sm">{pedido.exames?.map((exame) => exame.tipo_exame).join(', ') || 'Sem exames vinculados'}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{pedido.exames?.length ?? 0} exame(s)</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{contagem(pedido.exames?.length ?? 0, 'exame')}</p>
                     </div>
                     <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={`Ver histórico do pedido ${pedido.codigo}`} onClick={() => openHistory(pedido.id)}>
                       <History aria-hidden="true" className="h-4 w-4" />
