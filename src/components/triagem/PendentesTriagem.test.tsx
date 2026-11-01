@@ -37,4 +37,20 @@ describe('PendentesTriagem', () => {
     await user.click(screen.getByRole('button', { name: 'Triar Paciente 13' }));
     expect(onTriage).toHaveBeenCalledWith('patient-13', 'appointment-13');
   });
+
+  it('mostra o selo de prioridade e chama pelo painel quando há a ação', async () => {
+    const user = userEvent.setup();
+    const onCall = vi.fn();
+    const lista = [{ ...appointments[0], prioridade: 'urgente' }, { ...appointments[1], prioridade: 'preferencial' }];
+    render(<PendentesTriagem loading={false} appointments={lista} onTriage={vi.fn()} onCall={onCall} />);
+    expect(screen.getByText('Urgente')).toBeInTheDocument();
+    expect(screen.getByText('Preferencial')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Chamar Paciente 2 para triagem' }));
+    expect(onCall).toHaveBeenCalledWith('appointment-2');
+  });
+
+  it('não mostra a chamada sem a ação', () => {
+    render(<PendentesTriagem loading={false} appointments={appointments.slice(0, 1)} onTriage={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /para triagem/ })).not.toBeInTheDocument();
+  });
 });
