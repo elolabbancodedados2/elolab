@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Activity, Heart, Scale, Loader2, Search, Thermometer,
   Wind, Droplets, AlertTriangle, CheckCircle2, Clock, RefreshCw,
-  ArrowUpRight, User, Stethoscope, X,
+  ArrowUpRight, User, Stethoscope, X, Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
@@ -149,6 +149,28 @@ interface TriagemForm {
   observacoes: string;
   glicemia: string;
   dor_escala: string;
+}
+
+const textoDoValor = (valor: unknown) => (valor === null || valor === undefined ? '' : String(valor).replace('.', ','));
+
+/** Ficha gravada → formulário, para corrigir sem redigitar tudo. */
+function formDaTriagem(t: any): TriagemForm {
+  return {
+    paciente_id: t.paciente_id || '',
+    agendamento_id: t.agendamento_id || '',
+    pressao_arterial: t.pressao_arterial || '',
+    frequencia_cardiaca: textoDoValor(t.frequencia_cardiaca),
+    frequencia_respiratoria: textoDoValor(t.frequencia_respiratoria),
+    temperatura: textoDoValor(t.temperatura),
+    saturacao: textoDoValor(t.saturacao),
+    peso: textoDoValor(t.peso),
+    altura: textoDoValor(t.altura),
+    queixa_principal: t.queixa_principal || '',
+    classificacao_risco: (t.classificacao_risco || '') as Risco | '',
+    observacoes: t.observacoes || '',
+    glicemia: textoDoValor(t.glicemia),
+    dor_escala: textoDoValor(t.dor_escala),
+  };
 }
 
 const emptyForm: TriagemForm = {
@@ -309,6 +331,10 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
     setFormData(prev => ({ ...prev, [field]: value }));
 
   const origem = searchParams.get('origem');
+  // Correção de uma ficha já gravada hoje: mesmos campos, UPDATE no lugar de
+  // INSERT. Paciente e agendamento não mudam (o banco também barra).
+  const corrigirId = creationPage ? searchParams.get('corrigir') : null;
+  const triagemEmCorrecao = corrigirId ? triagens.find((t: any) => t.id === corrigirId) ?? null : null;
   const returnPath = origem === 'fila' ? '/fila' : origem === 'recepcao' ? '/recepcao' : '/fila?tab=triagem';
   const formDirty = JSON.stringify(formData) !== JSON.stringify(formBaseline.current);
 
@@ -329,7 +355,15 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
   }, [creationPage, searchParams, handleOpenTriagePage]);
 
   React.useEffect(() => {
-    if (!creationPage || formSeeded.current) return;
+    if (!creationPage || formSeeded.current || !corrigirId || !triagemEmCorrecao) return;
+    const inicial = formDaTriagem(triagemEmCorrecao);
+    setFormData(inicial);
+    formBaseline.current = inicial;
+    formSeeded.current = true;
+  }, [creationPage, corrigirId, triagemEmCorrecao]);
+
+  React.useEffect(() => {
+    if (!creationPage || formSeeded.current || corrigirId) return;
     const pacienteId = searchParams.get('paciente') || '';
     const agendamentoId = searchParams.get('agendamento') || '';
     if (agendamentoId && agendamentosQuery.isLoading) return;
@@ -352,7 +386,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
       nextParams.delete('agendamento');
       setSearchParams(nextParams, { replace: true });
     }
-  }, [creationPage, searchParams, setSearchParams, agendamentos, agendamentosQuery.isLoading]);
+  }, [creationPage, corrigirId, searchParams, setSearchParams, agendamentos, agendamentosQuery.isLoading]);
 
   React.useEffect(() => {
     if (!pacienteBuscaId || (!pacienteBuscaQuery.isSuccess && !pacienteBuscaQuery.isError)) return;
@@ -382,13 +416,13 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
     if (!user?.id || !profile?.clinica_id) {
       toast.error('Sua sessão clínica não está pronta. Atualize a página e tente novamente.'); return;
     }
-    if (formData.agendamento_id) {
+    if (formData.agendamento_id && !corrigirId) {
       const agendamento = agendamentos.find((a: any) => a.id === formData.agendamento_id);
       if (!agendamento || agendamento.paciente_id !== formData.paciente_id) {
         toast.error('O agendamento selecionado não pertence a este paciente.'); return;
       }
     }
-    if (formData.agendamento_id && (filaQuery.isLoading || filaQuery.isError || !temCheckinAtivo(fila, formData.agendamento_id))) {
+    if (formData.agendamento_id && !corrigirId && (filaQuery.isLoading || filaQuery.isError || !temCheckinAtivo(fila, formData.agendamento_id))) {
       toast.error('O paciente precisa fazer check-in na recepção antes da triagem.'); return;
     }
 
@@ -443,6 +477,45 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
     saveLock.current = true;
     setIsSaving(true);
     try {
+      if (corrigirId) {
+        const imcCorrigido = calcularIMC(formData.peso, formData.altura);
+        const { data: corrigida, error: erroCorrecao } = await supabase.from('triagens').update({
+          pressao_arterial: formData.pressao_arterial,
+          frequencia_cardiaca: fc,
+          frequencia_respiratoria: fr,
+          temperatura: temp,
+          saturacao: sat,
+          peso,
+          altura,
+          imc: imcCorrigido,
+          glicemia: glic,
+          dor_escala: dor,
+          queixa_principal: formData.queixa_principal,
+          classificacao_risco: formData.classificacao_risco,
+          observacoes: formData.observacoes || null,
+        } as any).eq('id', corrigirId).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+        if (erroCorrecao) throw erroCorrecao;
+        if (!corrigida) throw new Error('A ficha não foi encontrada ou seu perfil não pode alterá-la.');
+
+        // Mudou o risco de um paciente que ainda está na fila: a prioridade acompanha.
+        const avisos: string[] = [];
+        const riscoMudou = triagemEmCorrecao && triagemEmCorrecao.classificacao_risco !== formData.classificacao_risco;
+        if (riscoMudou && formData.agendamento_id && temCheckinAtivo(fila, formData.agendamento_id)) {
+          const prioridade = await autoTriagemParaFila({
+            agendamentoId: formData.agendamento_id,
+            classificacaoRisco: formData.classificacao_risco,
+            clinicaId: profile.clinica_id,
+          });
+          if (!prioridade.success) avisos.push(`A prioridade na fila não foi atualizada (${prioridade.message}).`);
+        }
+        toast.success('Triagem corrigida', { description: avisos.join(' ') || 'A alteração fica no histórico de auditoria.' });
+        queryClient.invalidateQueries({ queryKey: ['triagens'] });
+        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+        completed.current = true;
+        navigate(returnPath, { replace: true });
+        return;
+      }
+
       if (formData.agendamento_id) {
         const { data: triagemExistente, error: erroTriagemExistente } = await supabase
           .from('triagens')
@@ -608,7 +681,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
             <PacienteCombobox
               id="triagem-paciente"
               value={formData.paciente_id}
-              disabled={isSaving}
+              disabled={isSaving || !!corrigirId}
               placeholder="Buscar por nome, CPF ou telefone..."
               onChange={(pacienteId) => setFormData(prev => {
                 const agendamentoAtual = agendamentos.find((ag: any) => ag.id === prev.agendamento_id);
@@ -632,7 +705,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                 paciente_id: agendamento?.paciente_id || prev.paciente_id,
               };
             })}>
-              <SelectTrigger id="triagem-agendamento" disabled={isSaving || agendamentosQuery.isLoading || agendamentosQuery.isError}>
+              <SelectTrigger id="triagem-agendamento" disabled={isSaving || !!corrigirId || agendamentosQuery.isLoading || agendamentosQuery.isError}>
                 <SelectValue placeholder="Opcional..." />
               </SelectTrigger>
               <SelectContent>
@@ -650,7 +723,8 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
             </Select>
           </div>
         </div>
-        {formData.agendamento_id && agendamentosQuery.isSuccess && !agendamentos.some((ag: any) => ag.id === formData.agendamento_id) && (
+        {corrigirId && <p className="text-xs text-muted-foreground">Na correção, paciente e agendamento continuam os da ficha original.</p>}
+        {!corrigirId && formData.agendamento_id && agendamentosQuery.isSuccess && !agendamentos.some((ag: any) => ag.id === formData.agendamento_id) && (
           <p role="alert" className="text-sm text-destructive">Este agendamento não está mais disponível na agenda de hoje. Atualize ou remova o vínculo antes de continuar.</p>
         )}
       </section>
@@ -746,8 +820,8 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
       <div className="space-y-6 pb-8">
         <UnsavedChangesGuard dirty={formDirty} busy={isSaving} completed={completed} />
         <PageHeader
-          title="Nova triagem"
-          description="Classifique o risco e registre os sinais vitais do paciente."
+          title={corrigirId ? 'Corrigir triagem' : 'Nova triagem'}
+          description={corrigirId ? 'Ajuste os dados da ficha registrada hoje. A alteração fica no histórico de auditoria.' : 'Classifique o risco e registre os sinais vitais do paciente.'}
           icon={<Activity />}
           actions={<Button asChild variant="outline" className="gap-2 rounded-full"><Link to={returnPath}><Stethoscope aria-hidden="true" className="h-4 w-4" /> Voltar à fila</Link></Button>}
         />
@@ -760,9 +834,9 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           </div>
           <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" className="rounded-full" disabled={isSaving} onClick={() => navigate(returnPath)}>Cancelar</Button>
-            <Button type="submit" disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError || filaQuery.isLoading || filaQuery.isError))} className="gap-2 rounded-full bg-primary text-primary-foreground shadow-none hover:bg-primary/90">
+            <Button type="submit" disabled={!podeRegistrarTriagem || isSaving || erroTriagens || (!!corrigirId && !triagemEmCorrecao) || (!corrigirId && !!formData.agendamento_id && (agendamentosQuery.isLoading || agendamentosQuery.isError || filaQuery.isLoading || filaQuery.isError))} className="gap-2 rounded-full bg-primary text-primary-foreground shadow-none hover:bg-primary/90">
               {isSaving && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
-              Registrar triagem
+              {corrigirId ? 'Salvar correção' : 'Registrar triagem'}
             </Button>
           </div>
         </form>
@@ -977,6 +1051,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                     <TableHead className="hidden lg:table-cell">IMC</TableHead>
                     <TableHead>Queixa</TableHead>
                     <TableHead>Hora</TableHead>
+                    {podeRegistrarTriagem && <TableHead className="text-right"><span className="sr-only">Ações</span></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1035,6 +1110,15 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
                         <TableCell className="text-xs tabular-nums text-muted-foreground whitespace-nowrap">
                           {horaDaClinica(t.data_hora)}
                         </TableCell>
+                        {podeRegistrarTriagem && (
+                          <TableCell className="text-right">
+                            <Button asChild variant="ghost" size="sm" className="h-9 gap-1.5 rounded-full text-xs">
+                              <Link to={`/triagem/nova?corrigir=${t.id}&origem=triagem`} aria-label={`Corrigir triagem de ${getPacienteNome(t)}`}>
+                                <Pencil aria-hidden="true" className="h-3.5 w-3.5" />Corrigir
+                              </Link>
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
