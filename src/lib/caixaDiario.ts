@@ -45,3 +45,32 @@ export function validarResultadoRpcCaixa(resultado: unknown): void {
   if (CODIGOS_SUCESSO.has(code)) return;
   throw new Error(MENSAGENS_CAIXA[code] || 'Não foi possível atualizar o caixa. Atualize a tela e tente novamente.');
 }
+
+const ROTULO_FORMA: Record<string, string> = {
+  pix: 'Pix',
+  cartao_credito: 'Cartão de crédito',
+  cartao_debito: 'Cartão de débito',
+  transferencia: 'Transferência',
+  boleto: 'Boleto',
+  convenio: 'Convênio',
+};
+
+/**
+ * Entradas e saídas do dia nas formas que não passam pela gaveta. O fechamento
+ * só conta dinheiro; estes totais servem para conferir com o extrato da
+ * maquininha e do Pix antes de fechar.
+ */
+export function totaisPorFormaForaDaGaveta(movimentos: MovimentoCaixa[]) {
+  const porForma = new Map<string, { forma: string; rotulo: string; entradas: number; saidas: number; quantidade: number }>();
+  for (const movimento of movimentos) {
+    if (movimento.tipo !== 'receita' && movimento.tipo !== 'despesa') continue;
+    const forma = movimento.forma_pagamento || 'nao_informada';
+    if (forma === 'dinheiro') continue;
+    const valor = Number.isFinite(movimento.valor) ? movimento.valor : 0;
+    const atual = porForma.get(forma) ?? { forma, rotulo: ROTULO_FORMA[forma] ?? (forma === 'nao_informada' ? 'Sem forma informada' : forma.replace(/_/g, ' ')), entradas: 0, saidas: 0, quantidade: 0 };
+    if (movimento.tipo === 'receita') atual.entradas += valor; else atual.saidas += valor;
+    atual.quantidade += 1;
+    porForma.set(forma, atual);
+  }
+  return [...porForma.values()].sort((a, b) => (b.entradas - b.saidas) - (a.entradas - a.saidas));
+}

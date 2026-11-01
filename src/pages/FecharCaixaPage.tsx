@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
+import { calcularSaldoGaveta, calcularTotaisCaixa, totaisPorFormaForaDaGaveta, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
@@ -125,6 +125,7 @@ export default function FecharCaixaPage() {
   const exceededLimit = Boolean(movementsQuery.data?.exceededLimit);
   const expectedDrawer = cash ? calcularSaldoGaveta(Number(cash.valor_abertura), movements) : 0;
   const totals = cash ? calcularTotaisCaixa(Number(cash.valor_abertura), movements) : null;
+  const outrasFormas = totaisPorFormaForaDaGaveta(movements);
   const countedValue = parseValorContado(countedAmount);
   const hasDifference = countedValue !== null && !mesmoValor(countedValue, expectedDrawer);
   const reasonRequired = hasDifference && notes.trim().length < 5;
@@ -301,6 +302,36 @@ export default function FecharCaixaPage() {
                   </section>
                 );
               })()}
+
+              {outrasFormas.length > 0 && (
+                <section aria-labelledby="cash-other-methods-title" className="space-y-2 rounded-md border border-border p-3">
+                  <div>
+                    <h3 id="cash-other-methods-title" className="text-sm font-semibold text-foreground">Outras formas do período</h3>
+                    <p className="text-xs text-muted-foreground">Não passam pela gaveta. Confira com o extrato da maquininha e do Pix antes de fechar.</p>
+                  </div>
+                  <table className="w-full text-sm">
+                    <caption className="sr-only">Entradas e saídas por forma de pagamento, sem dinheiro</caption>
+                    <thead>
+                      <tr className="text-left text-xs text-muted-foreground">
+                        <th scope="col" className="py-1 font-medium">Forma</th>
+                        <th scope="col" className="py-1 text-right font-medium">Entradas</th>
+                        <th scope="col" className="py-1 text-right font-medium">Saídas</th>
+                        <th scope="col" className="py-1 text-right font-medium">Líquido</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {outrasFormas.map(item => (
+                        <tr key={item.forma} className="border-t border-border/60">
+                          <th scope="row" className="py-1.5 text-left font-medium text-foreground">{item.rotulo} <span className="text-xs font-normal text-muted-foreground">· {item.quantidade}</span></th>
+                          <td className="py-1.5 text-right tabular-nums">{moeda(item.entradas)}</td>
+                          <td className="py-1.5 text-right tabular-nums">{moeda(item.saidas)}</td>
+                          <td className="py-1.5 text-right font-semibold tabular-nums">{moeda(item.entradas - item.saidas)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="cash-closing-notes">Observações {hasDifference ? '(obrigatórias: explique a diferença)' : '(opcional)'}</Label>

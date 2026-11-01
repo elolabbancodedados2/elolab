@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
+import { calcularSaldoGaveta, calcularTotaisCaixa, totaisPorFormaForaDaGaveta, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
 
 describe('respostas das transições do caixa', () => {
   it.each(['aberto', 'fechado', 'reaberto'])('aceita o resultado %s', (code) => {
@@ -64,5 +64,22 @@ describe('saldo esperado em dinheiro', () => {
       { tipo: 'receita', valor: 50, forma_pagamento: 'dinheiro' },
       { tipo: 'receita', valor: -12, forma_pagamento: 'dinheiro' },
     ])).toBe(58);
+  });
+});
+
+describe('totaisPorFormaForaDaGaveta', () => {
+  it('agrupa cartão e Pix, deixa dinheiro, sangria e suprimento de fora', () => {
+    const totais = totaisPorFormaForaDaGaveta([
+      { tipo: 'receita', valor: 100, forma_pagamento: 'pix' },
+      { tipo: 'receita', valor: 50, forma_pagamento: 'pix' },
+      { tipo: 'despesa', valor: 20, forma_pagamento: 'pix' },
+      { tipo: 'receita', valor: 80, forma_pagamento: 'cartao_debito' },
+      { tipo: 'receita', valor: 999, forma_pagamento: 'dinheiro' },
+      { tipo: 'sangria', valor: 10, forma_pagamento: 'pix' },
+    ] as never);
+    expect(totais).toEqual([
+      { forma: 'pix', rotulo: 'Pix', entradas: 150, saidas: 20, quantidade: 3 },
+      { forma: 'cartao_debito', rotulo: 'Cartão de débito', entradas: 80, saidas: 0, quantidade: 1 },
+    ]);
   });
 });
