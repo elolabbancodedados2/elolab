@@ -62,6 +62,9 @@ import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClin
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { filtrarRascunhosAbertos, nomeAutorRascunho } from '@/lib/prontuarioDrafts';
 import { needsPatientContextChangeConfirmation } from '@/lib/patientContextChange';
+import { atualizarEvolucaoNoHistorico } from '@/lib/historicoEvolucoes';
+
+const COLUNAS_HISTORICO_EVOLUCOES = 'id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PrescricaoForm {
@@ -71,6 +74,8 @@ interface PrescricaoForm {
   duracao: string;
   quantidade: string;
   observacoes: string;
+  /** Data original do item já gravado; itens novos usam a data da evolução. */
+  data_emissao?: string | null;
 }
 
 interface RascunhoNaFila {
@@ -755,6 +760,8 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
 
 // ─── Anexos Wrapper ────────────────────────────────────────
 function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal, onAdicionarAnexo, onOpenPreview, portalAnexoId, patientName, onManagePortal, onClosePortalPage }: { pacienteId: string; prontuarioId: string; readOnly: boolean; podeGerenciarPortal: boolean; onAdicionarAnexo: () => void; onOpenPreview: (anexoId: string) => void; portalAnexoId?: string | null; patientName?: string; onManagePortal?: (anexoId: string) => void; onClosePortalPage?: () => void }) {
+  const { profile } = useSupabaseAuth();
+  const clinicaId = profile?.clinica_id ?? null;
   const [anexos, setAnexos] = useState<any[]>([]);
   const [erro, setErro] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -773,10 +780,10 @@ function AnexosWrapper({ pacienteId, prontuarioId, readOnly, podeGerenciarPortal
     }
   }, [prontuarioId]);
   useEffect(() => { loadAnexos(); }, [loadAnexos]);
-  if (portalAnexoId) return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} portalAnexoId={portalAnexoId} patientName={patientName} onManagePortal={onManagePortal} onOpenPreview={onOpenPreview} onClosePortalPage={onClosePortalPage} portalPageError={erro} onRetryPortalPage={() => { void loadAnexos(); }} portalPageLoading={loading} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
+  if (portalAnexoId) return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} portalAnexoId={portalAnexoId} patientName={patientName} onManagePortal={onManagePortal} onOpenPreview={onOpenPreview} onClosePortalPage={onClosePortalPage} portalPageError={erro} onRetryPortalPage={() => { void loadAnexos(); }} portalPageLoading={loading} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} clinicaId={clinicaId} />;
   if (loading) return <Skeleton className="h-32 w-full" />;
   if (erro) return <ErrorState compact error={erro} title="Não foi possível carregar os anexos" onRetry={() => { void loadAnexos(); }} />;
-  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} patientName={patientName} onManagePortal={onManagePortal} onOpenPreview={onOpenPreview} onClosePortalPage={onClosePortalPage} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} />;
+  return <AnexosProntuario pacienteId={pacienteId} prontuarioId={prontuarioId} anexos={anexos} readOnly={readOnly} podeGerenciarPortal={podeGerenciarPortal} patientName={patientName} onManagePortal={onManagePortal} onOpenPreview={onOpenPreview} onClosePortalPage={onClosePortalPage} onAdicionarAnexo={onAdicionarAnexo} onAnexoRemovido={loadAnexos} clinicaId={clinicaId} />;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -829,7 +836,7 @@ export default function Prontuarios() {
         toast.success(r.message, { description: r.actions.join(' • ') });
       }
     } catch (e: any) {
-      toast.error('Não foi possível dar baixa', { description: e?.message });
+      toast.error('Não foi possível dar baixa', { description: mensagemDeErro(e) });
     } finally {
       setDispensando(false);
     }
@@ -1085,6 +1092,7 @@ export default function Prontuarios() {
   const [historicoAuditadoPacienteId, setHistoricoAuditadoPacienteId] = useState<string | null>(null);
   const [erroHistorico, setErroHistorico] = useState<unknown>(null);
   const [reloadHistorico, setReloadHistorico] = useState(0);
+  const clinicaDoHistorico = user?.clinica_id ?? null;
 
   useEffect(() => {
     if (!selectedPacienteId || (isMedicoOnly && !medicoId)) {
@@ -1103,12 +1111,14 @@ export default function Prontuarios() {
       if (!active) return;
       setHistoricoAuditadoPacienteId(selectedPacienteId);
       return buscarTodasAsPaginas((inicio, fim) => {
-      const query = supabase
+      let query = supabase
         .from('prontuarios')
-        .select('id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
-        .eq('paciente_id', selectedPacienteId)
-        .order('data', { ascending: false }).order('id', { ascending: false });
-      return query.range(inicio, fim);
+        .select(COLUNAS_HISTORICO_EVOLUCOES)
+        .eq('paciente_id', selectedPacienteId);
+      if (clinicaDoHistorico) query = query.eq('clinica_id', clinicaDoHistorico);
+      return query
+        .order('data', { ascending: false }).order('id', { ascending: false })
+        .range(inicio, fim);
       });
     }).then(async (data) => {
       if (data === undefined) return;
@@ -1123,7 +1133,7 @@ export default function Prontuarios() {
       setLoadingHistorico(false);
     });
     return () => { active = false; };
-  }, [selectedPacienteId, isMedicoOnly, medicoId, reloadHistorico]);
+  }, [selectedPacienteId, isMedicoOnly, medicoId, reloadHistorico, clinicaDoHistorico]);
 
   // Filtra por paciente NO SERVIDOR. Antes esta query trazia a coleção inteira
   // de prontuários da clínica — o hook busca em blocos de 5.000 até o teto de
@@ -1228,7 +1238,7 @@ export default function Prontuarios() {
         toast.info('Carregando os profissionais disponíveis. Tente novamente em instantes.');
         return false;
       }
-      toast.error('Erro', { description: 'Nenhum médico cadastrado no sistema.' });
+      toast.error('Não é possível iniciar a evolução', { description: 'Nenhum médico cadastrado no sistema. Cadastre um médico em Configurações.' });
       return false;
     }
     prescricoesRequestRef.current += 1;
@@ -1274,6 +1284,7 @@ export default function Prontuarios() {
       setPrescricoes((data || []).map((p: any) => ({
         medicamento: p.medicamento, dosagem: p.dosagem || '', posologia: p.posologia || '',
         duracao: p.duracao || '', quantidade: p.quantidade || '', observacoes: p.observacoes || '',
+        data_emissao: p.data_emissao || null,
       })));
       return true;
     } catch (error) {
@@ -1292,8 +1303,8 @@ export default function Prontuarios() {
       await registrarAcessoProntuario(prontuario.id, 'visualizacao');
     } catch (error) {
       console.error('[prontuario] registro de acesso falhou:', error);
-      toast.error('Nao foi possivel registrar o acesso ao prontuario.', {
-        description: 'O prontuario permaneceu fechado. Tente novamente em instantes.',
+      toast.error('Não foi possível registrar o acesso ao prontuário.', {
+        description: 'O prontuário permaneceu fechado. Tente novamente em instantes.',
       });
       return false;
     }
@@ -1658,7 +1669,7 @@ export default function Prontuarios() {
     const queixaPrincipal = currentProntuario.queixa_principal?.trim() || '';
     if (!queixaPrincipal) {
       if (silent) setAutoSaveError('Preencha a queixa principal antes de salvar.');
-      else toast.error('Erro', { description: 'Preencha a queixa principal.' });
+      else toast.error('Queixa principal obrigatória', { description: 'Preencha a queixa principal para salvar a evolução.' });
       saveInProgressRef.current = false;
       return null;
     }
@@ -1738,6 +1749,11 @@ export default function Prontuarios() {
       // ─── Save prescriptions (create + update) ───
       if (prontuarioId) {
         const validas = prescricoes.filter(p => p.medicamento.trim());
+        // Regravar não pode mudar a data de emissão dos itens existentes; os
+        // novos recebem a data da evolução (não a de hoje, se for retroativa).
+        const dataDaEvolucao = /^\d{4}-\d{2}-\d{2}/.test(String(currentProntuario.data ?? ''))
+          ? String(currentProntuario.data).slice(0, 10)
+          : todaySaoPauloDateOnly();
 
         // Troca tudo numa transação só (migration 20260812120000). Antes eram
         // um delete e N inserts independentes: uma falha no meio deixava o
@@ -1753,7 +1769,7 @@ export default function Prontuarios() {
               duracao: presc.duracao || null,
               quantidade: presc.quantidade || null,
               observacoes: presc.observacoes || null,
-              data_emissao: todaySaoPauloDateOnly(),
+              data_emissao: presc.data_emissao || dataDaEvolucao,
               tipo: 'simples',
             })),
           }
@@ -1772,20 +1788,21 @@ export default function Prontuarios() {
         setAutoSaveError(null);
       } else {
         refetchProntuarios();
-        // Reload history
+        // Atualiza só a evolução salva no histórico. Antes cada salvamento
+        // recarregava todas as evoluções do paciente, sem filtro de clínica.
         try {
-          const hist = await buscarTodasAsPaginas((inicio, fim) => {
-            const historicoQuery = supabase.from('prontuarios')
-              .select('id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)')
-              .eq('paciente_id', currentProntuario.paciente_id)
-              .order('data', { ascending: false }).order('id', { ascending: false });
-            return historicoQuery.range(inicio, fim);
-          });
-          setHistoricoEvolucoes(hist);
-          setErroHistorico(null);
+          const { data: evolucaoSalva, error: historicoErr } = await supabase.from('prontuarios')
+            .select(COLUNAS_HISTORICO_EVOLUCOES)
+            .eq('id', prontuarioId!)
+            .eq('clinica_id', user.clinica_id)
+            .maybeSingle();
+          if (historicoErr) throw historicoErr;
+          if (evolucaoSalva && (evolucaoSalva as any).id) {
+            setHistoricoEvolucoes(prev => atualizarEvolucaoNoHistorico(prev, evolucaoSalva as any));
+          }
         } catch (historicoErr) {
-          setHistoricoEvolucoes([]);
-          setErroHistorico(historicoErr);
+          // O registro já foi salvo; só o resumo do histórico ficou desatualizado.
+          if (import.meta.env.DEV) console.error('Erro ao atualizar o histórico:', historicoErr);
         }
       }
 
@@ -1927,8 +1944,8 @@ export default function Prontuarios() {
       try {
         const savedId = await performSave(true);
         if (!savedId || changeVersionRef.current !== savingVersion) {
-          toast.error('Nao foi possivel salvar antes da troca', {
-            description: 'A evolucao permaneceu aberta. Corrija os campos obrigatorios e tente novamente.',
+          toast.error('Não foi possível salvar antes da troca', {
+            description: 'A evolução permaneceu aberta. Corrija os campos obrigatórios e tente novamente.',
           });
           return;
         }
@@ -2942,6 +2959,11 @@ export default function Prontuarios() {
 
                   <Section icon={AlertTriangle} title="Queixa Principal *">
                     <Textarea aria-label="Queixa principal" placeholder="Queixa principal..." value={currentProntuario.queixa_principal || ''} onChange={e => updateField('queixa_principal', e.target.value)} rows={2} />
+                    {hasUnsavedChanges && !isSigned && !currentProntuario.queixa_principal?.trim() && (
+                      <p role="status" className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+                        Salvamento automático pausado: preencha a queixa principal para que a evolução seja salva.
+                      </p>
+                    )}
                   </Section>
                   <Section icon={FileText} title="História da Doença Atual (HDA)">
                     <Textarea aria-label="História da doença atual" placeholder="Evolução cronológica, fatores de melhora/piora..." value={currentProntuario.historia_doenca_atual || ''} onChange={e => updateField('historia_doenca_atual', e.target.value)} rows={4} />
@@ -3331,7 +3353,7 @@ export default function Prontuarios() {
                 )}
                 {autoSaveError && (
                   <span role="alert" className="text-xs text-destructive">
-                    Falha no salvamento automático: {autoSaveError}. Mantenha esta tela aberta e salve manualmente.
+                    Falha no salvamento automático: {autoSaveError.replace(/[.\s]+$/, '')}. Mantenha esta tela aberta e salve manualmente.
                   </span>
                 )}
               </div>

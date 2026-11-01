@@ -140,7 +140,7 @@ export function HealthCheckTab() {
     };
     const v = variants[status];
     const Icon = v.icon;
-    return <Badge variant="outline" className={`${v.bg} ${v.text} gap-1 rounded-full hover:bg-transparent`}><Icon className="h-3 w-3" /> {status.toUpperCase()}</Badge>;
+    return <Badge variant="outline" className={`${v.bg} ${v.text} gap-1 rounded-full hover:bg-transparent`}><Icon className="h-3 w-3" aria-hidden="true" /> {({ ok: 'Operacional', warning: 'Atenção', error: 'Falha' } as Record<string, string>)[status] ?? status}</Badge>;
   };
 
   return (
@@ -316,33 +316,55 @@ export function EspecialidadesTab() {
   });
   const especialidades = especialidadesQuery.data ?? [];
 
-  const criarEspecialidade = async () => {
+  // Formulário próprio no lugar de três window.prompt seguidos: valida e funciona no celular.
+  const [formEsp, setFormEsp] = useState<{ esp: Especialidade | null; nome: string; codigo: string; descricao: string } | null>(null);
+  const [salvandoEsp, setSalvandoEsp] = useState(false);
+  const codigoSugerido = (nome: string) => nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+  const criarEspecialidade = () => {
     if (!profile?.clinica_id) return toast.error('Clínica não identificada.');
     if (especialidadesQuery.isLoading || especialidadesQuery.isError) return toast.error('Carregue as especialidades antes de criar outra.');
-    const nome = window.prompt('Nome da nova especialidade:')?.trim();
-    if (!nome) return;
-    const sugerido = nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_');
-    const codigo = window.prompt('Código curto:', sugerido)?.trim();
-    if (!codigo) return;
-    const descricao = window.prompt('Descrição:', '')?.trim() || '';
-    const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true, clinica_id: profile.clinica_id });
-    if (error) return toast.error('Erro ao criar especialidade', { description: error.message });
-    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
-    toast.success('Especialidade criada');
+    setFormEsp({ esp: null, nome: '', codigo: '', descricao: '' });
   };
 
-  const editarEspecialidade = async (esp: Especialidade) => {
+  const editarEspecialidade = (esp: Especialidade) => {
     if (especialidadesQuery.isLoading || especialidadesQuery.isError) return toast.error('Carregue as especialidades antes de editar.');
     if (!profile?.clinica_id || esp.clinica_id !== profile.clinica_id) return toast.info('As especialidades padrão são compartilhadas e não podem ser editadas.');
-    const nome = window.prompt('Nome da especialidade:', esp.nome)?.trim();
-    if (!nome) return;
-    const descricao = window.prompt('Descrição:', esp.descricao)?.trim() ?? esp.descricao;
-    const { data, error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao })
-      .eq('id', esp.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
-    if (error) return toast.error('Erro ao editar', { description: error.message });
-    if (!data) return toast.error('Especialidade não encontrada ou sem permissão para editar.');
-    await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
-    toast.success('Especialidade atualizada');
+    setFormEsp({ esp, nome: esp.nome, codigo: (esp as any).codigo ?? '', descricao: esp.descricao ?? '' });
+  };
+
+  const salvarEspecialidade = async () => {
+    if (!formEsp || !profile?.clinica_id || salvandoEsp) return;
+    const nome = formEsp.nome.trim();
+    const codigo = (formEsp.codigo.trim() || codigoSugerido(nome));
+    const descricao = formEsp.descricao.trim();
+    if (nome.length < 3) return toast.error('Informe o nome da especialidade (mínimo 3 letras).');
+    if (!formEsp.esp) {
+      if (!/^[a-z0-9_]{2,40}$/.test(codigo)) return toast.error('O código usa só letras minúsculas, números e "_" (2 a 40).');
+      if (especialidades.some(e => (e as any).codigo === codigo)) return toast.error('Já existe uma especialidade com esse código.');
+    }
+    if (especialidades.some(e => e.id !== formEsp.esp?.id && e.nome.trim().toLocaleLowerCase('pt-BR') === nome.toLocaleLowerCase('pt-BR'))) {
+      return toast.error('Já existe uma especialidade com esse nome.');
+    }
+    setSalvandoEsp(true);
+    try {
+      if (formEsp.esp) {
+        const { data, error } = await (supabase as any).from('especialidades_destino').update({ nome, descricao })
+          .eq('id', formEsp.esp.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Especialidade não encontrada ou sem permissão para editar.');
+      } else {
+        const { error } = await (supabase as any).from('especialidades_destino').insert({ nome, codigo, descricao, ativo: true, clinica_id: profile.clinica_id });
+        if (error) throw error;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['especialidades'] });
+      toast.success(formEsp.esp ? 'Especialidade atualizada' : 'Especialidade criada');
+      setFormEsp(null);
+    } catch (error) {
+      toast.error('Não foi possível salvar a especialidade', { description: mensagemDeErro(error) });
+    } finally {
+      setSalvandoEsp(false);
+    }
   };
 
   const pedirRemocaoEspecialidade = (esp: Especialidade) => {
@@ -362,13 +384,44 @@ export function EspecialidadesTab() {
 
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-1">
+      <Dialog open={Boolean(formEsp)} onOpenChange={(aberto) => { if (!aberto && !salvandoEsp) setFormEsp(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{formEsp?.esp ? 'Editar especialidade' : 'Nova especialidade'}</DialogTitle></DialogHeader>
+          {formEsp && (
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void salvarEspecialidade(); }}>
+              <div className="space-y-1.5">
+                <Label htmlFor="esp-nome">Nome *</Label>
+                <Input id="esp-nome" autoFocus value={formEsp.nome} maxLength={120} disabled={salvandoEsp}
+                  onChange={(e) => setFormEsp(f => f && ({ ...f, nome: e.target.value }))} />
+              </div>
+              {!formEsp.esp && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="esp-codigo">Código</Label>
+                  <Input id="esp-codigo" value={formEsp.codigo} maxLength={40} disabled={salvandoEsp} placeholder={codigoSugerido(formEsp.nome) || 'cardiologia'}
+                    onChange={(e) => setFormEsp(f => f && ({ ...f, codigo: e.target.value.toLowerCase() }))} />
+                  <p className="text-xs text-muted-foreground">Deixe em branco para usar o sugerido. Só letras minúsculas, números e "_".</p>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="esp-descricao">Descrição</Label>
+                <Textarea id="esp-descricao" rows={3} maxLength={500} value={formEsp.descricao} disabled={salvandoEsp}
+                  onChange={(e) => setFormEsp(f => f && ({ ...f, descricao: e.target.value }))} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setFormEsp(null)} disabled={salvandoEsp}>Cancelar</Button>
+                <Button type="submit" disabled={salvandoEsp}>{salvandoEsp ? 'Salvando…' : 'Salvar'}</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2"><Stethoscope className="h-5 w-5" />Especialidades</CardTitle>
             <CardDescription>Gerenciar especialidades disponíveis</CardDescription>
           </div>
-          <Button onClick={() => void criarEspecialidade()} disabled={!profile?.clinica_id || especialidadesQuery.isLoading || especialidadesQuery.isError} size="sm" className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+          <Button onClick={criarEspecialidade} disabled={!profile?.clinica_id || especialidadesQuery.isLoading || especialidadesQuery.isError} size="sm" className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
             <Plus className="h-4 w-4" />
             Nova Especialidade
           </Button>
@@ -386,7 +439,7 @@ export function EspecialidadesTab() {
                     {esp.ativo ? 'Ativo' : 'Inativo'}
                   </Badge>
                   {esp.clinica_id === profile?.clinica_id && <>
-                    <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" aria-label={`Editar ${esp.nome}`} onClick={() => void editarEspecialidade(esp)}><Edit className="h-3 w-3" /></Button>
+                    <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" aria-label={`Editar ${esp.nome}`} onClick={() => editarEspecialidade(esp)}><Edit className="h-3 w-3" /></Button>
                     <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={`Excluir ${esp.nome}`} onClick={() => pedirRemocaoEspecialidade(esp)}><Trash2 className="h-3 w-3" /></Button>
                   </>}
                 </div>
@@ -640,27 +693,13 @@ export function LGPDAvancadoTab() {
 
           <Separator />
 
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Switch checked={configLGPD.backupAutomatico} disabled={saving} onCheckedChange={v => setConfigLGPD({ ...configLGPD, backupAutomatico: v })} />
-              Backup Automático Diário
-            </Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Switch checked={configLGPD.criptografiaSenhas} disabled={saving} onCheckedChange={v => setConfigLGPD({ ...configLGPD, criptografiaSenhas: v })} />
-              Criptografia de Senhas (bcrypt)
-            </Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Switch checked={configLGPD.auditoriCompleta} disabled={saving} onCheckedChange={v => setConfigLGPD({ ...configLGPD, auditoriCompleta: v })} />
-              Auditoria Completa de Acessos
-            </Label>
-          </div>
-          <p className="text-xs text-muted-foreground">Esses interruptores registram preferências da clínica; não ativam backup, criptografia ou auditoria no sistema.</p>
+          {/* Interruptores de backup, criptografia e auditoria não tinham efeito e passavam
+              falsa sensação de conformidade: aqui fica só o estado real. */}
+          <ul className="space-y-1.5 text-sm">
+            <li><span className="font-medium">Senhas:</span> <span className="text-muted-foreground">protegidas pelo provedor de autenticação; o EloLab não armazena senhas.</span></li>
+            <li><span className="font-medium">Auditoria:</span> <span className="text-muted-foreground">acessos a prontuários e alterações financeiras ficam registrados no histórico de auditoria.</span></li>
+            <li><span className="font-medium">Backup:</span> <span className="text-muted-foreground">feito pela plataforma; veja a aba Backup em Configurações.</span></li>
+          </ul>
         </CardContent>
       </Card>
 
@@ -718,7 +757,7 @@ export function LGPDAvancadoTab() {
               <Link to="/lgpd-pacientes"><Users className="h-4 w-4" /> Atender titular</Link>
             </Button>
           </div>
-          {showRequests && <div className="space-y-2">{requests.length===0 ? <p className="text-sm text-muted-foreground">Nenhuma requisição pendente.</p> : requests.map((request:any)=><div key={request.id} className="flex justify-between gap-3 rounded-xl border border-border/60 p-3 text-sm"><span>{request.pacientes?.nome || 'Paciente'} — {request.request_type}</span><span>{formatarDataHoraSaoPaulo(request.requested_at).split(' ')[0]}</span></div>)}</div>}
+          {showRequests && <div className="space-y-2">{requests.length===0 ? <p className="text-sm text-muted-foreground">Nenhuma requisição pendente.</p> : requests.map((request:any)=><div key={request.id} className="flex justify-between gap-3 rounded-xl border border-border/60 p-3 text-sm"><span>{request.pacientes?.nome || 'Paciente'} — {({ export: 'Exportação', access: 'Acesso', correction: 'Correção' } as Record<string, string>)[request.request_type] ?? request.request_type}</span><span>{formatarDataHoraSaoPaulo(request.requested_at).split(' ')[0]}</span></div>)}</div>}
         </CardContent>
       </Card>
 
@@ -750,15 +789,15 @@ export default function ConfiguracoesAvancadas() {
           </TabsTrigger>
           <TabsTrigger value="integracoes" className="flex items-center gap-2">
             <Code className="h-4 w-4" />
-            <span>APIs</span>
+            <span>Integrações</span>
           </TabsTrigger>
           <TabsTrigger value="especialidades" className="flex items-center gap-2">
             <Stethoscope className="h-4 w-4" />
-            <span>Espec.</span>
+            <span>Especialidades</span>
           </TabsTrigger>
           <TabsTrigger value="documentos" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            <span>Docs</span>
+            <span>Documentos</span>
           </TabsTrigger>
           <TabsTrigger value="lgpd" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />

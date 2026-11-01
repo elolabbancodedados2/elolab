@@ -47,8 +47,10 @@ import { Database } from '@/integrations/supabase/types';
 import { autoCreateColeta, autoProgressExame } from '@/lib/workflowAutomation';
 import { podeExcluirExame, preparosAusentesNaGuia, proximaAcaoExame, textoPreparosParaGuia } from '@/lib/examesWorkflow';
 import { LancarResultado } from '@/components/exames/LancarResultado';
-import { parseDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, toDateOnly } from '@/lib/dateOnly';
 import { gerarGuiaSolicitacaoExames, downloadPDF } from '@/lib/pdfGenerator';
+
+const DIAS_PERIODO_EXAMES = 90;
 
 type StatusExame = Database['public']['Enums']['status_exame'];
 
@@ -358,6 +360,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
   const [readyFor, setReadyFor] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
+  const [incluirExamesAntigos, setIncluirExamesAntigos] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.examSearch || '');
   const filtrosUrl = lerFiltrosExames(searchParams);
   const statusFilter = filtrosUrl.status;
@@ -523,19 +526,30 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
     return !alreadyInCatalog && !alreadySelected;
   }, [allExames, examSearch, examesSelecionados]);
 
+  // O filtro de paciente, o médico do perfil e o período vão para o servidor:
+  // antes a tela baixava todos os exames da clínica e filtrava no navegador.
+  // Sem paciente selecionado, o padrão são os últimos 90 dias.
+  const inicioPeriodoExames = incluirExamesAntigos || pacienteFiltroId
+    ? null
+    : toDateOnly(addDays(parseDateOnly(todaySaoPauloDateOnly()), -DIAS_PERIODO_EXAMES));
   const examesQuery = useQuery({
-    queryKey: ['exames', user?.id ?? null, profile?.clinica_id ?? null, isMedicoOnly, medicoId],
+    queryKey: ['exames', user?.id ?? null, profile?.clinica_id ?? null, isMedicoOnly, medicoId, pacienteFiltroId ?? null, inicioPeriodoExames],
     queryFn: async () => {
       return buscarEmBlocos<any>(() => {
-        const query = supabase
+        let query = supabase
           .from('exames')
           .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(crm, especialidade, nome)')
-          .eq('clinica_id', profile?.clinica_id ?? '')
+          .eq('clinica_id', profile?.clinica_id ?? '');
+        if (pacienteFiltroId) query = query.eq('paciente_id', pacienteFiltroId);
+        // O médico vê os exames da clínica (inclusive os pedidos por colegas); o filtro é por paciente e período.
+        if (inicioPeriodoExames) query = query.gte('data_solicitacao', inicioPeriodoExames);
+        return query
           .order('data_solicitacao', { ascending: false })
           .order('id', { ascending: true });
-        return query;
       });
     },
+    // Ao ampliar o período, mantém a lista atual na tela enquanto busca.
+    placeholderData: (anterior) => anterior,
     enabled: !taskPage && !!user && !!profile?.clinica_id && (!isMedicoOnly || !!medicoId),
   });
   const exames = examesQuery.data ?? [];
@@ -1572,6 +1586,20 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
             </Table>
             </div>
           </div>
+          {!pacienteFiltroId && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>{incluirExamesAntigos ? 'Exibindo todas as solicitações.' : `Exibindo solicitações dos últimos ${DIAS_PERIODO_EXAMES} dias.`}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() => setIncluirExamesAntigos(atual => !atual)}
+                disabled={examesQuery.isFetching}
+              >
+                {incluirExamesAntigos ? `Mostrar só os últimos ${DIAS_PERIODO_EXAMES} dias` : 'Ver exames mais antigos'}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

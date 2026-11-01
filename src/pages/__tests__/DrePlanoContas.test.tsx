@@ -12,7 +12,7 @@ vi.mock('@/integrations/supabase/client', () => {
   const consulta = (tabela: string) => {
     const resultado = () => Promise.resolve({ data: banco.tabelas[tabela] ?? [], error: null });
     const builder: Record<string, unknown> = {};
-    for (const metodo of ['select', 'eq', 'in', 'order', 'gte', 'lt', 'not', 'range', 'update', 'insert', 'upsert', 'delete']) {
+    for (const metodo of ['select', 'eq', 'in', 'or', 'order', 'gte', 'lt', 'not', 'range', 'update', 'insert', 'upsert', 'delete']) {
       builder[metodo] = () => builder;
     }
     builder.then = (ok: (v: unknown) => unknown, erro: (e: unknown) => unknown) => resultado().then(ok, erro);

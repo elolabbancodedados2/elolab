@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: mocks.from } }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ profile: { clinica_id: 'clinic-1' } }) }));
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
+vi.mock('@/lib/avisos', () => ({ avisar: mocks.toast }));
 vi.mock('@/components/UnsavedChangesGuard', () => ({ UnsavedChangesGuard: () => null }));
 
 import ConsentimentoLGPDTaskPage from '@/pages/ConsentimentoLGPDTaskPage';

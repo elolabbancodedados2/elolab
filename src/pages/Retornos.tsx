@@ -463,6 +463,12 @@ function RetornosWorkspace() {
       toast.error('Informe um horário para o agendamento.');
       return;
     }
+    // A data já não aceita dias passados; hoje, o horário também precisa ser futuro.
+    if (horarioAgendadoJaChegou(format(dataAgendamento, 'yyyy-MM-dd'), horaAgendamento)) {
+      toast.error('Este horário já passou.', { description: 'Para hoje, escolha um horário depois de agora.' });
+      document.getElementById('retorno-horario')?.focus();
+      return;
+    }
 
     saveLock.current = true;
     setIsAgendando(true);

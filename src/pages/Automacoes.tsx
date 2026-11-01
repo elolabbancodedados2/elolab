@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -251,7 +252,8 @@ export default function Automacoes() {
   const claimsNeedingReview = deliveryClaims
     .filter((claim) => claim.estado === 'uncertain' || Date.now() - new Date(claim.criado_em).getTime() >= 10 * 60_000);
   const clientErrors = clientErrorsQuery.data ?? [];
-  const allQueries = [logsQuery, settingsQuery, queueQuery, deliveryClaimsQuery, clientErrorsQuery];
+  // Erros do navegador são diagnóstico: uma falha nessa consulta não pode travar as automações.
+  const allQueries = [logsQuery, settingsQuery, queueQuery, deliveryClaimsQuery];
   const isLoading = allQueries.some(query => query.isLoading);
   const failedQuery = allQueries.find(query => query.isError);
 
@@ -259,7 +261,22 @@ export default function Automacoes() {
   const automacoesAtivasCount = AUTOMATIONS.filter(automation => automation.available !== false).filter(automation => (
     automation.configurable === false ? true : (getSettingByKeyForIndicator(automation.key)?.ativo ?? true)
   )).length;
-  const filaPendenteCount = queue.filter(item => ['pendente', 'erro', 'incerto'].includes(item.status)).length;
+  // A lista mostra só os 100 envios mais recentes; o total pendente vem contado no servidor.
+  const filaPendenteQuery = useQuery({
+    queryKey: ['automacoes-fila-pendente', profile?.clinica_id],
+    enabled: Boolean(profile?.clinica_id),
+    staleTime: 30_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { count, error } = await supabase.from('notification_queue')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinica_id', profile!.clinica_id!)
+        .in('status', ['pendente', 'erro', 'incerto']);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const filaPendenteCount = filaPendenteQuery.data ?? queue.filter(item => ['pendente', 'erro', 'incerto'].includes(item.status)).length;
   const logsComErroCount = logs.filter(log => log.status === 'erro').length;
   const errosAppCount = clientErrors.length;
 
@@ -826,7 +843,9 @@ export default function Automacoes() {
           <Card className="shadow-xs"><CardHeader><CardTitle>Erros reais do navegador</CardTitle><CardDescription>Falhas não tratadas registradas em produção, sem e-mails, documentos ou stack traces sensíveis.</CardDescription></CardHeader>
             <CardContent><div className="overflow-hidden overflow-x-auto rounded-xl border border-border/60"><Table>
               <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Tipo</TableHead><TableHead>Rota</TableHead><TableHead>Mensagem</TableHead><TableHead>Versão</TableHead></TableRow></TableHeader>
-              <TableBody>{clientErrors.length === 0 ? (
+              <TableBody>{clientErrorsQuery.isError ? (
+                <TableRow><TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">Não foi possível carregar os erros do navegador. <button type="button" className="font-medium text-foreground underline underline-offset-4" onClick={() => void clientErrorsQuery.refetch()}>Tentar de novo</button></TableCell></TableRow>
+              ) : clientErrors.length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="py-10 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">

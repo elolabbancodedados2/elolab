@@ -416,13 +416,16 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
     enabled: !!profile?.clinica_id,
   });
 
+  // Abertas + fechadas nos últimos 30 dias; o histórico completo só sob demanda.
+  const [verHistoricoTarefas, setVerHistoricoTarefas] = useState(false);
   const tarefasQuery = useQuery({
-    queryKey: ['tarefas', profile?.clinica_id, profile?.id, taskId ?? null],
+    queryKey: ['tarefas', profile?.clinica_id, profile?.id, taskId ?? null, verHistoricoTarefas],
     refetchInterval: 60_000,
     queryFn: async () => {
       const data = await withSafeRetry(() => buscarEmBlocos<any>(() => {
         let query = supabase.from('tarefas').select('*').eq('clinica_id', profile!.clinica_id).order('created_at', { ascending: false }).order('id', { ascending: true });
         if (taskId) query = query.eq('id', taskId);
+        else if (!verHistoricoTarefas) query = query.or(`status.in.(pendente,em_andamento),updated_at.gte.${new Date(Date.now() - 30 * 86_400_000).toISOString()}`);
         return query;
       }));
       return data || [];
@@ -786,6 +789,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
       <p className="-mt-2 px-1 text-xs text-muted-foreground" role="status" aria-live="polite">
         {temFiltro ? `${filtered.length} de ${enrichedTarefas.length} tarefas` : `${enrichedTarefas.length} tarefas`}
         <span className="ml-2 hidden sm:inline">Atalho: / para buscar · Esc para limpar</span>
+        <button type="button" className="ml-3 font-medium text-foreground underline underline-offset-4" onClick={() => setVerHistoricoTarefas(v => !v)}>{verHistoricoTarefas ? 'Mostrar só os últimos 30 dias' : 'Ver tarefas fechadas há mais de 30 dias'}</button>
       </p>
 
       {/* Content */}
@@ -951,9 +955,10 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="task-assignee">Responsável</Label>
-                <Select value={form.responsavel_id} onValueChange={(v) => setForm(p => ({ ...p, responsavel_id: v }))}>
+                <Select value={form.responsavel_id || '__sem__'} onValueChange={(v) => setForm(p => ({ ...p, responsavel_id: v === '__sem__' ? '' : v }))}>
                   <SelectTrigger id="task-assignee"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__sem__">Sem responsável</SelectItem>
                     {profiles?.filter((p: any) => p.ativo !== false || p.id === form.responsavel_id).map((p: any) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                     {!profiles?.some((p: any) => p.ativo !== false) && (
                       <SelectItem value="sem-responsaveis-ativos" disabled>Nenhum membro ativo disponível</SelectItem>

@@ -227,7 +227,10 @@ export default function Relatorios() {
   const podeVerAgenda = !!profile?.roles?.some(role => ['admin', 'medico', 'enfermagem'].includes(role));
   const ehAdmin = !!profile?.roles?.includes('admin');
   const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
-  const pacientesQuery = usePacientes(podeVerRelatorioPacientes, { suppressGlobalErrorToast: true });
+  // O cadastro completo (com dados clínicos) só é baixado na aba Pacientes ou
+  // quando o menu de exportação é aberto, não em toda visita a Relatórios.
+  const [precisaCadastroPacientes, setPrecisaCadastroPacientes] = useState(false);
+  const pacientesQuery = usePacientes(podeVerRelatorioPacientes && (activeTab === 'pacientes' || precisaCadastroPacientes), { suppressGlobalErrorToast: true });
   const pacientes = pacientesQuery.data ?? [];
   const agendamentosQuery = useAgendamentosPeriodo(inicioStr, fimStr, {
     enabled: podeVerAgenda,
@@ -753,7 +756,7 @@ export default function Relatorios() {
             <Button aria-label="Atualizar dados dos relatórios" variant="outline" size="icon" className="rounded-full" onClick={refreshTudo} disabled={isFetching}>
               <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
             </Button>
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(aberto) => { if (aberto) setPrecisaCadastroPacientes(true); }}>
               <DropdownMenuTrigger asChild>
                 <Button
                   disabled={activeReportFetching || !!exportando}

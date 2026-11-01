@@ -251,7 +251,7 @@ export default function ContasReceber() {
       // Em blocos: sem paginar, o servidor devolvia só as 1000 primeiras contas.
       const data = await buscarEmBlocos<any>(() => supabase
         .from('lancamentos')
-        .select('*')
+        .select('id, tipo, categoria, descricao, valor, valor_pago, desconto, acrescimo, status, data, data_vencimento, data_pagamento, paciente_id, forma_pagamento, centro_custo, competencia, numero_documento, observacoes, created_at')
         .eq('tipo', 'receita')
         .eq('clinica_id', profile?.clinica_id ?? '')
         .order('created_at', { ascending: false })
@@ -270,10 +270,12 @@ export default function ContasReceber() {
 
   const pagamentosQuery = useQuery({
     queryKey: ['pagamentos-contas-receber', profile?.clinica_id ?? null],
+    // Só pagamentos de receitas (as contas desta tela), não os de despesas.
     queryFn: async () => buscarEmBlocos<PagamentoEstornavel & { lancamento_id: string; estornado_em: string | null }>(() =>
       supabase.from('pagamentos')
-        .select('id, lancamento_id, valor, forma_pagamento, data_pagamento, observacoes, estornado_em')
+        .select('id, lancamento_id, valor, forma_pagamento, data_pagamento, observacoes, estornado_em, lancamentos!inner(tipo)')
         .eq('clinica_id', profile!.clinica_id!)
+        .eq('lancamentos.tipo', 'receita')
         .order('id', { ascending: true })
     ),
     enabled: !isCreationPage && !!profile?.clinica_id,
@@ -737,16 +739,23 @@ export default function ContasReceber() {
     }
   };
 
+  const dataBr = (valor: string | null | undefined) => {
+    const data = valor ? parseDateOnly(String(valor).slice(0, 10)) : null;
+    return data ? format(data, 'dd/MM/yyyy') : '';
+  };
+
   const exportarExcel = async () => {
     const rows = filteredContas.map(c => ({
       Paciente: getPacienteNome(c),
       Descrição: c.descricao,
       Categoria: CATEGORIAS_MAP[c.categoria]?.label || c.categoria,
-      Valor: c.valor,
+      Valor: Number(c.valor || 0),
+      Desconto: Number(c.desconto || 0),
+      Acréscimo: Number(c.acrescimo || 0),
       'Valor recebido': valorRecebidoConta(c),
       'Saldo em aberto': saldoDevedorConta(c),
-      'Data de lançamento': c.data || '',
-      Vencimento: c.data_vencimento || '',
+      'Data de lançamento': dataBr(c.data),
+      Vencimento: dataBr(c.data_vencimento),
       Status: c.vencido
         ? c.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label
         : STATUS_CONFIG[c.status || 'pendente']?.label || c.status,
@@ -757,9 +766,13 @@ export default function ContasReceber() {
     }));
     // `exportToExcel` já cuida do import dinâmico da lib de escrita.
     // Substituição do `xlsx@0.18.5` — SEC-001 (prototype pollution / ReDoS).
-    const { exportToExcel } = await import('@/lib/excelExporter');
-    await exportToExcel(rows, 'contas_receber', 'Contas a Receber');
-    toast.success('Exportado com sucesso!');
+    try {
+      const { exportToExcel } = await import('@/lib/excelExporter');
+      await exportToExcel(rows, 'contas_receber', 'Contas a Receber');
+      toast.success('Exportado com sucesso!');
+    } catch {
+      toast.error('Não foi possível gerar o arquivo. Tente novamente.');
+    }
   };
 
   if (isPaymentPage && isLoading) return (
@@ -805,7 +818,7 @@ export default function ContasReceber() {
           </Button>
           <Button variant="outline" size="icon" className="rounded-full shrink-0" onClick={exportarExcel}
             disabled={!exportacaoCompletaPermitida} aria-describedby={!exportacaoCompletaPermitida ? 'contas-receber-limite-aviso' : undefined}
-            title="Exportar para Excel">
+            title="Exportar para Excel" aria-label="Exportar contas a receber filtradas para Excel">
             <Download className="h-4 w-4" />
           </Button>
           <Button onClick={handleNew} className="gap-2 shrink-0">
@@ -1268,7 +1281,7 @@ export default function ContasReceber() {
             {/* Descrição */}
             <div className="space-y-1.5">
               <Label className="text-xs">Descrição *</Label>
-              <Textarea aria-label="Descricao da receita" required value={formData.descricao} onChange={e => updateFormData({ descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
+              <Textarea aria-label="Descrição da receita" required value={formData.descricao} onChange={e => updateFormData({ descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
             </div>
 
             {/* Valor + Vencimento */}
@@ -1306,18 +1319,18 @@ export default function ContasReceber() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Competência</Label>
-                <Input aria-label="Competencia da receita" type="month" value={formData.competencia} onChange={e => updateFormData({ competencia: e.target.value })} />
+                <Input aria-label="Competência da receita" type="month" value={formData.competencia} onChange={e => updateFormData({ competencia: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Nº Documento / NF</Label>
-                <Input aria-label="Numero do documento da receita" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })} placeholder="Opcional" />
+                <Input aria-label="Número do documento da receita" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })} placeholder="Opcional" />
               </div>
             </div>
 
             {/* Observações */}
             <div className="space-y-1.5">
               <Label className="text-xs">Observações</Label>
-              <Textarea aria-label="Observacoes da receita" value={formData.observacoes} onChange={e => updateFormData({ observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
+              <Textarea aria-label="Observações da receita" value={formData.observacoes} onChange={e => updateFormData({ observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
             </div>
           </fieldset>
           </section>

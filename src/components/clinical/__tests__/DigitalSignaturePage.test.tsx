@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/lib/avisos', () => ({ avisar: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: mocks }));
 
 import { DigitalSignature } from '@/components/clinical/DigitalSignature';

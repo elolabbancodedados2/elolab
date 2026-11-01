@@ -29,9 +29,10 @@ export function GlobalSearch() {
   const normalized = query.trim();
   const normalizedSearch = normalizarTexto(normalized);
 
+  // Único atalho Ctrl/Cmd+K do app: abre e fecha a busca global.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setOpen(value => !value); }
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.code === 'KeyK' || event.key?.toLowerCase() === 'k')) { event.preventDefault(); setOpen(value => !value); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -42,7 +43,7 @@ export function GlobalSearch() {
     if (term.length < 2) { setResults([]); setError(false); setSearching(false); return; }
     setSearching(true); setError(false);
     try {
-      const { data, error: rpcError } = await (supabase as any).rpc('busca_global', { p_termo: term, p_limite: 5 });
+      const { data, error: rpcError } = await supabase.rpc('busca_global', { p_termo: term, p_limite: 5 });
       if (request !== requestRef.current) return;
       if (rpcError) throw rpcError;
       setResults((data ?? []) as Result[]);
@@ -81,7 +82,7 @@ export function GlobalSearch() {
     <button type="button" onClick={() => setOpen(true)} className="group flex min-h-11 min-w-0 w-full items-center gap-2 rounded-lg border border-border bg-secondary px-3 text-sm text-muted-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Abrir busca global, atalho Control K">
       <Search className="h-4 w-4 shrink-0" aria-hidden="true"/><span className="hidden min-w-0 flex-1 truncate text-left text-xs min-[360px]:inline sm:hidden">Buscar</span><span className="hidden min-w-0 flex-1 truncate text-left sm:inline">Buscar no sistema...</span><kbd className="hidden shrink-0 rounded border px-1.5 font-mono text-[10px] sm:inline">Ctrl K</kbd>
     </button>
-    <CommandDialog open={open} onOpenChange={close}>
+    <CommandDialog open={open} onOpenChange={close} title="Busca global" shouldFilter={false}>
       <CommandInput placeholder="Nome, CPF, telefone, exame, tarefa..." value={query} onValueChange={setQuery}/>
       <CommandList className="max-h-[min(65vh,32rem)]">
         {normalized.length === 1 && <p className="px-4 py-3 text-sm text-muted-foreground">Digite pelo menos 2 caracteres.</p>}

@@ -5,6 +5,8 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { Ban } from 'lucide-react';
+import { bloqueiosDoDia, contaNaAgenda, rotuloBloqueio } from './resumoDiaAgenda';
 
 interface Props {
   date: string;
@@ -13,9 +15,13 @@ interface Props {
   medicoById?: Record<string, any>;
   onDayClick: (day: string) => void;
   onCardClick: (a: any) => void;
+  /** Bloqueios do período; o dia bloqueado mostra "Bloqueado: motivo". */
+  bloqueios?: any[];
+  /** Médicos em exibição; limita quais bloqueios aparecem. */
+  medicosVisiveis?: string[];
 }
 
-export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick, onCardClick }: Props) {
+export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick, onCardClick, bloqueios = [], medicosVisiveis }: Props) {
   const days = useMemo(() => {
     const start = startOfWeek(parseISO(date), { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => {
@@ -25,16 +31,78 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
   }, [date]);
 
   const today = todaySaoPauloDateOnly();
+  const mostrarMedicoNoBloqueio = (medicosVisiveis?.length ?? 2) !== 1;
 
   return (
-    <div role="region" aria-label="Agenda semanal, deslize horizontal para ver os dias" tabIndex={0} className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <>
+    {/* Abaixo de sm a grade de 7 colunas não cabe: vira uma lista por dia. */}
+    <div role="region" aria-label="Agenda semanal em lista" className="space-y-2 sm:hidden">
+      {days.map(({ iso, date: d }) => {
+        const dayAppts = agendamentos.filter(a => a.data === iso).sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+        const ativos = dayAppts.filter(contaNaAgenda);
+        const bloqueiosDia = bloqueiosDoDia(bloqueios, iso, medicosVisiveis);
+        const isToday = iso === today;
+        return (
+          <section key={iso} className={cn('rounded-2xl border border-border bg-card shadow-sm', isToday && 'border-primary/50')}>
+            <button
+              type="button"
+              onClick={() => onDayClick(iso)}
+              className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-border/60 px-3 py-2 text-left"
+            >
+              <span className={cn('text-sm font-semibold capitalize', isToday && 'text-primary')}>
+                {format(d, "EEEE, d 'de' MMM", { locale: ptBR })}{isToday ? ' · hoje' : ''}
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {ativos.length === 0 ? 'Livre' : `${ativos.length} consulta${ativos.length === 1 ? '' : 's'}`}
+              </span>
+            </button>
+            {bloqueiosDia.map((b, i) => (
+              <p key={b.id ?? i} className="flex items-center gap-1 px-3 pt-2 text-xs text-muted-foreground">
+                <Ban aria-hidden="true" className="h-3 w-3 shrink-0" />
+                <span className="truncate">{rotuloBloqueio(b, medicoById, mostrarMedicoNoBloqueio)}</span>
+              </p>
+            ))}
+            {dayAppts.length > 0 && (
+              <ul className="space-y-1 p-2">
+                {dayAppts.map(a => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => onCardClick(a)}
+                      className={cn(
+                        'flex min-h-11 w-full items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2 text-left text-sm',
+                        !contaNaAgenda(a) && 'opacity-50 line-through',
+                      )}
+                      style={{ borderLeft: `3px solid ${colorFor(a)}` }}
+                    >
+                      <span className="font-medium tabular-nums">{a.hora_inicio.slice(0, 5)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{a.pacientes?.nome_social || a.pacientes?.nome || 'Paciente'}</span>
+                        {medicoById[a.medico_id] && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {nomeMedico(medicoById[a.medico_id].nome || medicoById[a.medico_id].crm)}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
+    <div role="region" aria-label="Agenda semanal, deslize horizontal para ver os dias" tabIndex={0} className="hidden overflow-x-auto rounded-2xl border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:block">
       <div className="min-w-[770px]">
       <div className="grid grid-cols-7">
         {days.map(({ iso, date: d }) => {
           const dayAppts = agendamentos.filter(a => a.data === iso).sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+          const ativos = dayAppts.filter(contaNaAgenda);
+          const bloqueiosDia = bloqueiosDoDia(bloqueios, iso, medicosVisiveis);
           const isToday = iso === today;
           const weekend = isWeekend(d);
-          const confirmedCount = dayAppts.filter(a => a.status === 'confirmado' || a.status === 'em_atendimento' || a.status === 'finalizado').length;
+          const confirmedCount = ativos.filter(a => a.status === 'confirmado' || a.status === 'em_atendimento' || a.status === 'finalizado').length;
 
           return (
             <div key={iso} className={cn(
@@ -65,31 +133,37 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                       <div className="text-[10px] text-muted-foreground">{format(d, 'MMM', { locale: ptBR })}</div>
                     </div>
                   </div>
-                  {dayAppts.length > 0 && (
+                  {ativos.length > 0 && (
                     <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', isToday && 'bg-primary text-primary-foreground')}>
-                      {dayAppts.length}
+                      {ativos.length}
                     </Badge>
                   )}
                 </div>
-                {dayAppts.length > 0 && (
+                {ativos.length > 0 && (
                   <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <span className="tabular-nums">{dayAppts[0].hora_inicio.slice(0, 5)}</span>
+                    <span className="tabular-nums">{ativos[0].hora_inicio.slice(0, 5)}</span>
                     <span>→</span>
-                    <span className="tabular-nums">{dayAppts[dayAppts.length - 1].hora_inicio.slice(0, 5)}</span>
+                    <span className="tabular-nums">{ativos[ativos.length - 1].hora_inicio.slice(0, 5)}</span>
                     {confirmedCount > 0 && <span className="ml-auto text-success">✓ {confirmedCount}</span>}
                   </div>
                 )}
+                {bloqueiosDia.map((b, i) => (
+                  <div key={b.id ?? i} className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground" title={rotuloBloqueio(b, medicoById, mostrarMedicoNoBloqueio)}>
+                    <Ban aria-hidden="true" className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{rotuloBloqueio(b, medicoById, mostrarMedicoNoBloqueio)}</span>
+                  </div>
+                ))}
               </button>
               <div className="flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[520px]">
                 {dayAppts.length === 0 ? (
-                  <div className="text-[11px] text-muted-foreground/50 text-center py-8 italic">Livre</div>
+                  <div className="text-[11px] text-muted-foreground/50 text-center py-8 italic">{bloqueiosDia.length > 0 ? 'Sem consultas' : 'Livre'}</div>
                 ) : dayAppts.map(a => (
                   <button
                     key={a.id}
                     onClick={(e) => { e.stopPropagation(); onCardClick(a); }}
                     className={cn(
                       'w-full rounded-lg bg-card border border-border/60 hover:shadow-sm hover:border-primary/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
-                      a.status === 'cancelado' && 'opacity-50 line-through',
+                      !contaNaAgenda(a) && 'opacity-50 line-through',
                     )}
                     style={{ borderLeft: `3px solid ${colorFor(a)}` }}
                   >
@@ -111,5 +185,6 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
       </div>
       </div>
     </div>
+    </>
   );
 }

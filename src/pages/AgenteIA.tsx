@@ -25,6 +25,8 @@ import { cn } from '@/lib/utils';
 
 export default function AgenteIA() {
   const [activeTab, setActiveTab] = useState('sessions');
+  // Os dois indicadores de conversa abrem a mesma aba com filtros diferentes.
+  const [filtroConversas, setFiltroConversas] = useState<string>('todos');
   const location = useLocation();
   const navigate = useNavigate();
   const isSessionCreatePage = location.pathname === '/agente-ia/sessoes/nova';
@@ -86,7 +88,9 @@ export default function AgenteIA() {
     return <div role="status" aria-label="Carregando sessões, agentes e conversas"><PageSkeleton /></div>;
   }
 
-  const failedQuery = queries.find(query => query.isError);
+  // Só para a tela inteira quando nada carregou; uma parte com falha vira aviso.
+  const consultasComFalha = queries.filter(query => query.isError);
+  const failedQuery = consultasComFalha.length === queries.length ? consultasComFalha[0] : undefined;
   if (failedQuery) {
     return <ErrorState title="Não foi possível carregar o painel de WhatsApp" error={failedQuery.error} onRetry={() => { for (const query of queries) void query.refetch(); }} />;
   }
@@ -97,14 +101,20 @@ export default function AgenteIA() {
   const agentesConfigurados = agents.length;
 
   const indicadores = [
-    { key: 'conversations', label: 'Aguardando atendimento', value: aguardandoHumano, icon: Clock, escuro: false, color: '', bg: '' },
+    { key: 'conversations', filtro: 'aguardando_humano', label: 'Aguardando atendimento', value: aguardandoHumano, icon: Clock, escuro: false, color: '', bg: '' },
     { key: 'sessions', label: 'Sessões conectadas', value: sessoesConectadas, icon: Smartphone, escuro: false, color: 'text-primary', bg: 'bg-primary/10' },
-    { key: 'conversations', label: 'Conversas ativas', value: conversasAtivas, icon: MessageSquare, escuro: false, color: 'text-success', bg: 'bg-success/10' },
+    { key: 'conversations', filtro: 'ativo', label: 'Conversas ativas', value: conversasAtivas, icon: MessageSquare, escuro: false, color: 'text-success', bg: 'bg-success/10' },
     { key: 'agents', label: 'Agentes configurados', value: agentesConfigurados, icon: Users, escuro: false, color: 'text-muted-foreground', bg: 'bg-muted' },
   ];
 
   return (
     <FeatureGate feature="agente_ia" hasAccess={hasFeature('agente_ia')} requiredPlan="EloLab Ultra">
+      {consultasComFalha.length > 0 && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm">
+          <span>Parte do painel não carregou; os números podem estar incompletos.</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => { for (const query of consultasComFalha) void query.refetch(); }}>Tentar de novo</Button>
+        </div>
+      )}
     {isSessionCreatePage ? (
       <NewWhatsAppSessionPage
         isCreating={createSession.isPending}
@@ -145,14 +155,14 @@ export default function AgenteIA() {
       <section aria-label="Indicadores do atendimento por WhatsApp">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {indicadores.map((indicator, index) => {
-            const isActive = activeTab === indicator.key;
+            const isActive = activeTab === indicator.key && (!('filtro' in indicator) || filtroConversas === indicator.filtro);
             const Icon = indicator.icon;
             return (
               <button
                 key={`${indicator.key}-${index}`}
                 type="button"
                 aria-pressed={isActive}
-                onClick={() => setActiveTab(indicator.key)}
+                onClick={() => { setActiveTab(indicator.key); if ('filtro' in indicator && indicator.filtro) setFiltroConversas(indicator.filtro); }}
                 className={cn(
                   'rounded-2xl border border-border/60 bg-card p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
                   indicator.escuro && 'border-transparent bg-gradient-primary text-white',
@@ -221,6 +231,8 @@ export default function AgenteIA() {
 
         <TabsContent value="conversations">
           <ConversationsTab
+            key={filtroConversas}
+            filtroInicial={filtroConversas}
             conversations={conversations}
             hasMoreConversations={Boolean(conversationsQuery.hasNextPage)}
             isLoadingMoreConversations={conversationsQuery.isFetchingNextPage}

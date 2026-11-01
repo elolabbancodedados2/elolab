@@ -271,16 +271,21 @@ function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]
   const tips = role ? roleTips[role] : [];
 
   const agendaQuery = useAgendamentosPeriodo(hoje, hoje);
-  const filaQuery = useFilaAtendimento();
+  const filaQuery = useFilaAtendimento({ suppressGlobalErrorToast: true });
   const tarefasQuery = useMinhasTarefasPendentes();
   const minhasTarefas = tarefasQuery.data ?? [];
   const tarefasAtrasadas = minhasTarefas.filter(t => t.data_vencimento && t.data_vencimento < hoje).length;
   const agenda = useMemo(() => (agendaQuery.data ?? [])
     .filter(item => item.status !== 'cancelado')
     .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || '')), [agendaQuery.data]);
-  const fila = useMemo(() => ((filaQuery.data ?? []) as any[])
+  // Só a fila de hoje, como no painel do admin: itens esquecidos de outro dia não contam.
+  const fila = useMemo(() => (separarFilaAtivaPorData((filaQuery.data ?? []) as any[], hoje, new Map<string, string>()).hoje as any[])
     .filter(item => !['finalizado', 'atendido', 'cancelado'].includes(item.status || ''))
-    .sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)), [filaQuery.data]);
+    .sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)), [filaQuery.data, hoje]);
+  const erroDePermissao = (erro: unknown) => {
+    const e = erro as { code?: string; status?: number } | null;
+    return e?.code === '42501' || e?.status === 401 || e?.status === 403;
+  };
 
   const confirmadas = agenda.filter(item => item.status === 'confirmado').length;
   const finalizadas = agenda.filter(item => isAppointmentCompleted(item.status)).length;
@@ -292,7 +297,7 @@ function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]
   const kpis = [
     { label: 'Consultas hoje', value: agenda.length, note: `${confirmadas} confirmadas`, tone: 'bg-card border border-border/60', href: '/agenda' },
     { label: 'Na fila agora', value: fila.length, note: esperaMedia !== null ? `espera média de ${esperaMedia} min` : 'ninguém aguardando', tone: 'bg-card border border-border/60', href: '/fila' },
-    { label: 'Finalizadas', value: finalizadas, note: agenda.length ? `${Math.round(finalizadas / agenda.length * 100)}% do dia` : 'sem atendimentos', tone: 'bg-card border border-border/60', href: '/fila' },
+    { label: 'Finalizadas', value: finalizadas, note: agenda.length ? `${Math.round(finalizadas / agenda.length * 100)}% do dia` : 'sem atendimentos', tone: 'bg-card border border-border/60', href: '/agenda' },
   ];
 
   return <div className="space-y-5 pb-8">
@@ -328,7 +333,9 @@ function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]
           <Link to="/agenda" className="text-xs font-bold text-primary hover:underline">Abrir agenda</Link>
         </CardHeader>
         <CardContent className="space-y-1">
-          {agendaQuery.isError ? <p className="rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">Seu perfil não tem acesso à agenda. Peça ao administrador se precisar.</p>
+          {agendaQuery.isError ? (erroDePermissao(agendaQuery.error)
+            ? <p className="rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">Seu perfil não tem acesso à agenda. Peça ao administrador se precisar.</p>
+            : <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><span>Não foi possível carregar a agenda de hoje.</span><Button type="button" variant="outline" size="sm" onClick={() => void agendaQuery.refetch()}>Tentar de novo</Button></div>)
             : agendaQuery.isLoading ? <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="h-12 animate-pulse rounded-2xl bg-muted" />)}</div>
             : agenda.length === 0 ? <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 p-6 text-center"><Calendar className="h-6 w-6 text-primary" /><p className="text-sm font-bold">Nenhuma consulta para hoje</p><Link to="/agenda" className="text-sm font-bold text-primary">Agendar consulta</Link></div>
             : agenda.slice(0, 7).map(item => <div key={item.id} className={cn('grid grid-cols-[52px_4px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5', item.id === proxima?.id ? 'bg-accent' : 'hover:bg-muted/60')}>
@@ -346,7 +353,9 @@ function OperationalDashboard({ roles, nome, hasExamFeature }: { roles: string[]
             <span className="rounded-full bg-highlight px-2.5 py-0.5 text-xs font-extrabold text-highlight-foreground">{fila.length}</span>
           </CardHeader>
           <CardContent>
-            {fila.length === 0 ? <p className="flex items-center gap-2 rounded-2xl bg-success/10 p-4 text-sm font-semibold text-success"><CheckCircle2 className="h-4 w-4" />Ninguém aguardando no momento.</p>
+            {filaQuery.isLoading ? <div className="space-y-2">{[0, 1].map(i => <div key={i} className="h-10 animate-pulse rounded-2xl bg-muted" />)}</div>
+              : filaQuery.isError && !filaQuery.data ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><span>Não foi possível carregar a fila.</span><Button type="button" variant="outline" size="sm" onClick={() => void filaQuery.refetch()}>Tentar de novo</Button></div>
+              : fila.length === 0 ? <p className="flex items-center gap-2 rounded-2xl bg-success/10 p-4 text-sm font-semibold text-success"><CheckCircle2 className="h-4 w-4" />Ninguém aguardando no momento.</p>
               : <ul className="divide-y divide-dashed divide-border">{fila.slice(0, 5).map(item => {
                 const minutos = minutosDesde(item.horario_chegada || item.created_at, agora);
                 const nomePaciente: string = item.agendamentos?.pacientes?.nome || 'Paciente';

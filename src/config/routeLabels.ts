@@ -203,6 +203,7 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/contas\/receber\/[^/]+\/estorno$/.test(pathname)) return 'Estornar pagamento';
   if (/^\/contas\/receber\/[^/]+\/detalhes$/.test(pathname)) return 'Detalhes da conta a receber';
   if (/^\/contas\/pagar\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento da conta';
+  if (/^\/contas\/pagar\/[^/]+\/editar$/.test(pathname)) return 'Editar conta a pagar';
   if (/^\/laudos-lab\/[^/]+$/.test(pathname)) return 'Conferência do laudo';
   if (/^\/guias-externas\/(?!nova$|portal$)[^/]+$/.test(pathname)) return 'Detalhe da guia';
   if (pathname === '/guias-externas/nova') return 'Nova guia externa';

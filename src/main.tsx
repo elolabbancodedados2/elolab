@@ -4,6 +4,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { initGlobalErrorTracking } from "./lib/errorTracking";
 import { initWebVitals } from "./lib/webVitals";
+import { instalarRecargaPorNovaVersao } from "./lib/recargaVersao";
 
 const CACHE_BUILD_KEY = "elolab-build-id";
 const APP_BUILD_ID =
@@ -47,6 +48,12 @@ const bootstrapApp = () => {
   if (getStoredBuildId() !== APP_BUILD_ID) persistBuildId(APP_BUILD_ID);
 
   // Initialize global error tracking and performance monitoring
+  try {
+    // Recarrega uma vez quando um arquivo da versão anterior some após deploy.
+    instalarRecargaPorNovaVersao();
+  } catch (error) {
+    console.warn("A recarga automática após nova versão foi ignorada:", error);
+  }
   try {
     initGlobalErrorTracking();
     initWebVitals();

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ErrorState';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { filterClinicalDocuments, type ClinicalDocumentFilters, type ClinicalDocumentSearchRow } from '@/lib/clinicalDocumentSearch';
 
 type AttachmentRow = ClinicalDocumentSearchRow & {
@@ -37,7 +37,6 @@ export function BuscaAnexosClinicos() {
   const [filters, setFilters] = useState(emptyFilters);
   const deferredFilters = useDeferredValue(filters);
   const [openingId, setOpeningId] = useState<string | null>(null);
-  const { toast } = useToast();
   const query = useQuery({
     queryKey: ['clinical-attachment-search', deferredFilters],
     enabled: !(deferredFilters.from && deferredFilters.to && deferredFilters.from > deferredFilters.to),

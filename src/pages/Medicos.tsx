@@ -1,3 +1,4 @@
+import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico, validateCPF } from '@/lib/formatters';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -188,6 +189,22 @@ function MedicoProfilePanel({ medico, onEdit, onAvailability }: { medico: any; o
     enabled: !!user && !!profile?.clinica_id,
   });
 
+  // Próximos em ordem crescente: a lista recente vem do mais novo para o mais
+  // antigo e mostrava primeiro as consultas mais distantes.
+  const futurosQuery = useQuery({
+    queryKey: ['medico-agendamentos-futuros', profile?.clinica_id ?? null, medico.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('agendamentos')
+        .select('*, pacientes(nome, telefone)')
+        .eq('clinica_id', profile!.clinica_id!).eq('medico_id', medico.id)
+        .gt('data', todaySaoPauloDateOnly())
+        .order('data', { ascending: true }).order('hora_inicio', { ascending: true }).limit(15);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user && !!profile?.clinica_id,
+  });
+
   const prontuariosQuery = useQuery({
     queryKey: ['medico-prontuarios', user?.id ?? null, profile?.clinica_id ?? null, medico.id],
     queryFn: async () => {
@@ -232,7 +249,7 @@ function MedicoProfilePanel({ medico, onEdit, onAvailability }: { medico: any; o
 
   const today = todaySaoPauloDateOnly();
   const agendamentosHoje = agendamentos.filter((a: any) => a.data === today);
-  const agendamentosFuturos = agendamentos.filter((a: any) => a.data > today);
+  const agendamentosFuturos = futurosQuery.data ?? [];
   const totalPacientes = new Set(agendamentos.map((a: any) => a.paciente_id)).size;
 
   const statusColor = (s: string) => {
@@ -391,7 +408,7 @@ function MedicoProfilePanel({ medico, onEdit, onAvailability }: { medico: any; o
                         <p className="text-sm font-medium truncate">{(ag as any).pacientes?.nome || 'Paciente'}</p>
                         <p className="text-[11px] text-muted-foreground">{ag.tipo || 'Consulta'}</p>
                       </div>
-                      <Badge className={`text-[10px] ${statusColor(ag.status)}`}>{ag.status}</Badge>
+                      <Badge className={`text-xs ${statusColor(ag.status)}`}>{formatAppointmentStatus(ag.status)}</Badge>
                     </div>
                   ))}
                 </div>
@@ -406,7 +423,7 @@ function MedicoProfilePanel({ medico, onEdit, onAvailability }: { medico: any; o
                         <p className="text-xs font-semibold">{ag.hora_inicio?.slice(0, 5)}</p>
                       </div>
                       <div className="flex-1 min-w-0"><p className="text-sm truncate">{(ag as any).pacientes?.nome || 'Paciente'}</p></div>
-                      <Badge variant="outline" className="text-[10px]">{ag.status}</Badge>
+                      <Badge variant="outline" className="text-xs">{formatAppointmentStatus(ag.status)}</Badge>
                     </div>
                   ))}
                 </div>

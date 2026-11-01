@@ -1,3 +1,4 @@
+import { useConfirmacao } from '@/hooks/useConfirmacao';
 import { useCallback, useEffect, useState } from 'react';
 import { BookOpen, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,6 +21,7 @@ type KnowledgeItem = {
 type KnowledgeAction = 'list' | 'save' | 'delete';
 
 export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
+  const [confirmar, dialogoConfirmacao] = useConfirmacao();
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [titulo, setTitulo] = useState('');
   const [conteudo, setConteudo] = useState('');
@@ -84,7 +86,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
   };
 
   const remove = async (item: KnowledgeItem) => {
-    if (!window.confirm(`Remover “${item.titulo}” da base de conhecimento?`)) return;
+    if (!(await confirmar({ titulo: 'Remover conteúdo?', descricao: `“${item.titulo}” deixa de ser usado pelo atendente de IA.`, confirmar: 'Remover' }))) return;
     setBusyId(item.id);
     try {
       await invoke('delete', { document_id: item.id });
@@ -102,6 +104,7 @@ export function KnowledgeBaseEditor({ agentId }: { agentId: string }) {
 
   return (
     <Card className="mt-4 border-dashed">
+      {dialogoConfirmacao}
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <BookOpen className="h-4 w-4 text-primary" />

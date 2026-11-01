@@ -90,11 +90,15 @@ interface EventoFinanceiro {
 
 export default function Financeiro() {
   const { profile } = useSupabaseAuth();
-  const lancamentosQuery = useLancamentos();
-  const { data: lancamentos = [] } = lancamentosQuery;
   const [searchParams, setSearchParams] = useSearchParams();
   const searchString = searchParams.toString();
   const currentDate = parseFinanceMonth(searchParams.get('mes')) ?? currentFinanceMonth();
+  // Seis meses do gráfico até o fim do mês exibido, mais os em aberto (vencidos e a pagar).
+  const lancamentosQuery = useLancamentos({
+    inicio: format(startOfMonth(subMonths(currentDate, 5)), 'yyyy-MM-dd'),
+    fim: format(endOfMonth(currentDate), 'yyyy-MM-dd'),
+  });
+  const { data: lancamentos = [] } = lancamentosQuery;
   const activeTab = parseFinanceOverviewTab(searchParams.get('tab'));
 
   useEffect(() => {

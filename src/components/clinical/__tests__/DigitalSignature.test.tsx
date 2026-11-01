@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/lib/avisos', () => ({ avisar: vi.fn() }));
 
 import { DigitalSignature } from '@/components/clinical/DigitalSignature';
 

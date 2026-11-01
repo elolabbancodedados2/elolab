@@ -36,6 +36,7 @@ vi.mock('@/integrations/supabase/client', () => ({
           return chain;
         },
         order: () => chain,
+        or: () => chain,
         range: async () => {
           if (mocks.readDelay) await mocks.readDelay;
           if (mocks.readError) return { data: null, error: new Error('Falha sintética de leitura') };
@@ -110,7 +111,7 @@ describe('Minha fila de trabalho', () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa Confirmar retorno' }));
 
-    await waitFor(() => expect(mocks.updates).toEqual([{ status: 'concluida' }]));
+    await waitFor(() => expect(mocks.updates).toEqual([{ status: 'concluida', data_conclusao: expect.any(String) }]));
     expect(mocks.writeFilters).toEqual(expect.arrayContaining([
       ['id', 'task-1'],
       ['clinica_id', 'clinic-1'],

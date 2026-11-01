@@ -72,9 +72,11 @@ export default function MinhaFilaTarefas() {
       if (!clinicaId || !userId) return [];
       return withSafeRetry(() => buscarEmBlocos<PersonalTask>(() => supabase
         .from('tarefas')
-        .select('id,titulo,descricao,status,prioridade,categoria,data_vencimento,paciente_id,updated_at')
+        .select('id,titulo,descricao,status,prioridade,categoria,data_vencimento,paciente_id,updated_at,data_conclusao')
         .eq('clinica_id', clinicaId)
         .eq('responsavel_id', userId)
+        // A fila é do dia a dia: abertas e as fechadas na última semana.
+        .or(`status.in.(pendente,em_andamento),updated_at.gte.${new Date(Date.now() - 7 * 86_400_000).toISOString()}`)
         .order('data_vencimento', { ascending: true, nullsFirst: false })
         .order('id', { ascending: true })));
     },
@@ -119,7 +121,7 @@ export default function MinhaFilaTarefas() {
   });
 
   const concluir = (task: PersonalTask) => atualizar.mutate({
-    task, values: { status: 'concluida' }, sucesso: 'Tarefa concluída',
+    task, values: { status: 'concluida', data_conclusao: new Date().toISOString() }, sucesso: 'Tarefa concluída',
     changes: [{ field: 'status', oldValue: task.status, newValue: 'concluida' }],
   });
   const iniciar = (task: PersonalTask) => atualizar.mutate({
@@ -144,7 +146,7 @@ export default function MinhaFilaTarefas() {
     return porPrioridade(groups.overdue)[0] ?? porPrioridade(groups.today)[0] ?? porPrioridade(groups.upcoming)[0] ?? porPrioridade(groups.noDeadline)[0] ?? null;
   }, [groups]);
 
-  const concluidasHoje = useMemo(() => groups.completed.filter(t => t.status === 'concluida' && dateOnlyInTimeZone(new Date(t.updated_at), 'America/Sao_Paulo') === today).length, [groups.completed, today]);
+  const concluidasHoje = useMemo(() => groups.completed.filter(t => t.status === 'concluida' && dateOnlyInTimeZone(new Date((t as any).data_conclusao || t.updated_at), 'America/Sao_Paulo') === today).length, [groups.completed, today]);
   const metaDoDia = concluidasHoje + groups.today.length + groups.overdue.length;
   const progresso = metaDoDia > 0 ? Math.round((concluidasHoje / metaDoDia) * 100) : 0;
 

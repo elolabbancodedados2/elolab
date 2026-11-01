@@ -58,6 +58,17 @@ describe('GlobalSearch — módulos', () => {
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
 
+  it('mostra paciente encontrado por CPF mesmo sem o termo no nome e nomeia o diálogo', async () => {
+    roles = ['admin'];
+    mocks.rpc.mockResolvedValue({
+      data: [{ tipo: 'paciente', id: 'p1', titulo: 'Ana Souza', subtitulo: 'Paciente', href: '/pacientes/p1', data_referencia: null }],
+      error: null,
+    });
+    const dialog = abrirEBuscar('123.456');
+    expect(dialog).toHaveAccessibleName('Busca global');
+    expect(await within(dialog).findByRole('option', { name: /ana souza/i })).toBeInTheDocument();
+  });
+
   it('não oferece módulos fora do perfil', () => {
     roles = ['financeiro'];
     const dialog = abrirEBuscar('prontu');

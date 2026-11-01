@@ -75,6 +75,25 @@ describe('CobrancaInadimplentes', () => {
     expect(linhaAna).toHaveTextContent('2');
     expect(linhaAna).toHaveTextContent(/R\$\s300,00/);
     expect(linhaAna).toHaveTextContent('53 dias');
-    expect(screen.getByRole('link', { name: 'Contatar Ana via WhatsApp' })).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Contatar Ana via WhatsApp' });
+    const mensagem = decodeURIComponent(link.getAttribute('href') ?? '');
+    expect(mensagem).toContain('2 pendências que somam');
+    expect(mensagem).toContain('há 53 dias');
+  });
+
+  it('ignora títulos sem saldo e processa a régua só para os filtrados com contato', () => {
+    estado.data = [
+      { id: 'a', paciente_id: 'p1', descricao: 'Consulta', valor: 100, valor_pago: 0, desconto: 0, acrescimo: 0, status: 'pendente', data_vencimento: '2026-10-14', pacientes: { nome: 'Ana', telefone: '11999990000' } },
+      { id: 'b', paciente_id: 'p2', descricao: 'Exame', valor: 300, valor_pago: 0, desconto: 0, acrescimo: 0, status: 'atrasado', data_vencimento: '2026-06-01', pacientes: { nome: 'Bruno', email: 'b@x.com' } },
+      { id: 'z', paciente_id: 'p3', descricao: 'Quitado', valor: 50, valor_pago: 50, desconto: 0, acrescimo: 0, status: 'parcial', data_vencimento: '2026-10-01', pacientes: { nome: 'Zeca', telefone: '11988887777' } },
+    ];
+    renderizar();
+
+    expect(screen.queryByText('Zeca')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Pendências vencidas/ })).toHaveTextContent('2');
+
+    fireEvent.click(screen.getByRole('button', { name: /Mais de 90 dias · 1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Processar régua de cobrança/ }));
+    expect(screen.getByText(/as cobranças de|a cobrança de 1 lançamento vencido/)).toHaveTextContent('a cobrança de 1 lançamento vencido com telefone ou e-mail, conforme os filtros atuais');
   });
 });

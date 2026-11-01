@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { gerarEtiquetaPaciente, downloadPDF, openPDF } from '@/lib/pdfGenerator';
 import { Paciente } from '@/types';
 
@@ -30,7 +30,6 @@ interface EtiquetaPacienteProps {
 export function EtiquetaPaciente({ pacientes, open, onOpenChange }: EtiquetaPacienteProps) {
   const [tamanho, setTamanho] = useState<'pequena' | 'media' | 'grande'>('media');
   const [selecionados, setSelecionados] = useState<string[]>(pacientes.map((p) => p.id));
-  const { toast } = useToast();
 
   const handleTogglePaciente = (id: string) => {
     setSelecionados((prev) =>

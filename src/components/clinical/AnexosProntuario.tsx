@@ -32,12 +32,14 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { avisar as toast } from '@/lib/avisos';
 import { cn } from '@/lib/utils';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 import { clinicalAttachmentStoragePath, createClinicalAttachmentSignedUrl } from '@/lib/clinicalAttachmentStorage';
 import { PageHeader } from '@/components/PageHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { mensagemDeErro } from '@/lib/erros';
 import { ArrowLeft, Shield } from 'lucide-react';
 
 const BUCKET = 'medical-attachments';
@@ -70,6 +72,8 @@ interface AnexosProntuarioProps {
   portalPageError?: unknown;
   onRetryPortalPage?: () => void;
   portalPageLoading?: boolean;
+  /** Clínica da sessão; a exclusão só apaga registros desta clínica. */
+  clinicaId?: string | null;
 }
 
 interface PublicacaoPortal {
@@ -106,6 +110,7 @@ export function AnexosProntuario({
   portalPageError,
   onRetryPortalPage,
   portalPageLoading = false,
+  clinicaId,
 }: AnexosProntuarioProps) {
   const [loading, setLoading] = useState(false);
   const [publicacoesPortal, setPublicacoesPortal] = useState<Record<string, PublicacaoPortal>>({});
@@ -116,7 +121,7 @@ export function AnexosProntuario({
   const [savingPortalStatus, setSavingPortalStatus] = useState(false);
   const [portalStatusReload, setPortalStatusReload] = useState(0);
   const [portalMutationError, setPortalMutationError] = useState<string | null>(null);
-  const { toast } = useToast();
+  const [anexoParaExcluir, setAnexoParaExcluir] = useState<Anexo | null>(null);
   const attachmentIds = anexos.map((anexo) => anexo.id).sort().join(',');
   const portalTarget = anexos.find((anexo) => anexo.id === portalAnexoId) ?? null;
   const isPortalPage = Boolean(portalAnexoId);
@@ -199,39 +204,55 @@ export function AnexosProntuario({
 
   const handleDelete = async (anexo: Anexo) => {
     if (readOnly) return;
-    if (!confirm('Deseja realmente excluir este anexo?')) return;
+    if (!clinicaId) {
+      toast({ title: 'Não foi possível excluir o anexo', description: 'A clínica da sessão não foi identificada. Entre novamente e tente de novo.', variant: 'destructive' });
+      return;
+    }
 
     setLoading(true);
     try {
-      // Delete from storage
+      // Apaga primeiro o registro, restrito à clínica, e confere que ele saiu.
+      // Assim um arquivo nunca fica órfão de um registro que ainda aparece.
+      const { data, error } = await supabase
+        .from('anexos_prontuario')
+        .delete()
+        .eq('id', anexo.id)
+        .eq('clinica_id', clinicaId)
+        .select('id');
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('O anexo não foi encontrado nesta clínica ou não pode mais ser excluído.');
+      }
+
       const { error: storageError } = await supabase.storage
         .from(BUCKET)
         .remove([clinicalAttachmentStoragePath(anexo.url_arquivo)]);
-      if (storageError) throw storageError;
 
-      // Delete from database
-      const { error } = await supabase
-        .from('anexos_prontuario')
-        .delete()
-        .eq('id', anexo.id);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Anexo excluído',
-        description: 'O arquivo foi removido do prontuário.',
-      });
+      if (storageError) {
+        console.error('Erro ao remover arquivo do anexo:', storageError);
+        toast({
+          title: 'Anexo excluído do prontuário',
+          description: 'O arquivo não pôde ser apagado do armazenamento. Avise o suporte para concluir a limpeza.',
+        });
+      } else {
+        toast({
+          title: 'Anexo excluído',
+          description: 'O arquivo foi removido do prontuário.',
+        });
+      }
 
       onAnexoRemovido();
     } catch (error) {
       console.error('Erro ao excluir anexo:', error);
       toast({
-        title: 'Erro',
-        description: 'Não foi possível excluir o anexo.',
+        title: 'Não foi possível excluir o anexo',
+        description: mensagemDeErro(error),
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
+      setAnexoParaExcluir(null);
     }
   };
 
@@ -456,7 +477,7 @@ export function AnexosProntuario({
                       size="icon"
                       className="h-8 w-8 text-destructive"
                       aria-label={`Excluir anexo ${anexo.nome_arquivo}`}
-                      onClick={() => handleDelete(anexo)}
+                      onClick={() => setAnexoParaExcluir(anexo)}
                       disabled={loading || readOnly}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -469,6 +490,17 @@ export function AnexosProntuario({
         </CardContent>
       </Card>
 
+      <ConfirmDialog
+        open={anexoParaExcluir !== null}
+        onOpenChange={(aberto) => { if (!aberto && !loading) setAnexoParaExcluir(null); }}
+        title="Excluir anexo?"
+        description={anexoParaExcluir ? `"${anexoParaExcluir.nome_arquivo}" será removido do prontuário. Esta ação não pode ser desfeita.` : ''}
+        confirmLabel="Excluir anexo"
+        variant="destructive"
+        isLoading={loading}
+        closeOnConfirm={false}
+        onConfirm={() => { if (anexoParaExcluir) void handleDelete(anexoParaExcluir); }}
+      />
     </div>
   );
 }

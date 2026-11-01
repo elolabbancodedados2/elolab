@@ -54,6 +54,8 @@ function formatarDataPreTriagem(value: unknown): string | null {
 }
 
 interface ConversationsTabProps {
+  /** Filtro de status aplicado ao abrir a aba. */
+  filtroInicial?: string;
   conversations: WhatsAppConversation[];
   hasMoreConversations: boolean;
   isLoadingMoreConversations: boolean;
@@ -74,9 +76,9 @@ interface ConversationsTabProps {
   onCloseConversation: (conversation: WhatsAppConversation) => void;
 }
 
-export function ConversationsTab({ conversations, hasMoreConversations, isLoadingMoreConversations, onLoadMoreConversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, isClosing, onCloseConversation }: ConversationsTabProps) {
+export function ConversationsTab({ filtroInicial = 'todos', conversations, hasMoreConversations, isLoadingMoreConversations, onLoadMoreConversations, onStatusChange, isUpdating, onSendMessage, isSending, onMarkRead, onAddInternalNote, isAddingNote, onPriorityChange, onGenerateSummary, isGeneratingSummary, onSendMedia, isSendingMedia, isClosing, onCloseConversation }: ConversationsTabProps) {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [statusFilter, setStatusFilter] = useState<string>(filtroInicial);
   const [selected, setSelected] = useState<WhatsAppConversation | null>(null);
   const [reply, setReply] = useState('');
   const [note, setNote] = useState('');

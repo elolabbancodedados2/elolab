@@ -11,7 +11,7 @@ interface TrackedError {
   line?: number;
   col?: number;
   stack?: string;
-  type: 'error' | 'unhandledrejection';
+  type: 'error' | 'unhandledrejection' | 'boundary';
   timestamp: string;
   url: string;
 }
@@ -45,6 +45,23 @@ function storeError(error: TrackedError) {
   errorStore.push(error);
   if (errorStore.length > MAX_ERRORS) errorStore.shift();
   void reportError(error);
+}
+
+/**
+ * Registra um erro capturado pela aplicação (ex.: ErrorBoundary) no mesmo
+ * fluxo dos erros globais: memória local para o relatório e telemetria em
+ * produção, com deduplicação por fingerprint.
+ */
+export function trackError(error: unknown, origem: string, type: TrackedError['type'] = 'boundary') {
+  const e = error as { message?: unknown; stack?: unknown } | null;
+  storeError({
+    message: (typeof e?.message === 'string' && e.message) || String(error) || 'Erro desconhecido',
+    source: origem,
+    stack: typeof e?.stack === 'string' ? e.stack : undefined,
+    type,
+    timestamp: new Date().toISOString(),
+    url: typeof window !== 'undefined' ? window.location.href : '',
+  });
 }
 
 export function initGlobalErrorTracking() {

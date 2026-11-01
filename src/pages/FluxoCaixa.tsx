@@ -103,7 +103,11 @@ export default function FluxoCaixa() {
     });
   };
 
-  const lancamentosQuery = useLancamentos();
+  // Mês exibido e o anterior (comparação), mais os em aberto e recorrentes usados na projeção.
+  const lancamentosQuery = useLancamentos({
+    inicio: format(startOfMonth(subMonths(currentDate, 1)), 'yyyy-MM-dd'),
+    fim: format(endOfMonth(currentDate), 'yyyy-MM-dd'),
+  });
   const { data: lancamentos = [], isLoading } = lancamentosQuery;
   const inicioPeriodoPagamentos = format(startOfMonth(subMonths(currentDate, 1)), 'yyyy-MM-dd');
   const fimPeriodoPagamentosExclusivo = format(addDays(endOfMonth(currentDate), 1), 'yyyy-MM-dd');

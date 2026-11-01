@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { limparAuditoriaPendente } from '@/lib/auditTrail';
 import { registerAccountSessionActivity } from '@/lib/accountSessionDevice';
+import { limparDadosLocaisDoUsuario } from '@/lib/limparDadosLocais';
+import { ordenarPapeis } from '@/lib/papeis';
 
 export type AppRole = 'admin' | 'medico' | 'recepcao' | 'enfermagem' | 'financeiro';
 
@@ -32,12 +33,25 @@ interface UserWithRole extends UserProfile {
   clinica_id?: string;
 }
 
+export interface SignOutOptions {
+  /**
+   * 'global' (padrão) encerra a sessão em todos os aparelhos; 'local' só neste
+   * navegador — usado na inatividade e na sessão vencida.
+   */
+  scope?: 'global' | 'local';
+}
+
 interface SupabaseAuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserWithRole | null;
   clinicaId: string | null;
   isLoading: boolean;
+  /**
+   * Falha ao carregar perfil/papéis (rede, timeout). Diferente de "sem papel":
+   * a tela deve oferecer "Tentar novamente", não "Acesso pendente".
+   */
+  profileError: Error | null;
   isPlatformAdmin: boolean;
   platformAdminLevel: PlatformAdminLevel | null;
   isClinicaOwner: boolean;
@@ -45,7 +59,7 @@ interface SupabaseAuthContextType {
   isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string, metadata?: Record<string, unknown>) => Promise<{ data: any; error: Error | null }>;
-  signOut: () => Promise<void>;
+  signOut: (options?: SignOutOptions) => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   hasAnyRole: (roles: AppRole[]) => boolean;
   isAdmin: () => boolean;
@@ -66,12 +80,101 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
+function comoErro(error: unknown, padrao: string): Error {
+  if (error instanceof Error) return error;
+  const message = (error as { message?: unknown } | null)?.message;
+  return new Error(typeof message === 'string' && message ? message : padrao);
+}
+
+interface DadosConta {
+  profile: UserWithRole | null;
+  platformAdminLevel: PlatformAdminLevel | null;
+  isClinicaOwner: boolean;
+}
+
+/**
+ * Carrega perfil, papéis e vínculo de plataforma em paralelo (antes eram 4
+ * consultas em sequência e platform_admins era lido duas vezes).
+ * Lança erro em falha de leitura: "não consegui ler" não pode virar "sem papel".
+ */
+async function carregarDadosConta(userId: string): Promise<DadosConta> {
+  const [profileResult, rolesResult, platformResult] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+    supabase.from('user_roles').select('role').eq('user_id', userId),
+    supabase.from('platform_admins').select('nivel').eq('user_id', userId).eq('ativo', true).maybeSingle(),
+  ]);
+
+  if (profileResult.error) throw comoErro(profileResult.error, 'Não foi possível carregar seu perfil.');
+  if (rolesResult.error) throw comoErro(rolesResult.error, 'Não foi possível carregar suas funções.');
+  // Falha em platform_admins não derruba o login de quem é só da clínica,
+  // mas impede o provisionamento automático logo abaixo.
+  const platformAdminLevel = platformResult.error ? null : ((platformResult.data?.nivel as PlatformAdminLevel | undefined) ?? null);
+
+  const profileData = profileResult.data;
+  if (!profileData) return { profile: null, platformAdminLevel, isClinicaOwner: false };
+
+  const roles = ordenarPapeis((rolesResult.data ?? []).map(r => r.role));
+  let clinicaId = profileData.clinica_id ?? undefined;
+
+  // A conta dona da plataforma pode ter o papel `admin` por legado, mas não
+  // pertence a uma clínica. Na dúvida (falha na leitura), não faça uma
+  // mutação irreversível: o próximo refresh tenta de novo.
+  const isPlatformAccount = Boolean(platformAdminLevel) || Boolean(platformResult.error);
+
+  // Auto-create clinica for admins who don't have one
+  if (!clinicaId && roles.includes('admin') && !isPlatformAccount) {
+    try {
+      const { data: newClinica } = await supabase
+        .from('clinicas')
+        .insert({ nome: 'Minha Clínica', owner_id: userId })
+        .select('id')
+        .single();
+      if (newClinica) {
+        clinicaId = newClinica.id;
+        await supabase
+          .from('profiles')
+          .update({ clinica_id: clinicaId })
+          .eq('id', userId);
+      }
+    } catch (e) {
+      console.error('Error auto-creating clinica:', e);
+    }
+  }
+
+  let isClinicaOwner = false;
+  if (clinicaId) {
+    try {
+      const { data } = await supabase.from('clinicas').select('owner_id').eq('id', clinicaId).maybeSingle();
+      isClinicaOwner = data?.owner_id === userId;
+    } catch {
+      isClinicaOwner = false;
+    }
+  }
+
+  return {
+    profile: {
+      id: profileData.id,
+      nome: profileData.nome,
+      email: profileData.email,
+      avatar: profileData.avatar ?? undefined,
+      telefone: profileData.telefone ?? undefined,
+      ativo: profileData.ativo,
+      clinica_id: clinicaId,
+      role: roles[0] ?? null,
+      roles,
+    },
+    platformAdminLevel,
+    isClinicaOwner,
+  };
+}
+
 export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserWithRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState<Error | null>(null);
   const [platformAdminLevel, setPlatformAdminLevel] = useState<PlatformAdminLevel | null>(null);
   const [isClinicaOwner, setIsClinicaOwner] = useState(false);
   const previousDataScope = useRef<string | null>(null);
@@ -87,136 +190,34 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     previousDataScope.current = scope;
   }, [userId, profile?.clinica_id, queryClient]);
 
-  const fetchProfile = async (userId: string) => {
+  const aplicarDadosConta = useCallback((dados: DadosConta) => {
+    setProfile(dados.profile);
+    setPlatformAdminLevel(dados.platformAdminLevel);
+    setIsClinicaOwner(dados.isClinicaOwner);
+    setProfileError(null);
+  }, []);
+
+  const limparEstadoConta = useCallback(() => {
+    setProfile(null);
+    setPlatformAdminLevel(null);
+    setIsClinicaOwner(false);
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if (!userId) return;
     try {
-      // Fetch profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
-        return null;
-      }
-
-      if (!profileData) {
-        return null;
-      }
-
-      // Fetch roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId);
-
-      if (rolesError) {
-        console.error('Error fetching roles:', rolesError);
-      }
-
-      const roles = (rolesData?.map(r => r.role) || []) as AppRole[];
-      const primaryRole = roles.length > 0 ? roles[0] : null;
-
-      let clinicaId = (profileData as any).clinica_id as string | undefined;
-
-      // A conta dona da plataforma pode ter o papel `admin` por legado, mas
-      // não pertence a uma clínica. Consulte a autoridade de plataforma antes
-      // do provisionamento automático para não criar uma clínica fantasma para
-      // suporte/dono do produto.
-      let isPlatformAccount = false;
-      if (!clinicaId && roles.includes('admin')) {
-        const { data: platformAdmin, error: platformAdminError } = await (supabase as any)
-          .from('platform_admins')
-          .select('user_id')
-          .eq('user_id', userId)
-          .eq('ativo', true)
-          .maybeSingle();
-        // Em caso de falha na consulta, não faça uma mutação irreversível por
-        // engano. O próximo refresh poderá tentar o provisionamento novamente.
-        isPlatformAccount = Boolean(platformAdmin) || Boolean(platformAdminError);
-      }
-
-      // Auto-create clinica for admins who don't have one
-      if (!clinicaId && roles.includes('admin') && !isPlatformAccount) {
-        try {
-          const { data: newClinica } = await supabase
-            .from('clinicas')
-            .insert({ nome: 'Minha Clínica', owner_id: userId })
-            .select('id')
-            .single();
-          if (newClinica) {
-            clinicaId = newClinica.id;
-            await supabase
-              .from('profiles')
-              .update({ clinica_id: clinicaId } as any)
-              .eq('id', userId);
-          }
-        } catch (e) {
-          console.error('Error auto-creating clinica:', e);
-        }
-      }
-
-      return {
-        id: profileData.id,
-        nome: profileData.nome,
-        email: profileData.email,
-        avatar: profileData.avatar,
-        telefone: profileData.telefone,
-        ativo: profileData.ativo,
-        clinica_id: clinicaId,
-        role: primaryRole,
-        roles,
-      } as UserWithRole;
+      aplicarDadosConta(await withTimeout(carregarDadosConta(userId), AUTH_BOOTSTRAP_TIMEOUT_MS));
     } catch (error) {
-      console.error('Error in fetchProfile:', error);
-      return null;
+      console.error('Error refreshing auth profile:', error);
+      // Mantém o perfil já carregado; só sinaliza a falha quando não há nenhum.
+      setProfileError(comoErro(error, 'Não foi possível carregar seu acesso.'));
     }
-  };
-
-  const fetchPlatformAdmin = async (userId: string): Promise<PlatformAdminLevel | null> => {
-    try {
-      const { data } = await (supabase as any)
-        .from('platform_admins')
-        .select('nivel')
-        .eq('user_id', userId)
-        .eq('ativo', true)
-        .maybeSingle();
-      return (data?.nivel as PlatformAdminLevel) ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const fetchIsClinicaOwner = async (userId: string, clinicaId?: string | null): Promise<boolean> => {
-    if (!clinicaId) return false;
-    try {
-      const { data } = await supabase
-        .from('clinicas')
-        .select('owner_id')
-        .eq('id', clinicaId)
-        .maybeSingle();
-      return (data as any)?.owner_id === userId;
-    } catch {
-      return false;
-    }
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      const userProfile = await fetchProfile(user.id);
-      setProfile(userProfile);
-      const level = await fetchPlatformAdmin(user.id);
-      setPlatformAdminLevel(level);
-      const owner = await fetchIsClinicaOwner(user.id, userProfile?.clinica_id);
-      setIsClinicaOwner(owner);
-    }
-  };
+  }, [userId, aplicarDadosConta]);
 
   useEffect(() => {
     let isMounted = true;
 
-    const syncSession = async (currentSession: Session | null) => {
+    const syncSession = (currentSession: Session | null) => {
       if (!isMounted) return;
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
@@ -224,15 +225,21 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, currentSession) => {
-        void syncSession(currentSession);
+      (event, currentSession) => {
+        syncSession(currentSession);
+        // Saída iniciada fora deste signOut (outra aba, sessão revogada,
+        // renovação recusada): a limpeza local precisa acontecer igual.
+        if (event === 'SIGNED_OUT') {
+          queryClient.clear();
+          void limparDadosLocaisDoUsuario();
+        }
       }
     );
 
     // THEN check for existing session
     void supabase.auth.getSession()
       .then(({ data: { session: existingSession } }) => {
-        void syncSession(existingSession);
+        syncSession(existingSession);
       })
       .catch((error) => {
         if (!isMounted) return;
@@ -246,28 +253,29 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [queryClient]);
 
   // Keep the persisted last-seen timestamp current while an authenticated tab
   // is visible. The platform user list uses it as a recent-activity signal.
+  const hasSession = Boolean(session?.access_token);
   useEffect(() => {
-    if (!user?.id || !session?.access_token) return;
+    if (!userId || !hasSession) return;
 
     const registrarAtividade = () => {
       if (document.visibilityState !== 'visible') return;
       void registerAccountSessionActivity(
         {
-          userId: user.id,
+          userId,
           hasSession: true,
           isVisible: document.visibilityState === 'visible',
           userAgent: navigator.userAgent,
         },
         {
-          updateLastAccess: async (userId) => {
+          updateLastAccess: async (id) => {
             const { error } = await supabase
               .from('profiles')
-              .update({ ultimo_acesso: new Date().toISOString() } as any)
-              .eq('id', userId);
+              .update({ ultimo_acesso: new Date().toISOString() })
+              .eq('id', id);
             if (error) throw error;
           },
           touchSession: async (userAgent) => {
@@ -287,20 +295,22 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', registrarAtividade);
     };
-  }, [user?.id, session?.access_token]);
+  }, [userId, hasSession]);
 
   useEffect(() => {
     let isActive = true;
 
     const syncProfileFromUser = async () => {
-      if (!user) {
+      if (!userId) {
         if (!isActive) return;
-        setProfile(null);
+        limparEstadoConta();
+        setProfileError(null);
         setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
+      setProfileError(null);
 
       try {
         // A sessão precisa estar pronta antes das consultas protegidas por RLS.
@@ -313,28 +323,19 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
         if (!isActive) return;
 
-        if (!latestSession?.user || latestSession.user.id !== user.id) {
-          setProfile(null);
+        if (!latestSession?.user || latestSession.user.id !== userId) {
+          limparEstadoConta();
           return;
         }
 
-        const userProfile = await withTimeout(fetchProfile(user.id), AUTH_BOOTSTRAP_TIMEOUT_MS);
+        const dados = await withTimeout(carregarDadosConta(userId), AUTH_BOOTSTRAP_TIMEOUT_MS);
         if (!isActive) return;
-        setProfile(userProfile);
-
-        const level = await withTimeout(fetchPlatformAdmin(user.id), AUTH_BOOTSTRAP_TIMEOUT_MS);
-        if (!isActive) return;
-        setPlatformAdminLevel(level);
-
-        const owner = await withTimeout(fetchIsClinicaOwner(user.id, userProfile?.clinica_id), AUTH_BOOTSTRAP_TIMEOUT_MS);
-        if (!isActive) return;
-        setIsClinicaOwner(owner);
+        aplicarDadosConta(dados);
       } catch (error) {
         if (!isActive) return;
         console.error('Error initializing auth profile:', error);
-        setProfile(null);
-        setPlatformAdminLevel(null);
-        setIsClinicaOwner(false);
+        limparEstadoConta();
+        setProfileError(comoErro(error, 'Não foi possível carregar seu acesso.'));
       } finally {
         if (isActive) setIsLoading(false);
       }
@@ -345,20 +346,19 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isActive = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally depends on user.id only, not the full user object
-  }, [user?.id]);
+  }, [userId, aplicarDadosConta, limparEstadoConta]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     return { error: error as Error | null };
-  };
+  }, []);
 
-  const signUp = async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string, metadata: Record<string, unknown> = {}) => {
+  const signUp = useCallback(async (email: string, password: string, nome: string, telefone?: string, cpfCnpj?: string, redirectTo?: string, metadata: Record<string, unknown> = {}) => {
     const redirectUrl = redirectTo || 'https://app.elolab.com.br/';
-    
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -374,95 +374,63 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       },
     });
     return { data, error: error as Error | null };
-  };
+  }, []);
 
-  /**
-   * Remove do navegador qualquer resposta de API/arquivo que o service worker
-   * do PWA tenha guardado. Sem isso, dados clínicos continuavam recuperáveis
-   * no Cache Storage depois do logout em computadores compartilhados.
-   */
-  const clearClinicalCaches = async () => {
-    if (typeof caches === 'undefined') return;
+  const signOut = useCallback(async (options: SignOutOptions = {}) => {
     try {
-      const keys = await caches.keys();
-      await Promise.all(
-        keys
-          .filter(k => k.includes('supabase') || k.includes('images-cache'))
-          .map(k => caches.delete(k))
-      );
-    } catch (error) {
-      console.error('Error clearing caches:', error);
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: options.scope ?? 'global' });
     } catch (error) {
       console.error('Error signing out:', error);
     } finally {
-      await clearClinicalCaches();
       // O React Query mantinha respostas clínicas em memória mesmo depois do
       // logout. Limpar o cache evita que a próxima conta veja dados da sessão
       // anterior enquanto as consultas ainda estão sendo refeitas.
       queryClient.clear();
-      // A fila de auditoria pendente também precisa sair: em computador de
-      // recepção compartilhado, o próximo turno herdaria registros do anterior.
-      limparAuditoriaPendente();
-      // O estado de abertura/fechamento de caixa vive em chaves
-      // `caixa_estado_*` do localStorage: o próximo turno não pode herdar o
-      // estado financeiro do anterior no PC compartilhado da recepção.
-      try {
-        Object.keys(localStorage)
-          .filter(k => k.startsWith('caixa_estado_'))
-          .forEach(k => localStorage.removeItem(k));
-      } catch { /* storage indisponível neste contexto */ }
+      // Caixa, abas abertas, auditoria pendente e caches do service worker:
+      // o próximo turno no PC compartilhado não herda nada do anterior.
+      await limparDadosLocaisDoUsuario();
       setUser(null);
       setSession(null);
-      setProfile(null);
-      setPlatformAdminLevel(null);
-      setIsClinicaOwner(false);
+      limparEstadoConta();
+      setProfileError(null);
     }
-  };
+  }, [queryClient, limparEstadoConta]);
 
-  const hasRole = (role: AppRole): boolean => {
-    if (!profile) return false;
-    return profile.roles.includes(role);
-  };
+  const roles = profile?.roles;
+  const hasRole = useCallback((role: AppRole): boolean => Boolean(roles?.includes(role)), [roles]);
 
-  const hasAnyRole = (roles: AppRole[]): boolean => {
-    if (!profile) return false;
-    if (profile.roles.includes('admin')) return true;
-    return roles.some(role => profile.roles.includes(role));
-  };
+  const hasAnyRole = useCallback((allowed: AppRole[]): boolean => {
+    if (!roles) return false;
+    if (roles.includes('admin')) return true;
+    return allowed.some(role => roles.includes(role));
+  }, [roles]);
 
-  const isAdmin = (): boolean => {
-    return hasRole('admin');
-  };
+  const isAdmin = useCallback((): boolean => hasRole('admin'), [hasRole]);
 
   const isPlatformAdmin = platformAdminLevel !== null;
 
+  const value = useMemo<SupabaseAuthContextType>(() => ({
+    user,
+    session,
+    profile,
+    clinicaId: profile?.clinica_id || null,
+    isLoading,
+    profileError,
+    isPlatformAdmin,
+    platformAdminLevel,
+    isClinicaOwner,
+    isSuperAdmin: isPlatformAdmin,
+    signIn,
+    signUp,
+    signOut,
+    hasRole,
+    hasAnyRole,
+    isAdmin,
+    refreshProfile,
+  }), [user, session, profile, isLoading, profileError, isPlatformAdmin, platformAdminLevel, isClinicaOwner, signIn, signUp, signOut, hasRole, hasAnyRole, isAdmin, refreshProfile]);
+
   return (
-    <SupabaseAuthContext.Provider
-       value={{
-        user,
-        session,
-        profile,
-        clinicaId: profile?.clinica_id || null,
-        isLoading,
-        isPlatformAdmin,
-        platformAdminLevel,
-        isClinicaOwner,
-        isSuperAdmin: isPlatformAdmin,
-        signIn,
-        signUp,
-        signOut,
-        hasRole,
-        hasAnyRole,
-        isAdmin,
-        refreshProfile,
-      }}
-    >
+    <SupabaseAuthContext.Provider value={value}>
       {children}
     </SupabaseAuthContext.Provider>
   );

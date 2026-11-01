@@ -71,7 +71,7 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
               animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 500, damping: 20 }}
               className={cn(
-                'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold tabular-nums ring-1',
+                'ml-auto flex h-5 items-center justify-center rounded-full px-2 text-[11px] font-bold tabular-nums ring-1',
                 typeof item.badge === 'number'
                   ? isActive
                     ? 'min-w-[18px] bg-white/20 text-sidebar-primary-foreground ring-transparent'
@@ -101,7 +101,7 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
           >
             {item.label}
             {item.badge != null && item.badge !== 0 && item.badge !== '' && (
-              <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-sidebar-muted px-1 text-[9px] font-bold text-sidebar-foreground">
+              <span className="flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-sidebar-muted px-1 text-[11px] font-bold text-sidebar-foreground">
                 {item.badge}
               </span>
             )}

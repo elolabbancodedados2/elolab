@@ -82,7 +82,7 @@ export function MobileTabBar({ menuOpen, onOpenMenu }: MobileTabBarProps) {
               to={href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-[10px] font-medium transition-colors active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-[11px] font-medium transition-colors active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 active ? 'bg-primary/7 text-primary' : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
               )}
             >
@@ -98,7 +98,7 @@ export function MobileTabBar({ menuOpen, onOpenMenu }: MobileTabBarProps) {
           aria-expanded={menuOpen}
           onClick={onOpenMenu}
           className={cn(
-            'flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-[10px] font-medium transition-colors active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-[11px] font-medium transition-colors active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             (menuOpen || moreIsCurrent) ? 'bg-primary/7 text-primary' : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
           )}
         >

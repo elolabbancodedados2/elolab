@@ -1,3 +1,4 @@
+import { useConfirmacao } from '@/hooks/useConfirmacao';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -33,6 +34,7 @@ export function SessionsTab({
   isRefreshing,
   isChecking,
 }: SessionsTabProps) {
+  const [confirmar, dialogoConfirmacao] = useConfirmacao();
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
 
   // A Evolution API can return either an image/base64 or the raw QR payload
@@ -84,6 +86,7 @@ export function SessionsTab({
 
   return (
     <div className="space-y-4">
+      {dialogoConfirmacao}
       <div className="flex justify-between items-center">
         <h2 id="whatsapp-sessions-heading" tabIndex={-1} className="text-xl font-semibold">Sessões de WhatsApp</h2>
         <Button id="whatsapp-new-session-button" onClick={() => onCreateSessionPage('whatsapp-new-session-button')}>
@@ -179,8 +182,9 @@ export function SessionsTab({
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => {
-                      if (confirm('Deseja realmente remover esta sessão?')) {
+                    aria-label="Remover sessão"
+                    onClick={async () => {
+                      if (await confirmar({ titulo: 'Remover sessão?', descricao: 'O número deixa de receber e enviar mensagens pelo EloLab até ser conectado de novo.', confirmar: 'Remover' })) {
                         onDeleteSession(session.id);
                       }
                     }}

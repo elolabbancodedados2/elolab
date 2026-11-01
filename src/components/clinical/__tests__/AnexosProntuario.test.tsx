@@ -25,7 +25,7 @@ vi.mock('@/integrations/supabase/client', () => ({
     rpc: mocks.rpc,
   },
 }));
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
+vi.mock('@/lib/avisos', () => ({ avisar: mocks.toast }));
 
 import { AnexosProntuario } from '@/components/clinical/AnexosProntuario';
 
@@ -83,24 +83,50 @@ describe('AnexosProntuario', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('mantém o registro do anexo se o Storage falhar ao excluí-lo', async () => {
+  it('apaga o registro da clínica antes do arquivo, depois de confirmar no diálogo', async () => {
     const removido = vi.fn();
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    mocks.remove.mockResolvedValue({ error: new Error('Storage indisponível') });
-    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={removido} />);
+    const eqClinica = vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [{ id: 'anexo-1' }], error: null }) });
+    mocks.eq.mockReturnValue({ eq: eqClinica });
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={removido} clinicaId="clinica-1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' }));
+    expect(mocks.delete).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir anexo' }));
+
+    await waitFor(() => expect(removido).toHaveBeenCalledOnce());
+    expect(mocks.eq).toHaveBeenCalledWith('id', 'anexo-1');
+    expect(eqClinica).toHaveBeenCalledWith('clinica_id', 'clinica-1');
+    expect(mocks.remove).toHaveBeenCalledWith(['prontuario-1/arquivo.pdf']);
+    expect(mocks.delete.mock.invocationCallOrder[0]).toBeLessThan(mocks.remove.mock.invocationCallOrder[0]);
+  });
+
+  it('não remove o arquivo quando nenhuma linha foi apagada', async () => {
+    const removido = vi.fn();
+    mocks.eq.mockReturnValue({ eq: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [], error: null }) }) });
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={removido} clinicaId="clinica-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir anexo' }));
 
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Erro',
-      description: 'Não foi possível excluir o anexo.',
+      title: 'Não foi possível excluir o anexo',
       variant: 'destructive',
     })));
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(mocks.from).not.toHaveBeenCalled();
+    expect(mocks.remove).not.toHaveBeenCalled();
     expect(removido).not.toHaveBeenCalled();
-    expect(screen.getByText('resultado.pdf')).toBeVisible();
-    confirm.mockRestore();
+  });
+
+  it('avisa sem falhar quando só o arquivo não pôde ser apagado', async () => {
+    const removido = vi.fn();
+    mocks.eq.mockReturnValue({ eq: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [{ id: 'anexo-1' }], error: null }) }) });
+    mocks.remove.mockResolvedValue({ error: new Error('Storage indisponível') });
+    render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} onAnexoRemovido={removido} clinicaId="clinica-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir anexo resultado.pdf' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir anexo' }));
+
+    await waitFor(() => expect(removido).toHaveBeenCalledOnce());
+    expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Anexo excluído do prontuário' }));
   });
 
   it('abre a nova aba no clique antes de aguardar o link assinado', async () => {

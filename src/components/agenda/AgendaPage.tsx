@@ -21,6 +21,7 @@ import { WaitingListSidebar } from './WaitingListSidebar';
 import { PainelNovoAgendamento } from './PainelNovoAgendamento';
 import { AgendaSkeleton } from '@/components/ui/loading-skeleton';
 import { ErrorState } from '@/components/ErrorState';
+import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { isValidAgendaDate, normalizeAgendaDate } from '@/lib/agendaDate';
@@ -242,6 +243,9 @@ export function AgendaPage() {
   const [moveForaExpediente, setMoveForaExpediente] = useState<{ agendamento: any; slot: any; faixa: string } | null>(null);
 
   // Keyboard shortcuts: ← → navigate, T = today, N = new, D/W/M = view
+  // Atualizado a cada render com abrirNovaConsulta (definida após as consultas
+  // de apoio), para o atalho "n" respeitar o bloqueio por falta de dados.
+  const abrirNovaConsultaRef = useRef<(initial: any) => void>(() => {});
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -255,7 +259,7 @@ export function AgendaPage() {
       if (e.key === 'ArrowLeft') { handleDateChange(format(step(d, -1), 'yyyy-MM-dd')); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { handleDateChange(format(step(d, 1), 'yyyy-MM-dd')); e.preventDefault(); }
       else if (e.key.toLowerCase() === 't') { handleDateChange(todaySaoPauloDateOnly()); }
-      else if (e.key.toLowerCase() === 'n') { setDialogState({ open: true, initial: { data: activeDate } }); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'n') { abrirNovaConsultaRef.current({ data: activeDate }); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'd') handleViewChange('daily');
       else if (e.key.toLowerCase() === 'w') handleViewChange('weekly');
       else if (e.key.toLowerCase() === 'm') handleViewChange('monthly');
@@ -315,6 +319,27 @@ export function AgendaPage() {
   const conveniosQuery = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
   const tiposQuery = useSupabaseQuery<any>('tipos_consulta', { orderBy: { column: 'nome', ascending: true } });
   const salasQuery = useSupabaseQuery<any>('salas', { orderBy: { column: 'nome', ascending: true } });
+  // Convênios, tipos e salas só servem ao formulário de consulta: se falharem,
+  // a agenda continua visível e apenas "Nova consulta" fica bloqueada.
+  const falhasDadosApoio = [
+    conveniosQuery.isError && 'convênios',
+    tiposQuery.isError && 'tipos de consulta',
+    salasQuery.isError && 'salas',
+  ].filter((item): item is string => Boolean(item));
+  const novaConsultaBloqueada = falhasDadosApoio.length > 0;
+  const recarregarDadosApoio = () => {
+    if (conveniosQuery.isError) void conveniosQuery.refetch();
+    if (tiposQuery.isError) void tiposQuery.refetch();
+    if (salasQuery.isError) void salasQuery.refetch();
+  };
+  const abrirNovaConsulta = (initial: any) => {
+    if (novaConsultaBloqueada) {
+      toast.error('Nova consulta indisponível no momento', { description: `Não foi possível carregar ${falhasDadosApoio.join(', ')}. Tente recarregar os dados.` });
+      return;
+    }
+    setDialogState({ open: true, initial });
+  };
+  abrirNovaConsultaRef.current = abrirNovaConsulta;
   const { data: convenios = [] } = conveniosQuery;
   const { data: tipos = [] } = tiposQuery;
   const { data: salas = [] } = salasQuery;
@@ -545,6 +570,11 @@ export function AgendaPage() {
     [medicos, isMedicoOnly, myMedicoId],
   );
 
+  const medicosEmExibicao = useMemo(
+    () => medicoFilter.length ? medicoFilter : visibleMedicos.map((m: any) => m.id as string),
+    [medicoFilter, visibleMedicos],
+  );
+
   const dayAppts = useMemo(() => filtered.filter((a: any) => a.data === activeDate), [filtered, activeDate]);
   const dayApptsBase = useMemo(() => baseVisivel.filter((a: any) => a.data === activeDate), [baseVisivel, activeDate]);
 
@@ -762,7 +792,7 @@ export function AgendaPage() {
 
   const doMove = async (ag: any, slot: { medico_id: string; data: string; hora_inicio: string }, opcoes: { desfazendo?: boolean } = {}) => {
     if (!podeRemarcarAgendamento(ag.status)) {
-      toast.error('Esta consulta nao pode ser remarcada depois que o atendimento comecou ou terminou.');
+      toast.error('Esta consulta não pode ser remarcada depois que o atendimento começou ou terminou.');
       return;
     }
     const oldStart = toMinutes(ag.hora_inicio?.slice(0, 5));
@@ -831,7 +861,7 @@ export function AgendaPage() {
   };
 
   const handleSlotClick = (medico_id: string, hora_inicio: string) => {
-    setDialogState({ open: true, initial: { medico_id, data: activeDate, hora_inicio, status: 'agendado', tipo: 'consulta' } });
+    abrirNovaConsulta({ medico_id, data: activeDate, hora_inicio, status: 'agendado', tipo: 'consulta' });
   };
 
   const openBlockManagement = () => {
@@ -878,7 +908,8 @@ export function AgendaPage() {
           medicoFilter={medicoFilter}
           onStatusFilterChange={setStatusFilter}
           onMedicoFilterChange={setMedicoFilter}
-          onNewAppointment={() => setDialogState({ open: true, initial: { data: activeDate } })}
+          onNewAppointment={() => abrirNovaConsulta({ data: activeDate })}
+          newAppointmentDisabled={novaConsultaBloqueada}
           onNewBlock={openBlockManagement}
           onOpenColorScheme={() => navigate('/agenda/configurar-cores', {
             state: {
@@ -907,15 +938,16 @@ export function AgendaPage() {
           <ErrorState title="Não foi possível carregar os médicos" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />
         ) : bloqueiosQuery.isError ? (
           <ErrorState title="Não foi possível verificar os bloqueios da agenda" description="A agenda foi pausada para evitar agendamentos durante férias, feriados ou outros bloqueios." error={bloqueiosQuery.error} onRetry={() => void bloqueiosQuery.refetch()} />
-        ) : conveniosQuery.isError ? (
-          <ErrorState title="Não foi possível carregar os convênios" description="Atualize os dados antes de criar ou editar consultas." error={conveniosQuery.error} onRetry={() => void conveniosQuery.refetch()} />
-        ) : tiposQuery.isError ? (
-          <ErrorState title="Não foi possível carregar os tipos de consulta" description="Atualize os dados antes de criar ou editar consultas." error={tiposQuery.error} onRetry={() => void tiposQuery.refetch()} />
-        ) : salasQuery.isError ? (
-          <ErrorState title="Não foi possível carregar as salas" description="Atualize os dados antes de criar ou editar consultas." error={salasQuery.error} onRetry={() => void salasQuery.refetch()} />
         ) : isLoading || medicosQuery.isLoading || bloqueiosQuery.isLoading || conveniosQuery.isLoading || tiposQuery.isLoading || salasQuery.isLoading ? (
           <AgendaSkeleton />
         ) : (
+          <>
+          {novaConsultaBloqueada && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning-foreground">
+              <span>Não foi possível carregar {falhasDadosApoio.join(', ')}. A agenda segue visível, mas novas consultas estão bloqueadas até recarregar.</span>
+              <Button variant="outline" size="sm" onClick={recarregarDadosApoio}>Tentar novamente</Button>
+            </div>
+          )}
           <DndContext
             sensors={sensors}
             accessibility={{ announcements: anunciosArraste, screenReaderInstructions: agendaScreenReaderInstructions }}
@@ -936,7 +968,7 @@ export function AgendaPage() {
                     expedientePorMedico={expedientePorMedico}
                     onSlotClick={handleSlotClick}
                     onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
-                    onNovaConsulta={(initial: any) => setDialogState({ open: true, initial })}
+                    onNovaConsulta={(initial: any) => abrirNovaConsulta(initial)}
                   />
                 </div>
                 <MobileDailyAppointments
@@ -954,6 +986,8 @@ export function AgendaPage() {
                 medicoById={medicoById}
                 onDayClick={handleDayClick}
                 onCardClick={(a) => setDialogState({ open: true, initial: a })}
+                bloqueios={bloqueios}
+                medicosVisiveis={medicosEmExibicao}
               />
             )}
             {activeView === 'monthly' && (
@@ -963,6 +997,8 @@ export function AgendaPage() {
                 colorFor={colorFor}
                 medicoById={medicoById}
                 onDayClick={handleDayClick}
+                bloqueios={bloqueios}
+                medicosVisiveis={medicosEmExibicao}
               />
             )}
             <DragOverlay>
@@ -978,6 +1014,7 @@ export function AgendaPage() {
               )}
             </DragOverlay>
           </DndContext>
+          </>
         )}
       </div>
 
@@ -993,7 +1030,7 @@ export function AgendaPage() {
             date={activeDate}
             diasComConsulta={diasComConsulta}
             onDateChange={handleDateChange}
-            onNovoAgendamento={() => setDialogState({ open: true, initial: { data: activeDate } })}
+            onNovoAgendamento={() => abrirNovaConsulta({ data: activeDate })}
             onBloquear={openBlockManagement}
             onEncaixe={podeEncaixar && activeDate === todaySaoPauloDateOnly()
               ? () => navigate('/recepcao/encaixe', { state: { returnTo: `${location.pathname}${location.search}` } })

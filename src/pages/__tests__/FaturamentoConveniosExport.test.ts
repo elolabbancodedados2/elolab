@@ -29,6 +29,15 @@ describe('exportação do lote de convênio', () => {
     expect(todasAsPaginas).not.toMatch(/from\('glosas_convenio'\)\.update/);
   });
 
+  it('mostra status traduzidos, compara dinheiro em centavos e lê só as colunas das guias', () => {
+    expect(source).toContain("pago_parcial: 'Pago parcial'");
+    expect(source).toContain("recurso_preparacao: 'Preparando recurso'");
+    expect(source).not.toMatch(/status\.replaceAll\(/);
+    expect(source).toMatch(/!mesmoValor\(Number\(lote\.valor_pago/);
+    expect(source).not.toMatch(/from\('lote_tiss_guias'\)\.select\('\*'\)/);
+    expect(source).toMatch(/\['cancelado', 'rejeitado'\]\.includes\(l\.status\)/);
+  });
+
   it('associa rótulos aos campos e nomeia os seletores acessivelmente', () => {
     for (const pagina of paginasTiss) {
       for (const [, id] of pagina.source.matchAll(/<SelectTrigger[^>]*\bid="([^"]+)"/g)) {

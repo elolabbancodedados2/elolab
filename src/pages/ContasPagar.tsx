@@ -1,10 +1,10 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useBlocker, useLocation, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
-  Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown,
+  Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown, Pencil, Ban, FileSpreadsheet,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,8 @@ import { Database } from '@/integrations/supabase/types';
 import { differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { HistoricoLancamentoButton } from '@/components/financeiro/HistoricoLancamentoButton';
-import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { ConfirmDialog, UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { exportToExcel } from '@/lib/excelExporter';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
@@ -133,6 +134,26 @@ const saldoEmAberto = (conta: { valor: number | string; valor_pago?: number | st
   Math.max(0, Number(conta.valor || 0) - Number(conta.desconto || 0)
     + Number(conta.acrescimo || 0) - Number(conta.valor_pago || 0));
 
+/** Só despesa em aberto e sem nenhum pagamento pode ser editada ou cancelada. */
+const podeAlterarConta = (conta: { statusOriginal?: string | null; status?: string | null; valor_pago?: number | string | null }) =>
+  ['pendente', 'atrasado'].includes(String(conta.statusOriginal ?? conta.status ?? '')) && Number(conta.valor_pago || 0) === 0;
+
+const formDataDaConta = (conta: Record<string, any>): FormData => ({
+  categoria: CATEGORIAS.includes(conta.categoria) ? conta.categoria : 'outros',
+  descricao: conta.descricao ?? '',
+  valor: Number(conta.valor) || 0,
+  data_vencimento: conta.data_vencimento ?? '',
+  forma_pagamento: conta.forma_pagamento ?? 'pix',
+  fornecedor: conta.fornecedor ?? '',
+  numero_documento: conta.numero_documento ?? '',
+  data_emissao: conta.data_emissao ?? '',
+  competencia: typeof conta.competencia === 'string' ? conta.competencia.slice(0, 7) : '',
+  recorrente: Boolean(conta.recorrente),
+  frequencia_recorrencia: conta.frequencia_recorrencia ?? 'mensal',
+  centro_custo: conta.centro_custo ?? 'geral',
+  observacoes: conta.observacoes ?? '',
+});
+
 const PILL_BASE_P = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const PILL_ATIVA_P = 'border-primary bg-primary text-primary-foreground';
 const PILL_INATIVA_P = 'border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground';
@@ -141,6 +162,10 @@ export default function ContasPagar() {
   const location = useLocation();
   const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown; initial?: unknown } | null;
   const isCreationPage = location.pathname === '/contas/pagar/nova';
+  const editMatch = useMatch('/contas/pagar/:lancamentoId/editar');
+  const editId = editMatch?.params.lancamentoId ?? null;
+  const isEditPage = Boolean(editId);
+  const isFormPage = isCreationPage || isEditPage;
   const returnToListPath = typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo)
     ? routeState.returnTo
     : '/contas?tab=pagar';
@@ -158,18 +183,18 @@ export default function ContasPagar() {
 
   const navigate = useNavigate();
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    !navigationAllowedRef.current && isCreationPage && formDirty && !isSubmitting
+    !navigationAllowedRef.current && isFormPage && formDirty && !isSubmitting
       && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
   useEffect(() => { navigationAllowedRef.current = false; }, [location.pathname, location.search]);
   useEffect(() => {
-    if (!isCreationPage || !formDirty) return;
+    if (!isFormPage || !formDirty) return;
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warnBeforeUnload);
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-  }, [formDirty, isCreationPage]);
+  }, [formDirty, isFormPage]);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
@@ -209,12 +234,67 @@ export default function ContasPagar() {
         return { ...conta, vencida, statusOriginal: conta.status, status: vencida ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
-    enabled: !isCreationPage && !!user && !!profile?.clinica_id,
+    enabled: !isFormPage && !!user && !!profile?.clinica_id,
   });
   const contas = contasQuery.data ?? [];
+
+  const contaEdicaoQuery = useQuery({
+    queryKey: ['lancamentos', 'despesa-edicao', profile?.clinica_id ?? null, editId],
+    enabled: isEditPage && !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('lancamentos')
+        .select('id, tipo, status, valor, valor_pago, categoria, descricao, data_vencimento, forma_pagamento, fornecedor, numero_documento, data_emissao, competencia, recorrente, frequencia_recorrencia, centro_custo, observacoes')
+        .eq('id', editId!).eq('clinica_id', profile!.clinica_id!).eq('tipo', 'despesa').maybeSingle();
+      if (error) throw error;
+      return data as Record<string, any> | null;
+    },
+  });
+  const contaEdicao = contaEdicaoQuery.data;
+  const edicaoCarregada = useRef<string | null>(null);
+  useEffect(() => {
+    if (!contaEdicao || edicaoCarregada.current === contaEdicao.id) return;
+    edicaoCarregada.current = contaEdicao.id;
+    setFormData(formDataDaConta(contaEdicao));
+    setFormDirty(false);
+  }, [contaEdicao]);
+  const edicaoBloqueada = isEditPage && !!contaEdicao && !podeAlterarConta(contaEdicao);
+
+  const [contaCancelando, setContaCancelando] = useState<{ id: string; descricao: string; statusOriginal: string } | null>(null);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [cancelando, setCancelando] = useState(false);
+  const confirmarCancelamento = async () => {
+    if (!contaCancelando || cancelando) return;
+    const motivo = motivoCancelamento.trim();
+    if (motivo.length < 5) { toast.error('Explique o motivo do cancelamento (mínimo 5 caracteres).'); return; }
+    if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
+    setCancelando(true);
+    try {
+      const atual = contas.find(item => item.id === contaCancelando.id);
+      const anotacao = `Cancelada em ${format(parseDateOnly(todaySaoPauloDateOnly())!, 'dd/MM/yyyy')}${profile?.nome ? ` por ${profile.nome}` : ''}: ${motivo}`;
+      const observacoes = atual?.observacoes ? `${atual.observacoes}\n${anotacao}` : anotacao;
+      const { data, error } = await supabase.from('lancamentos')
+        .update({ status: 'cancelado' as StatusPagamento, observacoes })
+        .eq('id', contaCancelando.id)
+        .eq('clinica_id', profile.clinica_id)
+        .eq('tipo', 'despesa')
+        .eq('status', contaCancelando.statusOriginal as StatusPagamento)
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('A conta foi alterada por outra pessoa (pagamento ou cancelamento). Atualize a lista e tente novamente.');
+      toast.success('Despesa cancelada.');
+      setContaCancelando(null);
+      setMotivoCancelamento('');
+      void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+    } catch (error: any) {
+      toast.error(error?.message || 'Não foi possível cancelar a despesa.');
+      void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+    } finally {
+      setCancelando(false);
+    }
+  };
   const contasAtingiramLimite = contas.length >= LIMITE_BUSCA_EM_BLOCOS;
   const monthFilteredContas = useMemo(() => selectedMonthParam
-    ? contas.filter(c => String(c.data_vencimento || '').startsWith(selectedMonthParam))
+    ? contas.filter(c => String(c.data_vencimento || c.data || '').startsWith(selectedMonthParam))
     : contas, [contas, selectedMonthParam]);
 
   const filteredContas = useMemo(() =>
@@ -229,7 +309,9 @@ export default function ContasPagar() {
     }), [monthFilteredContas, searchTerm, filterStatus]);
 
   const stats = useMemo(() => ({
-    total: monthFilteredContas.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((acc, c) => acc + c.valor, 0),
+    // Valor líquido da conta (com desconto e acréscimo), o mesmo que os saldos usam.
+    total: monthFilteredContas.filter(c => c.status !== 'cancelado' && c.status !== 'estornado')
+      .reduce((acc, c) => acc + Number(c.valor || 0) - Number(c.desconto || 0) + Number(c.acrescimo || 0), 0),
     pendente: monthFilteredContas.filter(c => ['pendente', 'parcial'].includes(c.status) && !c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
     atrasado: monthFilteredContas.filter(c => c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
     // Atraso é um rótulo operacional calculado; uma conta vencida pode continuar
@@ -256,6 +338,38 @@ export default function ContasPagar() {
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+  const exportarExcel = async () => {
+    try {
+      const dados = filteredContas.map((c: any) => ({
+        descricao: c.descricao,
+        fornecedor: c.fornecedor || '',
+        categoria: CATEGORIAS_LABELS[c.categoria] || c.categoria || '',
+        documento: c.numero_documento || '',
+        vencimento: c.data_vencimento ? format(parseDateOnly(c.data_vencimento)!, 'dd/MM/yyyy') : '',
+        valor: Number(c.valor || 0),
+        desconto: Number(c.desconto || 0),
+        acrescimo: Number(c.acrescimo || 0),
+        valor_pago: Number(c.valor_pago || 0),
+        em_aberto: saldoEmAberto(c),
+        pagamento: c.data_pagamento ? format(parseDateOnly(String(c.data_pagamento).slice(0, 10))!, 'dd/MM/yyyy') : '',
+        status: c.vencida && c.statusOriginal === 'parcial' ? 'Atrasado · parcial' : STATUS_LABELS[c.status] || c.status,
+        centro_custo: CENTROS_CUSTO_LABELS[c.centro_custo] || c.centro_custo || '',
+      }));
+      await exportToExcel(dados, 'contas-a-pagar', 'Contas a Pagar', {
+        descricao: 'Descrição', fornecedor: 'Fornecedor', categoria: 'Categoria', documento: 'Documento',
+        vencimento: 'Vencimento', valor: 'Valor', desconto: 'Desconto', acrescimo: 'Acréscimo',
+        valor_pago: 'Valor pago', em_aberto: 'Em aberto', pagamento: 'Pagamento', status: 'Status', centro_custo: 'Centro de custo',
+      });
+      toast.success(`${dados.length} ${dados.length === 1 ? 'conta exportada' : 'contas exportadas'}.`);
+    } catch {
+      toast.error('Não foi possível gerar o arquivo. Tente novamente.');
+    }
+  };
+
+  const handleEdit = (id: string) => {
+    navigate(`/contas/pagar/${id}/editar`, { state: { returnTo: `${location.pathname}${location.search}`, restoreSearchTerm: searchTerm } });
+  };
+
   const handleNew = () => {
     navigate('/contas/pagar/nova', { state: { returnTo: `${location.pathname}${location.search}`, restoreSearchTerm: searchTerm } });
   };
@@ -279,6 +393,39 @@ export default function ContasPagar() {
     submissionLock.current = true;
     setIsSubmitting(true);
     try {
+      if (isEditPage) {
+        const alteracoes = {
+          categoria: formData.categoria,
+          descricao: formData.descricao.trim(),
+          valor: formData.valor,
+          data_vencimento: formData.data_vencimento,
+          forma_pagamento: formData.forma_pagamento || null,
+          fornecedor: formData.fornecedor || null,
+          numero_documento: formData.numero_documento || null,
+          data_emissao: formData.data_emissao || null,
+          competencia: formData.competencia || null,
+          recorrente: formData.recorrente,
+          frequencia_recorrencia: formData.recorrente ? formData.frequencia_recorrencia : null,
+          centro_custo: formData.centro_custo || null,
+          observacoes: formData.observacoes || null,
+        };
+        // Só altera se continuar em aberto e sem nenhum pagamento registrado.
+        const { data, error } = await supabase.from('lancamentos').update(alteracoes)
+          .eq('id', editId!)
+          .eq('clinica_id', profile.clinica_id)
+          .eq('tipo', 'despesa')
+          .in('status', ['pendente', 'atrasado'])
+          .or('valor_pago.is.null,valor_pago.eq.0')
+          .select('id');
+        if (error) throw error;
+        if (!data || data.length === 0) throw new Error('A conta recebeu um pagamento ou foi cancelada e não pode mais ser editada. Atualize a lista.');
+        toast.success('Conta atualizada!');
+        queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+        setFormDirty(false);
+        navigationAllowedRef.current = true;
+        returnToList();
+        return;
+      }
       const payload: any = {
         tipo: 'despesa',
         categoria: formData.categoria,
@@ -326,12 +473,23 @@ export default function ContasPagar() {
     });
   };
 
-  if (!isCreationPage && contasQuery.isLoading) return <div className="space-y-6" data-testid="contas-pagar-carregando" aria-busy="true"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
-  if (!isCreationPage && contasQuery.isError) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
+  if (!isFormPage && contasQuery.isLoading) return <div className="space-y-6" data-testid="contas-pagar-carregando" aria-busy="true"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  if (!isFormPage && contasQuery.isError && !contasQuery.data) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
+  if (isEditPage && contaEdicaoQuery.isLoading) return <div className="space-y-6" aria-busy="true"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
+  if (isEditPage && contaEdicaoQuery.isError) return <ErrorState title="Não foi possível carregar a conta" error={contaEdicaoQuery.error} onRetry={() => void contaEdicaoQuery.refetch()} />;
+  if (isEditPage && (!contaEdicao || edicaoBloqueada)) return (
+    <div className="space-y-4">
+      <PageHeader title="Editar conta a pagar" icon={<DollarSign />} />
+      <Card role="status"><CardContent className="space-y-3 p-6">
+        <p className="text-sm text-muted-foreground">{!contaEdicao ? 'A conta não existe ou não pertence à clínica ativa.' : 'Esta conta já tem pagamento registrado ou não está mais em aberto, por isso não pode ser editada.'}</p>
+        <Button variant="outline" onClick={returnToList}><ArrowLeft className="mr-2 h-4 w-4" />Voltar às contas a pagar</Button>
+      </CardContent></Card>
+    </div>
+  );
 
   return (
     <div className="space-y-6 pb-8">
-      {!isCreationPage && <>
+      {!isFormPage && <>
       <PageHeader
         title="Contas a Pagar"
         description={stats.total === 0
@@ -345,6 +503,9 @@ export default function ContasPagar() {
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/caixa-diario')}>
             <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => void exportarExcel()} disabled={filteredContas.length === 0} aria-label="Exportar contas a pagar filtradas para Excel">
+            <FileSpreadsheet className="h-4 w-4" /> Exportar Excel
           </Button>
           <Button onClick={handleNew} className="gap-2 shrink-0">
             <Plus className="h-4 w-4" /> Nova Conta
@@ -594,6 +755,17 @@ export default function ContasPagar() {
                       </TableCell>
                       <TableCell className="space-x-1 whitespace-nowrap text-right">
                         <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} restoreSearchTerm={searchTerm} />
+                        {podeAlterarConta(conta) && (
+                          <>
+                            <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={`Editar ${conta.descricao}`} title="Editar" onClick={() => handleEdit(conta.id)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-destructive" aria-label={`Cancelar ${conta.descricao}`} title="Cancelar despesa"
+                              onClick={() => { setMotivoCancelamento(''); setContaCancelando({ id: conta.id, descricao: conta.descricao, statusOriginal: conta.statusOriginal }); }}>
+                              <Ban className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                         {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
                           <Button size="sm" onClick={() => handlePagamento(conta.id)}
                             className="h-9 gap-1 text-xs">
@@ -610,13 +782,31 @@ export default function ContasPagar() {
           </div>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={!!contaCancelando}
+        onOpenChange={open => { if (!open && !cancelando) setContaCancelando(null); }}
+        title="Cancelar despesa"
+        description={`A despesa "${contaCancelando?.descricao ?? ''}" sai dos totais em aberto. O motivo fica registrado nas observações.`}
+        confirmLabel="Cancelar despesa"
+        cancelLabel="Voltar"
+        variant="destructive"
+        isLoading={cancelando}
+        closeOnConfirm={false}
+        onConfirm={() => void confirmarCancelamento()}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="payable-cancel-reason" className="text-xs">Motivo do cancelamento *</Label>
+          <Textarea id="payable-cancel-reason" value={motivoCancelamento} onChange={e => setMotivoCancelamento(e.target.value)}
+            placeholder="Ex.: lançada em duplicidade" rows={2} disabled={cancelando} />
+        </div>
+      </ConfirmDialog>
       </>}
 
-      {isCreationPage && (
+      {isFormPage && (
         <main data-testid="payable-create-page" className="space-y-5">
           <PageHeader
-            title="Nova Conta a Pagar"
-            description="Cadastre uma despesa e acompanhe o vencimento na lista de contas."
+            title={isEditPage ? 'Editar conta a pagar' : 'Nova Conta a Pagar'}
+            description={isEditPage ? 'Corrija os dados da despesa enquanto ela não tiver pagamento registrado.' : 'Cadastre uma despesa e acompanhe o vencimento na lista de contas.'}
             icon={<DollarSign />}
             actions={(
               <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting}>
@@ -761,15 +951,15 @@ export default function ContasPagar() {
             </div>
 
             <Separator />
-            <p className="text-xs text-muted-foreground">
+            {!isEditPage && <p className="text-xs text-muted-foreground">
               A conta será cadastrada como pendente. Depois, use <strong>Pagar</strong> para registrar o movimento no caixa aberto do dia.
-            </p>
+            </p>}
               </div>
             </section>
             <footer className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting}>Cancelar</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar conta'}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : isEditPage ? 'Salvar alterações' : 'Salvar conta'}
             </Button>
             </footer>
           </form>

@@ -35,9 +35,19 @@ function primeiroNome(nome?: string | null) {
   return (nome || 'paciente').trim().split(' ')[0] || 'paciente';
 }
 
-function mensagemCobranca(nome: string, valor: string, dias: number) {
-  return `Olá, ${nome}! Identificamos uma pendência de ${valor} vencida há ${dias} dia(s). Podemos ajudar a regularizar o pagamento?`;
+const diasTexto = (dias: number) => `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+
+function mensagemCobranca(nome: string, valor: string, dias: number, titulos = 1) {
+  if (titulos > 1) {
+    return `Olá, ${nome}! Identificamos ${titulos} pendências que somam ${valor}, a mais antiga vencida há ${diasTexto(dias)}. Podemos ajudar a regularizar o pagamento?`;
+  }
+  return `Olá, ${nome}! Identificamos uma pendência de ${valor} vencida há ${diasTexto(dias)}. Podemos ajudar a regularizar o pagamento?`;
 }
+
+const saldoTitulo = (l: any) => Math.max(0,
+  Number(l.valor || 0) - Number(l.desconto || 0) + Number(l.acrescimo || 0) - Number(l.valor_pago || 0),
+);
+const SEM_TITULOS: any[] = [];
 
 export default function CobrancaInadimplentes() {
   const navigate = useNavigate();
@@ -71,13 +81,14 @@ export default function CobrancaInadimplentes() {
       return cobrancas.map((conta: any) => ({ ...conta, pacientes: pacientesPorId.get(conta.paciente_id) ?? null }));
     },
   });
-  const data = cobrancasQuery.data ?? [];
+  // Título sem saldo (quitado por desconto ou pagamento ainda não refletido no status) não é cobrança.
+  const data = useMemo(() => (cobrancasQuery.data ?? SEM_TITULOS).filter((l: any) => saldoTitulo(l) > 0.004), [cobrancasQuery.data]);
   const { isLoading, refetch } = cobrancasQuery;
   const comContato = data.filter((l: any) => l.pacientes?.telefone || l.pacientes?.email);
   const atingiuLimite = data.length >= LIMITE_BUSCA_EM_BLOCOS;
 
   const pedirEnvioTodos = () => {
-    if (!comContato.length) { toast.error('Nenhum lançamento vencido tem telefone ou e-mail cadastrado.'); return; }
+    if (!alvosEnvio.length) { toast.error('Nenhum lançamento da lista filtrada tem telefone ou e-mail cadastrado.'); return; }
     setConfirmarEnvio(true);
   };
 
@@ -89,8 +100,8 @@ export default function CobrancaInadimplentes() {
     let naoEnviados = 0;
     const motivosNaoEnviados: Record<string, number> = {};
     let loteAtual = 0;
-    const lotesIds = Array.from({ length: Math.ceil(comContato.length / 500) }, (_, index) =>
-      comContato.slice(index * 500, (index + 1) * 500).map((l: any) => l.id));
+    const lotesIds = Array.from({ length: Math.ceil(alvosEnvio.length / 500) }, (_, index) =>
+      alvosEnvio.slice(index * 500, (index + 1) * 500).map((l: any) => l.id));
     setSendProgress({ batch: 0, total: lotesIds.length });
     try {
       for (const [index, lancamentoIds] of lotesIds.entries()) {
@@ -143,9 +154,7 @@ export default function CobrancaInadimplentes() {
     }
   };
 
-  const saldo = (l: any) => Math.max(0,
-    Number(l.valor || 0) - Number(l.desconto || 0) + Number(l.acrescimo || 0) - Number(l.valor_pago || 0),
-  );
+  const saldo = saldoTitulo;
   const totalDevido = data.reduce((a: number, l: any) => a + saldo(l), 0);
 
   // Dias de atraso calculados uma única vez por lançamento, reaproveitados nos
@@ -169,6 +178,8 @@ export default function CobrancaInadimplentes() {
     }
     return true;
   }), [dataComDias, filtroIndicador, filtroFaixa, searchTerm]);
+  // A régua respeita os filtros da tela: só os títulos visíveis com contato.
+  const alvosEnvio = useMemo(() => filtrados.filter((l: any) => l.pacientes?.telefone || l.pacientes?.email), [filtrados]);
 
   // Um paciente com três títulos vencidos recebia três cobranças separadas;
   // agrupado, a equipe vê o total devido e fala com a pessoa uma vez só.
@@ -202,7 +213,7 @@ export default function CobrancaInadimplentes() {
       filename: `cobranca-manual-${todaySaoPauloDateOnly()}.csv`,
       mimeType: 'text/csv;charset=utf-8',
     });
-    toast.success(`Lista exportada com ${filtrados.length} título(s).`);
+    toast.success(`Lista exportada com ${filtrados.length} ${filtrados.length === 1 ? 'título' : 'títulos'}.`);
   };
 
   // Destaque: o paciente com mais dias de atraso; em caso de empate, o maior saldo.
@@ -234,7 +245,7 @@ export default function CobrancaInadimplentes() {
     <div className="space-y-5 pb-8">
       <PageHeader
         title={'Cobrança de inadimplentes'}
-        description={`${data.length} pendência(s) vencida(s) · ${comContato.length} com contato para cobrança`}
+        description={`${data.length} ${data.length === 1 ? 'pendência vencida' : 'pendências vencidas'} · ${comContato.length} com contato para cobrança`}
         icon={<AlertTriangle />}
         actions={(
           <>
@@ -246,7 +257,7 @@ export default function CobrancaInadimplentes() {
             </Button>
             <Button
               onClick={pedirEnvioTodos}
-              disabled={sending || cobrancasQuery.isError || !comContato.length}
+              disabled={sending || cobrancasQuery.isError || !alvosEnvio.length}
               className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -322,7 +333,7 @@ export default function CobrancaInadimplentes() {
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {vencimento && <span className="inline-flex items-center gap-1">Venc. {format(vencimento, 'dd/MM/yyyy')}</span>}
                     <span className="inline-flex items-center gap-1 font-semibold text-destructive">
-                      <Clock aria-hidden="true" className="h-3 w-3" /> {destaque.dias} dia(s) de atraso
+                      <Clock aria-hidden="true" className="h-3 w-3" /> {diasTexto(destaque.dias)} de atraso
                     </span>
                     <span className="font-semibold text-foreground">{valorFormatado}</span>
                   </div>
@@ -450,14 +461,14 @@ export default function CobrancaInadimplentes() {
                   <TableBody>
                     {porPaciente.map(grupo => {
                       const totalFormatado = grupo.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                      const whatsapp = linkWhatsApp(grupo.pacientes?.telefone, mensagemCobranca(primeiroNome(grupo.pacientes?.nome), totalFormatado, grupo.maiorAtraso));
+                      const whatsapp = linkWhatsApp(grupo.pacientes?.telefone, mensagemCobranca(primeiroNome(grupo.pacientes?.nome), totalFormatado, grupo.maiorAtraso, grupo.titulos));
                       return (
                         <TableRow key={grupo.id}>
                           <TableCell className="font-medium">{grupo.pacientes?.nome || '—'}</TableCell>
                           <TableCell className="tabular-nums">{grupo.titulos}</TableCell>
                           <TableCell className="font-semibold tabular-nums">{totalFormatado}</TableCell>
                           <TableCell>
-                            <Badge variant={grupo.maiorAtraso > 30 ? 'destructive' : 'outline'} className={cn('rounded-full', grupo.maiorAtraso <= 30 && 'border-warning/40 bg-warning/10 text-warning-foreground')}>{grupo.maiorAtraso} dias</Badge>
+                            <Badge variant={grupo.maiorAtraso > 30 ? 'destructive' : 'outline'} className={cn('rounded-full', grupo.maiorAtraso <= 30 && 'border-warning/40 bg-warning/10 text-warning-foreground')}>{diasTexto(grupo.maiorAtraso)}</Badge>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1 text-xs">
@@ -516,7 +527,7 @@ export default function CobrancaInadimplentes() {
                               variant={dias > 30 ? 'destructive' : 'outline'}
                               className={cn('rounded-full', dias <= 30 && 'border-warning/40 bg-warning/10 text-warning-foreground')}
                             >
-                              {dias} dias
+                              {diasTexto(dias)}
                             </Badge>
                             <p className="mt-1 text-[11px] text-muted-foreground">{FAIXAS_ATRASO.find(f => f.id === faixaAtraso(dias))?.label}</p>
                           </TableCell>
@@ -555,7 +566,7 @@ export default function CobrancaInadimplentes() {
         open={confirmarEnvio}
         onOpenChange={setConfirmarEnvio}
         title="Processar cobranças vencidas"
-        description={`Processar cobranças dos ${comContato.length} lançamentos vencidos com telefone ou e-mail? A régua pode pular itens fora da data prevista ou já enviados.`}
+        description={`Processar ${alvosEnvio.length === 1 ? 'a cobrança de 1 lançamento vencido' : `as cobranças de ${alvosEnvio.length} lançamentos vencidos`} com telefone ou e-mail${temFiltro ? ', conforme os filtros atuais' : ''}? A régua pode pular itens fora da data prevista ou já enviados.`}
         confirmLabel="Processar"
         variant="warning"
         onConfirm={() => void enviarTodos()}
@@ -564,7 +575,7 @@ export default function CobrancaInadimplentes() {
         open={confirmarExportacao}
         onOpenChange={setConfirmarExportacao}
         title="Exportar lista para cobrança manual"
-        description={`A planilha terá nome, contato, saldo e atraso de ${filtrados.length} título(s), conforme os filtros atuais. Use-a somente para a cobrança manual autorizada pela clínica e não a compartilhe fora da equipe financeira. Nenhuma mensagem será enviada.`}
+        description={`A planilha terá nome, contato, saldo e atraso de ${filtrados.length} ${filtrados.length === 1 ? 'título' : 'títulos'}, conforme os filtros atuais. Use-a somente para a cobrança manual autorizada pela clínica e não a compartilhe fora da equipe financeira. Nenhuma mensagem será enviada.`}
         confirmLabel="Exportar"
         variant="warning"
         onConfirm={exportarLista}

@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { calcularSaldoGaveta, calcularTotaisCaixa } from '@/lib/caixaDiario';
 import { cn } from '@/lib/utils';
+import { dataHoraSP, horaSP, rotuloForma, textoSeguroCsv } from '@/lib/caixaFormatacao';
 
 type CashRecord = {
   id: string;
@@ -56,15 +57,15 @@ const movementLabel: Record<CashMovement['tipo'], string> = {
 
 function exportMovementsCsv(movements: CashMovement[], date: string) {
   const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-  const safeText = (value: string | null | undefined) => /^[=+@\-\t\r]/.test(value ?? '') ? `'${value}` : (value ?? '');
+  const safeText = textoSeguroCsv;
   const rows = [
     ['Data', 'Hora', 'Tipo', 'Descrição', 'Forma de pagamento', 'Categoria', 'Valor'],
     ...movements.map(item => [
       item.data,
-      new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      horaSP(item.created_at),
       movementLabel[item.tipo],
       safeText(item.descricao),
-      safeText(item.forma_pagamento),
+      safeText(rotuloForma(item.forma_pagamento)),
       safeText(item.categoria),
       ((item.tipo === 'receita' || item.tipo === 'suprimento') ? item.valor : -item.valor).toFixed(2).replace('.', ','),
     ]),
@@ -90,7 +91,7 @@ function printCashReport(cash: CashRecord, movements: CashMovement[], expected: 
   const escapeHtml = (value: unknown) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const lines = movements.map(item => {
     const positive = item.tipo === 'receita' || item.tipo === 'suprimento';
-    return `<tr><td>${escapeHtml(new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}</td><td>${escapeHtml(movementLabel[item.tipo])}</td><td>${escapeHtml(item.descricao)}</td><td>${escapeHtml(item.forma_pagamento)}</td><td class="num ${positive ? 'positive' : 'negative'}">${positive ? '+' : '−'}${escapeHtml(money(Math.abs(Number(item.valor))))}</td></tr>`;
+    return `<tr><td>${escapeHtml(horaSP(item.created_at))}</td><td>${escapeHtml(movementLabel[item.tipo])}</td><td>${escapeHtml(item.descricao)}</td><td>${escapeHtml(rotuloForma(item.forma_pagamento))}</td><td class="num ${positive ? 'positive' : 'negative'}">${positive ? '+' : '−'}${escapeHtml(money(Math.abs(Number(item.valor))))}</td></tr>`;
   }).join('');
   const body = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Fechamento de caixa ${escapeHtml(cash.data)}</title><style>body{font:13px Arial,sans-serif;color:#172b4d;margin:32px}h1{font-size:20px;margin:0 0 6px}.muted{color:#61748b}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0}.summary div{border:1px solid #dfe7f0;border-radius:6px;padding:10px}.summary b{display:block;margin-top:5px;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-bottom:1px solid #dfe7f0;padding:8px;text-align:left}th{color:#61748b;font-size:11px;text-transform:uppercase}.num{text-align:right;font-variant-numeric:tabular-nums}.positive{color:#047857}.negative{color:#b91c1c}@media print{body{margin:16px}}</style></head><body><h1>Relatório de fechamento de caixa</h1><div class="muted">${escapeHtml(dateLabel(cash.data))} · ${cash.aberto ? 'Caixa ainda aberto (parcial)' : 'Caixa fechado'}</div><div class="summary"><div>Abertura<b>${escapeHtml(money(Number(cash.valor_abertura)))}</b><span class="muted">${escapeHtml(cash.operador_abertura || '—')}</span></div><div>Receitas<b>${escapeHtml(money(totals.receita))}</b></div><div>Despesas e sangrias<b>${escapeHtml(money(totals.despesa + totals.sangria))}</b></div><div>Suprimentos<b>${escapeHtml(money(totals.suprimento))}</b></div><div>Saldo esperado<b>${escapeHtml(money(expected))}</b></div><div>Valor contado<b>${cash.valor_fechamento === null ? '—' : escapeHtml(money(Number(cash.valor_fechamento)))}</b></div></div>${cash.observacoes ? `<p><strong>Observações:</strong> ${escapeHtml(cash.observacoes)}</p>` : ''}<h2>Movimentações (${movements.length})</h2><table><thead><tr><th>Hora</th><th>Tipo</th><th>Descrição</th><th>Forma</th><th class="num">Valor</th></tr></thead><tbody>${lines || '<tr><td colspan="5" class="muted">Nenhuma movimentação</td></tr>'}</tbody></table><script>window.onload=function(){window.print();}</script></body></html>`;
   printWindow.document.write(body);
@@ -209,8 +210,8 @@ export default function CaixaHistoricoDetalhePage() {
                     <tbody>{movements.map(item => {
                       const positive = item.tipo === 'receita' || item.tipo === 'suprimento';
                       return <tr key={item.id} className="border-b last:border-0">
-                        <td className="py-3 pr-3 tabular-nums">{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="py-3 pr-3">{movementLabel[item.tipo]}</td><td className="max-w-[28rem] py-3 pr-3">{item.descricao}</td><td className="py-3 pr-3">{item.forma_pagamento}</td>
+                        <td className="py-3 pr-3 tabular-nums">{horaSP(item.created_at)}</td>
+                        <td className="py-3 pr-3">{movementLabel[item.tipo]}</td><td className="max-w-[28rem] py-3 pr-3">{item.descricao}</td><td className="py-3 pr-3">{rotuloForma(item.forma_pagamento)}</td>
                         <td className={cn('py-3 text-right font-medium tabular-nums', positive ? 'text-success' : 'text-destructive')}>{positive ? '+' : '−'}{money(Math.abs(Number(item.valor)))}</td>
                       </tr>;
                     })}</tbody>
@@ -227,7 +228,7 @@ export default function CaixaHistoricoDetalhePage() {
                 <div role="alert" className="flex flex-wrap items-center justify-between gap-3 text-sm text-destructive"><span>Não foi possível carregar o histórico.</span><Button size="sm" variant="outline" onClick={() => void eventsQuery.refetch()}>Tentar novamente</Button></div>
               ) : eventsQuery.data?.length ? (
                 <ol className="space-y-4">{eventsQuery.data.map(event => <li key={event.id} className="border-l-2 border-primary/30 pl-4 text-sm">
-                  <div className="flex flex-wrap gap-x-2"><strong>{event.tipo === 'abertura' ? 'Abertura' : event.tipo === 'fechamento' ? 'Fechamento' : 'Reabertura'}</strong><span className="text-muted-foreground">{new Date(event.created_at).toLocaleString('pt-BR')}</span>{event.user_nome && <span className="text-muted-foreground">por {event.user_nome}</span>}</div>
+                  <div className="flex flex-wrap gap-x-2"><strong>{event.tipo === 'abertura' ? 'Abertura' : event.tipo === 'fechamento' ? 'Fechamento' : 'Reabertura'}</strong><span className="text-muted-foreground">{dataHoraSP(event.created_at)}</span>{event.user_nome && <span className="text-muted-foreground">por {event.user_nome}</span>}</div>
                   {event.valor_informado !== null && <p className="mt-1 text-muted-foreground">Informado: {money(event.valor_informado)}</p>}
                   {event.valor_apurado !== null && <p className="text-muted-foreground">Apurado: {money(event.valor_apurado)}</p>}
                   {event.fechamento_anterior_valor !== null && <p className="text-muted-foreground">Fechamento anterior: {money(event.fechamento_anterior_valor)}{event.fechamento_anterior_operador ? `, por ${event.fechamento_anterior_operador}` : ''}</p>}

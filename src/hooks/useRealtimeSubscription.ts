@@ -16,34 +16,40 @@ const CRITICAL_TABLES = [
   { table: 'tarefas', queryKeys: ['tarefas', 'minha-fila-tarefas', 'minhas-tarefas-pendentes', 'central-notificacoes'] },
 ] as const;
 
-const INITIAL_POLL_INTERVAL = 30_000; // 30s
-const MAX_POLL_INTERVAL = 120_000;    // 2min
+export const INITIAL_POLL_INTERVAL = 30_000; // 30s
+export const MAX_POLL_INTERVAL = 120_000;    // 2min
 const BACKOFF_FACTOR = 1.5;
 
 /**
  * Subscribes to real-time changes on critical tables and invalidates
- * React Query caches automatically. Includes a fallback polling mechanism
- * with exponential backoff for resilience when Realtime fails silently.
+ * React Query caches automatically.
+ *
+ * O polling de reserva só roda quando o canal NÃO está inscrito (erro,
+ * timeout, fechado ou ainda conectando) e a aba está visível. Antes ele
+ * invalidava tudo a cada 30 s sempre que não chegava evento, mesmo com o
+ * canal saudável — ou seja, em toda clínica com pouco movimento.
  */
 export function useRealtimeSubscription() {
   const queryClient = useQueryClient();
   const { user } = useSupabaseAuth();
+  const userId = user?.id;
   const pollIntervalRef = useRef(INITIAL_POLL_INTERVAL);
-  const lastRealtimeEventRef = useRef<number>(Date.now());
+  const channelStatusRef = useRef<string>('CONNECTING');
   const isActiveRef = useRef(true);
 
   const invalidateAll = useCallback(() => {
-    CRITICAL_TABLES.forEach(({ queryKeys }) => {
-      queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
-    });
+    const keys = new Set<string>(CRITICAL_TABLES.flatMap(({ queryKeys }) => [...queryKeys]));
+    // Só as consultas montadas na tela voltam ao servidor; as demais ficam
+    // marcadas como desatualizadas e recarregam quando forem usadas.
+    keys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey], refetchType: 'active' }));
   }, [queryClient]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
     isActiveRef.current = true;
     pollIntervalRef.current = INITIAL_POLL_INTERVAL;
-    lastRealtimeEventRef.current = Date.now();
+    channelStatusRef.current = 'CONNECTING';
 
     // Primary: Realtime subscription
     let channel = supabase.channel(canalUnico('global-realtime'));
@@ -54,14 +60,20 @@ export function useRealtimeSubscription() {
         { event: '*', schema: 'public', table },
         () => {
           queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
-          lastRealtimeEventRef.current = Date.now();
-          pollIntervalRef.current = INITIAL_POLL_INTERVAL; // reset backoff
         }
       );
     });
 
     let channelErrorLogged = false;
     channel.subscribe((status) => {
+      const anterior = channelStatusRef.current;
+      channelStatusRef.current = status;
+      if (status === 'SUBSCRIBED') {
+        pollIntervalRef.current = INITIAL_POLL_INTERVAL;
+        channelErrorLogged = false;
+        // Voltou depois de uma queda: pode ter perdido eventos no intervalo.
+        if (anterior !== 'CONNECTING' && anterior !== 'SUBSCRIBED') invalidateAll();
+      }
       if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !channelErrorLogged) {
         console.warn('[Realtime] Canal com problema, usando polling como fallback.');
         channelErrorLogged = true;
@@ -74,18 +86,17 @@ export function useRealtimeSubscription() {
     const poll = () => {
       if (!isActiveRef.current) return;
 
-      const timeSinceLastEvent = Date.now() - lastRealtimeEventRef.current;
+      const canalSaudavel = channelStatusRef.current === 'SUBSCRIBED';
+      const abaVisivel = typeof document === 'undefined' || !document.hidden;
 
-      // Only poll if we haven't received a realtime event recently
-      if (timeSinceLastEvent > INITIAL_POLL_INTERVAL) {
+      if (!canalSaudavel && abaVisivel) {
         invalidateAll();
-        // Increase interval with backoff since realtime seems inactive
+        // Increase interval with backoff while realtime stays down
         pollIntervalRef.current = Math.min(
           pollIntervalRef.current * BACKOFF_FACTOR,
           MAX_POLL_INTERVAL
         );
-      } else {
-        // Realtime is working, reset backoff
+      } else if (canalSaudavel) {
         pollIntervalRef.current = INITIAL_POLL_INTERVAL;
       }
 
@@ -96,10 +107,19 @@ export function useRealtimeSubscription() {
 
     timeoutId = setTimeout(poll, INITIAL_POLL_INTERVAL);
 
+    // Ao voltar para a aba com o canal fora do ar, atualiza na hora em vez de
+    // esperar o próximo ciclo.
+    const aoMudarVisibilidade = () => {
+      if (document.hidden || channelStatusRef.current === 'SUBSCRIBED') return;
+      invalidateAll();
+    };
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
+
     return () => {
       isActiveRef.current = false;
       clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', aoMudarVisibilidade);
       supabase.removeChannel(channel);
     };
-  }, [user, queryClient, invalidateAll]);
+  }, [userId, queryClient, invalidateAll]);
 }

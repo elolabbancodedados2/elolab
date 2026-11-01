@@ -558,8 +558,17 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
   };
 
   const handleSaveAndGenerate = async () => {
-    if (!form.paciente_id || !form.medico_id || !form.medicamentos_texto.trim()) {
-      toast.error('Preencha todos os campos');
+    // Diz qual campo falta e leva o foco até ele, em vez de "preencha todos".
+    const faltando = !form.paciente_id
+      ? { id: 'prescricao-paciente', mensagem: 'Selecione o paciente da receita.' }
+      : !form.medico_id
+        ? { id: 'prescricao-medico', mensagem: 'Selecione o médico prescritor.' }
+        : !form.medicamentos_texto.trim()
+          ? { id: 'prescricao-medicamentos', mensagem: 'Descreva os medicamentos e a posologia.' }
+          : null;
+    if (faltando) {
+      toast.error('Campo obrigatório', { description: faltando.mensagem });
+      document.getElementById(faltando.id)?.focus();
       return;
     }
     if (!isValidDateOnly(form.data_emissao) || form.data_emissao > today) {

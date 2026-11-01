@@ -22,6 +22,8 @@ export function useSupabaseQuery<T>(
     select?: string;
     orderBy?: { column: string; ascending?: boolean };
     filters?: Array<{ column: string; operator: string; value: unknown }>;
+    /** Condição "ou" no formato do PostgREST, ex.: `status.eq.pendente,data.gte.2026-01-01`. */
+    or?: string;
     enabled?: boolean;
     staleTime?: number;
     limit?: number;
@@ -52,6 +54,9 @@ export function useSupabaseQuery<T>(
           for (const filter of options.filters) {
             query = query.filter(filter.column, filter.operator, filter.value);
           }
+        }
+        if (options?.or) {
+          query = query.or(options.or);
         }
 
         if (options?.orderBy) {
@@ -314,7 +319,27 @@ export function useAgendamentosPeriodo(inicio: string, fim: string, options?: { 
   });
 }
 
-export function useLancamentos() {
+/**
+ * Filtro da janela de lançamentos: tudo que tem data, vencimento ou pagamento
+ * no período, mais o que continua em aberto ou é recorrente (projeção e
+ * vencidos dependem deles, qualquer que seja a data).
+ */
+export function filtroJanelaLancamentos(janela: { inicio: string; fim: string }): string {
+  const { inicio, fim } = janela;
+  return [
+    `and(data.gte.${inicio},data.lte.${fim})`,
+    `and(data_vencimento.gte.${inicio},data_vencimento.lte.${fim})`,
+    `and(data_pagamento.gte.${inicio},data_pagamento.lte.${fim})`,
+    'status.in.(pendente,atrasado,parcial)',
+    'recorrente.is.true',
+  ].join(',');
+}
+
+/**
+ * Lançamentos da clínica. Sem `janela`, traz a história inteira (conciliação de
+ * extrato); com `janela` (datas AAAA-MM-DD inclusivas), só o período e os em aberto.
+ */
+export function useLancamentos(janela?: { inicio: string; fim: string }) {
   return useSupabaseQuery<{
     id: string;
     tipo: string;
@@ -342,6 +367,7 @@ export function useLancamentos() {
     updated_at: string;
   }>('lancamentos', {
     orderBy: { column: 'data', ascending: false },
+    ...(janela ? { or: filtroJanelaLancamentos(janela) } : {}),
   });
 }
 

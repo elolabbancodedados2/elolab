@@ -405,27 +405,28 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const queueRealtimeState = filaRealtimeState(realtimeStatus);
 
   // Realtime subscription for instant queue updates
+  // fila_atendimento e a chave ['agendamentos'] já são invalidadas pelo canal
+  // global (useRealtimeSubscription); aqui só entram os caches próprios da
+  // Fila, sempre restritos à clínica da sessão.
   useEffect(() => {
-    const channel = supabase
-      .channel(canalUnico('fila-realtime'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fila_atendimento' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
-        queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['fila-cobrancas', profile?.clinica_id] });
-        queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', profile?.clinica_id] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['fila-triagens', profile?.clinica_id] });
-      })
-      .subscribe((status) => setRealtimeStatus(status));
-
     // Timer update every 30s for wait time display
     const interval = setInterval(() => setNow(Date.now()), 30000);
+    const clinicaId = profile?.clinica_id;
+    if (!clinicaId) return () => clearInterval(interval);
+    const filtro = `clinica_id=eq.${clinicaId}`;
+    const channel = supabase
+      .channel(canalUnico('fila-realtime'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos', filter: filtro }, () => {
+        queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', clinicaId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lancamentos', filter: filtro }, () => {
+        queryClient.invalidateQueries({ queryKey: ['fila-cobrancas', clinicaId] });
+        queryClient.invalidateQueries({ queryKey: ['fila-liberacao-pagamento', clinicaId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'triagens', filter: filtro }, () => {
+        queryClient.invalidateQueries({ queryKey: ['fila-triagens', clinicaId] });
+      })
+      .subscribe((status) => setRealtimeStatus(status));
 
     return () => {
       clearInterval(interval);
@@ -589,7 +590,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
       }
       navigate('/fila', { replace: true });
     } catch (e: any) {
-      toast.error('Erro: ' + e.message);
+      toast.error('Não foi possível adicionar o paciente à fila', { description: mensagemDeErro(e) });
     } finally {
       setIsSaving(false);
     }

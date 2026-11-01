@@ -30,9 +30,7 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ profile: { clinica_id: 'clinica-1' } }),
 }));
 
-vi.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
+vi.mock('@/lib/avisos', () => ({ avisar: vi.fn() }));
 
 async function abrirPrevia() {
   const { container } = render(<MemoryRouter><BackupRestore /></MemoryRouter>);

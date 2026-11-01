@@ -1,6 +1,9 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useSupabaseAuth, AppRole } from '@/contexts/SupabaseAuthContext';
+import { useState } from 'react';
 import { BrandLoadingScreen } from '@/components/BrandLoadingScreen';
+import { ErrorState } from '@/components/ErrorState';
+import { Button } from '@/components/ui/button';
 
 interface SupabaseProtectedRouteProps {
   children: React.ReactNode;
@@ -22,8 +25,9 @@ export function SupabaseProtectedRoute({
   somentePlataforma,
   permitirCompradorPendente = false,
 }: SupabaseProtectedRouteProps) {
-  const { user, profile, isLoading, hasAnyRole, isPlatformAdmin } = useSupabaseAuth();
+  const { user, profile, isLoading, profileError, hasAnyRole, isPlatformAdmin, refreshProfile, signOut } = useSupabaseAuth();
   const location = useLocation();
+  const [tentando, setTentando] = useState(false);
 
   if (isLoading) {
     return <BrandLoadingScreen message="Verificando seu acesso" detail="Estamos preparando seu espaço de trabalho." />;
@@ -31,6 +35,30 @@ export function SupabaseProtectedRoute({
 
   if (!user) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
+
+  // Falha de rede ao ler perfil/papéis não é "conta sem função": oferece
+  // tentar de novo em vez de mandar a pessoa esperar um administrador.
+  if (!profile && profileError) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md space-y-3">
+          <ErrorState
+            title="Não foi possível carregar seu acesso"
+            error={profileError}
+            retryLabel={tentando ? 'Tentando…' : 'Tentar novamente'}
+            onRetry={() => {
+              if (tentando) return;
+              setTentando(true);
+              void refreshProfile().finally(() => setTentando(false));
+            }}
+          />
+          <Button variant="ghost" className="w-full" onClick={() => void signOut()}>
+            Sair
+          </Button>
+        </div>
+      </main>
+    );
   }
 
   // Dono da plataforma não tem papel de clínica, e não deveria mesmo ter: ele

@@ -269,6 +269,7 @@ export function validarRascunho(r: RascunhoCampanha): string | null {
   if (r.mensagem.length > 2000) return 'A mensagem pode ter até 2.000 caracteres.';
   if (!Number.isInteger(r.publico_dias) || r.publico_dias < 1 || r.publico_dias > 3650) return 'Informe entre 1 e 3.650 dias.';
   if (r.agendada_para && Number.isNaN(Date.parse(r.agendada_para))) return 'Data de envio inválida.';
+  if (r.agendada_para && Date.parse(r.agendada_para) < Date.now() + 60_000) return 'A data de envio precisa ser no futuro.';
   return null;
 }
 

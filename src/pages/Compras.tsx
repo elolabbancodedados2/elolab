@@ -679,8 +679,11 @@ function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: stri
 
   const cancelarMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('pedidos_compra').update({ status: 'cancelado' }).eq('id', id);
+      // Só cancela pedido desta clínica que ainda esteja emitido (não recebido nem já cancelado).
+      const { data, error } = await supabase.from('pedidos_compra').update({ status: 'cancelado' })
+        .eq('id', id).eq('clinica_id', clinicaId).eq('status', 'emitido').select('id');
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error('O pedido já foi recebido ou cancelado em outra sessão. Atualize a lista.');
     },
     onSuccess: () => { toast.success('Pedido cancelado.'); setCancelar(null); void queryClient.invalidateQueries({ queryKey: ['compras'] }); },
     onError: erro => toast.error(mensagemErroCompras(erro)),

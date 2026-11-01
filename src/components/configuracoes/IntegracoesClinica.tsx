@@ -1,3 +1,4 @@
+import { useConfirmacao } from '@/hooks/useConfirmacao';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -66,6 +67,7 @@ const formatarDataHoraConexao = (valor: string) => {
  * servidor; os segredos são enviados uma vez e nunca voltam (só a dica ••••1234).
  */
 export function IntegracoesClinica() {
+  const [confirmar, dialogoConfirmacao] = useConfirmacao();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
@@ -212,7 +214,7 @@ export function IntegracoesClinica() {
     const detalhe = integracao.id === 'mercado_pago'
       ? 'O EloLab apagará a autorização salva. Para revogar também o acesso da aplicação, faça isso nas configurações da sua conta Mercado Pago.'
       : 'A credencial salva será apagada.';
-    if (!window.confirm(`Desconectar ${integracao.nome}? ${detalhe}`)) return;
+    if (!(await confirmar({ titulo: `Desconectar ${integracao.nome}?`, descricao: detalhe, confirmar: 'Desconectar' }))) return;
     try {
       await chamar({ action: 'disconnect', provedor: integracao.id, referencia_id });
       toast.success(`${integracao.nome} desconectado`);
@@ -384,6 +386,7 @@ export function IntegracoesClinica() {
 
   return (
     <div className="space-y-4">
+      {dialogoConfirmacao}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><PlugZap className="h-4 w-4 text-primary" />Integrações da clínica</CardTitle>

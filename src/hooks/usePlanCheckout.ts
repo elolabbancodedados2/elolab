@@ -102,6 +102,8 @@ export function useBillingStatus(planoSlug?: string, enabled = true) {
 export function useCreateCardSubscription() {
   const queryClient = useQueryClient();
   return useMutation({
+    // A tela do checkout mostra o erro (onError no mutate ou try/catch); evita toast duplicado.
+    meta: { suppressGlobalErrorToast: true },
     mutationFn: (input: { plano_slug: string; card_token_id: string; trial_dias: number; trial_consent?: boolean; device_id?: string }) =>
       invokeCheckout<{ status: 'aprovado' | 'em_analise' | 'recusado'; proxima_cobranca: string | null; em_trial: boolean }>({
         action: 'create_card_subscription',
@@ -118,6 +120,8 @@ export function useCreateCardSubscription() {
 export function useCreatePlanOrder() {
   const queryClient = useQueryClient();
   return useMutation({
+    // A tela do checkout mostra o erro (onError no mutate ou try/catch); evita toast duplicado.
+    meta: { suppressGlobalErrorToast: true },
     mutationFn: (input: { plano_slug: string; metodo: 'pix'; pagador?: OrderPayer; device_id?: string }) =>
       invokeCheckout<{ pedido: PlanOrder }>({ action: 'create_plan_order', ...input }).then((r) => r.pedido),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['billing_status'] }),
@@ -150,6 +154,8 @@ export function usePlanOrder(pedidoId: string | null) {
 export function useCancelPlanOrder() {
   const queryClient = useQueryClient();
   return useMutation({
+    // A tela do checkout mostra o erro (onError no mutate ou try/catch); evita toast duplicado.
+    meta: { suppressGlobalErrorToast: true },
     mutationFn: (pedidoId: string) =>
       invokeCheckout<{ pedido: PlanOrder }>({ action: 'cancel_plan_order', pedido_id: pedidoId }).then((r) => r.pedido),
     onSuccess: (pedido) => {
