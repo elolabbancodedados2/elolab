@@ -7,14 +7,16 @@ import {
   AlertTriangle, Send, Loader2, MessageCircle, RefreshCw, Mail, Search,
   DollarSign, ArrowUpRight, X, Clock, Download,
 } from 'lucide-react';
-import { csvCobrancaManual, faixaAtraso, FAIXAS_ATRASO, resumoPorFaixa, type FaixaAtraso } from '@/lib/inadimplencia';
+import { agruparPorPaciente, csvCobrancaManual, faixaAtraso, FAIXAS_ATRASO, pacienteMaisUrgente, resumoPorFaixa, type FaixaAtraso } from '@/lib/inadimplencia';
+import { pacienteCorresponde } from '@/lib/buscaPaciente';
+import { mensagemDeErro } from '@/lib/erros';
+import { useTelaEstreita } from '@/hooks/useTelaEstreita';
 import { downloadStringAsFile } from '@/lib/auditExport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
@@ -44,10 +46,16 @@ function mensagemCobranca(nome: string, valor: string, dias: number, titulos = 1
   return `Olá, ${nome}! Identificamos uma pendência de ${valor} vencida há ${diasTexto(dias)}. Podemos ajudar a regularizar o pagamento?`;
 }
 
+/** Nome com que a pessoa quer ser chamada: nome social, se houver. */
+const nomePaciente = (pacientes: any) => pacientes?.nome_social || pacientes?.nome || '';
+const formatarReais = (valor: number) => valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
 const saldoTitulo = (l: any) => Math.max(0,
   Number(l.valor || 0) - Number(l.desconto || 0) + Number(l.acrescimo || 0) - Number(l.valor_pago || 0),
 );
 const SEM_TITULOS: any[] = [];
+// Sem paciente vinculado, o título fica sozinho em vez de se juntar a outros sem vínculo.
+const comSaldo = (l: any) => ({ ...l, paciente_id: l.paciente_id ?? `titulo:${l.id}`, saldo: saldoTitulo(l) });
 
 export default function CobrancaInadimplentes() {
   const navigate = useNavigate();
@@ -61,6 +69,7 @@ export default function CobrancaInadimplentes() {
   const [agrupamento, setAgrupamento] = useState<'lancamento' | 'paciente'>('lancamento');
   const { profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
+  const telaEstreita = useTelaEstreita();
 
   const cobrancasQuery = useQuery({
     queryKey: ['inadimplentes', clinicaId],
@@ -144,10 +153,10 @@ export default function CobrancaInadimplentes() {
         toast.success(`Régua concluída. Processados: ${processados}. ${resumoEnvios}`);
       }
       await refetch();
-    } catch (e: any) {
+    } catch (e) {
       toast.error(loteAtual > 1
         ? `Falha no lote ${loteAtual} de ${lotesIds.length}. Processados ${processados} até aqui; atualize a lista antes de tentar novamente.`
-        : e.message || 'Falha ao disparar cobrança');
+        : mensagemDeErro(e));
     } finally {
       setSending(false);
       setSendProgress({ batch: 0, total: 0 });
@@ -166,34 +175,25 @@ export default function CobrancaInadimplentes() {
     return { ...l, dias };
   }), [data]);
 
-  const acimaDeTrinta = dataComDias.filter((l: any) => l.dias > 30).length;
+  const titulosAcimaDeTrinta = dataComDias.filter((l: any) => l.dias > 30);
+  const acimaDeTrinta = titulosAcimaDeTrinta.length;
+  const saldoAcimaDeTrinta = titulosAcimaDeTrinta.reduce((a: number, l: any) => a + saldo(l), 0);
 
   const filtrados = useMemo(() => dataComDias.filter((l: any) => {
     if (filtroIndicador === 'atraso30' && l.dias <= 30) return false;
     if (filtroIndicador === 'comContato' && !(l.pacientes?.telefone || l.pacientes?.email)) return false;
     if (filtroFaixa !== 'todas' && faixaAtraso(l.dias) !== filtroFaixa) return false;
-    if (searchTerm.trim()) {
-      const nome = (l.pacientes?.nome || '').toLowerCase();
-      if (!nome.includes(searchTerm.trim().toLowerCase())) return false;
-    }
+    // Nome civil, nome social, CPF, telefone ou e-mail, sem acento nem máscara.
+    if (searchTerm.trim() && !pacienteCorresponde(l.pacientes || {}, searchTerm)) return false;
     return true;
   }), [dataComDias, filtroIndicador, filtroFaixa, searchTerm]);
   // A régua respeita os filtros da tela: só os títulos visíveis com contato.
   const alvosEnvio = useMemo(() => filtrados.filter((l: any) => l.pacientes?.telefone || l.pacientes?.email), [filtrados]);
 
-  // Um paciente com três títulos vencidos recebia três cobranças separadas;
-  // agrupado, a equipe vê o total devido e fala com a pessoa uma vez só.
-  const porPaciente = useMemo(() => {
-    const grupos = new Map<string, { id: string; pacientes: any; titulos: number; total: number; maiorAtraso: number }>();
-    for (const l of filtrados as any[]) {
-      const atual = grupos.get(l.paciente_id) ?? { id: l.paciente_id, pacientes: l.pacientes, titulos: 0, total: 0, maiorAtraso: 0 };
-      atual.titulos += 1;
-      atual.total += saldo(l);
-      atual.maiorAtraso = Math.max(atual.maiorAtraso, l.dias);
-      grupos.set(l.paciente_id, atual);
-    }
-    return [...grupos.values()].sort((a, b) => b.total - a.total);
-  }, [filtrados]);
+  const porPaciente = useMemo(
+    () => agruparPorPaciente((filtrados as any[]).map(comSaldo)).map(g => ({ ...g, pacientes: g.itens[0]?.pacientes })),
+    [filtrados],
+  );
 
   const resumoFaixas = useMemo(() => resumoPorFaixa(dataComDias.map((l: any) => ({ dias: l.dias, saldo: saldo(l) }))), [dataComDias]);
   const temFiltro = filtroIndicador !== 'todos' || filtroFaixa !== 'todas' || Boolean(searchTerm.trim());
@@ -202,7 +202,7 @@ export default function CobrancaInadimplentes() {
   const exportarLista = () => {
     downloadStringAsFile({
       content: csvCobrancaManual(filtrados.map((l: any) => ({
-        paciente: l.pacientes?.nome ?? null,
+        paciente: nomePaciente(l.pacientes) || null,
         telefone: l.pacientes?.telefone ?? null,
         email: l.pacientes?.email ?? null,
         descricao: l.descricao ?? null,
@@ -216,27 +216,27 @@ export default function CobrancaInadimplentes() {
     toast.success(`Lista exportada com ${filtrados.length} ${filtrados.length === 1 ? 'título' : 'títulos'}.`);
   };
 
-  // Destaque: o paciente com mais dias de atraso; em caso de empate, o maior saldo.
-  const destaque = useMemo(() => dataComDias.reduce((maisUrgente: any, atual: any) => {
-    if (!maisUrgente) return atual;
-    if (atual.dias > maisUrgente.dias) return atual;
-    if (atual.dias === maisUrgente.dias && saldo(atual) > saldo(maisUrgente)) return atual;
-    return maisUrgente;
-  }, null as any), [dataComDias]);
+  // Destaque: o paciente com mais dias de atraso (empate: maior total), com
+  // todos os títulos dele; antes a mensagem cobrava só um título.
+  const destaque = useMemo(() => {
+    const grupo = pacienteMaisUrgente(agruparPorPaciente((dataComDias as any[]).map(comSaldo)));
+    return grupo ? { ...grupo, pacientes: grupo.itens[0]?.pacientes, vencimentoMaisAntigo: grupo.itens.reduce((min: string, t: any) => (!min || t.data_vencimento < min ? t.data_vencimento : min), '') } : null;
+  }, [dataComDias]);
 
   const kpis = [
     {
       key: 'todos' as FiltroIndicador, label: 'Pendências vencidas', value: data.length, icon: AlertTriangle,
-      color: 'text-primary', surface: 'bg-primary/10', escuro: false, caption: 'lançamentos em aberto', money: false,
+      color: 'text-foreground', surface: 'bg-secondary', escuro: false, caption: 'lançamentos em aberto', money: false,
     },
     {
-      key: 'atraso30' as FiltroIndicador, label: 'Saldo em aberto', value: totalDevido, icon: DollarSign,
+      // O cartão filtra os títulos com mais de 30 dias: o rótulo e o valor dizem isso.
+      key: 'atraso30' as FiltroIndicador, label: 'Mais de 30 dias de atraso', value: saldoAcimaDeTrinta, icon: DollarSign,
       color: 'text-foreground', surface: 'bg-secondary', escuro: false,
-      caption: acimaDeTrinta > 0 ? `${acimaDeTrinta} com +30 dias de atraso` : 'nenhum acima de 30 dias', money: true,
+      caption: `${acimaDeTrinta} ${acimaDeTrinta === 1 ? 'título' : 'títulos'} · total vencido ${formatarReais(totalDevido)}`, money: true,
     },
     {
       key: 'comContato' as FiltroIndicador, label: 'Com contato para cobrança', value: comContato.length, icon: MessageCircle,
-      color: 'text-primary', surface: 'bg-primary/10', escuro: false,
+      color: 'text-foreground', surface: 'bg-secondary', escuro: false,
       caption: `${data.length - comContato.length} sem telefone ou e-mail`, money: false,
     },
   ];
@@ -258,7 +258,7 @@ export default function CobrancaInadimplentes() {
             <Button
               onClick={pedirEnvioTodos}
               disabled={sending || cobrancasQuery.isError || !alvosEnvio.length}
-              className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 shrink-0"
+              className="shrink-0 gap-2 rounded-full"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {sending ? `Processando ${sendProgress.batch}/${sendProgress.total}…` : 'Processar régua de cobrança'}
@@ -291,10 +291,8 @@ export default function CobrancaInadimplentes() {
               aria-pressed={ativo}
               onClick={() => setFiltroIndicador(ativo && kpi.key !== 'todos' ? 'todos' : kpi.key)}
               className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                kpi.escuro && 'border-transparent bg-gradient-primary text-white',
-                ativo && !kpi.escuro && 'border-primary/50 ring-1 ring-primary/30',
-                ativo && kpi.escuro && 'ring-2 ring-primary/60',
+                'rounded-2xl border border-border bg-card text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                ativo && 'border-foreground/40 bg-muted/40',
               )}
             >
               <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -302,11 +300,11 @@ export default function CobrancaInadimplentes() {
                   <Icon aria-hidden="true" className={cn('h-5 w-5', kpi.color)} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className={cn('truncate text-xs font-semibold', kpi.escuro ? 'text-white/80' : 'text-foreground')}>{kpi.label}</h3>
+                  <h3 className="truncate text-xs font-semibold text-foreground">{kpi.label}</h3>
                   <p className={cn('text-xl font-bold tabular-nums', kpi.color)}>
-                    {kpi.money ? kpi.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : kpi.value}
+                    {kpi.money ? formatarReais(kpi.value) : kpi.value}
                   </p>
-                  <p className={cn('truncate text-[11px]', kpi.escuro ? 'text-white/60' : 'text-muted-foreground')}>{kpi.caption}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{kpi.caption}</p>
                 </div>
               </div>
             </button>
@@ -314,35 +312,36 @@ export default function CobrancaInadimplentes() {
         })}
       </section>
 
-      {/* Destaque: paciente mais urgente */}
+      {/* Destaque: paciente mais urgente, com todos os títulos vencidos */}
       {destaque && (() => {
-        const nome = destaque.pacientes?.nome || '—';
-        const valorFormatado = saldo(destaque).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const whatsapp = linkWhatsApp(destaque.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), valorFormatado, destaque.dias));
-        const vencimento = parseDateOnly(destaque.data_vencimento);
+        const nome = nomePaciente(destaque.pacientes) || '—';
+        const totalFormatado = formatarReais(destaque.total);
+        const whatsapp = linkWhatsApp(destaque.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), totalFormatado, destaque.maiorAtraso, destaque.titulos));
+        const vencimento = parseDateOnly(destaque.vencimentoMaisAntigo);
         return (
-          <Card className="overflow-hidden rounded-2xl border-primary/30 shadow-[0_8px_24px_rgba(16,17,19,0.06)]">
+          <Card className="overflow-hidden rounded-2xl border-destructive/30">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
                   <AlertTriangle className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Pendência mais urgente</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-destructive">Pendência mais urgente</p>
                   <h2 className="truncate text-lg font-bold text-foreground">{nome}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {vencimento && <span className="inline-flex items-center gap-1">Venc. {format(vencimento, 'dd/MM/yyyy')}</span>}
                     <span className="inline-flex items-center gap-1 font-semibold text-destructive">
-                      <Clock aria-hidden="true" className="h-3 w-3" /> {diasTexto(destaque.dias)} de atraso
+                      <Clock aria-hidden="true" className="h-3 w-3" /> {diasTexto(destaque.maiorAtraso)} de atraso
                     </span>
-                    <span className="font-semibold text-foreground">{valorFormatado}</span>
+                    <span className="font-semibold text-foreground">{totalFormatado}</span>
+                    {destaque.titulos > 1 && <span>{destaque.titulos} títulos</span>}
                   </div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {whatsapp ? (
-                  <Button asChild variant="outline" className="h-10 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
-                    <a href={whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
+                  <Button asChild variant="outline" className="h-11 gap-1.5 rounded-full">
+                    <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Enviar WhatsApp de cobrança para ${nome}`}><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
                   </Button>
                 ) : (
                   <span className="text-xs text-muted-foreground">Sem telefone válido</span>
@@ -363,17 +362,17 @@ export default function CobrancaInadimplentes() {
                   <AlertTriangle className="h-4 w-4" />
                 </span>
                 Pendências
-                <Badge variant="outline" className="rounded-full border-border text-primary">{filtrados.length} de {data.length}</Badge>
+                <Badge variant="outline" className="rounded-full border-border text-foreground">{filtrados.length} de {data.length}</Badge>
               </CardTitle>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <div className="relative w-full sm:w-64">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     aria-label="Buscar pendências por paciente"
-                    placeholder="Nome do paciente..."
+                    placeholder="Nome, CPF ou telefone..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="h-10 rounded-full pl-9 focus-visible:ring-primary"
+                    className="h-11 rounded-full pl-9 sm:h-10"
                   />
                 </div>
                 {temFiltro && (
@@ -402,8 +401,8 @@ export default function CobrancaInadimplentes() {
                     aria-pressed={ativo}
                     onClick={() => setFiltroFaixa(ativo ? 'todas' : faixa.id)}
                     className={cn(
-                      'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border/60 bg-card text-foreground hover:border-foreground/25',
+                      'min-h-11 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8',
+                      ativo ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-muted/50',
                     )}
                   >
                     {faixa.label} · {resumo.quantidade} · {resumo.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -439,14 +438,66 @@ export default function CobrancaInadimplentes() {
             <div role="group" aria-label="Agrupar pendências" className="flex flex-wrap gap-2">
               {([['lancamento', 'Por lançamento'], ['paciente', 'Por paciente']] as const).map(([valor, rotulo]) => (
                 <button key={valor} type="button" aria-pressed={agrupamento === valor} onClick={() => setAgrupamento(valor)}
-                  className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', agrupamento === valor ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>
+                  className={cn('min-h-11 rounded-full border px-3 text-xs font-medium transition-colors sm:min-h-8', agrupamento === valor ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>
                   {rotulo}{valor === 'paciente' ? ` · ${porPaciente.length}` : ` · ${filtrados.length}`}
                 </button>
               ))}
             </div>
-            {agrupamento === 'paciente' ? (
+            {telaEstreita ? (
+              <ul aria-label={agrupamento === 'paciente' ? 'Pendências por paciente' : 'Pendências'} className="space-y-2">
+                {agrupamento === 'paciente'
+                  ? porPaciente.map(grupo => {
+                    const nome = nomePaciente(grupo.pacientes) || '—';
+                    const totalFormatado = formatarReais(grupo.total);
+                    const whatsapp = linkWhatsApp(grupo.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), totalFormatado, grupo.maiorAtraso, grupo.titulos));
+                    return (
+                      <li key={grupo.id} className="rounded-xl border border-border bg-card p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-foreground">{nome}</p>
+                            <p className="text-xs text-muted-foreground">{grupo.titulos} {grupo.titulos === 1 ? 'título' : 'títulos'} · maior atraso {diasTexto(grupo.maiorAtraso)}</p>
+                          </div>
+                          <p className="shrink-0 font-semibold tabular-nums text-foreground">{totalFormatado}</p>
+                        </div>
+                        <ContatoCobranca pacientes={grupo.pacientes} />
+                        {whatsapp && (
+                          <Button asChild variant="outline" className="mt-2 h-11 w-full gap-1.5 rounded-full">
+                            <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${nome} via WhatsApp`}><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })
+                  : filtrados.map((l: any) => {
+                    const nome = nomePaciente(l.pacientes) || '—';
+                    const valorFormatado = formatarReais(saldo(l));
+                    const whatsapp = linkWhatsApp(l.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), valorFormatado, l.dias));
+                    const vencimento = parseDateOnly(l.data_vencimento);
+                    return (
+                      <li key={l.id} className="rounded-xl border border-border bg-card p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-foreground">{nome}</p>
+                            <p className="line-clamp-2 text-xs text-muted-foreground">{l.descricao || '—'}</p>
+                          </div>
+                          <p className="shrink-0 font-semibold tabular-nums text-foreground">{valorFormatado}</p>
+                        </div>
+                        <p className="mt-1 text-xs">
+                          <span className="text-muted-foreground">Venc. {vencimento ? format(vencimento, 'dd/MM/yyyy') : '—'} · </span>
+                          <span className={cn('font-medium', l.dias > 30 ? 'text-destructive' : 'text-warning-foreground')}>{diasTexto(l.dias)} de atraso</span>
+                        </p>
+                        <ContatoCobranca pacientes={l.pacientes} />
+                        {whatsapp && (
+                          <Button asChild variant="outline" className="mt-2 h-11 w-full gap-1.5 rounded-full">
+                            <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${nome} via WhatsApp`}><MessageCircle aria-hidden="true" className="h-4 w-4" /> WhatsApp</a>
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            ) : agrupamento === 'paciente' ? (
             <div className="overflow-hidden rounded-xl border border-border/60">
-              <ScrollArea className="h-[520px]">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -460,27 +511,22 @@ export default function CobrancaInadimplentes() {
                   </TableHeader>
                   <TableBody>
                     {porPaciente.map(grupo => {
-                      const totalFormatado = grupo.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                      const whatsapp = linkWhatsApp(grupo.pacientes?.telefone, mensagemCobranca(primeiroNome(grupo.pacientes?.nome), totalFormatado, grupo.maiorAtraso, grupo.titulos));
+                      const nome = nomePaciente(grupo.pacientes);
+                      const totalFormatado = formatarReais(grupo.total);
+                      const whatsapp = linkWhatsApp(grupo.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), totalFormatado, grupo.maiorAtraso, grupo.titulos));
                       return (
                         <TableRow key={grupo.id}>
-                          <TableCell className="font-medium">{grupo.pacientes?.nome || '—'}</TableCell>
+                          <TableCell className="font-medium">{nome || '—'}</TableCell>
                           <TableCell className="tabular-nums">{grupo.titulos}</TableCell>
                           <TableCell className="font-semibold tabular-nums">{totalFormatado}</TableCell>
                           <TableCell>
                             <Badge variant={grupo.maiorAtraso > 30 ? 'destructive' : 'outline'} className={cn('rounded-full', grupo.maiorAtraso <= 30 && 'border-warning/40 bg-warning/10 text-warning-foreground')}>{diasTexto(grupo.maiorAtraso)}</Badge>
                           </TableCell>
-                          <TableCell>
-                            <div className="space-y-1 text-xs">
-                              {grupo.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-primary" aria-hidden="true" />{grupo.pacientes.telefone}</p>}
-                              {grupo.pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" aria-hidden="true" />{grupo.pacientes.email}</p>}
-                              {!grupo.pacientes?.telefone && !grupo.pacientes?.email && <span className="text-muted-foreground">sem contato</span>}
-                            </div>
-                          </TableCell>
+                          <TableCell><ContatoCobranca pacientes={grupo.pacientes} /></TableCell>
                           <TableCell className="text-right">
                             {whatsapp ? (
-                              <Button aria-label={`Contatar ${grupo.pacientes?.nome || 'paciente'} via WhatsApp`} size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
-                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${grupo.pacientes?.nome || 'paciente'} via WhatsApp`} title="Contatar via WhatsApp">
+                              <Button aria-label={`Contatar ${nome || 'paciente'} via WhatsApp`} size="icon" variant="ghost" asChild className="h-11 w-11 rounded-full md:h-9 md:w-9">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${nome || 'paciente'} via WhatsApp`} title="Contatar via WhatsApp">
                                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
                                 </a>
                               </Button>
@@ -493,11 +539,9 @@ export default function CobrancaInadimplentes() {
                     })}
                   </TableBody>
                 </Table>
-              </ScrollArea>
             </div>
             ) : (
             <div className="overflow-hidden rounded-xl border border-border/60">
-              <ScrollArea className="h-[520px]">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -505,8 +549,8 @@ export default function CobrancaInadimplentes() {
                       <TableHead>Descrição</TableHead>
                       <TableHead>Valor</TableHead>
                       <TableHead>Vencimento</TableHead>
-                      <TableHead>Dias atraso</TableHead>
-                      <TableHead>Contato</TableHead>
+                      <TableHead>Dias de atraso</TableHead>
+                      <TableHead className="hidden lg:table-cell">Contato</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -514,11 +558,12 @@ export default function CobrancaInadimplentes() {
                     {filtrados.map((l: any) => {
                       const vencimento = parseDateOnly(l.data_vencimento);
                       const dias = l.dias;
-                      const valorFormatado = saldo(l).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                      const whatsapp = linkWhatsApp(l.pacientes?.telefone, mensagemCobranca(primeiroNome(l.pacientes?.nome), valorFormatado, dias));
+                      const nome = nomePaciente(l.pacientes);
+                      const valorFormatado = formatarReais(saldo(l));
+                      const whatsapp = linkWhatsApp(l.pacientes?.telefone, mensagemCobranca(primeiroNome(nome), valorFormatado, dias));
                       return (
                         <TableRow key={l.id}>
-                          <TableCell className="font-medium">{l.pacientes?.nome || '—'}</TableCell>
+                          <TableCell className="font-medium">{nome || '—'}</TableCell>
                           <TableCell className="text-sm">{l.descricao || '—'}</TableCell>
                           <TableCell>{valorFormatado}{l.status === 'parcial' && <span className="ml-1 text-xs text-muted-foreground">(saldo)</span>}</TableCell>
                           <TableCell>{vencimento ? format(vencimento, 'dd/MM/yyyy') : 'Data inválida'}</TableCell>
@@ -531,18 +576,12 @@ export default function CobrancaInadimplentes() {
                             </Badge>
                             <p className="mt-1 text-[11px] text-muted-foreground">{FAIXAS_ATRASO.find(f => f.id === faixaAtraso(dias))?.label}</p>
                           </TableCell>
-                          <TableCell>
-                            <div className="space-y-1 text-xs">
-                              {l.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-primary" />{l.pacientes.telefone}</p>}
-                              {l.pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" />{l.pacientes.email}</p>}
-                              {!l.pacientes?.telefone && !l.pacientes?.email && <span className="text-muted-foreground">sem contato</span>}
-                            </div>
-                          </TableCell>
+                          <TableCell className="hidden lg:table-cell"><ContatoCobranca pacientes={l.pacientes} /></TableCell>
                           <TableCell className="text-right">
                             {whatsapp ? (
-                              <Button aria-label="Contatar via WhatsApp" size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
-                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
-                                  <MessageCircle className="h-4 w-4" />
+                              <Button aria-label={`Contatar ${nome || 'paciente'} via WhatsApp`} size="icon" variant="ghost" asChild className="h-11 w-11 rounded-full md:h-9 md:w-9">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${nome || 'paciente'} via WhatsApp sobre ${l.descricao || 'a pendência'}`} title="Contatar via WhatsApp">
+                                  <MessageCircle className="h-4 w-4" aria-hidden="true" />
                                 </a>
                               </Button>
                             ) : (
@@ -554,7 +593,6 @@ export default function CobrancaInadimplentes() {
                     })}
                   </TableBody>
                 </Table>
-              </ScrollArea>
             </div>
             )}
             </div>
@@ -580,6 +618,16 @@ export default function CobrancaInadimplentes() {
         variant="warning"
         onConfirm={exportarLista}
       />
+    </div>
+  );
+}
+
+function ContatoCobranca({ pacientes }: { pacientes: any }) {
+  if (!pacientes?.telefone && !pacientes?.email) return <p className="mt-1 text-xs text-muted-foreground">Sem contato</p>;
+  return (
+    <div className="mt-1 space-y-1 break-all text-xs">
+      {pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />{pacientes.telefone}</p>}
+      {pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />{pacientes.email}</p>}
     </div>
   );
 }

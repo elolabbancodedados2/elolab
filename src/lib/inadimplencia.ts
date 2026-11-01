@@ -58,3 +58,49 @@ export function csvCobrancaManual(titulos: ReadonlyArray<TituloCobrancaManual>):
   linhas.push(['Total', '', '', `${titulos.length} título(s)`, reais(total), '', '', '']);
   return '\uFEFF' + [cabecalho, ...linhas].map((linha) => linha.map(formatCsvCell).join(';')).join('\r\n');
 }
+
+export interface TituloVencido {
+  paciente_id: string;
+  dias: number;
+  saldo: number;
+}
+
+export interface GrupoPaciente<T extends TituloVencido> {
+  id: string;
+  titulos: number;
+  total: number;
+  maiorAtraso: number;
+  itens: T[];
+}
+
+/**
+ * Um paciente com três títulos vencidos recebia três cobranças separadas;
+ * agrupado, a equipe vê o total devido e fala com a pessoa uma vez só.
+ * Ordena pelo maior total.
+ */
+export function agruparPorPaciente<T extends TituloVencido>(titulos: ReadonlyArray<T>): GrupoPaciente<T>[] {
+  const grupos = new Map<string, GrupoPaciente<T> & { centavos: number }>();
+  for (const titulo of titulos) {
+    const atual = grupos.get(titulo.paciente_id)
+      ?? { id: titulo.paciente_id, titulos: 0, total: 0, centavos: 0, maiorAtraso: 0, itens: [] };
+    atual.titulos += 1;
+    atual.centavos += emCentavos(titulo.saldo);
+    atual.total = atual.centavos / 100;
+    atual.maiorAtraso = Math.max(atual.maiorAtraso, titulo.dias);
+    atual.itens.push(titulo);
+    grupos.set(titulo.paciente_id, atual);
+  }
+  return [...grupos.values()]
+    .map(g => ({ id: g.id, titulos: g.titulos, total: g.total, maiorAtraso: g.maiorAtraso, itens: g.itens }))
+    .sort((a, b) => b.total - a.total);
+}
+
+/** Paciente mais urgente: maior atraso; no empate, o maior total devido. */
+export function pacienteMaisUrgente<T extends TituloVencido>(grupos: ReadonlyArray<GrupoPaciente<T>>): GrupoPaciente<T> | null {
+  return grupos.reduce<GrupoPaciente<T> | null>((maisUrgente, atual) => {
+    if (!maisUrgente) return atual;
+    if (atual.maiorAtraso > maisUrgente.maiorAtraso) return atual;
+    if (atual.maiorAtraso === maisUrgente.maiorAtraso && atual.total > maisUrgente.total) return atual;
+    return maisUrgente;
+  }, null);
+}
