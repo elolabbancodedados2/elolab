@@ -112,7 +112,7 @@ export default function FaturamentoConvenios() {
       .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: false }).order('id', { ascending: true }));
   }});
   const glosas = glosasQuery.data ?? [];
-  const guiasQuery = useQuery({ queryKey: ['lote-tiss-guias', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
+  const guiasQuery = useQuery({ queryKey: ['lotes-tiss', 'guias', profile?.clinica_id ?? null], enabled: !!profile?.clinica_id, queryFn: async () => {
     return buscarEmBlocos<GuiaLote & { lote_id: string }>(() => supabase.from('lote_tiss_guias').select(COLUNAS_GUIA)
       .eq('clinica_id', profile?.clinica_id ?? '').order('created_at', { ascending: true }).order('id', { ascending: true }));
   }});
