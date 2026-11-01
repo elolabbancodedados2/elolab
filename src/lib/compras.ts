@@ -195,7 +195,7 @@ export const ROTULO_SITUACAO_PEDIDO: Record<SituacaoPedidoCompra, string> = {
 export function itensParaCotar<T extends {
   id: string; nome: string; quantidade: number; quantidade_minima?: number | null;
   quantidade_maxima?: number | null; ponto_pedido?: number | null; unidade?: string | null;
-}>(estoque: T[], emCompra: ReadonlySet<string> = new Set()) {
+}>(estoque: T[], emCompra: ReadonlySet<string> = new Set(), consumo90Dias: ReadonlyMap<string, number> = new Map()) {
   return estoque
     .filter(p => !emCompra.has(p.id))
     .filter(p => Number(p.quantidade) <= Math.max(Number(p.ponto_pedido || 0), Number(p.quantidade_minima || 0)))
@@ -203,11 +203,19 @@ export function itensParaCotar<T extends {
       const alvo = Number(p.quantidade_maxima || 0) > 0
         ? Number(p.quantidade_maxima)
         : Math.max(Number(p.ponto_pedido || 0), Number(p.quantidade_minima || 0)) * 2;
+      const pelaRegra = Math.max(1, Math.round(alvo - Number(p.quantidade)));
+      // Com consumo registrado, garante ao menos 30 dias de uso acima do mínimo
+      // (sem passar do máximo, quando ele existe).
+      const consumo = consumo90Dias.get(p.id) ?? 0;
+      const pelaDemanda = consumo > 0
+        ? Math.ceil((consumo / 90) * 30 + Number(p.quantidade_minima || 0) - Number(p.quantidade))
+        : 0;
+      const teto = Number(p.quantidade_maxima || 0) > 0 ? Math.max(1, Number(p.quantidade_maxima) - Number(p.quantidade)) : Number.POSITIVE_INFINITY;
       return {
         estoque_id: p.id,
         descricao: p.nome,
         unidade: p.unidade ?? null,
-        quantidade: Math.max(1, Math.round(alvo - Number(p.quantidade))),
+        quantidade: Math.min(teto, Math.max(pelaRegra, pelaDemanda)),
       };
     });
 }
