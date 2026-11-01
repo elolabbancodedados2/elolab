@@ -2,7 +2,13 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Edit, Trash2, Building2, Shield, ExternalLink, User, Phone, Loader2,
   FlaskConical, DollarSign, Power, RefreshCw, X, Link2, Receipt, Tags, CheckCircle2, XCircle, Layers,
+  MoreHorizontal, Upload, Percent, Copy,
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { mascararRegistroAns, validarRegistroAns } from '@/lib/tissStatus';
+import { FerramentasTabelaConvenio, type FerramentaTabela } from '@/components/financeiro/FerramentasTabelaConvenio';
+import type { ItemExistente } from '@/lib/tabelaPrecosConvenio';
 import { Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -120,7 +126,10 @@ const initialExameForm: ExamePreco = {
 };
 
 /* ─── Tabela de Exames do Convênio ─── */
-function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string; creationPage: boolean }) {
+/** As telas de convênio e de preços de exames leem a mesma tabela com chaves diferentes; invalidar as duas. */
+const CHAVES_PRECOS_CONVENIO = [['precos-exames-convenio'], ['precos-exames']] as const;
+
+function TabelaExamesConvenio({ convenioId, creationPage, outrosConvenios }: { convenioId: string; creationPage: boolean; outrosConvenios: ReadonlyArray<{ id: string; nome: string }> }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { agreementExamId: editingExameId } = useParams();
@@ -141,19 +150,18 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
   const exameDeleteLock = useRef(false);
   const [searchExame, setSearchExame] = useState(location.state?.agreementExamSearch ?? '');
   const [deleteExameId, setDeleteExameId] = useState<string | null>(null);
+  const [ferramenta, setFerramenta] = useState<FerramentaTabela | null>(null);
+  const invalidarPrecos = () => { for (const queryKey of CHAVES_PRECOS_CONVENIO) void queryClient.invalidateQueries({ queryKey: [...queryKey] }); };
 
   const { data: exames = [], isLoading, isFetching, error: erroExames, refetch: refetchExames } = useQuery({
     queryKey: ['precos-exames-convenio', profile?.id ?? null, profile?.clinica_id ?? null, convenioId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('precos_exames_convenio')
-        .select('id,tipo_exame,codigo_tuss,descricao,valor_tabela,valor_filme,valor_total,valor_custo,valor_repasse,ativo,created_at,updated_at')
-        .eq('convenio_id', convenioId)
-        .eq('clinica_id', profile?.clinica_id ?? '')
-        .order('tipo_exame');
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: async () => buscarEmBlocos<any>(() => supabase
+      .from('precos_exames_convenio')
+      .select('id,tipo_exame,codigo_tuss,descricao,valor_tabela,valor_filme,valor_total,valor_custo,valor_repasse,ativo,created_at,updated_at')
+      .eq('convenio_id', convenioId)
+      .eq('clinica_id', profile?.clinica_id ?? '')
+      .order('tipo_exame')
+      .order('id')),
     enabled: !!convenioId && !!profile?.clinica_id,
   });
 
@@ -228,7 +236,7 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
         if (error) throw error;
         toast.success('Exame adicionado à tabela!');
       }
-      queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
+      invalidarPrecos();
       completed.current = true;
       leaveForm();
     } catch (err: any) {
@@ -251,7 +259,7 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
       if (error) throw error;
       if (!data || data.length === 0) { toast.error('Sem permissão para excluir.'); return; }
       toast.success('Exame removido da tabela.');
-      queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] });
+      invalidarPrecos();
     } catch (err: any) {
       toast.error(err.message || 'Erro ao excluir.');
     } finally { exameDeleteLock.current = false; setIsDeletingExame(false); setDeleteExameId(null); }
@@ -267,8 +275,8 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
       {!formPage && <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div className="flex items-center gap-2">
-          <FlaskConical className="h-5 w-5 text-primary" />
-          <h4 className="font-semibold">Tabela de Preços de Exames</h4>
+          <FlaskConical className="h-5 w-5 text-foreground" />
+          <h4 className="font-semibold">Tabela de preços de exames</h4>
           <Badge variant="secondary" className="text-xs">{(exames as any[]).length} itens</Badge>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -277,11 +285,17 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
             <Input aria-label="Buscar exame por nome, TUSS ou descrição" placeholder="Buscar exame ou TUSS..." value={searchExame}
               onChange={e => setSearchExame(e.target.value)} className="pl-8 h-9 text-sm" />
           </div>
-          {podeGerenciarTabela && <Button size="sm" onClick={handleNewExame} className="gap-1.5" disabled={isLoading || isFetching || !!erroExames}>
-            <Plus className="h-3.5 w-3.5" /> Adicionar Exame
+          {podeGerenciarTabela && <Button size="sm" onClick={handleNewExame} className="min-h-11 gap-1.5" disabled={isLoading || isFetching || !!erroExames}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar exame
           </Button>}
         </div>
       </div>
+      {podeGerenciarTabela && <div role="group" aria-label="Ferramentas da tabela" className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="min-h-11 gap-1.5" disabled={isLoading || isFetching || !!erroExames} onClick={() => setFerramenta('importar')}><Upload className="h-3.5 w-3.5" />Importar CSV</Button>
+        <Button size="sm" variant="outline" className="min-h-11 gap-1.5" disabled={isLoading || isFetching || !!erroExames || exames.length === 0} onClick={() => setFerramenta('reajustar')}><Percent className="h-3.5 w-3.5" />Reajustar tabela</Button>
+        <Button size="sm" variant="outline" className="min-h-11 gap-1.5" disabled={isLoading || isFetching || !!erroExames || outrosConvenios.length === 0} onClick={() => setFerramenta('copiar')}><Copy className="h-3.5 w-3.5" />Copiar tabela de…</Button>
+      </div>}
+      {exames.length >= LIMITE_BUSCA_EM_BLOCOS && <p role="alert" className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">A tabela atingiu o limite de {LIMITE_BUSCA_EM_BLOCOS.toLocaleString('pt-BR')} itens exibidos. Use a busca para encontrar exames específicos.</p>}
 
       {isLoading ? (
         <div className="space-y-2">
@@ -435,15 +449,24 @@ function TabelaExamesConvenio({ convenioId, creationPage }: { convenioId: string
       <AlertDialog open={!!deleteExameId} onOpenChange={open => { if (open || !isDeletingExame) setDeleteExameId(open ? deleteExameId : null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover exame da tabela?</AlertDialogTitle>
-            <AlertDialogDescription>O exame será removido da tabela de preços deste convênio.</AlertDialogDescription>
+            <AlertDialogTitle>Remover {(exames as any[]).find(e => e.id === deleteExameId)?.tipo_exame ?? 'o exame'} da tabela?</AlertDialogTitle>
+            <AlertDialogDescription>O exame sai da tabela de preços deste convênio. Atendimentos já faturados não mudam.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeletingExame}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteExame} disabled={isDeletingExame} className="bg-destructive text-destructive-foreground">{isDeletingExame && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={handleDeleteExame} disabled={isDeletingExame} className="bg-destructive text-destructive-foreground">{isDeletingExame && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Remover</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {profile?.clinica_id && <FerramentasTabelaConvenio
+        ferramenta={ferramenta}
+        convenioId={convenioId}
+        clinicaId={profile.clinica_id}
+        existentes={exames as ItemExistente[]}
+        outrosConvenios={outrosConvenios}
+        onOpenChange={aberto => { if (!aberto) setFerramenta(null); }}
+        onConcluido={invalidarPrecos}
+      />}
     </div>
   );
 }
@@ -483,19 +506,16 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
   const [filtroStatus, setFiltroStatus] = useState<FiltroConvenio>(location.state?.agreementFilters?.status ?? 'todos');
 
   const queryClient = useQueryClient();
-  const { data: convenios = [], isLoading, error: erroConvenios, refetch: refetchConvenios } = useConvenios();
+  const { data: convenios = [], isLoading, isFetching: isFetchingConvenios, error: erroConvenios, refetch: refetchConvenios } = useConvenios();
 
   // Resumo leve: quais convênios já têm tabela de exames (mesmo prefixo da query da tabela para invalidar junto).
   const tabelasQuery = useQuery({
     queryKey: ['precos-exames-convenio', 'resumo', profile?.clinica_id ?? null],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('precos_exames_convenio')
-        .select('convenio_id')
-        .eq('clinica_id', profile?.clinica_id ?? '');
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: async () => buscarEmBlocos<{ convenio_id: string }>(() => supabase
+      .from('precos_exames_convenio')
+      .select('convenio_id')
+      .eq('clinica_id', profile?.clinica_id ?? '')
+      .order('id')),
     enabled: !!profile?.clinica_id,
   });
   const conveniosComTabela = useMemo(
@@ -571,6 +591,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
   const handleGerenciarPrecosExames = (c: { id: string }) => openTask(`/convenios/${c.id}/exames`);
 
   const handleDeleteClick = (id: string) => { setSelectedId(id); setIsDeleteOpen(true); };
+  const convenioSelecionado = (convenios as any[]).find(c => c.id === selectedId);
 
   const handleToggleAtivo = async (convenio: any) => {
     if (!podeGerenciarConvenios) { toast.error('Somente administradores podem alterar convênios.'); return; }
@@ -627,6 +648,8 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
       toast.error('CNPJ inválido.', { description: 'Informe um CNPJ numérico ou alfanumérico válido com 14 caracteres.' });
       return;
     }
+    const problemaAns = validarRegistroAns(formData.registro_ans);
+    if (problemaAns) { toast.error(problemaAns, { description: 'Sem o registro correto, o lote TISS deste convênio fica bloqueado.' }); return; }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       toast.error('E-mail do convênio inválido.'); return;
     }
@@ -643,7 +666,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
     if (!Number.isInteger(formData.carencia) || !Number.isInteger(formData.prazo_retorno)
       || !Number.isFinite(formData.taxa_glosa) || formData.carencia < 0 || formData.prazo_retorno < 0
       || formData.taxa_glosa < 0 || formData.taxa_glosa > 100) {
-      toast.error('Revise a carência, o prazo de retorno e a taxa de glosa (de 0 a 100%).'); return;
+      toast.error('Revise a carência, o prazo de pagamento e a taxa de glosa (de 0 a 100%).'); return;
     }
     if (Math.abs(formData.taxa_glosa * 100 - Math.round(formData.taxa_glosa * 100)) >= 1e-7) {
       toast.error('A taxa de glosa deve ter no máximo duas casas decimais.'); return;
@@ -732,13 +755,13 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
             <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
               <Link to="/precos-servicos"><Tags aria-hidden="true" className="h-4 w-4" /> Preços e serviços</Link>
             </Button>
-            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar convênios" title="Atualizar convênios">
-              <RefreshCw className="h-4 w-4" />
+            <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar convênios" title="Atualizar convênios" disabled={isFetchingConvenios || tabelasQuery.isFetching}>
+              <RefreshCw className={cn('h-4 w-4', (isFetchingConvenios || tabelasQuery.isFetching) && 'animate-spin')} />
             </Button>
             {podeGerenciarConvenios && (
-              <Button onClick={handleNew} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+              <Button onClick={handleNew} className="min-h-11 shrink-0 gap-2 rounded-full">
                 <Plus className="h-4 w-4" />
-                Novo Convênio
+                Novo convênio
               </Button>
             )}
           </>
@@ -757,7 +780,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
           {([
             { key: 'ativos' as FiltroConvenio, icon: CheckCircle2, label: 'Ativos', value: totalAtivos, caption: 'aceitos no atendimento', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
             { key: 'inativos' as FiltroConvenio, icon: XCircle, label: 'Inativos', value: totalInativos, caption: 'histórico preservado', color: 'text-muted-foreground', surface: 'bg-muted', escuro: false },
-            { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-primary', surface: 'bg-primary/10', escuro: false },
+            { key: 'com_tabela' as FiltroConvenio, icon: FlaskConical, label: 'Com tabela de exames', value: totalComTabela, caption: 'preços de exames definidos', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
             { key: 'todos' as FiltroConvenio, icon: Layers, label: 'Todos', value: totalConvenios, caption: 'convênios cadastrados', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
           ]).map(s => {
             const Icon = s.icon;
@@ -769,10 +792,8 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                 aria-pressed={ativo}
                 onClick={() => setFiltroStatus(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
-                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                  s.escuro && 'border-transparent bg-gradient-primary text-white',
-                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
-                  ativo && s.escuro && 'ring-2 ring-primary/60',
+                  'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  ativo && 'border-foreground ring-1 ring-foreground',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
@@ -804,30 +825,10 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                   onChange={e => setSearchTerm(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
               </div>
             </div>
-            <div role="group" aria-label="Filtrar convênios por status" className="flex flex-wrap items-center gap-1.5">
-              {([
-                { key: 'todos', label: 'Todos' },
-                { key: 'ativos', label: 'Ativos' },
-                { key: 'inativos', label: 'Inativos' },
-              ] as const).map(opt => {
-                const ativo = filtroStatus === opt.key;
-                return (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    aria-pressed={ativo}
-                    onClick={() => setFiltroStatus(opt.key)}
-                    className={cn(
-                      'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
+            {/* O filtro de status fica só nos indicadores acima, para não haver dois controles iguais. */}
+            <div className="flex flex-wrap items-center gap-1.5">
               {temFiltro && (
-                <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
+                <Button variant="ghost" size="sm" className="min-h-11 gap-1 rounded-full text-xs text-muted-foreground" onClick={limparFiltros}>
                   <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
                 </Button>
               )}
@@ -838,7 +839,40 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-xl border border-border/60">
+          {filteredConvenios.length > 0 && <ul className="space-y-2 sm:hidden" aria-label="Convênios">
+            {filteredConvenios.map((c: any) => {
+              const portalUrl = urlHttpsSegura(c.portal_url);
+              return <li key={c.id} className={cn('rounded-xl border border-border/60 bg-card p-3', !c.ativo && 'bg-muted/30')}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className={cn('font-medium', !c.ativo && 'text-muted-foreground')}>{c.nome}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{c.codigo}{c.registro_ans ? ` · ANS ${c.registro_ans}` : ''}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Consulta {formatCurrency(c.valor_consulta || 0)} · Paga em {c.prazo_retorno ?? 30} dias</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Badge variant={c.ativo ? 'success' : 'secondary'} className="rounded-full">{c.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label={`Ações do convênio ${c.nome}`}><MoreHorizontal className="h-4 w-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {podeGerenciarConvenios && <DropdownMenuItem className="min-h-11" onSelect={() => handleEdit(c)}><Edit className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>}
+                        {podeGerenciarTabelaExames && <DropdownMenuItem className="min-h-11" onSelect={() => handleGerenciarPrecosExames(c)}><FlaskConical className="mr-2 h-4 w-4" />Tabela de exames</DropdownMenuItem>}
+                        {portalUrl && <DropdownMenuItem className="min-h-11" asChild><a href={portalUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Abrir portal</a></DropdownMenuItem>}
+                        {portalUrl && <DropdownMenuItem className="min-h-11" onSelect={() => void copiarLinkPortal(c)}><Link2 className="mr-2 h-4 w-4" />Copiar link do portal</DropdownMenuItem>}
+                        {podeGerenciarConvenios && <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="min-h-11" disabled={atualizandoStatusId !== null} onSelect={() => void handleToggleAtivo(c)}><Power className="mr-2 h-4 w-4" />{c.ativo ? 'Inativar' : 'Ativar'}</DropdownMenuItem>
+                          <DropdownMenuItem className="min-h-11 text-destructive focus:text-destructive" disabled={atualizandoStatusId !== null || isDeleting} onSelect={() => handleDeleteClick(c.id)}><Trash2 className="mr-2 h-4 w-4" />Excluir</DropdownMenuItem>
+                        </>}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              </li>;
+            })}
+          </ul>}
+          <div className={cn('overflow-hidden rounded-xl border border-border/60', filteredConvenios.length > 0 && 'hidden sm:block')}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -869,7 +903,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                           Limpar filtros
                         </Button>
                       ) : podeGerenciarConvenios ? (
-                        <Button size="sm" className="mt-4 gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={handleNew}>
+                        <Button size="sm" className="mt-4 min-h-11 gap-1.5 rounded-full" onClick={handleNew}>
                           <Plus aria-hidden="true" className="h-3.5 w-3.5" /> Cadastrar convênio
                         </Button>
                       ) : null}
@@ -916,7 +950,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                         <TableCell className="hidden lg:table-cell">
                           <div className="text-xs">
                             <p className="tabular-nums">{formatCurrency(c.valor_retorno || 0)}</p>
-                            <p className="text-muted-foreground">{c.prazo_retorno || 30}d</p>
+                            <p className="text-muted-foreground">Paga em {c.prazo_retorno ?? 30} dias</p>
                           </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
@@ -1021,8 +1055,9 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="convenio-ans" className="text-xs">Registro ANS</Label>
-                    <Input id="convenio-ans" value={formData.registro_ans} onChange={e => setFormData({ ...formData, registro_ans: e.target.value })}
-                      placeholder="Nº ANS" className="font-mono" />
+                    <Input id="convenio-ans" inputMode="numeric" maxLength={6} value={formData.registro_ans} onChange={e => setFormData({ ...formData, registro_ans: mascararRegistroAns(e.target.value) })}
+                      placeholder="000000" className="font-mono" aria-invalid={!!validarRegistroAns(formData.registro_ans)} aria-describedby="convenio-ans-ajuda" />
+                    <p id="convenio-ans-ajuda" className={cn('text-xs', validarRegistroAns(formData.registro_ans) && formData.registro_ans.length > 0 ? 'text-destructive' : 'text-muted-foreground')}>6 dígitos, como na carteira do beneficiário. Necessário para enviar lotes TISS.</p>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="convenio-operadora" className="text-xs">Código da Operadora</Label>
@@ -1064,9 +1099,10 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                       onChange={e => setFormData({ ...formData, carencia: Number(e.target.value) || 0 })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="convenio-prazo-retorno" className="text-xs">Prazo de Retorno (dias)</Label>
-                    <Input id="convenio-prazo-retorno" type="number" value={formData.prazo_retorno}
-                      onChange={e => setFormData({ ...formData, prazo_retorno: Number(e.target.value) || 0 })} />
+                    <Label htmlFor="convenio-prazo-retorno" className="text-xs">Prazo de pagamento (dias)</Label>
+                    <Input id="convenio-prazo-retorno" type="number" min={0} value={formData.prazo_retorno}
+                      onChange={e => setFormData({ ...formData, prazo_retorno: Number(e.target.value) || 0 })} aria-describedby="convenio-prazo-ajuda" />
+                    <p id="convenio-prazo-ajuda" className="text-xs text-muted-foreground">Dias que a operadora leva para pagar depois do envio do lote.</p>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="convenio-taxa-glosa" className="text-xs">Taxa Glosa (%)</Label>
@@ -1169,7 +1205,7 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
 
             {podeGerenciarTabelaExames && <TabsContent value="exames" className="mt-4">
               {editingId ? (
-                <TabelaExamesConvenio convenioId={editingId} creationPage={examCreationPage} />
+                <TabelaExamesConvenio convenioId={editingId} creationPage={examCreationPage} outrosConvenios={(convenios as any[]).filter(c => c.id !== editingId).map(c => ({ id: c.id, nome: c.ativo ? c.nome : `${c.nome} (inativo)` }))} />
               ) : (
                 <div className="text-center py-10 text-muted-foreground">
                   <p>Salve o convênio primeiro para gerenciar a tabela de exames.</p>
@@ -1193,14 +1229,19 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
       <AlertDialog open={isDeleteOpen} onOpenChange={open => { if (open || !isDeleting) setIsDeleteOpen(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>Excluir remove este convênio permanentemente. A exclusão será bloqueada se houver pacientes, autorizações, preços ou lotes vinculados. Para preservar esses dados, prefira inativar o convênio pela lista.</AlertDialogDescription>
+            <AlertDialogTitle>Excluir o convênio {convenioSelecionado?.nome ?? ''}?</AlertDialogTitle>
+            <AlertDialogDescription>{convenioSelecionado?.ativo
+              ? 'Inativar tira o convênio da agenda e do faturamento novo e preserva pacientes, autorizações, preços e lotes. Excluir apaga o cadastro e é bloqueado quando há registros vinculados.'
+              : 'Excluir apaga o cadastro de vez e é bloqueado quando há pacientes, autorizações, preços ou lotes vinculados. O convênio já está inativo e não aparece no atendimento.'}</AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground" disabled={isDeleting}>
-              {isDeleting ? 'Excluindo...' : 'Excluir'}
-            </AlertDialogAction>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel disabled={isDeleting || atualizandoStatusId !== null}>Cancelar</AlertDialogCancel>
+            <Button variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => void handleDelete()} disabled={isDeleting || atualizandoStatusId !== null}>
+              {isDeleting ? 'Excluindo...' : 'Excluir mesmo assim'}
+            </Button>
+            {convenioSelecionado?.ativo && <AlertDialogAction disabled={isDeleting || atualizandoStatusId !== null} onClick={event => { event.preventDefault(); void handleToggleAtivo(convenioSelecionado).then(() => setIsDeleteOpen(false)); }}>
+              {atualizandoStatusId ? 'Inativando...' : 'Inativar'}
+            </AlertDialogAction>}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
