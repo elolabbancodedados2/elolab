@@ -263,3 +263,20 @@ export function lerPreco(texto: string): number | null {
   const valor = Number(compacto.includes(',') ? compacto.replace(/\./g, '').replace(',', '.') : compacto);
   return Number.isFinite(valor) && valor <= 9_999_999_999.99 ? valor : null;
 }
+
+export interface EstouroMaximo { id: string; nome: string; saldo: number; entrada: number; maximo: number; novoMaximo: number }
+
+/** Itens vinculados cuja entrada passa do estoque máximo cadastrado. */
+export function calcularEstouros(
+  itens: Array<{ estoque_id: string | null; quantidade: number }>,
+  saldos: Array<{ id: string; nome: string; quantidade: number; quantidade_maxima: number | null }>,
+): EstouroMaximo[] {
+  const entradaPorItem = new Map<string, number>();
+  for (const item of itens) if (item.estoque_id) entradaPorItem.set(item.estoque_id, (entradaPorItem.get(item.estoque_id) ?? 0) + Number(item.quantidade));
+  return saldos.flatMap(s => {
+    const entrada = entradaPorItem.get(s.id) ?? 0;
+    const saldo = Number(s.quantidade);
+    if (s.quantidade_maxima == null || saldo + entrada <= Number(s.quantidade_maxima)) return [];
+    return [{ id: s.id, nome: s.nome, saldo, entrada, maximo: Number(s.quantidade_maxima), novoMaximo: saldo + entrada }];
+  });
+}

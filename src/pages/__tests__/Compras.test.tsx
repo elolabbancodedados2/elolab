@@ -150,6 +150,53 @@ describe('Compras', () => {
     expect(screen.queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
   });
 
+  it('mostra as abas como tablist acessível', async () => {
+    renderizar();
+    expect(screen.getByRole('tablist', { name: 'Seções de compras' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Cotações/ })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tabpanel')).toBeInTheDocument();
+  });
+
+  it('lista o que estoura o máximo e só recebe depois de ajustar', async () => {
+    mocks.tabelas.estoque = [{ id: 'e1', nome: 'Luva de procedimento', quantidade: 45, quantidade_maxima: 50 }];
+    mocks.rpc.mockResolvedValue({ data: { ja_recebido: false, entradas: 1 }, error: null });
+    renderizar('/compras?aba=pedidos');
+
+    fireEvent.click(await screen.findByRole('button', { name: /Receber pedido/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar recebimento' }));
+    expect(await screen.findByText(/passam do estoque máximo/)).toBeInTheDocument();
+    expect(screen.getByText(/saldo 45 \+ 10 = 55 \(máximo 50\)/)).toBeInTheDocument();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustar máximo e receber' }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('receber_pedido_compra', { p_pedido_id: 'pd1' }));
+    expect(mocks.updates.find(u => u.tabela === 'estoque')?.dados).toEqual({ quantidade_maxima: 55 });
+  });
+
+  it('marca conta lançada no pedido recebido e oferece o atalho nos demais', async () => {
+    mocks.roles = ['admin'];
+    mocks.tabelas.pedidos_compra = [
+      { ...(mocks.tabelas.pedidos_compra[0] as object), id: 'aaaaaaaa-1', status: 'recebido', recebido_em: '2026-10-31T12:00:00Z' },
+      { ...(mocks.tabelas.pedidos_compra[0] as object), id: 'bbbbbbbb-2', status: 'recebido', recebido_em: '2026-10-31T12:00:00Z', fornecedores: { nome: 'Gama' } },
+    ];
+    mocks.tabelas.lancamentos = [{ numero_documento: 'PC-AAAAAAAA' }];
+    renderizar('/compras?aba=pedidos');
+
+    expect(await screen.findByText('Conta lançada')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Lançar conta' })).toHaveLength(1);
+  });
+
+  it('mostra o último preço pago e a variação ao lançar proposta', async () => {
+    mocks.tabelas.pedido_compra_itens = [{ estoque_id: 'e1', preco_unitario: 20, created_at: '2026-09-01T12:00:00Z', pedidos_compra: { status: 'recebido', recebido_em: '2026-09-02T12:00:00Z' } }];
+    Object.assign(window.HTMLElement.prototype, { scrollIntoView: vi.fn(), hasPointerCapture: vi.fn(() => false), releasePointerCapture: vi.fn() });
+    renderizar();
+    await screen.findByRole('region', { name: 'Comparação de preços' });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Fornecedor da proposta' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Alfa Hospitalar' }));
+    expect(await screen.findByText(/Último preço pago: R\$\s20,00/)).toBeInTheDocument();
+    expect(screen.getByText(/\+27,5% sobre a última compra/)).toBeInTheDocument();
+  });
+
   it('busca fornecedores por nome e CNPJ', async () => {
     renderizar('/compras?aba=fornecedores');
 

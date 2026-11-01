@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, Building2, ChevronDown, ChevronRight, ClipboardList, Package, PackageCheck,
-  Plus, Search, ShoppingCart, Trash2, X,
+  Plus, Search, Send, ShoppingCart, Trash2, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,13 +20,26 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
+import { useConfirmacao } from '@/hooks/useConfirmacao';
+import { linkWhatsApp } from '@/lib/whatsapp';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { mensagemDeErro } from '@/lib/erros';
+import {
+  baixarPdfPedidoCompra, linkEmailPedido, pedidoAtrasado, previsaoEntrega, textoPedidoCompra,
+  textoVariacao, variacaoPercentual,
+} from '@/lib/pedidoCompraDocumento';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import {
   compararCotacao, formatarCnpj, lerPreco, normalizarCnpj,
   ROTULO_SITUACAO_COTACAO, ROTULO_SITUACAO_PEDIDO,
   type SituacaoCotacao, type SituacaoPedidoCompra,
-  economiaSobreMaisCaro, contaPagarDoPedido, numeroPedidoCompra,
+  economiaSobreMaisCaro, contaPagarDoPedido, numeroPedidoCompra, calcularEstouros, type EstouroMaximo,
 } from '@/lib/compras';
 import { criarCotacao, mensagemErroCompras, type NovoItemCotacao } from '@/lib/comprasApi';
 
@@ -107,27 +120,27 @@ export default function Compras() {
 
   return (
     <main className="space-y-6 pb-24 lg:pb-8">
-      <PageHeader
-        title="Compras"
-        description="Cotação com vários fornecedores, pedido pelo menor preço e entrada no estoque ao receber."
-        icon={<ShoppingCart />}
-        actions={<>
-          <div role="tablist" aria-label="Seções de compras" className="flex rounded-full border border-border/60 bg-card p-1">
-            {abas.map(({ key, label, icon: Icon }) => (
-              <button key={key} type="button" role="tab" aria-selected={aba === key} onClick={() => mudarAba(key)}
-                className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  aba === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
-                <Icon aria-hidden="true" className="h-3.5 w-3.5" /> {label}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" className="rounded-full" onClick={() => navigate('/estoque')}>Estoque</Button>
-        </>}
-      />
+      <Tabs value={aba} onValueChange={valor => mudarAba(valor as Aba)} className="space-y-6">
+        <PageHeader
+          title="Compras"
+          description="Cotação com vários fornecedores, pedido pelo menor preço e entrada no estoque ao receber."
+          icon={<ShoppingCart />}
+          actions={<>
+            <TabsList aria-label="Seções de compras">
+              {abas.map(({ key, label, icon: Icon }) => (
+                <TabsTrigger key={key} value={key} className="gap-1.5">
+                  <Icon aria-hidden="true" className="h-3.5 w-3.5" /> {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <Button variant="outline" className="rounded-full" onClick={() => navigate('/estoque')}>Estoque</Button>
+          </>}
+        />
 
-      {aba === 'cotacoes' && <AbaCotacoes clinicaId={clinicaId} podeGerir={podeGerir} fornecedores={fornecedoresQuery.data ?? []} />}
-      {aba === 'pedidos' && <AbaPedidos clinicaId={clinicaId} podeGerir={podeGerir} podeLancarConta={podeLancarConta} />}
-      {aba === 'fornecedores' && <AbaFornecedores clinicaId={clinicaId} podeGerir={podeGerir} query={fornecedoresQuery} />}
+        <TabsContent value="cotacoes" className="mt-0"><AbaCotacoes clinicaId={clinicaId} podeGerir={podeGerir} fornecedores={fornecedoresQuery.data ?? []} /></TabsContent>
+        <TabsContent value="pedidos" className="mt-0"><AbaPedidos clinicaId={clinicaId} podeGerir={podeGerir} podeLancarConta={podeLancarConta} /></TabsContent>
+        <TabsContent value="fornecedores" className="mt-0"><AbaFornecedores clinicaId={clinicaId} podeGerir={podeGerir} query={fornecedoresQuery} /></TabsContent>
+      </Tabs>
     </main>
   );
 }
@@ -220,6 +233,7 @@ interface LinhaNovoItem extends NovoItemCotacao { chave: string }
 
 function NovaCotacao({ clinicaId, onCancelar, onCriada }: { clinicaId: string; onCancelar: () => void; onCriada: (id: string) => void }) {
   const queryClient = useQueryClient();
+  const concluida = useRef(false);
   const [titulo, setTitulo] = useState(() => `Cotação de ${formatarData(new Date().toISOString())}`);
   const [observacoes, setObservacoes] = useState('');
   const [itens, setItens] = useState<LinhaNovoItem[]>([]);
@@ -247,6 +261,7 @@ function NovaCotacao({ clinicaId, onCancelar, onCriada }: { clinicaId: string; o
   const criar = useMutation({
     mutationFn: () => criarCotacao({ clinicaId, titulo, observacoes, itens: itens.map(({ chave: _chave, ...item }) => item) }),
     onSuccess: id => {
+      concluida.current = true;
       toast.success('Cotação criada. Lance agora as propostas dos fornecedores.');
       void queryClient.invalidateQueries({ queryKey: ['compras', 'cotacoes', clinicaId] });
       onCriada(id);
@@ -255,9 +270,21 @@ function NovaCotacao({ clinicaId, onCancelar, onCriada }: { clinicaId: string; o
   });
 
   const itensValidos = itens.filter(i => i.descricao.trim() && Number.isSafeInteger(i.quantidade) && i.quantidade > 0);
+  const itensInvalidos = itens
+    .map((item, indice) => ({ item, indice }))
+    .filter(({ item }) => !(item.descricao.trim() && Number.isSafeInteger(item.quantidade) && item.quantidade > 0));
+  const motivoBloqueio = !titulo.trim()
+    ? 'Informe o título da cotação.'
+    : itens.length === 0
+      ? 'Inclua ao menos um item para criar a cotação.'
+      : itensInvalidos.length > 0
+        ? `Preencha descrição e quantidade (inteiro maior que zero) do ${itensInvalidos.map(({ item, indice }) => item.descricao.trim() || `item ${indice + 1}`).join(', ')}.`
+        : null;
+  const rascunhoAlterado = itens.length > 0 || observacoes.trim() !== '';
 
   return (
     <section aria-label="Nova cotação" className="space-y-4 rounded-xl border border-border bg-card p-4">
+      <UnsavedChangesGuard dirty={rascunhoAlterado} busy={criar.isPending} completed={concluida} />
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">Nova cotação</h2>
         <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar nova cotação"><X className="h-4 w-4" /></Button>
@@ -330,9 +357,11 @@ function NovaCotacao({ clinicaId, onCancelar, onCriada }: { clinicaId: string; o
         </Table>
       )}
 
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {motivoBloqueio && <p id="nova-cotacao-motivo" className="mr-auto text-xs text-muted-foreground" role="status">{motivoBloqueio}</p>}
         <Button variant="outline" onClick={onCancelar} disabled={criar.isPending}>Cancelar</Button>
-        <Button onClick={() => criar.mutate()} disabled={criar.isPending || !titulo.trim() || itensValidos.length === 0 || itensValidos.length !== itens.length}>
+        <Button onClick={() => criar.mutate()} aria-describedby={motivoBloqueio ? 'nova-cotacao-motivo' : undefined}
+          disabled={criar.isPending || !!motivoBloqueio || itensValidos.length === 0}>
           {criar.isPending ? 'Criando...' : 'Criar cotação'}
         </Button>
       </div>
@@ -442,7 +471,7 @@ function DetalheCotacao({ cotacaoId, podeGerir, fornecedores }: { cotacaoId: str
       <GradeComparacao comparacao={comparacao} />
 
       {aberta && podeGerir && (
-        <LancarProposta itens={itens} propostas={propostas} fornecedores={fornecedores.filter(f => f.ativo)} onSalvo={() => void detalheQuery.refetch()} />
+        <LancarProposta clinicaId={cotacao.clinica_id} itens={itens} propostas={propostas} fornecedores={fornecedores.filter(f => f.ativo)} onSalvo={() => void detalheQuery.refetch()} />
       )}
 
       <ConfirmDialog open={confirmarGerar} onOpenChange={setConfirmarGerar} title="Gerar pedidos com menor preço"
@@ -471,7 +500,32 @@ function GradeComparacao({ comparacao }: { comparacao: ReturnType<typeof compara
           )}
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <ul aria-label="Comparação por item" className="divide-y divide-border md:hidden">
+        {comparacao.linhas.map(linha => (
+          <li key={linha.item.id} className="space-y-2 px-4 py-3">
+            <div>
+              <p className="font-medium [overflow-wrap:anywhere]">{linha.item.descricao}</p>
+              <p className="text-xs text-muted-foreground">{linha.item.quantidade} {linha.item.unidade ?? ''}{linha.empate ? ' · empate no menor preço, vence o menor prazo' : ''}</p>
+              {linha.semProposta && <p className="text-xs font-medium text-warning-foreground">Sem proposta</p>}
+            </div>
+            {comparacao.fornecedores.filter(f => linha.celulas[f.id]).length > 0 && (
+              <ul className="space-y-1">
+                {comparacao.fornecedores.filter(f => linha.celulas[f.id]).map(f => {
+                  const celula = linha.celulas[f.id];
+                  return (
+                    <li key={f.id} className={cn('flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-sm tabular-nums',
+                      celula.vencedora ? 'border-foreground font-semibold text-foreground' : 'border-border text-muted-foreground')}>
+                      <span className="min-w-0 truncate">{f.nome}{celula.vencedora ? ' · vence' : ''}</span>
+                      <span className="shrink-0 text-right">{formatCurrency(celula.precoUnitario)}<span className="block text-[11px] font-normal">{formatCurrency(celula.subtotal)}{celula.prazoDias !== null ? ` · ${celula.prazoDias}d` : ''}</span></span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -531,25 +585,74 @@ function GradeComparacao({ comparacao }: { comparacao: ReturnType<typeof compara
   );
 }
 
-function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
-  itens: { id: string; descricao: string; quantidade: number; unidade: string | null }[];
+function LancarProposta({ clinicaId, itens, propostas, fornecedores, onSalvo }: {
+  clinicaId: string;
+  itens: { id: string; descricao: string; quantidade: number; unidade: string | null; estoque_id?: string | null }[];
   propostas: { id: string; cotacao_item_id: string; fornecedor_id: string; preco_unitario: number; prazo_dias: number | null }[];
   fornecedores: Fornecedor[];
   onSalvo: () => void;
 }) {
   const [fornecedorId, setFornecedorId] = useState('');
   const [valores, setValores] = useState<Record<string, { preco: string; prazo: string }>>({});
+  const inicializadoPara = useRef<string | null>(null);
+  const valoresIniciais = useRef<Record<string, { preco: string; prazo: string }>>({});
+  const [confirmar, dialogoConfirmacao] = useConfirmacao();
 
+  // Inicializa só ao trocar de fornecedor: um refetch das propostas não pode
+  // apagar os preços que a pessoa está digitando.
   useEffect(() => {
-    if (!fornecedorId) { setValores({}); return; }
+    if (!fornecedorId) { inicializadoPara.current = null; valoresIniciais.current = {}; setValores({}); return; }
+    if (inicializadoPara.current === fornecedorId) return;
     const inicial: Record<string, { preco: string; prazo: string }> = {};
     for (const item of itens) {
       const p = propostas.find(x => x.cotacao_item_id === item.id && x.fornecedor_id === fornecedorId);
       inicial[item.id] = { preco: p ? precoParaTexto(Number(p.preco_unitario)) : '', prazo: p?.prazo_dias != null ? String(p.prazo_dias) : '' };
     }
+    inicializadoPara.current = fornecedorId;
+    valoresIniciais.current = inicial;
     setValores(inicial);
-    // Recarrega o formulário ao trocar de fornecedor; propostas salvas atualizam o ponto de partida.
   }, [fornecedorId, itens, propostas]);
+
+  const alterado = Object.keys(valores).some(id => {
+    const atual = valores[id];
+    const inicial = valoresIniciais.current[id];
+    return (atual?.preco ?? '') !== (inicial?.preco ?? '') || (atual?.prazo ?? '') !== (inicial?.prazo ?? '');
+  });
+
+  const trocarFornecedor = async (novo: string) => {
+    if (novo === fornecedorId) return;
+    if (alterado) {
+      const ok = await confirmar({
+        titulo: 'Descartar preços digitados?',
+        descricao: 'Os preços lançados para este fornecedor ainda não foram salvos. Trocar de fornecedor descarta o que foi digitado.',
+        confirmar: 'Descartar e trocar',
+        variante: 'warning',
+      });
+      if (!ok) return;
+    }
+    setFornecedorId(novo);
+  };
+
+  // Último preço pago por item vinculado ao estoque (pedidos recebidos).
+  const estoqueIds = useMemo(() => [...new Set(itens.map(i => i.estoque_id).filter((id): id is string => !!id))], [itens]);
+  const ultimosPrecosQuery = useQuery({
+    queryKey: ['compras', 'ultimo-preco', clinicaId, estoqueIds],
+    enabled: estoqueIds.length > 0,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await supabase.from('pedido_compra_itens')
+        .select('estoque_id, preco_unitario, created_at, pedidos_compra!inner(status, recebido_em)')
+        .eq('clinica_id', clinicaId).in('estoque_id', estoqueIds).eq('pedidos_compra.status', 'recebido')
+        .order('created_at', { ascending: false }).limit(500);
+      if (error) throw error;
+      const mapa = new Map<string, { preco: number; data: string | null }>();
+      for (const linha of (data ?? []) as Array<{ estoque_id: string | null; preco_unitario: number; created_at: string; pedidos_compra?: { recebido_em?: string | null } | null }>) {
+        if (linha.estoque_id && !mapa.has(linha.estoque_id)) mapa.set(linha.estoque_id, { preco: Number(linha.preco_unitario), data: linha.pedidos_compra?.recebido_em ?? linha.created_at });
+      }
+      return mapa;
+    },
+  });
+  const ultimosPrecos = ultimosPrecosQuery.data ?? new Map<string, { preco: number; data: string | null }>();
 
   const invalidos = itens.filter(item => {
     const v = valores[item.id];
@@ -580,7 +683,11 @@ function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
       }
       return gravar.length;
     },
-    onSuccess: total => { toast.success(total === 1 ? 'Proposta salva para 1 item.' : `Proposta salva para ${total} itens.`); onSalvo(); },
+    onSuccess: total => {
+      valoresIniciais.current = valores;
+      toast.success(total === 1 ? 'Proposta salva para 1 item.' : `Proposta salva para ${total} itens.`);
+      onSalvo();
+    },
     onError: erro => toast.error(mensagemErroCompras(erro)),
   });
 
@@ -593,7 +700,7 @@ function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
         </div>
         <div className="w-full sm:w-72">
           <Label htmlFor="proposta-fornecedor" className="sr-only">Fornecedor</Label>
-          <Select value={fornecedorId} onValueChange={setFornecedorId}>
+          <Select value={fornecedorId} onValueChange={valor => { void trocarFornecedor(valor); }}>
             <SelectTrigger id="proposta-fornecedor" aria-label="Fornecedor da proposta"><SelectValue placeholder="Escolha o fornecedor" /></SelectTrigger>
             <SelectContent>
               {fornecedores.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
@@ -609,9 +716,19 @@ function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
           <Table>
             <TableHeader><TableRow><TableHead>Item</TableHead><TableHead className="w-36">Preço unitário</TableHead><TableHead className="w-28">Prazo (dias)</TableHead></TableRow></TableHeader>
             <TableBody>
-              {itens.map(item => (
+              {itens.map(item => {
+                const ultimo = item.estoque_id ? ultimosPrecos.get(item.estoque_id) : undefined;
+                const variacao = textoVariacao(variacaoPercentual(lerPreco(valores[item.id]?.preco ?? ''), ultimo?.preco));
+                return (
                 <TableRow key={item.id}>
-                  <TableCell><span className="font-medium">{item.descricao}</span> <span className="text-xs text-muted-foreground">· {item.quantidade} {item.unidade ?? ''}</span></TableCell>
+                  <TableCell>
+                    <span className="font-medium">{item.descricao}</span> <span className="text-xs text-muted-foreground">· {item.quantidade} {item.unidade ?? ''}</span>
+                    {ultimo && (
+                      <span className="block text-[11px] text-muted-foreground">
+                        Último preço pago: {formatCurrency(ultimo.preco)}{ultimo.data ? ` em ${formatarData(ultimo.data)}` : ''}{variacao ? ` · ${variacao}` : ''}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Input aria-label={`Preço unitário de ${item.descricao}`} inputMode="decimal" placeholder="0,00" value={valores[item.id]?.preco ?? ''}
                       aria-invalid={invalidos.includes(item) || undefined}
@@ -622,7 +739,8 @@ function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
                       onChange={e => setValores(atual => ({ ...atual, [item.id]: { preco: atual[item.id]?.preco ?? '', prazo: e.target.value } }))} />
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
           {invalidos.length > 0 && <p className="text-xs text-destructive">Confira o preço (ex.: 12,50) e o prazo (dias inteiros) de: {invalidos.map(i => i.descricao).join(', ')}.</p>}
@@ -631,6 +749,7 @@ function LancarProposta({ itens, propostas, fornecedores, onSalvo }: {
           </div>
         </>
       )}
+      {dialogoConfirmacao}
     </section>
   );
 }
@@ -643,30 +762,114 @@ function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: stri
   const [recemRecebido, setRecemRecebido] = useState<{ id: string; total: number | string; fornecedores?: { nome: string } | null } | null>(null);
   const [filtro, setFiltro] = useState<'todos' | SituacaoPedidoCompra>('todos');
   const [aberto, setAberto] = useState<string | null>(null);
-  const [receber, setReceber] = useState<string | null>(null);
+  const [receber, setReceberState] = useState<string | null>(null);
   const [cancelar, setCancelar] = useState<string | null>(null);
+  const [estouros, setEstouros] = useState<EstouroMaximo[]>([]);
+  const setReceber = (id: string | null) => { setEstouros([]); setReceberState(id); };
+  const hoje = todaySaoPauloDateOnly();
 
   const pedidosQuery = useQuery({
     queryKey: ['compras', 'pedidos', clinicaId],
     queryFn: async () => {
       const { data, error } = await supabase.from('pedidos_compra')
-        .select('id, status, total, created_at, recebido_em, fornecedor_id, cotacao_id, fornecedores(nome), cotacoes_compra(titulo), pedido_compra_itens(id, descricao, quantidade, preco_unitario, estoque_id)')
+        .select('id, status, total, created_at, recebido_em, fornecedor_id, cotacao_id, fornecedores(nome, telefone, email), cotacoes_compra(titulo), pedido_compra_itens(id, descricao, quantidade, preco_unitario, estoque_id)')
         .eq('clinica_id', clinicaId).order('created_at', { ascending: false }).limit(300);
       if (error) throw error;
       return data ?? [];
     },
   });
-  const pedidos = pedidosQuery.data ?? [];
+  const pedidos = useMemo(() => pedidosQuery.data ?? [], [pedidosQuery.data]);
   const visiveis = filtro === 'todos' ? pedidos : pedidos.filter(p => p.status === filtro);
   const contagem = (s: SituacaoPedidoCompra) => pedidos.filter(p => p.status === s).length;
 
+  // Previsão de entrega: dia da emissão + maior prazo cotado pelo fornecedor nos itens da cotação.
+  const cotacaoIds = useMemo(() => [...new Set(pedidos.map(p => p.cotacao_id).filter((id): id is string => !!id))], [pedidos]);
+  const prazosQuery = useQuery({
+    queryKey: ['compras', 'prazos-pedidos', clinicaId, cotacaoIds],
+    enabled: cotacaoIds.length > 0,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data: itens, error } = await supabase.from('cotacao_itens').select('id, cotacao_id').in('cotacao_id', cotacaoIds);
+      if (error) throw error;
+      const cotacaoDoItem = new Map((itens ?? []).map(i => [i.id, i.cotacao_id]));
+      if (cotacaoDoItem.size === 0) return new Map<string, number>();
+      const { data: propostas, error: erroPropostas } = await supabase.from('cotacao_propostas')
+        .select('cotacao_item_id, fornecedor_id, prazo_dias').in('cotacao_item_id', [...cotacaoDoItem.keys()]);
+      if (erroPropostas) throw erroPropostas;
+      const prazos = new Map<string, number>();
+      for (const p of propostas ?? []) {
+        if (p.prazo_dias == null) continue;
+        const chave = `${cotacaoDoItem.get(p.cotacao_item_id)}:${p.fornecedor_id}`;
+        prazos.set(chave, Math.max(prazos.get(chave) ?? 0, Number(p.prazo_dias)));
+      }
+      return prazos;
+    },
+  });
+  const previsaoDe = (p: { cotacao_id: string | null; fornecedor_id: string; created_at: string }) =>
+    previsaoEntrega(p.created_at, prazosQuery.data?.get(`${p.cotacao_id}:${p.fornecedor_id}`));
+
+  // Contas a pagar já lançadas a partir de pedidos recebidos (número de documento PC-XXXXXXXX).
+  const documentosRecebidos = useMemo(() => pedidos.filter(p => p.status === 'recebido').map(p => contaPagarDoPedido(p).numero_documento), [pedidos]);
+  const contasQuery = useQuery({
+    queryKey: ['compras', 'contas-lancadas', clinicaId, documentosRecebidos],
+    enabled: documentosRecebidos.length > 0,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await supabase.from('lancamentos').select('numero_documento')
+        .eq('clinica_id', clinicaId).in('numero_documento', documentosRecebidos);
+      if (error) throw error;
+      return new Set((data ?? []).map(l => l.numero_documento).filter((d): d is string => !!d));
+    },
+  });
+  const contaLancada = (p: { id: string; total: number | string }) => contasQuery.data?.has(contaPagarDoPedido(p).numero_documento) ?? false;
+
+  const lancarConta = (p: { id: string; total: number | string; fornecedores?: { nome: string } | null }) =>
+    navigate('/contas/pagar/nova', { state: { initial: contaPagarDoPedido(p) } });
+
+  const enviarPedido = async (p: (typeof pedidos)[number], canal: 'pdf' | 'whatsapp' | 'email') => {
+    const previsao = previsaoDe(p);
+    const texto = textoPedidoCompra(p, { previsao });
+    try {
+      if (canal === 'pdf') { await baixarPdfPedidoCompra(p, { previsao }); return; }
+      const fornecedor = p.fornecedores as { nome: string; telefone?: string | null; email?: string | null } | null;
+      if (canal === 'whatsapp') {
+        const link = linkWhatsApp(fornecedor?.telefone, texto) ?? `https://wa.me/?text=${encodeURIComponent(texto)}`;
+        window.open(link, '_blank', 'noopener,noreferrer');
+        if (!fornecedor?.telefone) toast.info('Fornecedor sem telefone cadastrado: escolha o contato no WhatsApp.');
+        return;
+      }
+      window.location.href = linkEmailPedido(fornecedor?.email, p, texto);
+      if (!fornecedor?.email) toast.info('Fornecedor sem e-mail cadastrado: informe o destinatário no seu e-mail.');
+    } catch (erro) {
+      toast.error('Não foi possível gerar o pedido.', { description: mensagemDeErro(erro) });
+    }
+  };
+
   const receberMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, ajustarMaximo }: { id: string; ajustarMaximo: boolean }) => {
+      const pedido = pedidos.find(p => p.id === id);
+      const vinculados = (pedido?.pedido_compra_itens ?? []).filter(i => i.estoque_id);
+      if (vinculados.length > 0) {
+        // O recebimento falha se um item passar do estoque máximo: confere antes.
+        const { data: saldos, error } = await supabase.from('estoque').select('id, nome, quantidade, quantidade_maxima')
+          .eq('clinica_id', clinicaId).in('id', vinculados.map(i => i.estoque_id!));
+        if (error) throw error;
+        const lista = calcularEstouros(vinculados, saldos ?? []);
+        if (lista.length > 0 && !ajustarMaximo) return { estouros: lista };
+        for (const e of lista) {
+          const { data, error: erroAjuste } = await supabase.from('estoque').update({ quantidade_maxima: e.novoMaximo })
+            .eq('id', e.id).eq('clinica_id', clinicaId).select('id');
+          if (erroAjuste) throw erroAjuste;
+          if (!data || data.length === 0) throw new Error(`Não foi possível ajustar o máximo de ${e.nome}. Ajuste no cadastro do estoque.`);
+        }
+      }
       const { data, error } = await supabase.rpc('receber_pedido_compra', { p_pedido_id: id });
       if (error) throw error;
-      return data as { ja_recebido?: boolean; entradas?: number } | null;
+      return { resultado: data as { ja_recebido?: boolean; entradas?: number } | null };
     },
-    onSuccess: (resultado, id) => {
+    onSuccess: (retorno, { id }) => {
+      if ('estouros' in retorno) { setEstouros(retorno.estouros ?? []); return; }
+      const resultado = retorno.resultado;
       const pedido = pedidos.find(p => p.id === id);
       if (pedido && !resultado?.ja_recebido) setRecemRecebido(pedido);
       toast.success(resultado?.ja_recebido ? 'Este pedido já estava recebido.' : `Pedido recebido. ${resultado?.entradas ?? 0} ${resultado?.entradas === 1 ? 'item entrou' : 'itens entraram'} no estoque.`);
@@ -724,7 +927,7 @@ function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: stri
           <div className="flex shrink-0 gap-2">
             <Button size="sm" variant="ghost" onClick={() => setRecemRecebido(null)}>Dispensar</Button>
             {podeLancarConta && (
-              <Button size="sm" onClick={() => navigate('/contas/pagar/nova', { state: { initial: contaPagarDoPedido(recemRecebido) } })}>
+              <Button size="sm" onClick={() => lancarConta(recemRecebido)}>
                 Lançar conta a pagar
               </Button>
             )}
@@ -752,6 +955,9 @@ function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: stri
               <TableBody>
                 {visiveis.map(p => {
                   const expandido = aberto === p.id;
+                  const previsao = previsaoDe(p);
+                  const atrasado = pedidoAtrasado(previsao, p.status, hoje);
+                  const lancada = p.status === 'recebido' && contaLancada(p);
                   return [
                     <TableRow key={p.id}>
                       <TableCell>
@@ -762,15 +968,43 @@ function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: stri
                       <TableCell className="font-medium">{p.fornecedores?.nome ?? 'Fornecedor'}</TableCell>
                       <TableCell className="text-muted-foreground">{p.cotacoes_compra?.titulo ?? '—'}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(Number(p.total))}</TableCell>
-                      <TableCell><Situacao tom={tomPedido(p.status)}>{ROTULO_SITUACAO_PEDIDO[p.status as SituacaoPedidoCompra] ?? p.status}</Situacao></TableCell>
-                      <TableCell className="text-muted-foreground">{p.status === 'recebido' ? `Recebido em ${formatarData(p.recebido_em)}` : formatarData(p.created_at)}</TableCell>
+                      <TableCell>
+                        <span className="flex flex-wrap items-center gap-1">
+                          <Situacao tom={tomPedido(p.status)}>{ROTULO_SITUACAO_PEDIDO[p.status as SituacaoPedidoCompra] ?? p.status}</Situacao>
+                          {atrasado && <span className="inline-flex items-center rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">Atrasado</span>}
+                          {lancada && <Situacao tom="neutro">Conta lançada</Situacao>}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {p.status === 'recebido' ? `Recebido em ${formatarData(p.recebido_em)}` : formatarData(p.created_at)}
+                        {p.status === 'emitido' && previsao && <span className={cn('block text-[11px]', atrasado && 'font-medium text-destructive')}>Previsão {formatarData(`${previsao}T12:00:00Z`)}</span>}
+                      </TableCell>
                       <TableCell className="text-right">
-                        {podeGerir && p.status === 'emitido' && (
-                          <div className="flex justify-end gap-2">
-                            <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCancelar(p.id)}>Cancelar</Button>
-                            <Button size="sm" className="gap-1.5" onClick={() => setReceber(p.id)}><PackageCheck className="h-3.5 w-3.5" />Receber pedido</Button>
-                          </div>
-                        )}
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {p.status !== 'cancelado' && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline" className="gap-1.5 rounded-full" aria-label={`Enviar pedido de ${p.fornecedores?.nome ?? 'fornecedor'}`}>
+                                  <Send aria-hidden="true" className="h-3.5 w-3.5" />Enviar
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => void enviarPedido(p, 'pdf')}>Baixar PDF</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => void enviarPedido(p, 'whatsapp')}>Enviar por WhatsApp</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => void enviarPedido(p, 'email')}>Enviar por e-mail</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                          {podeLancarConta && p.status === 'recebido' && !lancada && (
+                            <Button size="sm" variant="outline" className="rounded-full" onClick={() => lancarConta(p)}>Lançar conta</Button>
+                          )}
+                          {podeGerir && p.status === 'emitido' && (
+                            <>
+                              <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCancelar(p.id)}>Cancelar</Button>
+                              <Button size="sm" className="gap-1.5" onClick={() => setReceber(p.id)}><PackageCheck className="h-3.5 w-3.5" />Receber pedido</Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>,
                     expandido && (
@@ -795,9 +1029,21 @@ function AbaPedidos({ clinicaId, podeGerir, podeLancarConta }: { clinicaId: stri
           </div>
         )}
 
-      <ConfirmDialog open={!!receber} onOpenChange={open => { if (!open) setReceber(null); }} title="Receber pedido"
+      <ConfirmDialog open={!!receber} onOpenChange={open => { if (!open && !receberMutation.isPending) setReceber(null); }} title="Receber pedido"
         description={`Confirme que os itens de ${pedidoReceber?.fornecedores?.nome ?? 'este fornecedor'} chegaram. ${itensComEstoque} ${itensComEstoque === 1 ? 'item vinculado entra' : 'itens vinculados entram'} no estoque agora; o recebimento não pode ser desfeito.`}
-        confirmLabel="Confirmar recebimento" onConfirm={() => receber && receberMutation.mutate(receber)} isLoading={receberMutation.isPending} closeOnConfirm={false} />
+        confirmLabel={estouros.length > 0 ? 'Ajustar máximo e receber' : 'Confirmar recebimento'}
+        variant={estouros.length > 0 ? 'warning' : 'default'}
+        onConfirm={() => receber && receberMutation.mutate({ id: receber, ajustarMaximo: estouros.length > 0 })} isLoading={receberMutation.isPending} closeOnConfirm={false}>
+        {estouros.length > 0 && (
+          <div role="alert" className="space-y-1 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm">
+            <p className="font-medium">Estes itens passam do estoque máximo cadastrado:</p>
+            <ul className="list-disc pl-5 text-xs">
+              {estouros.map(e => <li key={e.id}>{e.nome}: saldo {e.saldo} + {e.entrada} = {e.saldo + e.entrada} (máximo {e.maximo}). Novo máximo: {e.novoMaximo}.</li>)}
+            </ul>
+            <p className="text-xs text-muted-foreground">Ajuste o máximo para receber agora, ou cancele e revise o cadastro no estoque.</p>
+          </div>
+        )}
+      </ConfirmDialog>
       <ConfirmDialog open={!!cancelar} onOpenChange={open => { if (!open) setCancelar(null); }} title="Cancelar pedido"
         description="O pedido deixa de poder ser recebido. Esta ação não pode ser desfeita."
         confirmLabel="Cancelar pedido" variant="destructive" onConfirm={() => cancelar && cancelarMutation.mutate(cancelar)} isLoading={cancelarMutation.isPending} closeOnConfirm={false} />
