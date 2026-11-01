@@ -106,6 +106,29 @@ const novoFormDataDespesa = (): FormData => {
   };
 };
 
+/**
+ * Aceita `location.state.initial` (ex.: conta gerada por um pedido de compra
+ * recebido). Só campos de texto e valor conhecidos são aproveitados.
+ */
+const formDataComInicial = (initial: unknown): FormData => {
+  const base = novoFormDataDespesa();
+  if (!initial || typeof initial !== 'object') return base;
+  const dados = initial as Record<string, unknown>;
+  const texto = (campo: 'categoria' | 'descricao' | 'fornecedor' | 'numero_documento' | 'observacoes') =>
+    typeof dados[campo] === 'string' ? (dados[campo] as string).slice(0, 300) : base[campo];
+  const valor = typeof dados.valor === 'number' && Number.isFinite(dados.valor) && dados.valor > 0 ? dados.valor : base.valor;
+  const categoria = texto('categoria');
+  return {
+    ...base,
+    categoria: CATEGORIAS.includes(categoria) ? categoria : base.categoria,
+    descricao: texto('descricao'),
+    fornecedor: texto('fornecedor'),
+    numero_documento: texto('numero_documento'),
+    observacoes: texto('observacoes'),
+    valor,
+  };
+};
+
 const saldoEmAberto = (conta: { valor: number | string; valor_pago?: number | string | null; desconto?: number | string | null; acrescimo?: number | string | null }) =>
   Math.max(0, Number(conta.valor || 0) - Number(conta.desconto || 0)
     + Number(conta.acrescimo || 0) - Number(conta.valor_pago || 0));
@@ -116,7 +139,7 @@ const PILL_INATIVA_P = 'border-border bg-card text-muted-foreground hover:bg-mut
 
 export default function ContasPagar() {
   const location = useLocation();
-  const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown } | null;
+  const routeState = location.state as { returnTo?: unknown; restoreSearchTerm?: unknown; initial?: unknown } | null;
   const isCreationPage = location.pathname === '/contas/pagar/nova';
   const returnToListPath = typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo)
     ? routeState.returnTo
@@ -127,7 +150,7 @@ export default function ContasPagar() {
   const filterStatus = parseAccountFilterStatus(searchParams.get('status'));
   const selectedMonthParam = searchParams.get('mes');
   const selectedMonth = parseFinanceMonth(selectedMonthParam);
-  const [formData, setFormData] = useState<FormData>(novoFormDataDespesa);
+  const [formData, setFormData] = useState<FormData>(() => isCreationPage ? formDataComInicial(routeState?.initial) : novoFormDataDespesa());
   const [formDirty, setFormDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLock = useRef(false);

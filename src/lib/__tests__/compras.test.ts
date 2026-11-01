@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { compararCotacao, economiaSobreMaisCaro, formatarCnpj, itensParaCotar, lerPreco } from '../compras';
+import { compararCotacao, contaPagarDoPedido, economiaSobreMaisCaro, formatarCnpj, itensParaCotar, lerPreco } from '../compras';
 import { mensagemErroCompras } from '../comprasApi';
 
 const fornecedores = [
@@ -97,6 +97,34 @@ describe('apoio das compras', () => {
       { estoque_id: 'a', descricao: 'Luva', unidade: 'caixa', quantidade: 48 },
       { estoque_id: 'b', descricao: 'Gaze', unidade: 'pacote', quantidade: 7 },
     ]);
+  });
+
+  it('usa o ponto de pedido quando ele é maior que o mínimo', () => {
+    expect(itensParaCotar([
+      { id: 'a', nome: 'Seringa', quantidade: 8, quantidade_minima: 5, ponto_pedido: 10, quantidade_maxima: 30 },
+      { id: 'b', nome: 'Máscara', quantidade: 11, quantidade_minima: 5, ponto_pedido: 10 },
+    ])).toEqual([{ estoque_id: 'a', descricao: 'Seringa', unidade: null, quantidade: 22 }]);
+  });
+
+  it('não cota de novo itens já em cotação aberta ou pedido não recebido', () => {
+    const estoque = [
+      { id: 'a', nome: 'Luva', quantidade: 2, quantidade_minima: 10 },
+      { id: 'b', nome: 'Gaze', quantidade: 1, quantidade_minima: 5 },
+      { id: 'c', nome: 'Álcool', quantidade: 0, quantidade_minima: 3 },
+    ];
+    const emCompra = new Set(['a', 'c', 'outro']);
+    expect(itensParaCotar(estoque, emCompra).map(i => i.estoque_id)).toEqual(['b']);
+    expect(itensParaCotar(estoque).length - itensParaCotar(estoque, emCompra).length).toBe(2);
+  });
+
+  it('prepara a conta a pagar do pedido recebido com fornecedor, total e número', () => {
+    expect(contaPagarDoPedido({ id: 'ab12cd34-0000-4000-8000-000000000001', total: '1234.5', fornecedores: { nome: 'Distribuidora QA' } })).toEqual({
+      categoria: 'fornecedores',
+      descricao: 'Pedido de compra nº AB12CD34 — Distribuidora QA',
+      valor: 1234.5,
+      fornecedor: 'Distribuidora QA',
+      numero_documento: 'PC-AB12CD34',
+    });
   });
 
   it('lê preços em formato brasileiro e rejeita texto inválido', () => {

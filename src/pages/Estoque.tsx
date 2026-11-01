@@ -35,7 +35,7 @@ import {
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { classifyAbcItem } from '@/lib/abcClassification';
 import { itensParaCotar } from '@/lib/compras';
-import { criarCotacao, mensagemErroCompras } from '@/lib/comprasApi';
+import { buscarEstoqueEmCompra, criarCotacao, mensagemErroCompras } from '@/lib/comprasApi';
 
 const CATEGORIAS = ['medicamentos', 'materiais_hospitalares', 'epis', 'escritorio', 'limpeza', 'outros'];
 const UNIDADES = ['unidade', 'comprimido', 'caixa', 'frasco', 'ampola', 'pacote', 'litro', 'kg', 'ml'];
@@ -497,13 +497,24 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
 
   const cotarItensEmFalta = async () => {
     if (!profile?.clinica_id || criandoCotacao) return;
-    const itens = itensParaCotar(estoque as any[]);
-    if (itens.length === 0) { toast.info('Nenhum item em estoque baixo para cotar.'); return; }
     setCriandoCotacao(true);
     try {
+      // Não cota de novo o que já está em cotação aberta ou pedido ainda não recebido.
+      const emCompra = await buscarEstoqueEmCompra(profile.clinica_id);
+      const emFalta = itensParaCotar(estoque as any[]);
+      const itens = itensParaCotar(estoque as any[], emCompra);
+      const pulados = emFalta.length - itens.length;
+      const avisoPulados = pulados > 0
+        ? `${plural(pulados, 'item já está', 'itens já estão')} em cotação aberta ou pedido não recebido.`
+        : '';
+      if (itens.length === 0) {
+        if (pulados > 0) toast.info(`Nada novo para cotar: ${avisoPulados}`);
+        else toast.info('Nenhum item em estoque baixo para cotar.');
+        return;
+      }
       const hojeFormatado = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date());
       const id = await criarCotacao({ clinicaId: profile.clinica_id, titulo: `Itens em falta · ${hojeFormatado}`, itens });
-      toast.success(`Cotação criada com ${plural(itens.length, 'item', 'itens')}.`);
+      toast.success(`Cotação criada com ${plural(itens.length, 'item', 'itens')}.`, avisoPulados ? { description: `Pulados: ${avisoPulados}` } : undefined);
       navigate(`/compras?aba=cotacoes&cotacao=${id}`);
     } catch (error) {
       toast.error(mensagemErroCompras(error, 'Não foi possível criar a cotação.'));

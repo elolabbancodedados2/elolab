@@ -10,7 +10,7 @@ describe('movimentos do fluxo de caixa', () => {
     expect(grupoMovimentoCaixa('cancelado')).toBeNull();
   });
 
-  it('inclui suprimentos nas entradas e sangrias nas saídas e no saldo', () => {
+  it('trata suprimentos e sangrias como transferência, fora do saldo de resultado', () => {
     expect(totaisMovimentoCaixa([
       { tipo: 'receita', valor: 1000 },
       { tipo: 'suprimento', valor: 100 },
@@ -22,9 +22,21 @@ describe('movimentos do fluxo de caixa', () => {
       despesas: 400,
       suprimentos: 100,
       sangrias: 50,
-      entradas: 900,
-      saidas: 450,
-      saldo: 450,
+      entradas: 800,
+      saidas: 400,
+      saldo: 400,
+      transferenciasLiquidas: 50,
     });
+  });
+
+  it('dá o mesmo saldo que receita menos despesa usado no Financeiro', () => {
+    const movimentos = [
+      { tipo: 'receita', valor: 300 },
+      { tipo: 'despesa', valor: 120 },
+      { tipo: 'sangria', valor: 500 },
+    ];
+    const receitaMenosDespesa = 300 - 120;
+    expect(totaisMovimentoCaixa(movimentos).saldo).toBe(receitaMenosDespesa);
+    expect(totaisMovimentoCaixa(movimentos).transferenciasLiquidas).toBe(-500);
   });
 });
