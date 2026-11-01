@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emCentavos, mesmoValor, diferencaEmReais, arredondarReais, parseValorContado } from '@/lib/dinheiro';
+import { emCentavos, mesmoValor, diferencaEmReais, arredondarReais, parseValorContado, parseMoneyInput, formatMoneyInput, formatarMoeda } from '@/lib/dinheiro';
 
 describe('parseValorContado', () => {
   it('requires a value and accepts an explicitly counted zero', () => {
@@ -90,5 +90,27 @@ describe('arredondarReais', () => {
 
   it('arredonda meio centavo para cima', () => {
     expect(arredondarReais(10.005)).toBe(10.01);
+  });
+});
+
+describe('parseMoneyInput', () => {
+  it('aceita formato brasileiro, ponto decimal e prefixo R$', () => {
+    expect(parseMoneyInput('1.234,56')).toBe(1234.56);
+    expect(parseMoneyInput('1234,5')).toBe(1234.5);
+    expect(parseMoneyInput('1234.56')).toBe(1234.56);
+    expect(parseMoneyInput('R$ 10,00')).toBe(10);
+  });
+
+  it('recusa vazio, texto, negativo e mais de duas casas', () => {
+    expect(parseMoneyInput('')).toBeNull();
+    expect(parseMoneyInput('abc')).toBeNull();
+    expect(parseMoneyInput('10,005')).toBeNull();
+    expect(parseMoneyInput('-5')).toBeNull();
+  });
+
+  it('formata para o campo e para a tela', () => {
+    expect(formatMoneyInput(1234.5)).toBe('1234,50');
+    expect(formatMoneyInput(Number.NaN)).toBe('');
+    expect(formatarMoeda('12.5')).toMatch(/R\$\s12,50/);
   });
 });

@@ -51,3 +51,28 @@ export function parseValorContado(valor: string): number | null {
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return arredondarReais(parsed);
 }
+
+/**
+ * Lê um valor digitado em reais: "1.234,56", "1234,5" ou "1234.56".
+ * Devolve null para texto vazio, formato inválido ou mais de duas casas.
+ */
+export function parseMoneyInput(value: string): number | null {
+  const compact = value.trim().replace(/\s/g, '').replace(/^R\$/i, '');
+  if (!compact) return null;
+  const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
+  const formatoPontoDecimal = /^\d+(?:\.\d{1,2})?$/;
+  if (!formatoBrasileiro.test(compact) && !formatoPontoDecimal.test(compact)) return null;
+  const normalizado = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
+  const valor = Number(normalizado);
+  return Number.isFinite(valor) ? valor : null;
+}
+
+/** Número para o campo de texto: 1234.5 → "1234,50". */
+export function formatMoneyInput(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '';
+}
+
+/** Valor em reais formatado como moeda brasileira. */
+export function formatarMoeda(valor: number | string | null | undefined): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor ?? 0) || 0);
+}
