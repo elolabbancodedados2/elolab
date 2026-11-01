@@ -303,6 +303,16 @@ function RedirecionarTriagem() {
   return <Navigate to={`/fila?${destino.toString()}`} replace />;
 }
 
+/** Redireciona rotas antigas de documentos clínicos sem perder os filtros da URL. */
+function RedirecionarDocumentosClinicos({ aba }: { aba?: 'atestados' | 'encaminhamentos' }) {
+  const [searchParams] = useSearchParams();
+  const destino = new URLSearchParams(searchParams);
+  if (aba) destino.set('tab', aba);
+  else destino.delete('tab');
+  const consulta = destino.toString();
+  return <Navigate to={`/documentos-clinicos${consulta ? `?${consulta}` : ''}`} replace />;
+}
+
 function RouteFallback() {
   return <BrandLoadingScreen message="Abrindo seu ambiente" detail="Estamos carregando esta área do EloLab." />;
 }
@@ -404,8 +414,8 @@ function AppRoutes() {
                           <Route path="/prontuarios/*" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos/nova-prescricao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prescricoes creationPage /></SupabaseProtectedRoute>} />
-                          <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
-                          <Route path="/atestados" element={<Navigate to="/documentos-clinicos?tab=atestados" replace />} />
+                          <Route path="/prescricoes" element={<RedirecionarDocumentosClinicos />} />
+                          <Route path="/atestados" element={<RedirecionarDocumentosClinicos aba="atestados" />} />
                           <Route path="/documentos-clinicos/novo-atestado" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Atestados creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/atestados/:certificateId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Atestados /></SupabaseProtectedRoute>} />
                           <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames /></PlanFeatureGuard></SupabaseProtectedRoute>} />
@@ -422,7 +432,7 @@ function AppRoutes() {
                           <Route path="/fila/:agendamentoId/liberacao/:tipo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><LiberarAtendimentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/atendimentos/:agendamentoId/finalizar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><FinalizarAtendimento /></SupabaseProtectedRoute>} />
                           <Route path="/triagem" element={<RedirecionarTriagem />} />
-                          <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos?tab=encaminhamentos" replace />} />
+                          <Route path="/encaminhamentos" element={<RedirecionarDocumentosClinicos aba="encaminhamentos" />} />
                           <Route path="/documentos-clinicos/novo-encaminhamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/encaminhamentos/:referralId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos /></SupabaseProtectedRoute>} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
