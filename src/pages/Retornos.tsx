@@ -62,6 +62,21 @@ interface Retorno {
   clinica_id: string;
 }
 
+interface PacienteDoRetorno {
+  id: string;
+  nome: string;
+  nome_social: string | null;
+  cpf: string | null;
+  telefone: string | null;
+  email: string | null;
+}
+
+type RetornoComPaciente = Retorno & { pacientes?: PacienteDoRetorno | null };
+
+type AgendamentoDoRetorno = { id: string; data: string; hora_inicio: string; status: string };
+
+const LOTE_IDS = 150;
+
 type Periodo = 'todos' | 'hoje' | '7dias' | '30dias';
 
 const PERIODOS: { key: Periodo; label: string }[] = [
@@ -124,24 +139,19 @@ function RetornosWorkspace() {
   const apenasMeus = Boolean(meuMedicoId) && (apenasMeusEscolhido ?? isMedicoOnly);
   const filtrosClinica = [{ column: 'clinica_id', operator: 'eq', value: profile?.clinica_id ?? '' }];
 
-  const { data: retornos = [], isLoading: loadingRetornos, error: erroRetornos, refetch: refetchRetornos } = useSupabaseQuery<Retorno>('retornos', {
+  // O paciente vem junto do retorno: antes a tela baixava o cadastro inteiro
+  // de pacientes da clínica só para mostrar nome e telefone.
+  const { data: retornos = [], isLoading: loadingRetornos, error: erroRetornos, refetch: refetchRetornos } = useSupabaseQuery<RetornoComPaciente>('retornos', {
+    select: '*, pacientes(id, nome, nome_social, cpf, telefone, email)',
     orderBy: { column: 'data_retorno_prevista', ascending: true },
     filters: filtrosClinica,
     enabled: !!profile?.clinica_id && !taskPage,
   });
-
-  const { data: pacientes = [], isLoading: loadingPacientes, error: erroPacientes, refetch: refetchPacientes } = useSupabaseQuery<{
-    id: string;
-    nome: string;
-    nome_social: string | null;
-    cpf: string | null;
-    telefone: string | null;
-    email: string | null;
-  }>('pacientes', {
-    select: 'id, nome, nome_social, cpf, telefone, email',
-    filters: filtrosClinica,
-    enabled: !!profile?.clinica_id && !taskPage,
-  });
+  const pacientes = useMemo(() => {
+    const porId = new Map<string, PacienteDoRetorno>();
+    for (const r of retornos) if (r.pacientes) porId.set(r.paciente_id, { ...r.pacientes, id: r.paciente_id });
+    return [...porId.values()];
+  }, [retornos]);
 
   const { data: medicos = [], isLoading: loadingMedicos, error: erroMedicos, refetch: refetchMedicos } = useSupabaseQuery<{ id: string; nome: string | null; crm: string; especialidade: string | null }>('medicos', {
     select: 'id, nome, crm, especialidade',
@@ -149,31 +159,33 @@ function RetornosWorkspace() {
     enabled: !!profile?.clinica_id && !taskPage,
   });
 
+  // Consulta vinculada de todo retorno em aberto: serve para concluir o de
+  // hoje e para não chamar de "atrasado" o que já foi remarcado para depois.
   const idsAgendamentosParaConcluir = useMemo(() => Array.from(new Set(
     retornos
-      .filter(r =>
-        r.data_retorno_prevista <= todaySaoPauloDateOnly(agora) &&
-        !['realizado', 'cancelado'].includes(r.status || '') &&
-        r.agendamento_retorno_id,
-      )
+      .filter(r => !['realizado', 'cancelado'].includes(r.status || '') && r.agendamento_retorno_id)
       .map(r => r.agendamento_retorno_id as string),
-  )).sort(), [retornos, agora]);
+  )).sort(), [retornos]);
   const {
     data: agendamentosRetornoParaConcluir = [],
     isLoading: loadingAgendamentosRetornoParaConcluir,
     error: erroAgendamentosRetornoParaConcluir,
     refetch: refetchAgendamentosRetornoParaConcluir,
-  } = useQuery<{ id: string; data: string; hora_inicio: string; status: string }[]>({
+  } = useQuery<AgendamentoDoRetorno[]>({
     queryKey: ['retornos-agendamentos-para-concluir', profile?.clinica_id, idsAgendamentosParaConcluir],
     enabled: !!profile?.clinica_id && !taskPage && idsAgendamentosParaConcluir.length > 0,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      // Em lotes, para a lista de ids não estourar o tamanho da URL.
+      const lotes: string[][] = [];
+      for (let i = 0; i < idsAgendamentosParaConcluir.length; i += LOTE_IDS) lotes.push(idsAgendamentosParaConcluir.slice(i, i + LOTE_IDS));
+      const resultados = await Promise.all(lotes.map(lote => (supabase as any)
         .from('agendamentos')
         .select('id, data, hora_inicio, status')
         .eq('clinica_id', profile?.clinica_id)
-        .in('id', idsAgendamentosParaConcluir);
-      if (error) throw error;
-      return (data || []) as { id: string; data: string; hora_inicio: string; status: string }[];
+        .in('id', lote)));
+      const erro = resultados.find(r => r.error)?.error;
+      if (erro) throw erro;
+      return resultados.flatMap(r => (r.data || []) as AgendamentoDoRetorno[]);
     },
   });
   const agendamentoRetornoPorId = useMemo(
@@ -181,7 +193,7 @@ function RetornosWorkspace() {
     [agendamentosRetornoParaConcluir],
   );
 
-  const isLoading = loadingRetornos || loadingPacientes || loadingMedicos || loadingAgendamentosRetornoParaConcluir;
+  const isLoading = loadingRetornos || loadingMedicos || loadingAgendamentosRetornoParaConcluir;
 
   useEffect(() => {
     if (!isLoading) {
@@ -216,12 +228,16 @@ function RetornosWorkspace() {
   const retornosComStatus = useMemo(() => retornos.map(r => {
     const dataRetorno = parseDateOnly(r.data_retorno_prevista)!;
     const diasAtraso = differenceInDays(hoje, dataRetorno);
+    const agendamento = r.agendamento_retorno_id ? agendamentoRetornoPorId.get(r.agendamento_retorno_id) : undefined;
+    // Remarcado para hoje ou depois não está atrasado, mesmo com a data prevista vencida.
+    const marcadoAdiante = Boolean(agendamento && !['cancelado', 'faltou'].includes(agendamento.status)
+      && agendamento.data >= todaySaoPauloDateOnly(agora));
     let statusCalculado = r.status || 'pendente';
     if (['pendente', 'agendado'].includes(statusCalculado) && isBefore(startOfDay(dataRetorno), hoje)) {
-      statusCalculado = 'atrasado';
+      statusCalculado = marcadoAdiante ? 'agendado' : 'atrasado';
     }
-    return { ...r, statusCalculado, diasAtraso, dataRetorno };
-  }), [retornos, hoje]);
+    return { ...r, statusCalculado, diasAtraso, dataRetorno, agendamentoMarcado: marcadoAdiante ? agendamento : undefined };
+  }), [retornos, hoje, agendamentoRetornoPorId, agora]);
 
   // Escopo = paciente da URL + responsabilidade (meus retornos / médico escolhido).
   // Os indicadores acompanham o escopo; busca, status e período filtram só a lista.
@@ -285,6 +301,28 @@ function RetornosWorkspace() {
   const destaque = retornosNoEscopo.find(r => r.statusCalculado === 'atrasado')
     ?? retornosNoEscopo.find(r => r.statusCalculado === 'pendente' || r.statusCalculado === 'agendado')
     ?? null;
+
+  // Lembrete em lote: retornos em aberto, sem horário marcado e sem lembrete,
+  // vencidos ou previstos para os próximos 7 dias, com telefone válido.
+  const [loteAberto, setLoteAberto] = useState(false);
+  const [lembrando, setLembrando] = useState<string | null>(null);
+  const marcarLembrado = async (r: Retorno, abrirWhatsApp: boolean) => {
+    if (lembrando) return;
+    const link = abrirWhatsApp ? linkWhatsAppRetorno(r as any) : null;
+    // Abre antes do await: o navegador bloqueia janela aberta depois de uma espera.
+    if (link) window.open(link, '_blank', 'noopener,noreferrer');
+    setLembrando(r.id);
+    try {
+      const { error } = await supabase.from('retornos').update({ lembrete_enviado: true } as any)
+        .eq('id', r.id).eq('clinica_id', r.clinica_id);
+      if (error) throw error;
+      void queryClient.invalidateQueries({ queryKey: ['retornos'] });
+    } catch (error) {
+      toast.error('Não foi possível registrar o lembrete', { description: mensagemDeErro(error) });
+    } finally {
+      setLembrando(null);
+    }
+  };
 
   const marcarRealizado = async (retorno: Retorno) => {
     if (isRealizando) return;
@@ -507,7 +545,6 @@ function RetornosWorkspace() {
     setCargaExpirada(false);
     setTentativaCarga(atual => atual + 1);
     void refetchRetornos();
-    void refetchPacientes();
     void refetchMedicos();
     void refetchAgendamentosRetornoParaConcluir();
   };
@@ -534,7 +571,84 @@ function RetornosWorkspace() {
     mensagemWhatsApp(getPacienteNome(r.paciente_id).split(' ')[0], getMedicoNome(r.medico_id), format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })),
   );
 
-  const erroDeCarga = erroRetornos || erroPacientes || erroMedicos || erroAgendamentosRetornoParaConcluir;
+  // Situação e ações de um retorno, usadas na tabela (desktop) e nas fichas (celular).
+  const paraLembrar = retornosNoEscopo.filter(r =>
+    ['pendente', 'atrasado'].includes(r.statusCalculado) && !r.agendamento_retorno_id && !r.lembrete_enviado
+    && !isBefore(addDays(hoje, 7), startOfDay(r.dataRetorno)) && !!linkWhatsAppRetorno(r));
+
+  const linhaDoRetorno = (r: (typeof filtrados)[number]) => {
+    const whatsapp = linkWhatsAppRetorno(r);
+    const dataRetornoFutura = isBefore(hoje, startOfDay(r.dataRetorno));
+    const agendamentoDeHoje = r.agendamento_retorno_id
+      ? agendamentoRetornoPorId.get(r.agendamento_retorno_id)
+      : undefined;
+    const horarioAindaNaoChegou = Boolean(
+      (r.data_retorno_prevista === todaySaoPauloDateOnly(agora) && r.agendamento_retorno_id &&
+        (!agendamentoDeHoje || !horarioAgendadoJaChegou(agendamentoDeHoje.data, agendamentoDeHoje.hora_inicio, agora)))
+      || (r.agendamentoMarcado && !horarioAgendadoJaChegou(r.agendamentoMarcado.data, r.agendamentoMarcado.hora_inicio, agora)),
+    );
+    const agendamentoSemComparecimento = ['cancelado', 'faltou'].includes(agendamentoDeHoje?.status || '');
+    const atendimentoAindaAberto = Boolean(
+      r.agendamento_retorno_id && !podeMarcarRetornoRealizado(agendamentoDeHoje?.status),
+    );
+    const emAberto = !['realizado', 'cancelado'].includes(r.statusCalculado);
+    const muitoAtrasado = r.statusCalculado === 'atrasado' && r.diasAtraso > 30;
+    const acoes = (
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        {(r.statusCalculado === 'pendente' || r.statusCalculado === 'atrasado') && !r.agendamento_retorno_id && (
+          <Button
+            size="sm"
+            onClick={() => handleAgendarRetorno(r)}
+            className="h-11 gap-1 rounded-full md:h-9 text-xs"
+          >
+            <CalendarPlus aria-hidden="true" className="h-3.5 w-3.5" /> Agendar
+          </Button>
+        )}
+        {r.agendamento_retorno_id && emAberto && (
+          <Button size="sm" variant="outline" onClick={() => void handleRemarcarRetorno(r)} disabled={isAgendando} className="h-11 gap-1 rounded-full md:h-9 text-xs">
+            {isAgendando ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />} Remarcar
+          </Button>
+        )}
+        {emAberto && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
+          <Button size="sm" onClick={() => setRealizando(r)} className="h-11 gap-1 rounded-full md:h-9 text-xs">
+            <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> Realizado
+          </Button>
+        )}
+        {emAberto && atendimentoAindaAberto && !agendamentoSemComparecimento && (
+          <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
+            <Clock aria-hidden="true" className="h-3 w-3" /> Conclua o atendimento antes de marcar como realizado
+          </span>
+        )}
+        {emAberto && (dataRetornoFutura || horarioAindaNaoChegou) && (
+          <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
+            <Clock aria-hidden="true" className="h-3 w-3" /> {horarioAindaNaoChegou ? 'Disponível após o horário agendado' : 'Disponível na data prevista'}
+          </span>
+        )}
+        {emAberto && agendamentoSemComparecimento && (
+          <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
+            <Ban aria-hidden="true" className="h-3 w-3" /> Agendamento cancelado ou falta
+          </span>
+        )}
+        {r.statusCalculado === 'realizado' && (
+          <Button
+            size="sm" variant="outline" className="h-11 gap-1 rounded-full md:h-9 text-xs text-muted-foreground"
+            aria-label="Reabrir retorno marcado como realizado"
+            onClick={() => void desfazerRealizado(r)}
+          >
+            <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" /> Reabrir
+          </Button>
+        )}
+        {emAberto && (
+          <Button size="sm" variant="ghost" onClick={() => setCancelando(r)} className="h-11 gap-1 rounded-full md:h-9 text-xs text-destructive hover:text-destructive" aria-label="Cancelar retorno">
+            <Ban aria-hidden="true" className="h-3.5 w-3.5" /> Cancelar
+          </Button>
+        )}
+      </div>
+    );
+    return { whatsapp, muitoAtrasado, acoes };
+  };
+
+  const erroDeCarga = erroRetornos || erroMedicos || erroAgendamentosRetornoParaConcluir;
   if (!taskPage && (erroDeCarga || cargaExpirada)) {
     const tempoEsgotado = cargaExpirada && !erroDeCarga;
     return (
@@ -608,6 +722,16 @@ function RetornosWorkspace() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
+              variant="outline"
+              className="shrink-0 gap-2 rounded-full"
+              aria-expanded={loteAberto}
+              onClick={() => setLoteAberto(aberto => !aberto)}
+              title="Retornos vencidos ou dos próximos 7 dias, sem horário e sem lembrete"
+            >
+              <MessageCircle aria-hidden="true" className="h-4 w-4" /> Lembrar em lote
+              {paraLembrar.length > 0 && <span className="tabular-nums">({paraLembrar.length})</span>}
+            </Button>
+            <Button
               className="shrink-0 gap-2 rounded-full"
               onClick={() => navigate('/agenda')}
               title="Abre a agenda para conferir os horários dos retornos"
@@ -679,6 +803,41 @@ function RetornosWorkspace() {
           );
         })}
       </section>
+
+      {loteAberto && (
+        <Card className="rounded-xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Lembretes de retorno</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {paraLembrar.length === 0
+                ? 'Nenhum retorno vencido ou dos próximos 7 dias aguarda lembrete.'
+                : `${paraLembrar.length} paciente${paraLembrar.length === 1 ? '' : 's'} para lembrar. Cada envio abre o WhatsApp com a mensagem pronta e registra o lembrete.`}
+            </p>
+          </CardHeader>
+          {paraLembrar.length > 0 && (
+            <CardContent className="space-y-3">
+              <Button className="w-full gap-2 rounded-full sm:w-auto" disabled={!!lembrando} onClick={() => void marcarLembrado(paraLembrar[0], true)}>
+                <MessageCircle aria-hidden="true" className="h-4 w-4" /> Enviar o próximo ({getPacienteNome(paraLembrar[0].paciente_id).split(' ')[0]})
+              </Button>
+              <ul className="divide-y divide-border rounded-lg border border-border">
+                {paraLembrar.slice(0, 30).map(r => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                    <span className="min-w-0 text-sm">
+                      <span className="font-medium text-foreground">{getPacienteNome(r.paciente_id)}</span>
+                      <span className="text-muted-foreground"> · {format(r.dataRetorno, 'dd/MM', { locale: ptBR })}{r.statusCalculado === 'atrasado' ? ' · atrasado' : ''}</span>
+                    </span>
+                    <span className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-11 rounded-full text-xs md:h-9" disabled={lembrando === r.id} onClick={() => void marcarLembrado(r, true)}>Enviar</Button>
+                      <Button size="sm" variant="ghost" className="h-11 rounded-full text-xs md:h-9" disabled={lembrando === r.id} onClick={() => void marcarLembrado(r, false)}>Já lembrei</Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {paraLembrar.length > 30 && <p className="text-xs text-muted-foreground">Mostrando 30 de {paraLembrar.length}; os demais aparecem conforme os primeiros forem lembrados.</p>}
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {/* Destaque: retorno mais urgente */}
       {destaque && (() => {
@@ -823,7 +982,41 @@ function RetornosWorkspace() {
               ) : null}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-border/60">
+            <>
+            {/* No celular a tabela vira fichas, sem rolagem lateral. */}
+            <ul className="space-y-2 md:hidden" aria-label="Retornos">
+              {filtrados.map((r) => {
+                const { whatsapp, acoes } = linhaDoRetorno(r);
+                return (
+                  <li key={r.id} className={cn('space-y-2 rounded-xl border border-border bg-card p-3', r.statusCalculado === 'atrasado' && 'border-destructive/40')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold text-foreground">{getPacienteNome(r.paciente_id)}</p>
+                        <p className="text-xs text-muted-foreground">{getMedicoNome(r.medico_id)}</p>
+                      </div>
+                      {getStatusBadge(r.statusCalculado)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Previsto para <span className="font-medium tabular-nums text-foreground">{format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })}</span>
+                      {r.agendamentoMarcado && <> · marcado para <span className="font-medium tabular-nums text-foreground">{r.agendamentoMarcado.data.split('-').reverse().join('/')} às {String(r.agendamentoMarcado.hora_inicio).slice(0, 5)}</span></>}
+                      {r.statusCalculado === 'atrasado' && <span className="font-medium text-destructive"> · {r.diasAtraso} dia(s) de atraso</span>}
+                    </p>
+                    {r.motivo && <p className="line-clamp-2 break-words text-xs text-muted-foreground">Motivo: {r.motivo}</p>}
+                    <div className="flex flex-wrap items-center gap-1">
+                      {whatsapp && (
+                        <Button aria-label="Contatar via WhatsApp" size="icon" variant="outline" asChild className="h-11 w-11 shrink-0 rounded-full">
+                          <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label="Contatar via WhatsApp" title="Contatar via WhatsApp">
+                            <MessageCircle className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                      {acoes}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -837,21 +1030,7 @@ function RetornosWorkspace() {
                 </TableHeader>
                 <TableBody>
                   {filtrados.map((r) => {
-                    const whatsapp = linkWhatsAppRetorno(r);
-                    const dataRetornoFutura = isBefore(hoje, startOfDay(r.dataRetorno));
-                    const agendamentoDeHoje = r.agendamento_retorno_id
-                      ? agendamentoRetornoPorId.get(r.agendamento_retorno_id)
-                      : undefined;
-                    const horarioAindaNaoChegou = Boolean(
-                      r.data_retorno_prevista === todaySaoPauloDateOnly(agora) && r.agendamento_retorno_id &&
-                      (!agendamentoDeHoje || !horarioAgendadoJaChegou(agendamentoDeHoje.data, agendamentoDeHoje.hora_inicio, agora)),
-                    );
-                    const agendamentoSemComparecimento = ['cancelado', 'faltou'].includes(agendamentoDeHoje?.status || '');
-                    const atendimentoAindaAberto = Boolean(
-                      r.agendamento_retorno_id && !podeMarcarRetornoRealizado(agendamentoDeHoje?.status),
-                    );
-                    const emAberto = !['realizado', 'cancelado'].includes(r.statusCalculado);
-                    const muitoAtrasado = r.statusCalculado === 'atrasado' && r.diasAtraso > 30;
+                    const { whatsapp, muitoAtrasado, acoes } = linhaDoRetorno(r);
                     return (
                       <TableRow
                         key={r.id}
@@ -877,6 +1056,11 @@ function RetornosWorkspace() {
                         <TableCell>
                           <div>
                             <span className="text-sm tabular-nums">{format(r.dataRetorno, 'dd/MM/yyyy', { locale: ptBR })}</span>
+                            {r.agendamentoMarcado && (
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                Marcado para <span className="font-medium tabular-nums text-foreground">{r.agendamentoMarcado.data.split('-').reverse().join('/')} às {String(r.agendamentoMarcado.hora_inicio).slice(0, 5)}</span>
+                              </div>
+                            )}
                             {r.statusCalculado === 'atrasado' && (
                               <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-medium text-destructive">
                                 <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0" />
@@ -895,56 +1079,7 @@ function RetornosWorkspace() {
                         </TableCell>
                         <TableCell>{getStatusBadge(r.statusCalculado)}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-wrap items-center justify-end gap-1">
-                            {(r.statusCalculado === 'pendente' || r.statusCalculado === 'atrasado') && !r.agendamento_retorno_id && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleAgendarRetorno(r)}
-                                className="h-9 gap-1 rounded-full text-xs"
-                              >
-                                <CalendarPlus aria-hidden="true" className="h-3.5 w-3.5" /> Agendar
-                              </Button>
-                            )}
-                            {r.agendamento_retorno_id && emAberto && (
-                              <Button size="sm" variant="outline" onClick={() => void handleRemarcarRetorno(r)} disabled={isAgendando} className="h-9 gap-1 rounded-full text-xs">
-                                {isAgendando ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />} Remarcar
-                              </Button>
-                            )}
-                            {emAberto && !dataRetornoFutura && !horarioAindaNaoChegou && !agendamentoSemComparecimento && !atendimentoAindaAberto && (
-                              <Button size="sm" onClick={() => setRealizando(r)} className="h-9 gap-1 rounded-full text-xs">
-                                <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> Realizado
-                              </Button>
-                            )}
-                            {emAberto && atendimentoAindaAberto && !agendamentoSemComparecimento && (
-                              <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Clock aria-hidden="true" className="h-3 w-3" /> Conclua o atendimento antes de marcar como realizado
-                              </span>
-                            )}
-                            {emAberto && (dataRetornoFutura || horarioAindaNaoChegou) && (
-                              <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Clock aria-hidden="true" className="h-3 w-3" /> {horarioAindaNaoChegou ? 'Disponível após o horário agendado' : 'Disponível na data prevista'}
-                              </span>
-                            )}
-                            {emAberto && agendamentoSemComparecimento && (
-                              <span className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground" role="status">
-                                <Ban aria-hidden="true" className="h-3 w-3" /> Agendamento cancelado ou falta
-                              </span>
-                            )}
-                            {r.statusCalculado === 'realizado' && (
-                              <Button
-                                size="sm" variant="outline" className="h-9 gap-1 rounded-full text-xs text-muted-foreground"
-                                aria-label="Reabrir retorno marcado como realizado"
-                                onClick={() => void desfazerRealizado(r)}
-                              >
-                                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" /> Reabrir
-                              </Button>
-                            )}
-                            {emAberto && (
-                              <Button size="sm" variant="ghost" onClick={() => setCancelando(r)} className="h-9 gap-1 rounded-full text-xs text-destructive hover:text-destructive" aria-label="Cancelar retorno">
-                                <Ban aria-hidden="true" className="h-3.5 w-3.5" /> Cancelar
-                              </Button>
-                            )}
-                          </div>
+                          {acoes}
                         </TableCell>
                       </TableRow>
                     );
@@ -952,6 +1087,7 @@ function RetornosWorkspace() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

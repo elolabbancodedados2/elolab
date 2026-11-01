@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import { WaitingListSidebar } from '@/components/agenda/WaitingListSidebar';
 
@@ -30,5 +30,28 @@ describe('WaitingListSidebar', () => {
     expect(desconhecida.className).toContain('text-warning-foreground');
     expect(desconhecida.className).not.toContain('text-destructive');
     expect(screen.getAllByText(/^(Normal|Preferencial|Urgente|Prioridade desconhecida)/)).toHaveLength(4);
+  });
+
+  it('agenda sem arrastar, mostra o status do pedido e oferece incluir quando vazia', () => {
+    const onAgendar = vi.fn();
+    const { unmount } = render(
+      <DndContext>
+        <WaitingListSidebar open onToggle={() => {}} onAgendar={onAgendar}
+          items={[{ ...item('1', 'normal'), status: 'confirmado' }]} />
+      </DndContext>,
+    );
+    expect(screen.getByText('Confirmado')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar Paciente 1' }));
+    expect(onAgendar).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }));
+    unmount();
+
+    const onAdicionar = vi.fn();
+    render(
+      <DndContext>
+        <WaitingListSidebar open onToggle={() => {}} items={[]} onAdicionar={onAdicionar} />
+      </DndContext>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar paciente/ }));
+    expect(onAdicionar).toHaveBeenCalledOnce();
   });
 });

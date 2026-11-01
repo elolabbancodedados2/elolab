@@ -1220,6 +1220,14 @@ export function AgendaPage() {
         isLoading={waitingQuery.isLoading}
         error={waitingQuery.error}
         onRetry={() => void waitingQuery.refetch()}
+        onAgendar={(item) => setSearchParams(current => {
+          // Mesmo caminho da tela da lista de espera: valida o pedido e sugere a vaga.
+          const params = new URLSearchParams(current);
+          params.set('espera', item.id);
+          params.set('paciente', item.paciente_id);
+          return params;
+        })}
+        onAdicionar={() => navigate('/gestao-fluxo/espera/nova', { state: { returnTo: '/gestao-fluxo?tab=espera' } })}
         topo={(
           <PainelNovoAgendamento
             date={activeDate}
