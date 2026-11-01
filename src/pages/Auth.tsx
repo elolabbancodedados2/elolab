@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { destinoAposLogin } from '@/lib/destinoAposLogin';
+import { destinoAposLogin, estadoAposLogin } from '@/lib/destinoAposLogin';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -97,6 +97,7 @@ export default function Auth() {
   const hasAnyPlanIntent = Boolean(urlPlan || urlPlanMode);
   // Volta para a página que a rota protegida guardou, se for interna e segura.
   const destinoSemPlano = urlCadastro ? '/onboarding' : destinoAposLogin((location.state as { from?: unknown } | null)?.from);
+  const estadoSemPlano = urlCadastro ? undefined : estadoAposLogin((location.state as { from?: unknown } | null)?.from);
   const { data: planos = [], isLoading: loadingPlanos, isError: erroPlanos } = usePlanos(hasPlanIntent);
   const planoSelecionado = planos.find((plano) => plano.slug === urlPlan);
   const planoIntentIndisponivel = hasAnyPlanIntent && (!hasPlanIntent || (!loadingPlanos && (erroPlanos || !planoSelecionado)));
@@ -132,9 +133,9 @@ export default function Auth() {
     const activationFinished = activationStatus === 'active' || (activationStatus === 'idle' && !urlCodigo && !hasPlanIntent);
     if (!authLoading && user && profile && activationFinished) {
       if (hasPlanIntent && planoSelecionado) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`, { replace: true });
-      else navigate(destinoSemPlano);
+      else navigate(destinoSemPlano, { replace: true, state: estadoSemPlano });
     }
-  }, [user, profile, authLoading, navigate, activationStatus, urlCodigo, hasPlanIntent, planoSelecionado, urlPlan, urlPlanMode, destinoSemPlano]);
+  }, [user, profile, authLoading, navigate, activationStatus, urlCodigo, hasPlanIntent, planoSelecionado, urlPlan, urlPlanMode, destinoSemPlano, estadoSemPlano]);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -206,7 +207,7 @@ export default function Auth() {
 
         toast.success('Login realizado!');
         if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
-        else navigate(destinoSemPlano);
+        else navigate(destinoSemPlano, { replace: true, state: estadoSemPlano });
       }
     } catch (e) {
       const feedback = interpretarErroLogin(e);
@@ -247,7 +248,7 @@ export default function Auth() {
     setPendingFactorId(null);
     toast.success('Login realizado!');
     if (hasPlanIntent) navigate(`/planos/checkout/${encodeURIComponent(urlPlan)}${urlPlanMode === 'trial' ? '?trial=1' : ''}`);
-    else navigate(destinoSemPlano);
+    else navigate(destinoSemPlano, { replace: true, state: estadoSemPlano });
   };
 
   const handleMfaCancel = async () => {

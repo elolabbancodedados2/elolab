@@ -175,6 +175,7 @@ export function BarraHorario() {
     (data ?? [])
       .filter(c => !STATUS_FORA.includes(c.status))
       .filter(c => !isMedicoOnly || !medicoId || c.medico_id === medicoId)
+      .filter(c => typeof c.data === 'string')
       .sort((a, b) => a.data.localeCompare(b.data) || minutos(a.hora_inicio) - minutos(b.hora_inicio))
   ), [data, isMedicoOnly, medicoId]);
 

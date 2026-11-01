@@ -541,7 +541,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
           .select('*, pacientes(nome, nome_social, cpf, telefone, email), medicos(crm, especialidade, nome)')
           .eq('clinica_id', profile?.clinica_id ?? '');
         if (pacienteFiltroId) query = query.eq('paciente_id', pacienteFiltroId);
-        if (isMedicoOnly && medicoId) query = query.eq('medico_solicitante_id', medicoId);
+        // O médico vê os exames da clínica (inclusive os pedidos por colegas); o filtro é por paciente e período.
         if (inicioPeriodoExames) query = query.gte('data_solicitacao', inicioPeriodoExames);
         return query
           .order('data_solicitacao', { ascending: false })

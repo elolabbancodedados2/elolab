@@ -42,7 +42,7 @@ test('patient page retains fields after failure and completes a real-shaped crea
   await page.goto('/pacientes/novo');
   await page.getByLabel('Nome Completo').fill('Paciente sintético');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
-  await expect(page.getByText('Erro ao salvar paciente', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível salvar o paciente', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Nome Completo')).toHaveValue('Paciente sintético');
   fail = false;
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();

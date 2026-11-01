@@ -19,3 +19,9 @@ export function destinoAposLogin(from: unknown, padrao = '/dashboard'): string {
   if (pathname === '/auth' || pathname.startsWith('/auth/') || pathname === '/login' || pathname === '/') return padrao;
   return caminho;
 }
+
+/** Estado de navega??o da p?gina pedida (ex.: returnTo da lista), para n?o perd?-lo no retorno ap?s o login. */
+export function estadoAposLogin(from: unknown): unknown {
+  if (from && typeof from === 'object' && 'state' in from) return (from as { state?: unknown }).state ?? undefined;
+  return undefined;
+}
