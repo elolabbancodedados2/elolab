@@ -19,4 +19,15 @@ describe('ProjecaoFluxoCaixa', () => {
     expect(within(screen.getByRole('row', { name: /out\/2026/ })).getByText(/R\$\s70,00/)).toBeInTheDocument();
     expect(within(screen.getByRole('row', { name: /out\/2026/ })).getByText(/R\$\s10,00/)).toBeInTheDocument();
   });
+
+  it('soma os lotes TISS enviados como receita prevista e avisa quando não carregam', () => {
+    const { rerender } = render(<ProjecaoFluxoCaixa lancamentos={[]} realizados={[]} lotesTiss={[{
+      id: 'lote-1', status: 'enviado', valor_apresentado: 300, valor_pago: 0, enviado_em: '2026-10-10', convenios: { prazo_retorno: 30 },
+    }]} />);
+    expect(within(screen.getByRole('row', { name: /nov\/2026/ })).getAllByText(/R\$\s300,00/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/lote TISS enviado/)).toBeInTheDocument();
+
+    rerender(<ProjecaoFluxoCaixa lancamentos={[]} realizados={[]} lotesTissIndisponivel />);
+    expect(screen.getByText(/Não foi possível somar os lotes TISS/)).toBeInTheDocument();
+  });
 });

@@ -4,9 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { CENARIOS_FLUXO, lotesTissComoRecebiveis, projetarFluxoCaixa, type CenarioFluxo, type LancamentoProjecao, type LoteTissProjecao } from '@/lib/projecaoFluxoCaixa';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -17,30 +14,16 @@ interface Props {
   lancamentos: ReadonlyArray<LancamentoProjecao>;
   realizados: ReadonlyArray<{ tipo: string; valor: number; data: string }>;
   realizadoIndisponivel?: boolean;
+  /** Lotes TISS enviados e ainda sem retorno; o saldo entra como receita prevista. */
+  lotesTiss?: ReadonlyArray<LoteTissProjecao>;
+  lotesTissIndisponivel?: boolean;
 }
 
-export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponivel = false }: Props) {
+const SEM_LOTES: ReadonlyArray<LoteTissProjecao> = [];
+
+export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponivel = false, lotesTiss = SEM_LOTES, lotesTissIndisponivel = false }: Props) {
   const [cenario, setCenario] = useState<CenarioFluxo>('realista');
-  const { profile } = useSupabaseAuth();
-  const clinicaId = profile?.clinica_id;
-  // Lotes enviados ao convênio ainda sem retorno: a receita só vira lançamento
-  // na conciliação, então sem isto a projeção ignorava esse dinheiro.
-  const lotesQuery = useQuery<LoteTissProjecao[]>({
-    queryKey: ['projecao-lotes-tiss', clinicaId],
-    enabled: Boolean(clinicaId),
-    staleTime: 60_000,
-    meta: { suppressGlobalErrorToast: true },
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).from('lotes_tiss')
-        .select('id, status, valor_apresentado, valor_pago, enviado_em, competencia, convenios(prazo_retorno)')
-        .eq('clinica_id', clinicaId)
-        .in('status', ['enviado', 'processando', 'pago_parcial'])
-        .limit(500);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-  const recebiveisConvenio = useMemo(() => lotesTissComoRecebiveis(lotesQuery.data ?? []), [lotesQuery.data]);
+  const recebiveisConvenio = useMemo(() => lotesTissComoRecebiveis(lotesTiss), [lotesTiss]);
   const totalConvenio = recebiveisConvenio.reduce((total, item) => total + item.valor, 0);
   const meses = useMemo(
     () => projetarFluxoCaixa([...lancamentos, ...recebiveisConvenio], realizados, { hoje: todaySaoPauloDateOnly(), meses: 3, cenario }),
@@ -92,7 +75,7 @@ export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponi
       </Table>
       {realizadoIndisponivel && <p className="mt-2 text-[11px] text-warning-foreground">Volte ao mês atual na navegação acima para incluir o realizado deste mês na projeção.</p>}
       {totalConvenio > 0 && <p className="mt-2 text-xs text-muted-foreground">Inclui {brl(totalConvenio)} de {recebiveisConvenio.length} lote{recebiveisConvenio.length === 1 ? '' : 's'} TISS enviado{recebiveisConvenio.length === 1 ? '' : 's'}, previsto{recebiveisConvenio.length === 1 ? '' : 's'} pelo prazo de retorno do convênio.</p>}
-      {lotesQuery.isError && <p className="mt-2 text-xs text-warning-foreground">Não foi possível somar os lotes TISS enviados; a projeção mostra só os lançamentos.</p>}
+      {lotesTissIndisponivel && <p className="mt-2 text-xs text-warning-foreground">Não foi possível somar os lotes TISS enviados; a projeção mostra só os lançamentos.</p>}
       <p className="mt-2 text-[11px] text-muted-foreground">Não inclui saldo inicial de caixa. Nenhum lançamento é criado pela projeção.</p>
     </CardContent>
   </Card>;

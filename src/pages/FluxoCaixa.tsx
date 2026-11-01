@@ -47,7 +47,7 @@ import {
   parseFinanceMonth,
 } from '@/lib/financeRouteState';
 import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
-import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
+import type { LancamentoProjecao, LoteTissProjecao } from '@/lib/projecaoFluxoCaixa';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
 const statusRealizado = (status: string | null) => status === 'pago' || status === 'parcial';
@@ -109,6 +109,24 @@ export default function FluxoCaixa() {
   const fimPeriodoPagamentosExclusivo = format(addDays(endOfMonth(currentDate), 1), 'yyyy-MM-dd');
   const inicioPeriodoPagamentosIso = inicioDoDiaEmFusoIso(inicioPeriodoPagamentos, 'America/Sao_Paulo');
   const fimPeriodoPagamentosIso = inicioDoDiaEmFusoIso(fimPeriodoPagamentosExclusivo, 'America/Sao_Paulo');
+  // Lotes enviados ao convênio ainda sem retorno: a receita só vira lançamento
+  // na conciliação, então sem isto a projeção ignorava esse dinheiro.
+  const lotesTissQuery = useQuery<LoteTissProjecao[]>({
+    queryKey: ['projecao-lotes-tiss', profile?.clinica_id],
+    enabled: Boolean(profile?.clinica_id),
+    staleTime: 60_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('lotes_tiss')
+        .select('id, status, valor_apresentado, valor_pago, enviado_em, competencia, convenios(prazo_retorno)')
+        .eq('clinica_id', profile!.clinica_id)
+        .in('status', ['enviado', 'processando', 'pago_parcial'])
+        .limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const pagamentosQuery = useQuery({
     queryKey: ['pagamentos-fluxo-caixa', profile?.clinica_id ?? null, inicioPeriodoPagamentos, fimPeriodoPagamentosExclusivo],
     queryFn: async () => {
@@ -512,7 +530,7 @@ export default function FluxoCaixa() {
         </div>
       )}
 
-      <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} />
+      <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} lotesTiss={lotesTissQuery.data} lotesTissIndisponivel={lotesTissQuery.isError} />
 
       {/* Por Categoria */}
       {temMovimentosNoMes && <Card className="rounded-2xl border-border/60 shadow-xs">

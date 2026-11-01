@@ -146,3 +146,31 @@ Legenda: **Banco** indica se precisa de migration ou RPC (e, portanto, de aprova
 - Quebrar Prontuarios e Pacientes com `useQuery` e testes.
 - Agregações no servidor (Analytics, Contas a pagar).
 - `strict` gradual.
+
+## Situação em 01/11/2026 (branch `feat/telas-concluir`)
+
+O branch junta os PRs #71 a #75 da Onda 1 e acrescenta o que ainda dava para fazer sem banco.
+
+**Feito, só front:**
+- P0-1: Agenda e Recepção antecipam a triagem obrigatória. Na Agenda, "Iniciar atendimento" fica desabilitado com o motivo; na Recepção, a ação principal vira "Abrir triagem".
+- Retorno baixado como realizado ao finalizar a consulta de retorno (via `marcar_retorno_realizado_atomico`, que já existe).
+- Agenda: confirmação para data e hora já passadas e trava contra clique duplo ao salvar.
+- Lista de espera: sugere a próxima vaga livre do médico (expediente, consultas e bloqueios dos próximos 14 dias).
+- Triagem: a mensagem "atualizado para aguardando" só aparece quando o paciente entrou agora na fila.
+- Laboratório: validade de lotes e reagentes comparada com o dia de São Paulo.
+- Contas a receber: o total é a soma de em aberto, vencidas e recebido.
+- Projeção do fluxo de caixa: lotes TISS enviados entram como receita prevista, pelo prazo de retorno do convênio.
+- Plano e assinatura num lugar só: o Planos virou catálogo e o cancelamento, com motivo, ficou em Configurações → Plano.
+- Menu enxuto: saem Minha fila, Convites e acessos, Itens com baixo estoque, Indicadores da clínica e Relatórios salvos. Todos continuam acessíveis por atalhos nas próprias telas.
+- Visual: resíduos do azul antigo, cartões pretos do Início e do plano, Painel TV em grafite e paleta da Agenda com nomes certos.
+- Textos: acentos corrompidos em telas e testes, e código morto em `workflowAutomation.ts`.
+
+**Conferido e já resolvido antes:** UX-03 (Prescrições e Atestados não usam mais modal).
+
+**Não feito, com o motivo:**
+- Perfis de acesso com nomes personalizados: não existe nome personalizado de perfil no sistema.
+- Categorias do caixa: a lista fixa identifica a origem das despesas (PR #75). O vínculo com o DRE é feito em DRE e plano de contas.
+- Ícones sem `aria-hidden` (cerca de 1.100): troca em massa com risco alto e pouco ganho, porque SVG sem nome acessível já é ignorado pelos leitores de tela.
+- Analytics e Contas a pagar com agregação no servidor: ficam na Onda 3, porque precisam de RPC.
+
+**Continua dependendo de banco e de aprovação (Onda 2):** regras de triagem e pagamento dentro do RPC, estorno de venda PDV, totais do lote TISS, conciliação de glosa, correção de status com motivo, vínculo de atestado e encaminhamento, fuso nos RPCs e conta a pagar retroativa.
