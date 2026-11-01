@@ -116,7 +116,9 @@ test('cadastro patrimonial, ordem concluída, documento privado e bloqueio de sa
   await expect(page.getByText('certificado.pdf · 0 KB')).toBeVisible();
   await page.getByRole('button', { name: 'Abrir', exact: true }).click();
   await page.getByRole('button', { name: 'Marcar indisponível' }).click();
-  await expect(page.getByText('Indisponível', { exact: true })).toBeVisible();
+  // O texto também aparece no filtro de situação; conferimos o selo do equipamento.
+  await expect(page.locator('div:text-is("Indisponível")').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Marcar indisponível' })).toHaveCount(0);
   await expect(page.getByText('A sala fica bloqueada se este equipamento estiver fora de operação.')).toBeVisible();
   expect(calls.find((call) => call.action === 'create_asset')).toMatchObject({ action: 'create_asset' });
   expect(calls.find((call) => call.action === 'create_order')).toMatchObject({ action: 'create_order' });
