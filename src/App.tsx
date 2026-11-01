@@ -80,6 +80,9 @@ const Convenios = lazy(() => import("@/pages/Convenios"));
 const ContasReceber = lazy(() => import("@/pages/ContasReceber"));
 const ContaReceberDetalhesPage = lazy(() => import("@/pages/ContaReceberDetalhesPage"));
 const ContaReceberEstorno = lazy(() => import("@/pages/ContaReceberEstorno"));
+const ContaReceberRenegociacaoPage = lazy(() => import("@/pages/ContaReceberRenegociacaoPage"));
+const ContaPagarDetalhesPage = lazy(() => import("@/pages/ContaPagarDetalhesPage"));
+const RecorrenciasFinanceiras = lazy(() => import("@/pages/RecorrenciasFinanceiras"));
 const EstornarVendaPdvPage = lazy(() => import("@/pages/EstornarVendaPdvPage"));
 const CorrigirStatusAgendamentoPage = lazy(() => import("@/pages/CorrigirStatusAgendamentoPage"));
 const ContasPagar = lazy(() => import("@/pages/ContasPagar"));
@@ -552,12 +555,15 @@ function AppRoutes() {
                           <Route path="/caixa" element={<Navigate to="/caixa-diario" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />
                           <Route path="/financeiro/dre" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><DrePlanoContas /></SupabaseProtectedRoute>} />
+                          <Route path="/financeiro/recorrencias" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RecorrenciasFinanceiras /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/estorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberEstorno /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/detalhes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberDetalhesPage /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/receber/:lancamentoId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberRenegociacaoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/recebimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/pagar/:lancamentoId/detalhes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarDetalhesPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/pagamento"element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarPagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><HistoricoLancamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />

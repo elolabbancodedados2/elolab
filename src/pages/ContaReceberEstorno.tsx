@@ -16,8 +16,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { mensagemDeErro } from '@/lib/erros';
+import { cn } from '@/lib/utils';
+import { invalidarFinanceiro } from '@/lib/invalidarFinanceiro';
+import { dataHoraSP } from '@/lib/caixaFormatacao';
+import { formatarMoeda as formatarMoedaBase } from '@/lib/dinheiro';
+import { rotuloFormaPagamento, STATUS_RECEITA } from '@/lib/financeiroRotulos';
 
 interface ContaEstorno {
   id: string;
@@ -37,14 +41,9 @@ interface PagamentoEstornavel {
   observacoes: string | null;
 }
 
-const FORMAS_PAGAMENTO: Record<string, string> = {
-  pix: 'PIX', dinheiro: 'Dinheiro', cartao_credito: 'Cartão de crédito', credito: 'Cartão de crédito',
-  cartao_debito: 'Cartão de débito', debito: 'Cartão de débito', convenio: 'Convênio',
-  transferencia: 'Transferência', boleto: 'Boleto', cheque: 'Cheque',
-};
-
-const formatarMoeda = (valor: number | string | null | undefined) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor ?? 0));
+const formatarMoeda = formatarMoedaBase;
+/** Mesmo mínimo em qualquer origem (ficha do paciente ou contas a receber). */
+const MIN_MOTIVO_ESTORNO = 5;
 
 export default function ContaReceberEstorno() {
   const { lancamentoId = '', patientId = '' } = useParams();
@@ -62,7 +61,7 @@ export default function ContaReceberEstorno() {
     || (patientId ? '/pacientes/' + encodeURIComponent(patientId) + '?tab=financeiro' : null)
     || (typeof routeState?.returnTo === 'string' && /^\/contas(?:\?.*)?$/.test(routeState.returnTo) ? routeState.returnTo : '/contas?tab=receber');
   const returnLabel = patientId ? 'Voltar à ficha do paciente' : 'Voltar às contas a receber';
-  const minReasonLength = patientId ? 3 : 5;
+  const minReasonLength = MIN_MOTIVO_ESTORNO;
   const restoreSearchTerm = typeof routeState?.restoreSearchTerm === 'string' ? routeState.restoreSearchTerm : '';
   const restoreFilterCategoria = typeof routeState?.restoreFilterCategoria === 'string' ? routeState.restoreFilterCategoria : 'todas';
   const patientReturnState = safePatientReturnTo
@@ -172,23 +171,14 @@ export default function ContaReceberEstorno() {
       toast.success('Estorno registrado.', {
         description: `${formatarMoeda(resultado.valor_estornado ?? pagamento?.valor)} estornado. A conta foi recalculada.`,
       });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
-        queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] }),
-        queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] }),
-        ...(patientId ? [queryClient.invalidateQueries({ queryKey: ['extrato-paciente'] })] : []),
-      ]);
+      await invalidarFinanceiro(queryClient);
       navigationAllowed.current = true;
       navigate(returnTo, {
         state: patientId ? patientReturnState : { restoreSearchTerm, restoreFilterCategoria },
       });
     } catch (error) {
       setSubmitError(mensagemDeErro(error));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] }),
-      ]);
+      await invalidarFinanceiro(queryClient);
     } finally {
       submissionLock.current = false;
       setSubmitting(false);
@@ -255,7 +245,7 @@ export default function ContaReceberEstorno() {
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Receita vinculada</p>
               <CardTitle className="mt-1 break-words text-lg">{conta.descricao}</CardTitle>
             </div>
-            <Badge variant="outline" className="capitalize">{conta.status === 'pago' ? 'Recebida' : conta.status}</Badge>
+            <Badge variant="outline">{STATUS_RECEITA[conta.status] ?? conta.status}</Badge>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3">
@@ -285,14 +275,14 @@ export default function ContaReceberEstorno() {
                 <SelectContent>
                   {pagamentos.map(pagamento => (
                     <SelectItem key={pagamento.id} value={pagamento.id}>
-                      {formatarMoeda(pagamento.valor)} · {FORMAS_PAGAMENTO[pagamento.forma_pagamento] || pagamento.forma_pagamento} · {format(new Date(pagamento.data_pagamento), 'dd/MM/yyyy HH:mm')}
+                      {formatarMoeda(pagamento.valor)} · {rotuloFormaPagamento(pagamento.forma_pagamento)} · {dataHoraSP(pagamento.data_pagamento)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {paymentIdExists && (() => {
                 const selecionado = pagamentos.find(item => item.id === paymentId)!;
-                return <p className="text-xs text-muted-foreground">Registrado em {format(new Date(selecionado.data_pagamento), 'dd/MM/yyyy HH:mm')} · {FORMAS_PAGAMENTO[selecionado.forma_pagamento] || selecionado.forma_pagamento}</p>;
+                return <p className="text-xs text-muted-foreground">Registrado em {dataHoraSP(selecionado.data_pagamento)} (horário de Brasília) · {rotuloFormaPagamento(selecionado.forma_pagamento)}</p>;
               })()}
             </div>
 
@@ -311,8 +301,12 @@ export default function ContaReceberEstorno() {
                 aria-describedby="motivo-estorno-ajuda"
               />
               <div id="motivo-estorno-ajuda" className="flex justify-between gap-3 text-xs text-muted-foreground">
-                <span>Descreva o que aconteceu; o registro não poderá ser apagado.</span>
-                <span aria-live="polite">{reason.length}/500</span>
+                <span>Descreva o que aconteceu, com pelo menos {MIN_MOTIVO_ESTORNO} caracteres; o registro não poderá ser apagado.</span>
+                <span aria-live="polite" className={cn(reason.trim().length > 0 && reason.trim().length < MIN_MOTIVO_ESTORNO && 'text-destructive')}>
+                  {reason.trim().length < MIN_MOTIVO_ESTORNO
+                    ? `Faltam ${MIN_MOTIVO_ESTORNO - reason.trim().length}`
+                    : `${reason.length}/500`}
+                </span>
               </div>
             </div>
 

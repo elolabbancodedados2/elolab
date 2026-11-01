@@ -5,13 +5,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import {
   DollarSign, AlertTriangle, ArrowRight, FileText, ChevronLeft, ChevronRight,
-  ArrowUpRight, ArrowDownRight, PieChart as PieChartIcon,
-  Activity,
+  PieChart as PieChartIcon, Activity, Building2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
@@ -38,24 +36,10 @@ import {
   parseFinanceOverviewTab,
 } from '@/lib/financeRouteState';
 import { PageHeader } from '@/components/PageHeader';
+import { normalizarCategoria, rotuloCentroCusto, somarPorCategoria } from '@/lib/financeiroRotulos';
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtShort = formatarValorAbreviadoFinanceiro;
-
-const CATEGORIAS_RECEITA: Record<string, string> = {
-  consulta: 'Consultas', retorno: 'Retornos', procedimento: 'Procedimentos',
-  exame: 'Exames', cirurgia: 'Cirurgias', internacao: 'Internações',
-  taxa_administrativa: 'Taxas Admin.', taxa_material: 'Taxas Material',
-  convenio_repasse: 'Repasse Convênio', honorario_medico: 'Honorários',
-  fisioterapia: 'Fisioterapia', psicologia: 'Psicologia', pediatria: 'Pediatria',
-  outros: 'Outros',
-};
-
-const CATEGORIAS_DESPESA: Record<string, string> = {
-  fornecedores: 'Fornecedores', folha_pagamento: 'Folha Pagamento',
-  impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
-  equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
-};
 
 const statusLiquidadoParcialOuTotal = (status: string | null) => status === 'pago' || status === 'parcial';
 const statusEmAberto = (status: string | null) => ['pendente', 'atrasado', 'parcial'].includes(status || '');
@@ -84,6 +68,7 @@ interface EventoFinanceiro {
   lancamentoId: string;
   tipo: string;
   categoria: string;
+  centroCusto: string | null;
   data: string;
   valor: number;
 }
@@ -136,7 +121,7 @@ export default function Financeiro() {
     enabled: !!profile?.clinica_id,
     queryFn: async () => {
       const selecionar = () => supabase.from('pagamentos')
-        .select('id,lancamento_id,valor,data_pagamento,estornado_em,lancamentos!inner(tipo,categoria,clinica_id)')
+        .select('id,lancamento_id,valor,data_pagamento,estornado_em,lancamentos!inner(tipo,categoria,centro_custo,clinica_id)')
         .eq('clinica_id', profile!.clinica_id!)
         .eq('lancamentos.clinica_id', profile!.clinica_id!)
         .order('id');
@@ -165,7 +150,8 @@ export default function Financeiro() {
         id: pagamento.id,
         lancamentoId: pagamento.lancamento_id,
         tipo: conta.tipo,
-        categoria: conta.categoria || 'outros',
+        categoria: normalizarCategoria(conta.categoria),
+        centroCusto: conta.centro_custo ?? null,
         data: dataPagamento,
         valor: Number(pagamento.valor),
       });
@@ -175,7 +161,8 @@ export default function Financeiro() {
           id: `${pagamento.id}:estorno`,
           lancamentoId: pagamento.lancamento_id,
           tipo: conta.tipo,
-          categoria: conta.categoria || 'outros',
+          categoria: normalizarCategoria(conta.categoria),
+          centroCusto: conta.centro_custo ?? null,
           data: dataEstorno,
           valor: -Number(pagamento.valor),
         });
@@ -187,7 +174,7 @@ export default function Financeiro() {
       .flatMap(l => {
         const data = dataRealizacao(l);
         return data >= inicioHistorico && data < fimHistoricoExclusivo
-          ? [{ id: l.id, lancamentoId: l.id, tipo: l.tipo, categoria: l.categoria || 'outros', data, valor: valorRealizado(l) }]
+          ? [{ id: l.id, lancamentoId: l.id, tipo: l.tipo, categoria: normalizarCategoria(l.categoria), centroCusto: l.centro_custo ?? null, data, valor: valorRealizado(l) }]
           : [];
       });
     return [...eventosLegados, ...eventosIndividuais];
@@ -243,33 +230,33 @@ export default function Financeiro() {
   const dre = useMemo(() => {
     const doMes = eventosFinanceiros.filter(evento => dentroDoPeriodo(evento.data, mesAtual));
 
-    // Agrupa as mesmas transações individuais exibidas no caixa do período.
-    const receitasPorCat: Record<string, number> = {};
-    doMes.filter(evento => evento.tipo === 'receita').forEach(evento => {
-      const cat = evento.categoria || 'outros';
-      receitasPorCat[cat] = (receitasPorCat[cat] || 0) + evento.valor;
-    });
+    // Agrupa as mesmas transações individuais exibidas no caixa do período,
+    // com a categoria normalizada ("Outros" e "outros" são a mesma linha).
+    const receitasPorCat = somarPorCategoria(doMes.filter(evento => evento.tipo === 'receita'));
+    const despesasPorCat = somarPorCategoria(doMes.filter(evento => evento.tipo === 'despesa'));
 
-    const despesasPorCat: Record<string, number> = {};
-    doMes.filter(evento => evento.tipo === 'despesa').forEach(evento => {
-      const cat = evento.categoria || 'outros';
-      despesasPorCat[cat] = (despesasPorCat[cat] || 0) + evento.valor;
-    });
-
-    const totalReceitas = Object.values(receitasPorCat).reduce((a, b) => a + b, 0);
-    const totalDespesas = Object.values(despesasPorCat).reduce((a, b) => a + b, 0);
+    const totalReceitas = receitasPorCat.reduce((a, item) => a + item.valor, 0);
+    const totalDespesas = despesasPorCat.reduce((a, item) => a + item.valor, 0);
     const lucroOperacional = totalReceitas - totalDespesas;
     const margemLucro = calcularMargemLucro(totalReceitas, lucroOperacional);
 
-    return {
-      receitasPorCat: Object.entries(receitasPorCat)
-        .map(([k, v]) => ({ cat: k, label: CATEGORIAS_RECEITA[k] || k, valor: v }))
-        .sort((a, b) => b.valor - a.valor),
-      despesasPorCat: Object.entries(despesasPorCat)
-        .map(([k, v]) => ({ cat: k, label: CATEGORIAS_DESPESA[k] || k, valor: v }))
-        .sort((a, b) => b.valor - a.valor),
-      totalReceitas, totalDespesas, lucroOperacional, margemLucro,
-    };
+    return { receitasPorCat, despesasPorCat, totalReceitas, totalDespesas, lucroOperacional, margemLucro };
+  }, [eventosFinanceiros, mesAtual]);
+
+  // ─── Centros de custo ─────────────────────────
+  const centrosCusto = useMemo(() => {
+    const mapa = new Map<string, { chave: string; label: string; receitas: number; despesas: number }>();
+    for (const evento of eventosFinanceiros) {
+      if (!dentroDoPeriodo(evento.data, mesAtual)) continue;
+      const chave = evento.centroCusto?.trim() || '';
+      const atual = mapa.get(chave) ?? { chave, label: rotuloCentroCusto(chave), receitas: 0, despesas: 0 };
+      if (evento.tipo === 'receita') atual.receitas += evento.valor;
+      else if (evento.tipo === 'despesa') atual.despesas += evento.valor;
+      mapa.set(chave, atual);
+    }
+    return [...mapa.values()]
+      .map(item => ({ ...item, resultado: item.receitas - item.despesas }))
+      .sort((a, b) => (b.receitas + b.despesas) - (a.receitas + a.despesas));
   }, [eventosFinanceiros, mesAtual]);
 
   // ─── Chart (6 months) ─────────────────────────
@@ -306,7 +293,7 @@ export default function Financeiro() {
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
-        title="Painel Financeiro"
+        title="Painel financeiro"
         description="Análise completa de receitas, despesas e resultados"
         icon={<DollarSign />}
         className="rounded-[22px] border border-border/60 bg-card p-4 shadow-xs sm:p-5"
@@ -421,17 +408,18 @@ export default function Financeiro() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={updateTab}>
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="resumo" className="gap-1.5"><Activity className="h-3.5 w-3.5" /> Evolução</TabsTrigger>
           <TabsTrigger value="dre" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> DRE</TabsTrigger>
           <TabsTrigger value="categorias" className="gap-1.5"><PieChartIcon className="h-3.5 w-3.5" /> Categorias</TabsTrigger>
+          <TabsTrigger value="centros" className="gap-1.5"><Building2 className="h-3.5 w-3.5" /> Centros de custo</TabsTrigger>
         </TabsList>
 
         {/* Evolução */}
         <TabsContent value="resumo">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Fluxo de Caixa — Últimos 6 meses</CardTitle>
+              <CardTitle className="text-base">Fluxo de caixa dos últimos 6 meses</CardTitle>
               <CardDescription>Receitas, despesas e lucro realizados</CardDescription>
             </CardHeader>
             <CardContent>
@@ -456,89 +444,42 @@ export default function Financeiro() {
           </Card>
         </TabsContent>
 
-        {/* DRE */}
+        {/* DRE: resumo; a demonstração completa fica em /financeiro/dre */}
         <TabsContent value="dre">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                DRE — Demonstrativo de Resultado
-              </CardTitle>
-              <CardDescription>
-                {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })} — Receitas e despesas realizadas (pagas)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {/* Receitas */}
-              <div className="rounded-lg bg-success/5 border border-success/10 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-success mb-2 flex items-center gap-1.5">
-                  <ArrowUpRight className="h-3.5 w-3.5" /> Receitas Operacionais
+          <section aria-labelledby="finance-dre-summary-title" className="rounded-xl border border-border bg-card">
+            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+              <div className="min-w-0">
+                <h3 id="finance-dre-summary-title" className="text-sm font-semibold text-foreground">Resultado do mês</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Resumo pelos valores pagos em {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}. A DRE completa organiza o resultado pelo plano de contas.
                 </p>
-                {dre.receitasPorCat.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhuma receita no período.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {dre.receitasPorCat.map(r => (
-                      <div key={r.cat} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{r.label}</span>
-                        <span className="font-bold tabular-nums text-success">{fmt(r.valor)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Separator className="my-2" />
-                <div className="flex items-center justify-between font-black text-sm">
-                  <span className="text-success">TOTAL RECEITAS</span>
-                  <span className="text-success tabular-nums">{fmt(dre.totalReceitas)}</span>
-                </div>
               </div>
-
-              {/* Despesas */}
-              <div className="rounded-lg bg-destructive/5 border border-destructive/10 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-destructive mb-2 flex items-center gap-1.5">
-                  <ArrowDownRight className="h-3.5 w-3.5" /> Despesas Operacionais
-                </p>
-                {dre.despesasPorCat.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhuma despesa no período.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {dre.despesasPorCat.map(r => (
-                      <div key={r.cat} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{r.label}</span>
-                        <span className="font-bold tabular-nums text-destructive">-{fmt(r.valor)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Separator className="my-2" />
-                <div className="flex items-center justify-between font-black text-sm">
-                  <span className="text-destructive">TOTAL DESPESAS</span>
-                  <span className="text-destructive tabular-nums">-{fmt(dre.totalDespesas)}</span>
-                </div>
+              <Button asChild size="sm" variant="outline" className="min-h-11 shrink-0 gap-1.5 sm:min-h-9">
+                <Link to={`/financeiro/dre?mes=${formatFinanceMonth(currentDate)}`}>
+                  <FileText aria-hidden="true" className="h-4 w-4" /> Abrir DRE completa
+                </Link>
+              </Button>
+            </header>
+            <dl className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="px-4 py-3 sm:px-5">
+                <dt className="text-xs font-medium text-muted-foreground">Receitas recebidas</dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{fmt(dre.totalReceitas)}</dd>
               </div>
-
-              {/* Resultado */}
-              <div className={cn(
-                'rounded-lg border p-4 flex items-center justify-between',
-                dre.totalReceitas === 0 && dre.totalDespesas === 0
-                  ? 'bg-muted/30 border-border'
-                  : dre.lucroOperacional >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/20'
-              )}>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider">Resultado Operacional</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{dre.margemLucro === null ? 'Sem receita para calcular a margem no período.' : `Margem: ${formatarPercentualFinanceiro(dre.margemLucro)}`}</p>
-                </div>
-                <span className={cn(
-                  'text-3xl font-black tabular-nums',
-                  dre.totalReceitas === 0 && dre.totalDespesas === 0
-                    ? 'text-muted-foreground'
-                    : dre.lucroOperacional >= 0 ? 'text-success' : 'text-destructive'
-                )}>
-                  {dre.lucroOperacional >= 0 ? '' : '-'}{fmt(Math.abs(dre.lucroOperacional))}
-                </span>
+              <div className="px-4 py-3 sm:px-5">
+                <dt className="text-xs font-medium text-muted-foreground">Despesas pagas</dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{fmt(dre.totalDespesas)}</dd>
               </div>
-            </CardContent>
-          </Card>
+              <div className="px-4 py-3 sm:px-5">
+                <dt className="text-xs font-medium text-muted-foreground">Resultado operacional</dt>
+                <dd className={cn('mt-1 text-lg font-semibold tabular-nums', dre.lucroOperacional < 0 ? 'text-destructive' : 'text-foreground')}>
+                  {dre.lucroOperacional < 0 ? `−${fmt(Math.abs(dre.lucroOperacional))}` : fmt(dre.lucroOperacional)}
+                </dd>
+                <dd className="mt-0.5 text-xs text-muted-foreground">
+                  {dre.margemLucro === null ? 'Sem receita para calcular a margem.' : `Margem ${formatarPercentualFinanceiro(dre.margemLucro)}`}
+                </dd>
+              </div>
+            </dl>
+          </section>
         </TabsContent>
 
         {/* Categorias */}
@@ -599,6 +540,47 @@ export default function Financeiro() {
             </section>
           </div>
         </TabsContent>
+
+        {/* Centros de custo */}
+        <TabsContent value="centros">
+          <section aria-labelledby="cost-centers-title" className="overflow-hidden rounded-xl border border-border bg-card">
+            <header className="border-b border-border px-4 py-3 sm:px-5">
+              <h3 id="cost-centers-title" className="text-sm font-semibold text-foreground">Resultado por centro de custo</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">Valores recebidos e pagos no mês, agrupados pelo centro de custo de cada conta.</p>
+            </header>
+            {centrosCusto.length === 0 ? (
+              <p role="status" className="px-4 py-5 text-sm text-muted-foreground sm:px-5">Nenhuma movimentação realizada neste mês.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-muted-foreground">
+                    <th scope="col" className="px-4 py-2 text-left font-medium sm:px-5">Centro de custo</th>
+                    <th scope="col" className="hidden px-4 py-2 text-right font-medium sm:table-cell">Receitas</th>
+                    <th scope="col" className="hidden px-4 py-2 text-right font-medium sm:table-cell">Despesas</th>
+                    <th scope="col" className="px-4 py-2 text-right font-medium sm:px-5">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {centrosCusto.map(item => (
+                    <tr key={item.chave || 'sem-centro'} className="border-b border-border/70 last:border-0">
+                      <th scope="row" className="px-4 py-2.5 text-left font-medium text-foreground sm:px-5">
+                        {item.label}
+                        <span className="mt-0.5 block text-xs font-normal text-muted-foreground sm:hidden">
+                          Receitas {fmt(item.receitas)} · Despesas {fmt(item.despesas)}
+                        </span>
+                      </th>
+                      <td className="hidden px-4 py-2.5 text-right tabular-nums sm:table-cell">{fmt(item.receitas)}</td>
+                      <td className="hidden px-4 py-2.5 text-right tabular-nums sm:table-cell">{fmt(item.despesas)}</td>
+                      <td className={cn('px-4 py-2.5 text-right font-semibold tabular-nums sm:px-5', item.resultado < 0 ? 'text-destructive' : 'text-foreground')}>
+                        {item.resultado < 0 ? `−${fmt(Math.abs(item.resultado))}` : fmt(item.resultado)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        </TabsContent>
       </Tabs>
 
       {/* Quick Access */}
@@ -612,24 +594,25 @@ export default function Financeiro() {
             {
               title: 'Recebimentos',
               links: [
-                { label: 'Caixa Diário', desc: 'Receber e conferir pagamentos', href: '/caixa' },
-                { label: 'Contas a Receber', desc: 'Cobranças e valores em aberto', href: '/contas?tab=receber' },
-                { label: 'Pagamentos', desc: 'Histórico e recibos', href: '/pagamentos' },
+                { label: 'Caixa diário', desc: 'Receber e conferir pagamentos', href: '/caixa-diario' },
+                { label: 'Contas a receber', desc: 'Cobranças e valores em aberto', href: '/contas?tab=receber' },
+                { label: 'Cobrança de inadimplentes', desc: 'Títulos vencidos e contato com pacientes', href: '/cobranca-inadimplentes' },
               ],
             },
             {
               title: 'Movimentação',
               links: [
-                { label: 'Contas a Pagar', desc: 'Fornecedores e despesas', href: '/contas?tab=pagar' },
-                { label: 'Fluxo de Caixa', desc: 'Entradas e saídas por mês', href: `/fluxo-caixa?mes=${formatFinanceMonth(currentDate)}` },
-                { label: 'Relatórios', desc: 'Exportações e análises', href: '/relatorios' },
+                { label: 'Contas a pagar', desc: 'Fornecedores e despesas', href: '/contas?tab=pagar' },
+                { label: 'Fluxo de caixa', desc: 'Entradas e saídas por mês', href: `/fluxo-caixa?mes=${formatFinanceMonth(currentDate)}` },
+                { label: 'Importar extrato', desc: 'Conferir o extrato bancário', href: `/fluxo-caixa/extrato?mes=${formatFinanceMonth(currentDate)}` },
               ],
             },
             {
-              title: 'Cadastros e valores',
+              title: 'Resultado e cadastros',
               links: [
-                { label: 'Tabela de Preços', desc: 'Preços de exames por convênio', href: '/precos-exames' },
-                { label: 'Tipos de Consulta', desc: 'Valores e durações', href: '/tipos-consulta' },
+                { label: 'DRE e plano de contas', desc: 'Resultado pelo plano de contas', href: `/financeiro/dre?mes=${formatFinanceMonth(currentDate)}` },
+                { label: 'Contas recorrentes', desc: 'Despesas que se repetem', href: '/financeiro/recorrencias' },
+                { label: 'Relatórios', desc: 'Exportações e análises', href: '/relatorios' },
               ],
             },
           ].map(group => (

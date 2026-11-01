@@ -3,8 +3,8 @@ import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useLocation, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText, CreditCard,
-  Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown, Pencil, Ban, FileSpreadsheet,
+  ArrowLeft, Plus, Search, Check, DollarSign, AlertCircle, Calendar, FileText,
+  Repeat, Building2, Loader2, X, ArrowUpRight, Clock, TrendingDown, Pencil, Ban, FileSpreadsheet, Eye, Barcode,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,24 @@ import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dat
 import { valorRealizado } from '@/lib/lancamentos';
 import { ErrorState } from '@/components/ErrorState';
 import { parseAccountFilterStatus, parseFinanceMonth } from '@/lib/financeRouteState';
+import { mensagemDeErro } from '@/lib/erros';
+import { invalidarFinanceiro } from '@/lib/invalidarFinanceiro';
+import { formatMoneyInput, parseMoneyInput } from '@/lib/dinheiro';
+import { dividirEmParcelas, MAX_PARCELAS } from '@/lib/parcelamento';
+import { boletoDasObservacoes, lerLinhaDigitavel, observacoesComBoleto } from '@/lib/boleto';
+import { useTelaEstreita } from '@/hooks/useTelaEstreita';
+import {
+  CATEGORIAS_DESPESA,
+  CENTROS_CUSTO_DESPESA,
+  FORMAS_PAGAMENTO_DESPESA,
+  FREQUENCIAS_RECORRENCIA,
+  STATUS_DESPESA,
+  formaPagamentoParaRpc,
+  normalizarCategoria,
+  rotuloCategoriaCadastro,
+  rotuloCentroCusto,
+  rotuloFrequencia,
+} from '@/lib/financeiroRotulos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
@@ -46,42 +65,19 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   estornado: { label: 'Estornado', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border' },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pendente: 'Pendente', parcial: 'Parcial', pago: 'Pago', atrasado: 'Atrasado',
-  cancelado: 'Cancelado', estornado: 'Estornado',
-};
+const STATUS_LABELS: Record<string, string> = STATUS_DESPESA;
 
-const CATEGORIAS = ['fornecedores', 'folha_pagamento', 'impostos', 'aluguel', 'servicos', 'equipamentos', 'marketing', 'outros'];
-const CATEGORIAS_LABELS: Record<string, string> = {
-  fornecedores: 'Fornecedores', folha_pagamento: 'Folha de Pagamento',
-  impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
-  equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
-};
-const FREQUENCIAS_RECURRENCIA: Record<string, string> = {
-  semanal: 'semanal', quinzenal: 'quinzenal', mensal: 'mensal',
-  bimestral: 'bimestral', trimestral: 'trimestral', anual: 'anual',
-};
-
-const FORMAS_PAGAMENTO = [
-  { value: 'pix', label: 'PIX' },
-  { value: 'boleto', label: 'Boleto' },
-  { value: 'transferencia', label: 'Transferência' },
-  { value: 'cartao_credito', label: 'Cartão de Crédito' },
-  { value: 'cartao_debito', label: 'Cartão de Débito' },
-  { value: 'dinheiro', label: 'Dinheiro' },
-];
-
-const CENTROS_CUSTO = ['geral', 'matriz', 'filial', 'estetica', 'odonto', 'laboratorio', 'administrativo'];
-const CENTROS_CUSTO_LABELS: Record<string, string> = {
-  geral: 'Geral', matriz: 'Unidade Matriz', filial: 'Unidade Filial',
-  estetica: 'Estética', odonto: 'Odontologia', laboratorio: 'Laboratório',
-  administrativo: 'Administrativo',
-};
+const CATEGORIAS = CATEGORIAS_DESPESA.map(c => c.value);
+const CATEGORIAS_LABELS: Record<string, string> = Object.fromEntries(CATEGORIAS_DESPESA.map(c => [c.value, c.label]));
+const FORMAS_PAGAMENTO = FORMAS_PAGAMENTO_DESPESA;
+const CENTROS_CUSTO = CENTROS_CUSTO_DESPESA.map(c => c.value);
+const CENTROS_CUSTO_LABELS: Record<string, string> = Object.fromEntries(CENTROS_CUSTO_DESPESA.map(c => [c.value, c.label]));
 
 interface FormData {
   categoria: string;
   descricao: string;
-  valor: number;
+  /** Texto digitado; convertido com `parseMoneyInput` ao salvar. */
+  valor: string;
   data_vencimento: string;
   forma_pagamento: string;
   fornecedor: string;
@@ -92,18 +88,20 @@ interface FormData {
   frequencia_recorrencia: string;
   centro_custo: string;
   observacoes: string;
+  parcelas: string;
+  linha_digitavel: string;
 }
 
 const novoFormDataDespesa = (): FormData => {
   const hoje = todaySaoPauloDateOnly();
   return {
-    categoria: 'fornecedores', descricao: '', valor: 0,
+    categoria: 'fornecedores', descricao: '', valor: '',
     data_vencimento: hoje,
     forma_pagamento: 'pix', fornecedor: '', numero_documento: '',
     data_emissao: hoje,
     competencia: hoje.slice(0, 7),
     recorrente: false, frequencia_recorrencia: 'mensal',
-    centro_custo: 'geral', observacoes: '',
+    centro_custo: 'geral', observacoes: '', parcelas: '1', linha_digitavel: '',
   };
 };
 
@@ -117,7 +115,7 @@ const formDataComInicial = (initial: unknown): FormData => {
   const dados = initial as Record<string, unknown>;
   const texto = (campo: 'categoria' | 'descricao' | 'fornecedor' | 'numero_documento' | 'observacoes') =>
     typeof dados[campo] === 'string' ? (dados[campo] as string).slice(0, 300) : base[campo];
-  const valor = typeof dados.valor === 'number' && Number.isFinite(dados.valor) && dados.valor > 0 ? dados.valor : base.valor;
+  const valor = typeof dados.valor === 'number' && Number.isFinite(dados.valor) && dados.valor > 0 ? formatMoneyInput(dados.valor) : base.valor;
   const categoria = texto('categoria');
   return {
     ...base,
@@ -139,9 +137,11 @@ const podeAlterarConta = (conta: { statusOriginal?: string | null; status?: stri
   ['pendente', 'atrasado'].includes(String(conta.statusOriginal ?? conta.status ?? '')) && Number(conta.valor_pago || 0) === 0;
 
 const formDataDaConta = (conta: Record<string, any>): FormData => ({
-  categoria: CATEGORIAS.includes(conta.categoria) ? conta.categoria : 'outros',
+  // Mantém a categoria gravada, mesmo fora da lista padrão: trocar por
+  // "outros" ao editar mudava a classificação sem a pessoa perceber.
+  categoria: normalizarCategoria(conta.categoria),
   descricao: conta.descricao ?? '',
-  valor: Number(conta.valor) || 0,
+  valor: formatMoneyInput(Number(conta.valor) || 0),
   data_vencimento: conta.data_vencimento ?? '',
   forma_pagamento: conta.forma_pagamento ?? 'pix',
   fornecedor: conta.fornecedor ?? '',
@@ -151,7 +151,9 @@ const formDataDaConta = (conta: Record<string, any>): FormData => ({
   recorrente: Boolean(conta.recorrente),
   frequencia_recorrencia: conta.frequencia_recorrencia ?? 'mensal',
   centro_custo: conta.centro_custo ?? 'geral',
-  observacoes: conta.observacoes ?? '',
+  observacoes: observacoesComBoleto(conta.observacoes ?? '', ''),
+  parcelas: '1',
+  linha_digitavel: boletoDasObservacoes(conta.observacoes) ?? '',
 });
 
 const PILL_BASE_P = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -197,6 +199,25 @@ export default function ContasPagar() {
   }, [formDirty, isFormPage]);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
+  const telaEstreita = useTelaEstreita();
+  const valorDigitado = parseMoneyInput(formData.valor);
+  const quantidadeParcelas = isEditPage || formData.recorrente ? 1 : Number(formData.parcelas) || 1;
+  const parcelasDespesa = useMemo(() => valorDigitado && isValidDateOnly(formData.data_vencimento)
+    ? dividirEmParcelas({ total: valorDigitado, quantidade: quantidadeParcelas, primeiroVencimento: formData.data_vencimento, descricao: formData.descricao })
+    : [], [valorDigitado, quantidadeParcelas, formData.data_vencimento, formData.descricao]);
+  const leituraBoleto = formData.linha_digitavel.trim()
+    ? lerLinhaDigitavel(formData.linha_digitavel, todaySaoPauloDateOnly())
+    : null;
+  const aplicarLinhaDigitavel = (texto: string) => {
+    const patch: Partial<FormData> = { linha_digitavel: texto };
+    const leitura = texto.replace(/\D/g, '').length >= 47 ? lerLinhaDigitavel(texto, todaySaoPauloDateOnly()) : null;
+    if (leitura?.ok) {
+      patch.forma_pagamento = 'boleto';
+      if (leitura.boleto.valor) patch.valor = formatMoneyInput(leitura.boleto.valor);
+      if (leitura.boleto.vencimento) patch.data_vencimento = leitura.boleto.vencimento;
+    }
+    updateFormData(patch);
+  };
 
   const returnToList = () => navigate(returnToListPath, { state: { restoreSearchTerm: searchTerm } });
   const updateFormData = (patch: Partial<FormData>) => {
@@ -230,7 +251,8 @@ export default function ContasPagar() {
         .order('id', { ascending: true }));
       const today = todaySaoPauloDateOnly();
       return data.map(conta => {
-        const vencida = ['pendente', 'parcial'].includes(conta.status) && !!conta.data_vencimento && conta.data_vencimento < today;
+        // "atrasado" gravado no banco também é vencida; antes ficava fora dos totais de atraso.
+        const vencida = ['pendente', 'parcial', 'atrasado'].includes(conta.status) && !!conta.data_vencimento && conta.data_vencimento < today;
         return { ...conta, vencida, statusOriginal: conta.status, status: vencida ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
@@ -259,6 +281,11 @@ export default function ContasPagar() {
   }, [contaEdicao]);
   const edicaoBloqueada = isEditPage && !!contaEdicao && !podeAlterarConta(contaEdicao);
 
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
+  const [confirmarLote, setConfirmarLote] = useState(false);
+  const [formaLote, setFormaLote] = useState('pix');
+  const [pagandoLote, setPagandoLote] = useState(false);
+  const chavesLote = useRef(new Map<string, string>());
   const [contaCancelando, setContaCancelando] = useState<{ id: string; descricao: string; statusOriginal: string } | null>(null);
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [cancelando, setCancelando] = useState(false);
@@ -284,10 +311,10 @@ export default function ContasPagar() {
       toast.success('Despesa cancelada.');
       setContaCancelando(null);
       setMotivoCancelamento('');
-      void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-    } catch (error: any) {
-      toast.error(error?.message || 'Não foi possível cancelar a despesa.');
-      void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      void invalidarFinanceiro(queryClient);
+    } catch (error) {
+      toast.error(mensagemDeErro(error));
+      void invalidarFinanceiro(queryClient);
     } finally {
       setCancelando(false);
     }
@@ -308,6 +335,7 @@ export default function ContasPagar() {
       return matchSearch && matchStatus;
     }), [monthFilteredContas, searchTerm, filterStatus]);
 
+  const contaComPagamento = (c: any) => ['pago', 'parcial'].includes(c.statusOriginal ?? c.status) || Number(c.valor_pago || 0) > 0;
   const stats = useMemo(() => ({
     // Valor líquido da conta (com desconto e acréscimo), o mesmo que os saldos usam.
     total: monthFilteredContas.filter(c => c.status !== 'cancelado' && c.status !== 'estornado')
@@ -316,8 +344,8 @@ export default function ContasPagar() {
     atrasado: monthFilteredContas.filter(c => c.vencida).reduce((acc, c) => acc + saldoEmAberto(c), 0),
     // Atraso é um rótulo operacional calculado; uma conta vencida pode continuar
     // tendo uma parte já recebida que deve permanecer no KPI de pagamentos.
-    pago: monthFilteredContas.filter(c => ['pago', 'parcial'].includes(c.status) || Number(c.valor_pago || 0) > 0)
-      .reduce((acc, c) => acc + valorRealizado(c), 0),
+    pago: monthFilteredContas.filter(contaComPagamento).reduce((acc, c) => acc + valorRealizado(c), 0),
+    countPago: monthFilteredContas.filter(contaComPagamento).length,
   }), [monthFilteredContas]);
 
   const destaquePagar = useMemo(() => {
@@ -343,7 +371,7 @@ export default function ContasPagar() {
       const dados = filteredContas.map((c: any) => ({
         descricao: c.descricao,
         fornecedor: c.fornecedor || '',
-        categoria: CATEGORIAS_LABELS[c.categoria] || c.categoria || '',
+        categoria: rotuloCategoriaCadastro('despesa', c.categoria),
         documento: c.numero_documento || '',
         vencimento: c.data_vencimento ? format(parseDateOnly(c.data_vencimento)!, 'dd/MM/yyyy') : '',
         valor: Number(c.valor || 0),
@@ -353,7 +381,7 @@ export default function ContasPagar() {
         em_aberto: saldoEmAberto(c),
         pagamento: c.data_pagamento ? format(parseDateOnly(String(c.data_pagamento).slice(0, 10))!, 'dd/MM/yyyy') : '',
         status: c.vencida && c.statusOriginal === 'parcial' ? 'Atrasado · parcial' : STATUS_LABELS[c.status] || c.status,
-        centro_custo: CENTROS_CUSTO_LABELS[c.centro_custo] || c.centro_custo || '',
+        centro_custo: c.centro_custo ? rotuloCentroCusto(c.centro_custo) : '',
       }));
       await exportToExcel(dados, 'contas-a-pagar', 'Contas a Pagar', {
         descricao: 'Descrição', fornecedor: 'Fornecedor', categoria: 'Categoria', documento: 'Documento',
@@ -374,21 +402,32 @@ export default function ContasPagar() {
     navigate('/contas/pagar/nova', { state: { returnTo: `${location.pathname}${location.search}`, restoreSearchTerm: searchTerm } });
   };
 
+  const handleDetalhes = (id: string) => {
+    navigate(`/contas/pagar/${id}/detalhes`, { state: { returnTo: `${location.pathname}${location.search}`, restoreSearchTerm: searchTerm } });
+  };
+
   const handleSave = async () => {
     if (submissionLock.current) return;
     if (!formData.descricao.trim()) { toast.error('Informe a descrição da despesa.'); return; }
-    if (!Number.isFinite(formData.valor) || formData.valor <= 0) {
-      toast.error('Informe um valor válido maior que zero.');
-      return;
-    }
-    if (Math.abs(formData.valor * 100 - Math.round(formData.valor * 100)) > 1e-7) {
-      toast.error('Informe o valor com no máximo duas casas decimais.');
+    const valor = parseMoneyInput(formData.valor);
+    if (valor === null || valor <= 0) {
+      toast.error('Informe um valor maior que zero, com até duas casas decimais.');
       return;
     }
     if (!isValidDateOnly(formData.data_vencimento)) {
       toast.error('Informe uma data de vencimento válida.');
       return;
     }
+    if (leituraBoleto && !leituraBoleto.ok) {
+      toast.error(leituraBoleto.erro);
+      return;
+    }
+    if (!isEditPage && parcelasDespesa.length === 0) {
+      toast.error(`Informe de 1 a ${MAX_PARCELAS} parcelas, cada uma de pelo menos R$ 0,01.`);
+      return;
+    }
+    const linhaBoleto = leituraBoleto?.ok ? leituraBoleto.boleto.linha : '';
+    const observacoesFinais = observacoesComBoleto(formData.observacoes, linhaBoleto) || null;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
     submissionLock.current = true;
     setIsSubmitting(true);
@@ -397,7 +436,7 @@ export default function ContasPagar() {
         const alteracoes = {
           categoria: formData.categoria,
           descricao: formData.descricao.trim(),
-          valor: formData.valor,
+          valor,
           data_vencimento: formData.data_vencimento,
           forma_pagamento: formData.forma_pagamento || null,
           fornecedor: formData.fornecedor || null,
@@ -407,7 +446,7 @@ export default function ContasPagar() {
           recorrente: formData.recorrente,
           frequencia_recorrencia: formData.recorrente ? formData.frequencia_recorrencia : null,
           centro_custo: formData.centro_custo || null,
-          observacoes: formData.observacoes || null,
+          observacoes: observacoesFinais,
         };
         // Só altera se continuar em aberto e sem nenhum pagamento registrado.
         const { data, error } = await supabase.from('lancamentos').update(alteracoes)
@@ -419,20 +458,21 @@ export default function ContasPagar() {
           .select('id');
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('A conta recebeu um pagamento ou foi cancelada e não pode mais ser editada. Atualize a lista.');
-        toast.success('Conta atualizada!');
-        queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+        toast.success('Conta atualizada.');
+        void invalidarFinanceiro(queryClient);
         setFormDirty(false);
         navigationAllowedRef.current = true;
         returnToList();
         return;
       }
-      const payload: any = {
+      const hoje = todaySaoPauloDateOnly();
+      const payload = parcelasDespesa.map(parcela => ({
         tipo: 'despesa',
         categoria: formData.categoria,
-        descricao: formData.descricao.trim(),
-        valor: formData.valor,
-        data: todaySaoPauloDateOnly(),
-        data_vencimento: formData.data_vencimento,
+        descricao: parcela.descricao,
+        valor: parcela.valor,
+        data: hoje,
+        data_vencimento: parcela.vencimento,
         status: 'pendente' as StatusPagamento,
         forma_pagamento: formData.forma_pagamento || null,
         fornecedor: formData.fornecedor || null,
@@ -442,19 +482,19 @@ export default function ContasPagar() {
         recorrente: formData.recorrente,
         frequencia_recorrencia: formData.recorrente ? formData.frequencia_recorrencia : null,
         centro_custo: formData.centro_custo || null,
-        observacoes: formData.observacoes || null,
+        observacoes: observacoesFinais,
         clinica_id: profile?.clinica_id || null,
-      };
+      }));
 
       const { error } = await supabase.from('lancamentos').insert(payload);
       if (error) throw error;
-      toast.success('Conta cadastrada!');
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      toast.success(payload.length > 1 ? `Despesa cadastrada em ${payload.length} parcelas.` : 'Conta cadastrada.');
+      void invalidarFinanceiro(queryClient);
       setFormDirty(false);
       navigationAllowedRef.current = true;
       returnToList();
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar');
+    } catch (error) {
+      toast.error(mensagemDeErro(error));
     } finally {
       submissionLock.current = false;
       setIsSubmitting(false);
@@ -472,6 +512,88 @@ export default function ContasPagar() {
       },
     });
   };
+
+  const contaPagavel = (conta: any) => ['pendente', 'atrasado', 'parcial'].includes(conta.status) && saldoEmAberto(conta) > 0;
+  const contasSelecionadas = filteredContas.filter(conta => selecionadas.has(conta.id) && contaPagavel(conta));
+  const totalSelecionado = contasSelecionadas.reduce((acc, conta) => acc + saldoEmAberto(conta), 0);
+  const pagaveisVisiveis = filteredContas.filter(contaPagavel);
+  const todasSelecionadas = pagaveisVisiveis.length > 0 && pagaveisVisiveis.every(conta => selecionadas.has(conta.id));
+  const alternarSelecao = (id: string, marcar: boolean) => setSelecionadas(atual => {
+    const proximo = new Set(atual);
+    if (marcar) proximo.add(id); else proximo.delete(id);
+    return proximo;
+  });
+
+  const pagarSelecionadas = async () => {
+    if (pagandoLote || contasSelecionadas.length === 0) return;
+    setPagandoLote(true);
+    const falhas: string[] = [];
+    const idsComFalha = new Set<string>();
+    let pagas = 0;
+    try {
+      for (const conta of contasSelecionadas) {
+        const chave = chavesLote.current.get(conta.id) ?? crypto.randomUUID();
+        chavesLote.current.set(conta.id, chave);
+        const { data, error } = await supabase.rpc('registrar_pagamento', {
+          p_lancamento_id: conta.id,
+          p_pagamentos: [{ forma_pagamento: formaPagamentoParaRpc(formaLote), valor: Number(saldoEmAberto(conta).toFixed(2)), parcelas: 1 }],
+          p_desconto: Number(conta.desconto || 0),
+          p_acrescimo: Number(conta.acrescimo || 0),
+          p_chave_idempotencia: chave,
+          p_observacoes: 'Pagamento em lote',
+        });
+        const resultado = (data ?? {}) as Record<string, unknown>;
+        if (error || resultado.success === false) {
+          falhas.push(`${conta.descricao}: ${mensagemDeErro(error ?? resultado.error)}`);
+          idsComFalha.add(conta.id);
+          continue;
+        }
+        chavesLote.current.delete(conta.id);
+        pagas += 1;
+      }
+    } finally {
+      setPagandoLote(false);
+      void invalidarFinanceiro(queryClient);
+    }
+    if (falhas.length === 0) {
+      toast.success(`${pagas} ${pagas === 1 ? 'conta paga' : 'contas pagas'} no caixa de hoje.`);
+      setSelecionadas(new Set());
+      setConfirmarLote(false);
+    } else {
+      toast.warning(`${pagas} de ${contasSelecionadas.length} contas pagas.`, { description: falhas.slice(0, 3).join(' · '), duration: 10000 });
+      // Ficam marcadas só as que falharam, para tentar de novo com a mesma chave.
+      setSelecionadas(idsComFalha);
+    }
+  };
+
+  const acoesConta = (conta: any) => (
+    <>
+      <Button size="icon" variant="ghost" className="h-11 w-11 md:h-9 md:w-9" aria-label={`Ver detalhes de ${conta.descricao}`} title="Ver detalhes" onClick={() => handleDetalhes(conta.id)}>
+        <Eye className="h-3.5 w-3.5" />
+      </Button>
+      <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} restoreSearchTerm={searchTerm} />
+      {podeAlterarConta(conta) && (
+        <>
+          <Button size="icon" variant="ghost" className="h-11 w-11 md:h-9 md:w-9" aria-label={`Editar ${conta.descricao}`} title="Editar" onClick={() => handleEdit(conta.id)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-11 w-11 text-muted-foreground hover:text-destructive md:h-9 md:w-9" aria-label={`Cancelar ${conta.descricao}`} title="Cancelar despesa"
+            onClick={() => { setMotivoCancelamento(''); setContaCancelando({ id: conta.id, descricao: conta.descricao, statusOriginal: conta.statusOriginal }); }}>
+            <Ban className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
+      {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
+        <Button size="sm" onClick={() => handlePagamento(conta.id)} className="min-h-11 gap-1 text-xs md:min-h-9">
+          <Check className="h-3.5 w-3.5" /> {Number(conta.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
+        </Button>
+      )}
+    </>
+  );
+
+  const rotuloStatus = (conta: any) => conta.vencida && conta.statusOriginal === 'parcial'
+    ? 'Atrasado · parcial'
+    : STATUS_LABELS[conta.status || 'pendente'];
 
   if (!isFormPage && contasQuery.isLoading) return <div className="space-y-6" data-testid="contas-pagar-carregando" aria-busy="true"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
   if (!isFormPage && contasQuery.isError && !contasQuery.data) return <ErrorState title="Não foi possível carregar contas a pagar" error={contasQuery.error} onRetry={() => void contasQuery.refetch()} />;
@@ -491,7 +613,7 @@ export default function ContasPagar() {
     <div className="space-y-6 pb-8">
       {!isFormPage && <>
       <PageHeader
-        title="Contas a Pagar"
+        title="Contas a pagar"
         description={stats.total === 0
           ? 'Despesas, fornecedores e controle de vencimentos'
           : `${formatCurrency(stats.total)} total${selectedMonth ? ` em ${format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}` : ''} · ${monthFilteredContas.filter(c => c.vencida).length} vencida${monthFilteredContas.filter(c => c.vencida).length === 1 ? '' : 's'} · ${formatCurrency(stats.pendente)} em aberto`}
@@ -499,16 +621,16 @@ export default function ContasPagar() {
         actions={
           <>
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=receber')}>
-            <ArrowUpRight className="h-4 w-4" /> Contas a Receber
+            <ArrowUpRight className="h-4 w-4" /> Contas a receber
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/caixa-diario')}>
-            <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
+            <ArrowUpRight className="h-4 w-4" /> Caixa do dia
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => void exportarExcel()} disabled={filteredContas.length === 0} aria-label="Exportar contas a pagar filtradas para Excel">
             <FileSpreadsheet className="h-4 w-4" /> Exportar Excel
           </Button>
           <Button onClick={handleNew} className="gap-2 shrink-0">
-            <Plus className="h-4 w-4" /> Nova Conta
+            <Plus className="h-4 w-4" /> Nova conta
           </Button>
           </>
         }
@@ -540,7 +662,7 @@ export default function ContasPagar() {
             { key: 'todos', label: 'Total em contas', value: stats.total, color: 'text-foreground', caption: `${monthFilteredContas.length} lançamento(s)` },
             { key: 'pendente', label: 'A vencer / parcial', value: stats.pendente, color: 'text-warning-foreground', caption: `${monthFilteredContas.filter(c => ['pendente', 'parcial'].includes(c.statusOriginal || '') && !c.vencida).length} conta(s)` },
             { key: 'atrasado', label: 'Vencidas / em atraso', value: stats.atrasado, color: 'text-destructive', caption: `${monthFilteredContas.filter(c => c.vencida).length} em atraso` },
-            { key: 'pago', label: 'Pago', value: stats.pago, color: 'text-success', caption: `${monthFilteredContas.filter(c => ['pago'].includes(c.statusOriginal || '')).length} conta(s)` },
+            { key: 'pago', label: 'Pago', value: stats.pago, color: 'text-success', caption: `${stats.countPago} conta(s) com pagamento` },
           ].map(kpi => {
             const ativo = filterStatus === kpi.key;
             return (
@@ -654,15 +776,56 @@ export default function ContasPagar() {
                   <X aria-hidden="true" className="h-3 w-3" /> Limpar
                 </Button>
               )}
-              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {monthFilteredContas.length}</span>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {pagaveisVisiveis.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2">
+              <label className="flex min-h-11 items-center gap-2 text-sm text-foreground">
+                <Checkbox checked={todasSelecionadas} onCheckedChange={marcar => setSelecionadas(marcar ? new Set(pagaveisVisiveis.map(c => c.id)) : new Set())} aria-label="Selecionar todas as contas em aberto da lista" />
+                {contasSelecionadas.length > 0
+                  ? <span>{contasSelecionadas.length} {contasSelecionadas.length === 1 ? 'conta selecionada' : 'contas selecionadas'} · <strong className="tabular-nums">{formatCurrency(totalSelecionado)}</strong></span>
+                  : <span className="text-muted-foreground">Selecione contas para pagar de uma vez</span>}
+              </label>
+              <Button size="sm" className="min-h-11 gap-1.5 md:min-h-9" disabled={contasSelecionadas.length === 0 || pagandoLote} onClick={() => setConfirmarLote(true)}>
+                <Check aria-hidden="true" className="h-4 w-4" /> Pagar selecionadas
+              </Button>
+            </div>
+          )}
+          {telaEstreita && filteredContas.length > 0 ? (
+            <ul aria-label="Despesas" className="space-y-2">
+              {filteredContas.map((conta: any) => {
+                const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+                return (
+                  <li key={conta.id} className={cn('rounded-xl border border-border bg-card p-3', conta.vencida && 'border-destructive/30 bg-destructive/5')}>
+                    <div className="flex items-start gap-3">
+                      {contaPagavel(conta) && (
+                        <Checkbox className="mt-1" checked={selecionadas.has(conta.id)} onCheckedChange={marcar => alternarSelecao(conta.id, Boolean(marcar))} aria-label={`Selecionar ${conta.descricao}`} />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="line-clamp-2 font-medium text-foreground">{conta.descricao}</p>
+                          <Badge className={cn('shrink-0 rounded-full border-0', STATUS_CONFIG[conta.status || 'pendente']?.bg, STATUS_CONFIG[conta.status || 'pendente']?.color)}>{rotuloStatus(conta)}</Badge>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{conta.fornecedor || 'Fornecedor não informado'} · {rotuloCategoriaCadastro('despesa', conta.categoria)}</p>
+                        <dl className="mt-2 grid grid-cols-2 gap-x-3 text-xs">
+                          <div><dt className="text-muted-foreground">Vencimento</dt><dd className={cn('font-medium', conta.vencida ? 'text-destructive' : 'text-foreground')}>{dataVencimento ? format(dataVencimento, 'dd/MM/yyyy') : '—'}</dd></div>
+                          <div className="text-right"><dt className="text-muted-foreground">{Number(conta.valor_pago || 0) > 0 ? 'Em aberto' : 'Valor'}</dt><dd className="font-semibold tabular-nums text-foreground">{formatCurrency(Number(conta.valor_pago || 0) > 0 ? saldoEmAberto(conta) : Number(conta.valor))}</dd></div>
+                        </dl>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-end gap-1">{acoesConta(conta)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
           <div className="overflow-hidden rounded-xl border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10"><span className="sr-only">Selecionar</span></TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="hidden lg:table-cell">Fornecedor</TableHead>
                   <TableHead className="hidden md:table-cell">Categoria</TableHead>
@@ -675,7 +838,7 @@ export default function ContasPagar() {
               <TableBody>
                 {filteredContas.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-12 text-center">
+                    <TableCell colSpan={8} className="py-12 text-center">
                       <div className="flex flex-col items-center">
                         <span aria-hidden="true" className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                           <DollarSign className="h-7 w-7" />
@@ -716,6 +879,11 @@ export default function ContasPagar() {
                     return (
                     <TableRow key={conta.id} className={cn(conta.vencida && 'bg-destructive/5')}>
                       <TableCell>
+                        {contaPagavel(conta) && (
+                          <Checkbox checked={selecionadas.has(conta.id)} onCheckedChange={marcar => alternarSelecao(conta.id, Boolean(marcar))} aria-label={`Selecionar ${conta.descricao}`} />
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <p className={cn('mb-1 text-xs sm:hidden', conta.vencida ? 'font-medium text-destructive' : urgencia ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
                           {dataVencimento ? `Vencimento ${format(dataVencimento, 'dd/MM/yyyy')}` : 'Vencimento não informado'}{urgencia && ` · ${urgencia}`}
                         </p>
@@ -728,7 +896,7 @@ export default function ContasPagar() {
                           )}
                           {conta.recorrente && (
                             <Badge variant="outline" className="rounded-full text-[9px] gap-0.5 mt-0.5">
-                              <Repeat className="h-2.5 w-2.5" /> Recorrente · {FREQUENCIAS_RECURRENCIA[conta.frequencia_recorrencia] || 'frequência não definida'}
+                              <Repeat className="h-2.5 w-2.5" /> Recorrente · {rotuloFrequencia(conta.frequencia_recorrencia).toLocaleLowerCase('pt-BR')}
                             </Badge>
                           )}
                         </div>
@@ -737,7 +905,7 @@ export default function ContasPagar() {
                         <span className="text-sm line-clamp-2" title={conta.fornecedor || undefined}>{conta.fornecedor || '—'}</span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {CATEGORIAS_LABELS[conta.categoria] || conta.categoria}
+                        {rotuloCategoriaCadastro('despesa', conta.categoria)}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell tabular-nums">
                         {conta.data_vencimento && format(parseDateOnly(conta.data_vencimento)!, 'dd/MM/yyyy')}
@@ -748,30 +916,11 @@ export default function ContasPagar() {
                       </TableCell>
                       <TableCell>
                         <Badge className={cn('rounded-full', STATUS_CONFIG[conta.status || 'pendente']?.bg, STATUS_CONFIG[conta.status || 'pendente']?.color, 'border-0')}>
-                          {conta.vencida && conta.statusOriginal === 'parcial'
-                            ? 'Atrasado · parcial'
-                            : STATUS_LABELS[conta.status || 'pendente']}
+                          {rotuloStatus(conta)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="space-x-1 whitespace-nowrap text-right">
-                        <HistoricoLancamentoButton lancamentoId={conta.id} descricao={conta.descricao} rotulos={CATEGORIAS_LABELS} restoreSearchTerm={searchTerm} />
-                        {podeAlterarConta(conta) && (
-                          <>
-                            <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={`Editar ${conta.descricao}`} title="Editar" onClick={() => handleEdit(conta.id)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-destructive" aria-label={`Cancelar ${conta.descricao}`} title="Cancelar despesa"
-                              onClick={() => { setMotivoCancelamento(''); setContaCancelando({ id: conta.id, descricao: conta.descricao, statusOriginal: conta.statusOriginal }); }}>
-                              <Ban className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        )}
-                        {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
-                          <Button size="sm" onClick={() => handlePagamento(conta.id)}
-                            className="h-9 gap-1 text-xs">
-                            <Check className="h-3.5 w-3.5" /> {Number(conta.valor_pago || 0) > 0 ? 'Pagar saldo' : 'Pagar'}
-                          </Button>
-                        )}
+                      <TableCell className="whitespace-nowrap text-right">
+                        <div className="inline-flex items-center justify-end gap-1">{acoesConta(conta)}</div>
                       </TableCell>
                     </TableRow>
                     );
@@ -780,8 +929,29 @@ export default function ContasPagar() {
               </TableBody>
             </Table>
           </div>
+          )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirmarLote}
+        onOpenChange={open => { if (!open && !pagandoLote) setConfirmarLote(false); }}
+        title="Pagar contas selecionadas"
+        description={`Registrar o pagamento de ${contasSelecionadas.length} ${contasSelecionadas.length === 1 ? 'conta' : 'contas'}, no total de ${formatCurrency(totalSelecionado)}, no caixa aberto de hoje. Cada conta é paga pelo saldo em aberto.`}
+        confirmLabel={pagandoLote ? 'Registrando…' : 'Pagar contas'}
+        cancelLabel="Voltar"
+        variant="default"
+        isLoading={pagandoLote}
+        closeOnConfirm={false}
+        onConfirm={() => void pagarSelecionadas()}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="payable-batch-method" className="text-xs">Forma de pagamento</Label>
+          <Select value={formaLote} onValueChange={setFormaLote} disabled={pagandoLote}>
+            <SelectTrigger id="payable-batch-method" className="min-h-11"><SelectValue /></SelectTrigger>
+            <SelectContent>{FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      </ConfirmDialog>
       <ConfirmDialog
         open={!!contaCancelando}
         onOpenChange={open => { if (!open && !cancelando) setContaCancelando(null); }}
@@ -805,7 +975,7 @@ export default function ContasPagar() {
       {isFormPage && (
         <main data-testid="payable-create-page" className="space-y-5">
           <PageHeader
-            title={isEditPage ? 'Editar conta a pagar' : 'Nova Conta a Pagar'}
+            title={isEditPage ? 'Editar conta a pagar' : 'Nova conta a pagar'}
             description={isEditPage ? 'Corrija os dados da despesa enquanto ela não tiver pagamento registrado.' : 'Cadastre uma despesa e acompanhe o vencimento na lista de contas.'}
             icon={<DollarSign />}
             actions={(
@@ -825,11 +995,12 @@ export default function ContasPagar() {
                   <SelectTrigger id="payable-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{CATEGORIAS_LABELS[c]}</SelectItem>)}
+                    {!CATEGORIAS.includes(formData.categoria) && <SelectItem value={formData.categoria}>{rotuloCategoriaCadastro('despesa', formData.categoria)}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="payable-supplier" className="text-xs">Fornecedor / Favorecido</Label>
+                <Label htmlFor="payable-supplier" className="text-xs">Fornecedor / favorecido</Label>
                 <Input id="payable-supplier" value={formData.fornecedor} onChange={e => updateFormData({ fornecedor: e.target.value })}
                   placeholder="Ex: Laboratório X" disabled={isSubmitting} />
               </div>
@@ -843,17 +1014,22 @@ export default function ContasPagar() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
               <div className="space-y-1.5">
-                <Label htmlFor="payable-value" className="text-xs">Valor (R$) *</Label>
-                <Input id="payable-value" type="number" step="0.01" min="0.01" required value={formData.valor}
-                  onChange={e => updateFormData({ valor: parseFloat(e.target.value) || 0 })} disabled={isSubmitting} />
+                <Label htmlFor="payable-value" className="text-xs">{quantidadeParcelas > 1 ? 'Valor total *' : 'Valor *'}</Label>
+                <div className="relative">
+                  <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">R$</span>
+                  <Input id="payable-value" className="pl-9" type="text" inputMode="decimal" placeholder="0,00" required value={formData.valor}
+                    aria-invalid={Boolean(formData.valor.trim()) && (valorDigitado === null || valorDigitado <= 0)}
+                    onChange={e => updateFormData({ valor: e.target.value })} disabled={isSubmitting} />
+                </div>
+                {formData.valor.trim() && (valorDigitado === null || valorDigitado <= 0) && <p role="alert" className="text-xs text-destructive">Informe um valor maior que zero, com até duas casas decimais.</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="payable-document" className="text-xs">Nº Documento / NF</Label>
+                <Label htmlFor="payable-document" className="text-xs">Nº do documento / NF</Label>
                 <Input id="payable-document" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })}
                   placeholder="Ex: NF-001234" className="font-mono" disabled={isSubmitting} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="payable-method" className="text-xs">Forma de Pagamento</Label>
+                <Label htmlFor="payable-method" className="text-xs">Forma de pagamento</Label>
                 <Select value={formData.forma_pagamento} onValueChange={v => updateFormData({ forma_pagamento: v })} disabled={isSubmitting}>
                   <SelectTrigger id="payable-method"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -863,25 +1039,41 @@ export default function ContasPagar() {
               </div>
             </div>
 
+            {/* Boleto */}
+            <div className="space-y-1.5">
+              <Label htmlFor="payable-barcode" className="flex items-center gap-1.5 text-xs"><Barcode aria-hidden="true" className="h-3.5 w-3.5" /> Linha digitável do boleto (opcional)</Label>
+              <Input id="payable-barcode" inputMode="numeric" className="font-mono" value={formData.linha_digitavel}
+                placeholder="Cole ou digite os números do boleto" aria-describedby="payable-barcode-help"
+                aria-invalid={Boolean(leituraBoleto && !leituraBoleto.ok)}
+                onChange={e => aplicarLinhaDigitavel(e.target.value)} disabled={isSubmitting} />
+              <p id="payable-barcode-help" role={leituraBoleto && !leituraBoleto.ok ? 'alert' : undefined} className={cn('text-xs', leituraBoleto && !leituraBoleto.ok ? 'text-destructive' : 'text-muted-foreground')}>
+                {!leituraBoleto
+                  ? 'Ao colar a linha digitável, o valor e o vencimento são preenchidos. Ela fica guardada nas observações da conta.'
+                  : leituraBoleto.ok
+                    ? `Boleto conferido${leituraBoleto.boleto.valor ? ` · ${formatCurrency(leituraBoleto.boleto.valor)}` : ''}${leituraBoleto.boleto.vencimento ? ` · vence em ${format(parseDateOnly(leituraBoleto.boleto.vencimento)!, 'dd/MM/yyyy')}` : ''}.`
+                    : leituraBoleto.erro}
+              </p>
+            </div>
+
             {/* Datas */}
             <Separator />
             <div>
               <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" /> Datas e Competência
+                <Calendar className="h-4 w-4" /> Datas e competência
               </h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                 <div className="space-y-1.5">
-                <Label htmlFor="payable-issued" className="text-xs">Data de Emissão</Label>
+                <Label htmlFor="payable-issued" className="text-xs">Data de emissão</Label>
                   <Input type="date" value={formData.data_emissao}
                   id="payable-issued" onChange={e => updateFormData({ data_emissao: e.target.value })} disabled={isSubmitting} />
                 </div>
                 <div className="space-y-1.5">
-                <Label htmlFor="payable-due" className="text-xs">Vencimento *</Label>
+                <Label htmlFor="payable-due" className="text-xs">{quantidadeParcelas > 1 ? 'Vencimento da 1ª parcela *' : 'Vencimento *'}</Label>
                 <Input id="payable-due" type="date" required value={formData.data_vencimento}
                   onChange={e => updateFormData({ data_vencimento: e.target.value })} disabled={isSubmitting} />
                 </div>
                 <div className="space-y-1.5">
-                <Label htmlFor="payable-competence" className="text-xs">Competência (Mês/Ano)</Label>
+                <Label htmlFor="payable-competence" className="text-xs">Competência (mês/ano)</Label>
                 <Input id="payable-competence" type="month" value={formData.competencia}
                   onChange={e => updateFormData({ competencia: e.target.value })} disabled={isSubmitting} />
                 </div>
@@ -899,23 +1091,36 @@ export default function ContasPagar() {
                   onCheckedChange={checked => updateFormData({ recorrente: checked })} disabled={isSubmitting} />
                 <Label htmlFor="payable-recurring" className="text-sm">Marcar como despesa recorrente</Label>
               </div>
+              {!isEditPage && !formData.recorrente && (
+                <div className="space-y-1.5 sm:max-w-xs">
+                  <Label htmlFor="payable-installments" className="text-xs">Parcelas</Label>
+                  <Select value={formData.parcelas} onValueChange={v => updateFormData({ parcelas: v })} disabled={isSubmitting}>
+                    <SelectTrigger id="payable-installments" className="min-h-11"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: MAX_PARCELAS }, (_, i) => String(i + 1)).map(n => (
+                        <SelectItem key={n} value={n}>{n === '1' ? 'À vista (1 parcela)' : `${n} parcelas mensais`}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {quantidadeParcelas > 1 && parcelasDespesa.length > 1 && (
+                    <p className="text-xs text-muted-foreground" aria-live="polite">
+                      {parcelasDespesa.length} contas de {formatCurrency(parcelasDespesa[parcelasDespesa.length - 1].valor)}, de {format(parseDateOnly(parcelasDespesa[0].vencimento)!, 'dd/MM/yyyy')} a {format(parseDateOnly(parcelasDespesa[parcelasDespesa.length - 1].vencimento)!, 'dd/MM/yyyy')}.
+                    </p>
+                  )}
+                </div>
+              )}
               {formData.recorrente && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
                     Ao quitar esta conta, a próxima despesa será criada automaticamente com o vencimento na frequência escolhida.
                   </p>
-                  <div className="w-48">
+                  <div className="w-full sm:w-48">
                     <Label htmlFor="payable-frequency" className="text-xs">Frequência</Label>
                     <Select value={formData.frequencia_recorrencia}
                       onValueChange={v => updateFormData({ frequencia_recorrencia: v })} disabled={isSubmitting}>
                       <SelectTrigger id="payable-frequency"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="semanal">Semanal</SelectItem>
-                        <SelectItem value="quinzenal">Quinzenal</SelectItem>
-                        <SelectItem value="mensal">Mensal</SelectItem>
-                        <SelectItem value="bimestral">Bimestral</SelectItem>
-                        <SelectItem value="trimestral">Trimestral</SelectItem>
-                        <SelectItem value="anual">Anual</SelectItem>
+                        {FREQUENCIAS_RECORRENCIA.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -931,11 +1136,12 @@ export default function ContasPagar() {
               </h4>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="payable-cost-center" className="text-xs">Centro de Custo</Label>
+                  <Label htmlFor="payable-cost-center" className="text-xs">Centro de custo</Label>
                   <Select value={formData.centro_custo} onValueChange={v => updateFormData({ centro_custo: v })} disabled={isSubmitting}>
                     <SelectTrigger id="payable-cost-center"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {CENTROS_CUSTO.map(c => <SelectItem key={c} value={c}>{CENTROS_CUSTO_LABELS[c]}</SelectItem>)}
+                      {formData.centro_custo && !CENTROS_CUSTO.includes(formData.centro_custo) && <SelectItem value={formData.centro_custo}>{rotuloCentroCusto(formData.centro_custo)}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>

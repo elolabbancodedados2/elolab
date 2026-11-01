@@ -85,6 +85,7 @@ const labelsByPath: Record<string, string> = {
   '/recepcao/encaixe': 'Encaixe sem agendamento',
   '/financeiro': 'Financeiro',
   '/financeiro/dre': 'DRE e plano de contas',
+  '/financeiro/recorrencias': 'Contas recorrentes',
   '/contas': 'Contas a receber e a pagar',
   '/contas/pagar': 'Contas a pagar',
   '/contas/receber/nova': 'Nova receita',
@@ -208,6 +209,8 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/contas\/receber\/[^/]+\/detalhes$/.test(pathname)) return 'Detalhes da conta a receber';
   if (/^\/contas\/pagar\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento da conta';
   if (/^\/contas\/pagar\/[^/]+\/editar$/.test(pathname)) return 'Editar conta a pagar';
+  if (/^\/contas\/pagar\/[^/]+\/detalhes$/.test(pathname)) return 'Detalhes da conta a pagar';
+  if (/^\/contas\/receber\/[^/]+\/editar$/.test(pathname)) return 'Renegociar conta a receber';
   if (/^\/laudos-lab\/[^/]+$/.test(pathname)) return 'Conferência do laudo';
   if (/^\/guias-externas\/(?!nova$|portal$)[^/]+$/.test(pathname)) return 'Detalhe da guia';
   if (pathname === '/guias-externas/nova') return 'Nova guia externa';

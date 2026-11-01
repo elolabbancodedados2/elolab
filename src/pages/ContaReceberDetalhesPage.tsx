@@ -1,7 +1,8 @@
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Clock3, Eye, History, Receipt, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CircleDollarSign, Clock3, Download, Eye, History, Loader2, Pencil, Receipt, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
@@ -17,6 +18,17 @@ import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { CAMPOS_TRILHA, formatarValorTrilha } from '@/lib/trilhaLancamento';
 import { Database } from '@/integrations/supabase/types';
 import { formatWithDatePreference } from '@/lib/datePreference';
+import { dataHoraSP } from '@/lib/caixaFormatacao';
+import { mensagemDeErro } from '@/lib/erros';
+import { baixarReciboPdf } from '@/lib/reciboPagamento';
+import { getClinicaInfo } from '@/lib/pdfGenerator';
+import {
+  CATEGORIAS_RECEITA,
+  STATUS_RECEITA,
+  rotuloCategoriaCadastro,
+  rotuloCentroCusto,
+  rotuloFormaPagamento,
+} from '@/lib/financeiroRotulos';
 
 type Account = {
   id: string;
@@ -52,35 +64,19 @@ type Payment = {
 type Change = Database['public']['Functions']['historico_alteracoes_lancamento']['Returns'][number];
 type RouteState = { returnTo?: unknown; restoreSearchTerm?: unknown; restoreFilterCategoria?: unknown };
 
-const CATEGORIES: Record<string, string> = {
-  consulta: 'Consulta Médica', retorno: 'Retorno', procedimento: 'Procedimento', exame: 'Exame / Diagnóstico',
-  cirurgia: 'Cirurgia / Intervenção', internacao: 'Internação', taxa_administrativa: 'Taxa Administrativa',
-  taxa_material: 'Taxa de Material', convenio_repasse: 'Repasse de Convênio', honorario_medico: 'Honorário Médico',
-  fisioterapia: 'Fisioterapia', psicologia: 'Psicologia', pediatria: 'Pediatria', outros: 'Outros',
-};
-const COST_CENTERS: Record<string, string> = {
-  geral: 'Geral', ambulatorio: 'Ambulatório', laboratorio: 'Laboratório', centro_cirurgico: 'Centro Cirúrgico',
-  estetica: 'Estética', odonto: 'Odontologia', fisioterapia: 'Fisioterapia',
-};
-const PAYMENT_METHODS: Record<string, string> = {
-  pix: 'PIX', dinheiro: 'Dinheiro', credito: 'Cartão de crédito', cartao_credito: 'Cartão de crédito',
-  debito: 'Cartão de débito', cartao_debito: 'Cartão de débito', convenio: 'Convênio',
-  transferencia: 'Transferência', boleto: 'Boleto', cheque: 'Cheque',
-};
+const CATEGORIES: Record<string, string> = Object.fromEntries(CATEGORIAS_RECEITA.map(c => [c.value, c.label]));
 const STATUS: Record<string, { label: string; className: string }> = {
-  pendente: { label: 'Pendente', className: 'border-warning/30 bg-warning/10 text-warning-foreground' },
-  parcial: { label: 'Parcial', className: 'border-warning/30 bg-warning/10 text-warning-foreground' },
-  pago: { label: 'Recebido', className: 'border-success/20 bg-success/10 text-success' },
-  atrasado: { label: 'Atrasado', className: 'border-destructive/20 bg-destructive/10 text-destructive' },
-  cancelado: { label: 'Cancelado', className: 'border-border bg-muted text-muted-foreground' },
-  estornado: { label: 'Estornado', className: 'border-border bg-muted text-muted-foreground' },
+  pendente: { label: STATUS_RECEITA.pendente, className: 'border-warning/30 bg-warning/10 text-warning-foreground' },
+  parcial: { label: STATUS_RECEITA.parcial, className: 'border-warning/30 bg-warning/10 text-warning-foreground' },
+  pago: { label: STATUS_RECEITA.pago, className: 'border-success/20 bg-success/10 text-success' },
+  atrasado: { label: STATUS_RECEITA.atrasado, className: 'border-destructive/20 bg-destructive/10 text-destructive' },
+  cancelado: { label: STATUS_RECEITA.cancelado, className: 'border-border bg-muted text-muted-foreground' },
+  estornado: { label: STATUS_RECEITA.estornado, className: 'border-border bg-muted text-muted-foreground' },
 };
 
 const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const dateOnly = (value: string | null) => value ? formatWithDatePreference(parseDateOnly(value)!, 'dd/MM/yyyy') : '—';
-const dateTime = (value: string) => new Intl.DateTimeFormat('pt-BR', {
-  timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short',
-}).format(new Date(value));
+const dateTime = (value: string) => dataHoraSP(value);
 
 function Definition({ label, children }: { label: string; children: ReactNode }) {
   return <div className="min-w-0">
@@ -150,8 +146,10 @@ export default function ContaReceberDetalhesPage() {
     },
   });
 
+  const [gerandoRecibo, setGerandoRecibo] = useState(false);
+
   const returnToList = () => navigate(returnTo, { state: returnState });
-  const navigateToAction = (action: 'recebimento' | 'estorno') => navigate(
+  const navigateToAction = (action: 'recebimento' | 'estorno' | 'editar') => navigate(
     `/contas/receber/${encodeURIComponent(lancamentoId)}/${action}`,
     { state: { returnTo, ...returnState } },
   );
@@ -165,7 +163,7 @@ export default function ContaReceberDetalhesPage() {
       actions={<Button variant="outline" onClick={returnToList}><ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />Voltar às contas</Button>} />
   </main>;
 
-  const overdue = ['pendente', 'parcial'].includes(account.status) && Boolean(account.data_vencimento)
+  const overdue = ['pendente', 'parcial', 'atrasado'].includes(account.status) && Boolean(account.data_vencimento)
     && account.data_vencimento! < todaySaoPauloDateOnly();
   const statusKey = account.status === 'pendente' && overdue ? 'atrasado' : account.status;
   const status = STATUS[statusKey] ?? { label: account.status, className: 'border-border bg-muted text-muted-foreground' };
@@ -175,6 +173,26 @@ export default function ContaReceberDetalhesPage() {
     ? patientQuery.data?.nome_social || patientQuery.data?.nome || 'Paciente vinculado'
     : 'Particular';
   const categoryLabels = { ...CATEGORIES };
+  const canRenegotiate = ['pendente', 'parcial', 'atrasado'].includes(account.status) && balance > 0;
+
+  const baixarRecibo = async () => {
+    if (gerandoRecibo || activePayments.length === 0) return;
+    setGerandoRecibo(true);
+    try {
+      const clinica = await getClinicaInfo();
+      await baixarReciboPdf({
+        clinica,
+        pagador: patientName,
+        descricao: account.descricao,
+        pagamentos: activePayments.map(p => ({ id: p.id, valor: Number(p.valor), forma_pagamento: p.forma_pagamento, data_pagamento: p.data_pagamento })),
+        numero: account.id.slice(0, 8).toUpperCase(),
+      });
+    } catch (error) {
+      toast.error('Não foi possível gerar o recibo.', { description: mensagemDeErro(error) });
+    } finally {
+      setGerandoRecibo(false);
+    }
+  };
 
   return <main data-testid="receivable-detail-page" className="space-y-6 pb-8">
     <PageHeader
@@ -183,6 +201,10 @@ export default function ContaReceberDetalhesPage() {
       icon={<Eye />}
       actions={<>
         {canReceive && <Button onClick={() => navigateToAction('recebimento')}><Receipt aria-hidden="true" className="mr-2 h-4 w-4" />Receber</Button>}
+        {canRenegotiate && <Button variant="outline" onClick={() => navigateToAction('editar')}><Pencil aria-hidden="true" className="mr-2 h-4 w-4" />Renegociar</Button>}
+        {activePayments.length > 0 && <Button variant="outline" onClick={() => void baixarRecibo()} disabled={gerandoRecibo}>
+          {gerandoRecibo ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <Download aria-hidden="true" className="mr-2 h-4 w-4" />}Baixar recibo
+        </Button>}
         {canReverse && <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => navigateToAction('estorno')}><RotateCcw aria-hidden="true" className="mr-2 h-4 w-4" />Estornar pagamento</Button>}
         <Button variant="outline" onClick={returnToList}><ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />Voltar às contas</Button>
       </>}
@@ -196,7 +218,7 @@ export default function ContaReceberDetalhesPage() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant="outline" className={status.className}>{status.label}</Badge>
             {overdue && <span className="text-xs text-destructive">Vencida</span>}
-            <span className="text-xs text-muted-foreground">{CATEGORIES[account.categoria ?? ''] ?? account.categoria ?? 'Sem categoria'}</span>
+            <span className="text-xs text-muted-foreground">{account.categoria ? rotuloCategoriaCadastro('receita', account.categoria) : 'Sem categoria'}</span>
           </div>
         </div>
         <div className="shrink-0 sm:text-right">
@@ -208,10 +230,10 @@ export default function ContaReceberDetalhesPage() {
         <Definition label="Valor original">{currency(Number(account.valor))}</Definition>
         <Definition label="Valor recebido">{currency(received)}</Definition>
         <Definition label="Vencimento">{dateOnly(account.data_vencimento)}</Definition>
-        <Definition label="Forma de pagamento">{account.forma_pagamento ? PAYMENT_METHODS[account.forma_pagamento] ?? account.forma_pagamento : '—'}</Definition>
-        <Definition label="Categoria">{CATEGORIES[account.categoria ?? ''] ?? account.categoria}</Definition>
+        <Definition label="Forma de pagamento">{rotuloFormaPagamento(account.forma_pagamento)}</Definition>
+        <Definition label="Categoria">{account.categoria ? rotuloCategoriaCadastro('receita', account.categoria) : null}</Definition>
         <Definition label="Competência">{account.competencia}</Definition>
-        <Definition label="Centro de custo">{COST_CENTERS[account.centro_custo ?? ''] ?? account.centro_custo}</Definition>
+        <Definition label="Centro de custo">{account.centro_custo ? rotuloCentroCusto(account.centro_custo) : null}</Definition>
         <Definition label="Documento">{account.numero_documento}</Definition>
         <Definition label="Criada em">{account.created_at ? dateTime(account.created_at) : '—'}</Definition>
       </dl>
@@ -237,7 +259,7 @@ export default function ContaReceberDetalhesPage() {
                 <span aria-hidden="true" className="mt-0.5 text-muted-foreground">{payment.estornado_em ? <RotateCcw className="h-4 w-4" /> : <CircleDollarSign className="h-4 w-4" />}</span>
                 <div className="min-w-0">
                   <p className="font-medium">{payment.estornado_em ? 'Pagamento estornado' : 'Pagamento recebido'}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{dateTime(payment.data_pagamento)} · {PAYMENT_METHODS[payment.forma_pagamento] ?? payment.forma_pagamento}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{dateTime(payment.data_pagamento)} · {rotuloFormaPagamento(payment.forma_pagamento)}</p>
                   {payment.observacoes && <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{payment.observacoes}</p>}
                   {payment.estornado_em && <p className="mt-1 text-xs text-muted-foreground">Estornado em {dateTime(payment.estornado_em)}{payment.motivo_estorno ? ` · ${payment.motivo_estorno}` : ''}</p>}
                 </div>

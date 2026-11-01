@@ -4,9 +4,10 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Search, Check, DollarSign, AlertCircle, Receipt, Calendar, Download, Clock,
-  TrendingUp, User, Loader2, Eye, FileText, Printer, MoreHorizontal, Filter,
-  ArrowUpRight, Banknote, CreditCard, QrCode, Landmark, Building2, Stethoscope,
-  FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain, X, RefreshCw,
+  TrendingUp, User, Loader2, Eye, FileText, MoreHorizontal, Filter,
+  ArrowUpRight, Building2, Stethoscope, Pencil,
+  FlaskConical, Repeat, Scissors, Pill, Baby, Heart, Bone, Brain, X,
+  type LucideIcon,
 } from 'lucide-react';
 import { differenceInCalendarDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -21,7 +22,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -44,57 +44,44 @@ import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPoin
 import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { parseAccountFilterStatus, parseFinanceMonth } from '@/lib/financeRouteState';
 import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { invalidarFinanceiro } from '@/lib/invalidarFinanceiro';
+import { formatMoneyInput, parseMoneyInput } from '@/lib/dinheiro';
+import { dividirEmParcelas, MAX_PARCELAS } from '@/lib/parcelamento';
+import { useTelaEstreita } from '@/hooks/useTelaEstreita';
+import {
+  CATEGORIAS_RECEITA as CATEGORIAS_RECEITA_BASE,
+  CENTROS_CUSTO_RECEITA,
+  FORMAS_PAGAMENTO,
+  STATUS_RECEITA,
+  formaPagamentoCanonica,
+  formaPagamentoParaRpc,
+  normalizarCategoria,
+  rotuloCategoriaCadastro,
+  rotuloCentroCusto,
+  rotuloFormaPagamento,
+} from '@/lib/financeiroRotulos';
 
 type StatusPagamento = Database['public']['Enums']['status_pagamento'];
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
-  pendente: { label: 'Pendente', color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
-  parcial: { label: 'Parcial', color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
-  pago: { label: 'Recebido', color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', icon: Check },
-  atrasado: { label: 'Atrasado', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', icon: AlertCircle },
-  cancelado: { label: 'Cancelado', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: AlertCircle },
-  estornado: { label: 'Estornado', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: Repeat },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: LucideIcon }> = {
+  pendente: { label: STATUS_RECEITA.pendente, color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
+  parcial: { label: STATUS_RECEITA.parcial, color: 'text-warning-foreground', bg: 'bg-warning/10', border: 'border-warning/20', icon: Clock },
+  pago: { label: STATUS_RECEITA.pago, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', icon: Check },
+  atrasado: { label: STATUS_RECEITA.atrasado, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', icon: AlertCircle },
+  cancelado: { label: STATUS_RECEITA.cancelado, color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: AlertCircle },
+  estornado: { label: STATUS_RECEITA.estornado, color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: Repeat },
 };
 
-const CATEGORIAS_RECEITA = [
-  { value: 'consulta', label: 'Consulta Médica', icon: Stethoscope, color: 'text-primary' },
-  { value: 'retorno', label: 'Retorno', icon: Repeat, color: 'text-info' },
-  { value: 'procedimento', label: 'Procedimento', icon: Scissors, color: 'text-primary' },
-  { value: 'exame', label: 'Exame / Diagnóstico', icon: FlaskConical, color: 'text-warning-foreground' },
-  { value: 'cirurgia', label: 'Cirurgia / Intervenção', icon: Heart, color: 'text-destructive' },
-  { value: 'internacao', label: 'Internação', icon: Building2, color: 'text-warning-foreground' },
-  { value: 'taxa_administrativa', label: 'Taxa Administrativa', icon: FileText, color: 'text-muted-foreground' },
-  { value: 'taxa_material', label: 'Taxa de Material', icon: Pill, color: 'text-info' },
-  { value: 'convenio_repasse', label: 'Repasse de Convênio', icon: Building2, color: 'text-primary' },
-  { value: 'honorario_medico', label: 'Honorário Médico', icon: User, color: 'text-success' },
-  { value: 'fisioterapia', label: 'Fisioterapia', icon: Bone, color: 'text-info' },
-  { value: 'psicologia', label: 'Psicologia', icon: Brain, color: 'text-accent-foreground' },
-  { value: 'pediatria', label: 'Pediatria', icon: Baby, color: 'text-success' },
-  { value: 'outros', label: 'Outros', icon: DollarSign, color: 'text-muted-foreground' },
-];
+const ICONE_CATEGORIA: Record<string, LucideIcon> = {
+  consulta: Stethoscope, retorno: Repeat, procedimento: Scissors, exame: FlaskConical,
+  cirurgia: Heart, internacao: Building2, taxa_administrativa: FileText, taxa_material: Pill,
+  convenio_repasse: Building2, honorario_medico: User, fisioterapia: Bone, psicologia: Brain,
+  pediatria: Baby, outros: DollarSign,
+};
 
-const CATEGORIAS_MAP = Object.fromEntries(CATEGORIAS_RECEITA.map(c => [c.value, c]));
-
-const FORMAS_PAGAMENTO = [
-  { value: 'pix', label: 'PIX', icon: QrCode },
-  { value: 'dinheiro', label: 'Dinheiro', icon: Banknote },
-  { value: 'cartao_credito', label: 'Cartão de Crédito', icon: CreditCard },
-  { value: 'cartao_debito', label: 'Cartão de Débito', icon: CreditCard },
-  { value: 'convenio', label: 'Convênio', icon: Building2 },
-  { value: 'transferencia', label: 'Transferência', icon: Landmark },
-  { value: 'boleto', label: 'Boleto', icon: FileText },
-  { value: 'cheque', label: 'Cheque', icon: FileText },
-];
-
-const CENTROS_CUSTO_RECEITA = [
-  { value: 'geral', label: 'Geral' },
-  { value: 'ambulatorio', label: 'Ambulatório' },
-  { value: 'laboratorio', label: 'Laboratório' },
-  { value: 'centro_cirurgico', label: 'Centro Cirúrgico' },
-  { value: 'estetica', label: 'Estética' },
-  { value: 'odonto', label: 'Odontologia' },
-  { value: 'fisioterapia', label: 'Fisioterapia' },
-];
+const CATEGORIAS_RECEITA = CATEGORIAS_RECEITA_BASE.map(c => ({ ...c, icon: ICONE_CATEGORIA[c.value] ?? DollarSign }));
+/** Atalhos de categoria mais usados no balcão; o Select continua com todas. */
+const CATEGORIAS_FREQUENTES = ['consulta', 'retorno', 'procedimento', 'exame'];
 
 interface FormData {
   paciente_id: string;
@@ -107,6 +94,7 @@ interface FormData {
   numero_documento: string;
   competencia: string;
   observacoes: string;
+  parcelas: string;
 }
 
 interface BaixaData {
@@ -130,7 +118,7 @@ const novoFormDataReceita = (): FormData => {
   return {
     paciente_id: '', categoria: 'consulta', descricao: '', valor: '',
     data_vencimento: hoje, forma_pagamento: 'pix', centro_custo: 'geral',
-    numero_documento: '', competencia: hoje.slice(0, 7), observacoes: '',
+    numero_documento: '', competencia: hoje.slice(0, 7), observacoes: '', parcelas: '1',
   };
 };
 
@@ -138,18 +126,10 @@ const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', c
 const formatarEixoMonetario = (v: number) => Math.abs(v) >= 1_000
   ? `R$ ${(v / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
   : fmt(v);
-function parseMoneyInput(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact) return null;
-  const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
-  const formatoPontoDecimal = /^\d+(?:\.\d{1,2})?$/;
-  if (!formatoBrasileiro.test(compact) && !formatoPontoDecimal.test(compact)) return null;
-  const normalizado = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
-  const valor = Number(normalizado);
-  return Number.isFinite(valor) ? valor : null;
-}
-const formatMoneyInput = (value: number) => Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '';
-const formaPagamentoRPC: Record<string, string> = { cartao_credito: 'credito', cartao_debito: 'debito' };
+const dataCurta = (valor: string) => {
+  const data = parseDateOnly(valor);
+  return data ? format(data, 'dd/MM/yyyy') : valor;
+};
 
 const PILL_BASE = 'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const PILL_ATIVA = 'border-primary bg-primary text-primary-foreground';
@@ -196,6 +176,15 @@ export default function ContasReceber() {
   const [paymentPageInvalid, setPaymentPageInvalid] = useState(false);
   const valorReceitaDigitado = parseMoneyInput(formData.valor);
   const valorReceitaInvalido = valorReceitaDigitado === null || valorReceitaDigitado <= 0;
+  const quantidadeParcelas = Number(formData.parcelas) || 1;
+  const parcelasReceita = useMemo(() => valorReceitaDigitado && isValidDateOnly(formData.data_vencimento)
+    ? dividirEmParcelas({
+      total: valorReceitaDigitado,
+      quantidade: quantidadeParcelas,
+      primeiroVencimento: formData.data_vencimento,
+      descricao: formData.descricao,
+    })
+    : [], [valorReceitaDigitado, quantidadeParcelas, formData.data_vencimento, formData.descricao]);
   const [baixaData, setBaixaData] = useState<BaixaData>({
     forma_pagamento: 'pix',
     desconto: '0,00', acrescimo: '0,00', valorReceber: null, observacoes: '',
@@ -232,6 +221,7 @@ export default function ContasReceber() {
   }, [isPaymentPage, baixaIncerta, blocker]);
   const { user, profile } = useSupabaseAuth();
   const queryClient = useQueryClient();
+  const telaEstreita = useTelaEstreita();
 
   const returnToList = () => navigate(returnToListPath, {
     state: { restoreSearchTerm: searchTerm, restoreFilterCategoria: filterCategoria },
@@ -259,7 +249,8 @@ export default function ContasReceber() {
       const pacientesPorId = await buscarDadosBasicosPacientes(data.map(conta => conta.paciente_id));
       const today = todaySaoPauloDateOnly();
       return data.map(conta => {
-        const vencido = ['pendente', 'parcial'].includes(conta.status) && !!conta.data_vencimento && conta.data_vencimento < today;
+        // "atrasado" gravado no banco também é vencido; antes ficava fora dos totais de atraso.
+        const vencido = ['pendente', 'parcial', 'atrasado'].includes(conta.status) && !!conta.data_vencimento && conta.data_vencimento < today;
         return { ...conta, pacientes: pacientesPorId.get(conta.paciente_id) ?? null, vencido, status: vencido && conta.status === 'pendente' ? 'atrasado' as StatusPagamento : conta.status };
       });
     },
@@ -388,7 +379,7 @@ export default function ContasReceber() {
         String(c.numero_documento || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchStatus = filterStatus === 'todos'
         || (filterStatus === 'aberto' ? ['pendente', 'parcial', 'atrasado'].includes(c.status) : filterStatus === 'atrasado' ? c.vencido : c.status === filterStatus);
-      const matchCategoria = filterCategoria === 'todas' || c.categoria === filterCategoria;
+      const matchCategoria = filterCategoria === 'todas' || normalizarCategoria(c.categoria) === filterCategoria;
       let matchPeriodo = true;
       if (periodoRange) {
         const dataReferencia = parseDateOnly(c.data_vencimento || c.data);
@@ -448,11 +439,11 @@ export default function ContasReceber() {
   const porCategoria = useMemo(() => {
     const map: Record<string, number> = {};
     filteredContas.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').forEach(c => {
-      const cat = c.categoria || 'outros';
-      map[cat] = (map[cat] || 0) + c.valor;
+      const cat = normalizarCategoria(c.categoria);
+      map[cat] = (map[cat] || 0) + Number(c.valor || 0);
     });
     return Object.entries(map)
-      .map(([key, value]) => ({ name: CATEGORIAS_MAP[key]?.label || key, value, key }))
+      .map(([key, value]) => ({ name: rotuloCategoriaCadastro('receita', key), value, key }))
       .sort((a, b) => b.value - a.value);
   }, [filteredContas]);
 
@@ -460,11 +451,9 @@ export default function ContasReceber() {
   const porFormaPgto = useMemo(() => {
     const map: Record<string, number> = {};
     const idsFiltrados = new Set(filteredContas.map(conta => conta.id));
-    const formaCanonica = (forma: string) =>
-      Object.entries(formaPagamentoRPC).find(([, formaRPC]) => formaRPC === forma)?.[0] || forma;
     for (const pagamento of pagamentos) {
       if (!idsFiltrados.has(pagamento.lancamento_id) || pagamento.estornado_em) continue;
-      const forma = formaCanonica(pagamento.forma_pagamento || 'outros');
+      const forma = formaPagamentoCanonica(pagamento.forma_pagamento);
       map[forma] = (map[forma] || 0) + Number(pagamento.valor || 0);
     }
     // Contas antigas podem não ter linhas em `pagamentos`; só nesses casos
@@ -477,7 +466,7 @@ export default function ContasReceber() {
     });
     return Object.entries(map)
       .map(([key, value]) => ({
-        name: FORMAS_PAGAMENTO.find(f => f.value === key)?.label || key,
+        name: rotuloFormaPagamento(key),
         value,
       }))
       .sort((a, b) => b.value - a.value);
@@ -514,16 +503,21 @@ export default function ContasReceber() {
       toast.error('Clínica não identificada. Atualize a sessão e tente novamente.');
       return;
     }
+    if (parcelasReceita.length === 0) {
+      toast.error(`Informe de 1 a ${MAX_PARCELAS} parcelas, cada uma de pelo menos R$ 0,01.`);
+      return;
+    }
     submissionLock.current = true;
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('lancamentos').insert({
+      const hoje = todaySaoPauloDateOnly();
+      const { error } = await supabase.from('lancamentos').insert(parcelasReceita.map(parcela => ({
         tipo: 'receita',
         categoria: formData.categoria,
-        descricao: formData.descricao.trim(),
-        valor: valorReceita,
-        data: todaySaoPauloDateOnly(),
-        data_vencimento: formData.data_vencimento,
+        descricao: parcela.descricao,
+        valor: parcela.valor,
+        data: hoje,
+        data_vencimento: parcela.vencimento,
         status: 'pendente' as StatusPagamento,
         paciente_id: formData.paciente_id || null,
         forma_pagamento: formData.forma_pagamento || null,
@@ -532,15 +526,15 @@ export default function ContasReceber() {
         competencia: formData.competencia || null,
         observacoes: formData.observacoes || null,
         clinica_id: profile.clinica_id,
-      });
+      })));
       if (error) throw error;
-      toast.success('Receita cadastrada com sucesso!');
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      toast.success(parcelasReceita.length > 1 ? `Receita cadastrada em ${parcelasReceita.length} parcelas.` : 'Receita cadastrada.');
+      void invalidarFinanceiro(queryClient);
       setFormDirty(false);
       navigationAllowedRef.current = true;
       returnToList();
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar');
+    } catch (e) {
+      toast.error(mensagemDeErro(e));
     } finally {
       submissionLock.current = false;
       setIsSubmitting(false);
@@ -618,7 +612,7 @@ export default function ContasReceber() {
       const { data: resultado, error } = await (supabase as any).rpc('registrar_pagamento', {
         p_lancamento_id: selectedConta.id,
         p_pagamentos: [{
-          forma_pagamento: formaPagamentoRPC[baixaData.forma_pagamento] || baixaData.forma_pagamento,
+          forma_pagamento: formaPagamentoParaRpc(baixaData.forma_pagamento),
           valor: Number(valorDoPagamento.toFixed(2)),
           parcelas: 1,
         }],
@@ -641,10 +635,7 @@ export default function ContasReceber() {
       respostaServidorRecebida = true;
       if (resultado?.repetido) toast.info('Este pagamento já havia sido registrado. Nada foi cobrado de novo.');
       else toast.success(`Pagamento confirmado — ${getPacienteNome(selectedConta)}`);
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-      queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+      void invalidarFinanceiro(queryClient);
       setBaixaIncerta(false);
       setChavesBaixa(keys => {
         const next = { ...keys };
@@ -652,14 +643,13 @@ export default function ContasReceber() {
         return next;
       });
       completePayment();
-    } catch (e: any) {
-      const message = e.message || 'Erro ao confirmar';
+    } catch (e) {
+      const message = mensagemDeErro(e);
       if (!chamadaRpcIniciada || respostaServidorRecebida) {
         // O servidor confirmou a rejeição e a transação foi revertida; esta
         // mesma chave pode ser usada após corrigir os dados ou abrir o caixa.
         setBaixaIncerta(false);
-        queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-        queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+        void invalidarFinanceiro(queryClient);
         toast.error(message, message.toLowerCase().includes('caixa fechado')
           ? { description: 'Abra o caixa do dia e tente novamente.' }
           : undefined);
@@ -679,10 +669,7 @@ export default function ContasReceber() {
         if (!verificacao.error && verificacao.data) {
           setBaixaIncerta(false);
           toast.info('O pagamento foi registrado antes da falha de conexão. Nenhum pagamento adicional foi criado.');
-          queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-          queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
-          queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] });
-          queryClient.invalidateQueries({ queryKey: ['pagamentos-contas-receber'] });
+          void invalidarFinanceiro(queryClient);
           setChavesBaixa(keys => {
             const next = { ...keys };
             delete next[selectedConta.id];
@@ -702,6 +689,14 @@ export default function ContasReceber() {
       setIsSubmitting(false);
     }
   };
+
+  const handleRenegociar = (conta: any) => navigate(`/contas/receber/${encodeURIComponent(conta.id)}/editar`, {
+    state: {
+      returnTo: `${location.pathname}${location.search}`,
+      restoreSearchTerm: searchTerm,
+      restoreFilterCategoria: filterCategoria,
+    },
+  });
 
   const handleEstornar = (conta: any) => navigate(`/contas/receber/${encodeURIComponent(conta.id)}/estorno`, {
     state: {
@@ -728,11 +723,11 @@ export default function ContasReceber() {
       if (error) throw error;
       if (!cancelado) throw new Error('Esta conta já foi alterada ou não está mais pendente. Atualize a lista.');
       toast.success('Conta cancelada.');
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+      void invalidarFinanceiro(queryClient);
       setContaParaCancelar(null);
-    } catch (e: any) {
-      toast.error(e.message || 'Erro');
-      queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
+    } catch (e) {
+      toast.error(mensagemDeErro(e));
+      void invalidarFinanceiro(queryClient);
     } finally {
       cancelamentoSubmissionLock.current = false;
       setIsCancelandoConta(false);
@@ -748,7 +743,7 @@ export default function ContasReceber() {
     const rows = filteredContas.map(c => ({
       Paciente: getPacienteNome(c),
       Descrição: c.descricao,
-      Categoria: CATEGORIAS_MAP[c.categoria]?.label || c.categoria,
+      Categoria: rotuloCategoriaCadastro('receita', c.categoria),
       Valor: Number(c.valor || 0),
       Desconto: Number(c.desconto || 0),
       Acréscimo: Number(c.acrescimo || 0),
@@ -759,8 +754,8 @@ export default function ContasReceber() {
       Status: c.vencido
         ? c.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label
         : STATUS_CONFIG[c.status || 'pendente']?.label || c.status,
-      'Forma Pgto': FORMAS_PAGAMENTO.find(f => f.value === c.forma_pagamento)?.label || c.forma_pagamento || '',
-      'Centro Custo': c.centro_custo || '',
+      'Forma Pgto': c.forma_pagamento ? rotuloFormaPagamento(c.forma_pagamento) : '',
+      'Centro Custo': c.centro_custo ? rotuloCentroCusto(c.centro_custo) : '',
       Competência: c.competencia || '',
       'Nº Documento': c.numero_documento || '',
     }));
@@ -774,6 +769,62 @@ export default function ContasReceber() {
       toast.error('Não foi possível gerar o arquivo. Tente novamente.');
     }
   };
+
+  const infoConta = (conta: any) => {
+    const status = conta.vencido
+      ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
+      : STATUS_CONFIG[conta.status || 'pendente'];
+    const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+    const diasAteVencimento = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
+    const aberto = ['pendente', 'atrasado', 'parcial'].includes(conta.status);
+    const diasAtraso = diasAteVencimento === null ? null : Math.abs(diasAteVencimento);
+    const urgencia = conta.vencido && diasAtraso !== null
+      ? `Atrasada há ${diasAtraso} ${diasAtraso === 1 ? 'dia' : 'dias'}`
+      : aberto && diasAteVencimento === 0
+        ? 'Vence hoje'
+        : aberto && diasAteVencimento !== null && diasAteVencimento > 0 && diasAteVencimento <= 7
+          ? `Vence em ${diasAteVencimento} ${diasAteVencimento === 1 ? 'dia' : 'dias'}`
+          : null;
+    return { status, dataVencimento, urgencia, aberto, categoria: rotuloCategoriaCadastro('receita', conta.categoria) };
+  };
+
+  const acoesConta = (conta: any) => (
+    <>
+      {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
+        <Button size="sm" onClick={() => handleDarBaixa(conta)} className="min-h-11 gap-1 text-xs md:min-h-9">
+          <Receipt aria-hidden="true" className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label={`Mais ações da conta de ${getPacienteNome(conta)}`} className="h-11 w-11 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9 md:w-9">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => handleViewDetail(conta)} className="gap-2">
+            <Eye className="h-4 w-4" /> Ver detalhes
+          </DropdownMenuItem>
+          {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
+            <DropdownMenuItem onClick={() => handleRenegociar(conta)} className="gap-2">
+              <Pencil className="h-4 w-4" /> Renegociar
+            </DropdownMenuItem>
+          )}
+          {['pago', 'parcial'].includes(conta.status) && (
+            <DropdownMenuItem onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
+              <Repeat className="h-4 w-4" />
+              Estornar pagamento
+            </DropdownMenuItem>
+          )}
+          {(conta.status === 'pendente' || conta.status === 'atrasado') && (
+            <DropdownMenuItem onClick={() => handleCancelar(conta)} className="gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" /> Cancelar
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
 
   if (isPaymentPage && isLoading) return (
     <div className="space-y-5" aria-busy="true">
@@ -803,7 +854,7 @@ export default function ContasReceber() {
     <div className="flex flex-col gap-6 pb-8">
       {!isWorkflowPage && <>
       <PageHeader
-        title="Contas a Receber"
+        title="Contas a receber"
         description={stats.countTotal === 0
           ? 'Acompanhe receitas e recebimentos da clínica'
           : `${fmt(stats.total)} total · ${stats.countAtrasado} vencida${stats.countAtrasado === 1 ? '' : 's'} · ${stats.countPendente} em aberto`}
@@ -811,10 +862,10 @@ export default function ContasReceber() {
         actions={
           <>
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/contas?tab=pagar')}>
-            <ArrowUpRight className="h-4 w-4" /> Contas a Pagar
+            <ArrowUpRight className="h-4 w-4" /> Contas a pagar
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5 rounded-full shrink-0" onClick={() => navigate('/caixa-diario')}>
-            <ArrowUpRight className="h-4 w-4" /> Caixa do Dia
+            <ArrowUpRight className="h-4 w-4" /> Caixa do dia
           </Button>
           <Button variant="outline" size="icon" className="rounded-full shrink-0" onClick={exportarExcel}
             disabled={!exportacaoCompletaPermitida} aria-describedby={!exportacaoCompletaPermitida ? 'contas-receber-limite-aviso' : undefined}
@@ -822,7 +873,7 @@ export default function ContasReceber() {
             <Download className="h-4 w-4" />
           </Button>
           <Button onClick={handleNew} className="gap-2 shrink-0">
-            <Plus className="h-4 w-4" /> Nova Receita
+            <Plus className="h-4 w-4" /> Nova receita
           </Button>
           </>
         }
@@ -837,7 +888,7 @@ export default function ContasReceber() {
       )}
 
       {/* Indicadores clicáveis */}
-      <section role="group" aria-label="Resumo das contas a receber" className="order-1 overflow-hidden rounded-xl border border-border bg-card">
+      <section role="group" aria-label="Resumo das contas a receber" className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">Resumo de recebimentos</h2>
           {selectedMonth && <span className="text-xs text-muted-foreground">{format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}</span>}
@@ -863,93 +914,6 @@ export default function ContasReceber() {
         </div>
       </section>
 
-      {/* Gráficos compactos juntos quando ambos estão vazios */}
-      {porCategoria.length === 0 && porFormaPgto.length === 0 ? (
-        <Card className="order-4">
-          <CardContent role="status" aria-label="Gráficos sem dados nas contas filtradas" className="grid gap-4 py-5 sm:grid-cols-2 sm:divide-x sm:divide-border">
-            <section className="space-y-1 sm:pr-4">
-              <h2 className="text-sm font-bold">Receita por Categoria</h2>
-              <p className="text-sm text-foreground">Nenhuma receita ativa nas contas filtradas.</p>
-              <p className="text-xs text-muted-foreground">Cadastre uma receita ou ajuste os filtros acima.</p>
-            </section>
-            <section className="space-y-1 sm:pl-4">
-              <h2 className="text-sm font-bold">Recebido por Forma de Pagamento</h2>
-              <p className="text-sm text-foreground">Nenhum recebimento nas contas filtradas.</p>
-              <p className="text-xs text-muted-foreground">Registre a baixa de uma conta ou ajuste os filtros acima.</p>
-            </section>
-          </CardContent>
-        </Card>
-      ) : (
-      <div className="order-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Por Categoria */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold">Receita por Categoria</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {porCategoria.length === 0 ? (
-              <div role="status" className="flex min-h-24 flex-col items-center justify-center gap-1 px-4 py-4 text-center">
-                <p className="text-sm font-medium text-foreground">Nenhuma receita ativa nas contas filtradas</p>
-                <p className="text-xs text-muted-foreground">Cadastre uma receita ou ajuste os filtros acima para preencher o gráfico.</p>
-              </div>
-            ) : (
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={porCategoria.slice(0, 8)} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                    <XAxis type="number" tickFormatter={formatarEixoMonetario} className="text-[10px]" axisLine={false} tickLine={false} />
-                    <YAxis dataKey="name" type="category" width={100} className="text-[10px]" axisLine={false} tickLine={false} />
-                    <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Por Forma de Pagamento */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold">Recebido por Forma de Pagamento</CardTitle>
-            <CardDescription>Pagamentos individuais nas contas filtradas</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {porFormaPgto.length === 0 ? (
-              <div role="status" className="flex min-h-24 flex-col items-center justify-center gap-1 px-4 py-4 text-center">
-                <p className="text-sm font-medium text-foreground">Nenhum recebimento nas contas filtradas</p>
-                <p className="text-xs text-muted-foreground">Registre a baixa de uma conta ou ajuste os filtros acima.</p>
-              </div>
-            ) : (
-              <div className="flex items-center gap-4">
-                <div className="h-48 w-48 shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={porFormaPgto} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={35} outerRadius={70} strokeWidth={2}>
-                        {porFormaPgto.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  {porFormaPgto.map((item, i) => (
-                    <div key={item.name} className="flex items-center justify-between text-xs gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                        <span className="truncate text-muted-foreground">{item.name}</span>
-                      </div>
-                      <span className="font-bold tabular-nums shrink-0">{fmt(item.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      )}
-
       {/* Hero: conta mais urgente */}
       {destaqueReceita && (() => {
         const d = destaqueReceita;
@@ -959,7 +923,7 @@ export default function ContasReceber() {
         const dataVenc = d.data_vencimento ? parseDateOnly(d.data_vencimento) : null;
         const diasVenc = dataVenc ? differenceInCalendarDays(dataVenc, hojeClinica) : null;
         return (
-          <Card className={cn('order-2 overflow-hidden rounded-xl', d.vencido ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5')}>
+          <Card className={cn('overflow-hidden rounded-xl', d.vencido ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5')}>
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span aria-hidden="true" className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', d.vencido ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning-foreground')}>
@@ -1002,7 +966,7 @@ export default function ContasReceber() {
       })()}
 
       {/* Lista de receitas */}
-      <Card className="order-3 rounded-2xl border-border/60 shadow-xs">
+      <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1085,7 +1049,6 @@ export default function ContasReceber() {
                   <X aria-hidden="true" className="h-3 w-3" /> Limpar filtros
                 </Button>
               )}
-              <span className="ml-auto text-xs text-muted-foreground">{filteredContas.length} de {periodFilteredCount}</span>
             </div>
           </div>
         </CardHeader>
@@ -1111,6 +1074,34 @@ export default function ContasReceber() {
               )}
             </div>
           ) : (
+            telaEstreita ? (
+              <ul aria-label="Receitas" className="space-y-2">
+                {filteredContas.map(conta => {
+                  const info = infoConta(conta);
+                  return (
+                    <li key={conta.id} className={cn('rounded-xl border border-border bg-card p-3', conta.vencido && 'border-destructive/30 bg-destructive/5')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">{getPacienteNome(conta)}</p>
+                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{conta.descricao}</p>
+                        </div>
+                        <Badge className={cn('shrink-0 rounded-full border-0 text-[10px]', info.status?.bg, info.status?.color)}>{info.status?.label}</Badge>
+                      </div>
+                      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div><dt className="text-muted-foreground">Vencimento</dt><dd className={cn('font-medium', conta.vencido ? 'text-destructive' : 'text-foreground')}>{info.dataVencimento ? format(info.dataVencimento, 'dd/MM/yyyy') : '—'}</dd></div>
+                        <div className="text-right"><dt className="text-muted-foreground">Valor</dt><dd className="font-semibold tabular-nums text-foreground">{fmt(Number(conta.valor || 0))}</dd></div>
+                        <div><dt className="text-muted-foreground">Categoria</dt><dd className="text-foreground">{info.categoria}</dd></div>
+                        {saldoDevedorConta(conta) > 0 && Number(conta.valor_pago || 0) > 0 && (
+                          <div className="text-right"><dt className="text-muted-foreground">Em aberto</dt><dd className="tabular-nums text-foreground">{fmt(saldoDevedorConta(conta))}</dd></div>
+                        )}
+                      </dl>
+                      {info.urgencia && <p className={cn('mt-1 text-xs font-medium', conta.vencido ? 'text-destructive' : 'text-warning-foreground')}>{info.urgencia}</p>}
+                      <div className="mt-3 flex items-center justify-end gap-2">{acoesConta(conta)}</div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
             <div className="overflow-hidden rounded-xl border border-border/60">
               <Table className="md:min-w-[760px]" containerProps={{ role: 'region', 'aria-label': 'Tabela de receitas; use a rolagem horizontal para acessar todas as colunas', tabIndex: 0, className: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring' }}>
                 <TableHeader>
@@ -1125,21 +1116,7 @@ export default function ContasReceber() {
                 </TableHeader>
                 <TableBody>
                   {filteredContas.map(conta => {
-                    const status = conta.vencido
-                      ? { ...STATUS_CONFIG.atrasado, label: conta.status === 'parcial' ? 'Atrasado · parcial' : STATUS_CONFIG.atrasado.label }
-                      : STATUS_CONFIG[conta.status || 'pendente'];
-                    const categoria = CATEGORIAS_MAP[conta.categoria] || CATEGORIAS_MAP.outros;
-                    const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
-                    const diasAteVencimento = dataVencimento ? differenceInCalendarDays(dataVencimento, hojeClinica) : null;
-                    const aberto = ['pendente', 'atrasado', 'parcial'].includes(conta.status);
-                    const diasAtraso = diasAteVencimento === null ? null : Math.abs(diasAteVencimento);
-                    const urgencia = conta.vencido && diasAtraso !== null
-                      ? `Atrasada há ${diasAtraso} ${diasAtraso === 1 ? 'dia' : 'dias'}`
-                      : aberto && diasAteVencimento === 0
-                        ? 'Vence hoje'
-                        : aberto && diasAteVencimento !== null && diasAteVencimento > 0 && diasAteVencimento <= 7
-                          ? `Vence em ${diasAteVencimento} ${diasAteVencimento === 1 ? 'dia' : 'dias'}`
-                          : null;
+                    const info = infoConta(conta);
                     return (
                       <TableRow key={conta.id} className={cn(conta.vencido && 'bg-destructive/5')}>
                         <TableCell>
@@ -1148,12 +1125,12 @@ export default function ContasReceber() {
                           {conta.numero_documento && <p className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-muted-foreground"><FileText aria-hidden="true" className="h-3 w-3" />{conta.numero_documento}</p>}
                         </TableCell>
                         <TableCell>
-                          <span className={cn('text-xs', conta.vencido ? 'font-medium text-destructive' : urgencia ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
-                            {dataVencimento ? `Vencimento ${format(dataVencimento, 'dd/MM/yyyy')}` : 'Vencimento não informado'}{urgencia && ` · ${urgencia}`}
+                          <span className={cn('text-xs', conta.vencido ? 'font-medium text-destructive' : info.urgencia ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
+                            {info.dataVencimento ? `Vencimento ${format(info.dataVencimento, 'dd/MM/yyyy')}` : 'Vencimento não informado'}{info.urgencia && ` · ${info.urgencia}`}
                           </span>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          <span className="text-sm">{categoria?.label || conta.categoria}</span>
+                          <span className="text-sm">{info.categoria}</span>
                           {conta.competencia && <p className="mt-0.5 text-[10px] text-muted-foreground">Comp. {conta.competencia}</p>}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
@@ -1161,39 +1138,10 @@ export default function ContasReceber() {
                           {saldoDevedorConta(conta) > 0 && Number(conta.valor_pago || 0) > 0 && <p className="mt-0.5 text-xs text-muted-foreground">Em aberto: {fmt(saldoDevedorConta(conta))}</p>}
                         </TableCell>
                         <TableCell>
-                          <Badge className={cn('rounded-full text-[10px]', status?.bg, status?.color, 'border-0')}>{status?.label}</Badge>
+                          <Badge className={cn('rounded-full text-[10px]', info.status?.bg, info.status?.color, 'border-0')}>{info.status?.label}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {['pendente', 'atrasado', 'parcial'].includes(conta.status) && (
-                              <Button size="sm" onClick={() => handleDarBaixa(conta)} className="h-9 gap-1 text-xs">
-                                <Receipt aria-hidden="true" className="h-3.5 w-3.5" /> {conta.status === 'parcial' ? 'Receber saldo' : 'Receber'}
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label={`Mais ações da conta de ${getPacienteNome(conta)}`} className="h-9 w-9 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleViewDetail(conta)} className="gap-2">
-                                  <Eye className="h-4 w-4" /> Ver Detalhes
-                                </DropdownMenuItem>
-                                {['pago', 'parcial'].includes(conta.status) && (
-                                  <DropdownMenuItem onClick={() => handleEstornar(conta)} className="gap-2 text-destructive">
-                                    <Repeat className="h-4 w-4" />
-                                    Estornar pagamento
-                                  </DropdownMenuItem>
-                                )}
-                                {(conta.status === 'pendente' || conta.status === 'atrasado') && (
-                                  <DropdownMenuItem onClick={() => handleCancelar(conta)} className="gap-2 text-destructive">
-                                    <AlertCircle className="h-4 w-4" /> Cancelar
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          <div className="flex items-center justify-end gap-1">{acoesConta(conta)}</div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1201,9 +1149,97 @@ export default function ContasReceber() {
                 </TableBody>
               </Table>
             </div>
+            )
           )}
         </CardContent>
       </Card>
+      {/* Gráficos compactos juntos quando ambos estão vazios */}
+      {porCategoria.length === 0 && porFormaPgto.length === 0 ? (
+        <Card>
+          <CardContent role="status" aria-label="Gráficos sem dados nas contas filtradas" className="grid gap-4 py-5 sm:grid-cols-2 sm:divide-x sm:divide-border">
+            <section className="space-y-1 sm:pr-4">
+              <h2 className="text-sm font-bold">Receita por categoria</h2>
+              <p className="text-sm text-foreground">Nenhuma receita ativa nas contas filtradas.</p>
+              <p className="text-xs text-muted-foreground">Cadastre uma receita ou ajuste os filtros acima.</p>
+            </section>
+            <section className="space-y-1 sm:pl-4">
+              <h2 className="text-sm font-bold">Recebido por forma de pagamento</h2>
+              <p className="text-sm text-foreground">Nenhum recebimento nas contas filtradas.</p>
+              <p className="text-xs text-muted-foreground">Registre a baixa de uma conta ou ajuste os filtros acima.</p>
+            </section>
+          </CardContent>
+        </Card>
+      ) : (
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Por Categoria */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Receita por categoria</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {porCategoria.length === 0 ? (
+              <div role="status" className="flex min-h-24 flex-col items-center justify-center gap-1 px-4 py-4 text-center">
+                <p className="text-sm font-medium text-foreground">Nenhuma receita ativa nas contas filtradas</p>
+                <p className="text-xs text-muted-foreground">Cadastre uma receita ou ajuste os filtros acima para preencher o gráfico.</p>
+              </div>
+            ) : (
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={porCategoria.slice(0, 8)} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                    <XAxis type="number" tickFormatter={formatarEixoMonetario} className="text-[10px]" axisLine={false} tickLine={false} />
+                    <YAxis dataKey="name" type="category" width={100} className="text-[10px]" axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Por Forma de Pagamento */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Recebido por forma de pagamento</CardTitle>
+            <CardDescription>Pagamentos individuais nas contas filtradas</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {porFormaPgto.length === 0 ? (
+              <div role="status" className="flex min-h-24 flex-col items-center justify-center gap-1 px-4 py-4 text-center">
+                <p className="text-sm font-medium text-foreground">Nenhum recebimento nas contas filtradas</p>
+                <p className="text-xs text-muted-foreground">Registre a baixa de uma conta ou ajuste os filtros acima.</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="h-48 w-48 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={porFormaPgto} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={35} outerRadius={70} strokeWidth={2}>
+                        {porFormaPgto.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  {porFormaPgto.map((item, i) => (
+                    <div key={item.name} className="flex items-center justify-between text-xs gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        <span className="truncate text-muted-foreground">{item.name}</span>
+                      </div>
+                      <span className="font-bold tabular-nums shrink-0">{fmt(item.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      )}
+
       </>}
 
       {isCreationPage && (
@@ -1221,38 +1257,37 @@ export default function ContasReceber() {
           <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-4">
           <section className="overflow-hidden rounded-2xl border border-border bg-card p-4 sm:p-6">
           <fieldset disabled={isSubmitting} className="space-y-5 border-0 p-0" aria-busy={isSubmitting}>
-            {/* Categoria visual selector */}
+            {/* Categoria: um Select com atalhos para as mais usadas */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider">Tipo de Receita *</Label>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {CATEGORIAS_RECEITA.slice(0, 8).map(cat => {
-                  const CIcon = cat.icon;
-                  const isSelected = formData.categoria === cat.value;
+              <Label htmlFor="receita-categoria" className="text-xs font-semibold">Tipo de receita *</Label>
+              <Select value={formData.categoria} onValueChange={v => updateFormData({ categoria: v })}>
+                <SelectTrigger id="receita-categoria" className="min-h-11">
+                  <SelectValue placeholder="Selecione a categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS_RECEITA.map(c => {
+                    const Icone = c.icon;
+                    return (
+                      <SelectItem key={c.value} value={c.value}>
+                        <span className="inline-flex items-center gap-2"><Icone aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />{c.label}</span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <div role="group" aria-label="Categorias mais usadas" className="flex flex-wrap gap-1.5 pt-1">
+                {CATEGORIAS_RECEITA.filter(c => CATEGORIAS_FREQUENTES.includes(c.value)).map(c => {
+                  const ativo = formData.categoria === c.value;
                   return (
-                    <button key={cat.value} type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => updateFormData({ categoria: cat.value })}
-                      className={cn(
-                        'flex flex-col items-center gap-1 p-2.5 rounded-xl border text-xs transition-all',
-                        isSelected ? 'border-primary bg-primary/10 text-primary font-bold shadow-sm' : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
-                      )}>
-                      <CIcon className={cn('h-4 w-4', isSelected ? 'text-primary' : cat.color)} />
-                      <span className="text-[10px] text-center leading-tight">{cat.label}</span>
+                    <button key={c.value} type="button" aria-pressed={ativo}
+                      onClick={() => updateFormData({ categoria: c.value })}
+                      className={cn(PILL_BASE, 'min-h-11 md:min-h-8', ativo ? PILL_ATIVA : PILL_INATIVA)}>
+                      {c.label}
                     </button>
                   );
                 })}
               </div>
-              <Select value={formData.categoria} onValueChange={v => updateFormData({ categoria: v })}>
-                <SelectTrigger id="receita-categoria" aria-label="Tipo de receita" className="h-8 text-xs mt-1">
-                  <SelectValue placeholder="Ou selecione outra categoria..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIAS_RECEITA.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
             </div>
-
-            <Separator />
 
             {/* Paciente */}
             <div className="space-y-1.5">
@@ -1280,57 +1315,82 @@ export default function ContasReceber() {
 
             {/* Descrição */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Descrição *</Label>
-              <Textarea aria-label="Descrição da receita" required value={formData.descricao} onChange={e => updateFormData({ descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
+              <Label htmlFor="receita-descricao" className="text-xs">Descrição *</Label>
+              <Textarea id="receita-descricao" required value={formData.descricao} onChange={e => updateFormData({ descricao: e.target.value })} placeholder="Detalhe o serviço..." rows={2} />
             </div>
 
             {/* Valor + Vencimento */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-xs">Valor (R$) *</Label>
-                <Input aria-label="Valor da receita em reais" type="text" inputMode="decimal" placeholder="0,00" value={formData.valor} onChange={e => updateFormData({ valor: e.target.value })} />
+                <Label htmlFor="receita-valor" className="text-xs">Valor total *</Label>
+                <div className="relative">
+                  <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">R$</span>
+                  <Input id="receita-valor" className="pl-9" type="text" inputMode="decimal" placeholder="0,00" value={formData.valor}
+                    aria-invalid={Boolean(formData.valor.trim()) && valorReceitaInvalido}
+                    onChange={e => updateFormData({ valor: e.target.value })} />
+                </div>
                 {formData.valor.trim() && valorReceitaInvalido && <p className="text-xs text-destructive" role="alert">Informe um valor maior que zero, com até duas casas decimais.</p>}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Vencimento</Label>
-                <Input aria-label="Vencimento da receita" type="date" value={formData.data_vencimento} onChange={e => updateFormData({ data_vencimento: e.target.value })} />
+                <Label htmlFor="receita-vencimento" className="text-xs">{quantidadeParcelas > 1 ? 'Vencimento da 1ª parcela' : 'Vencimento'}</Label>
+                <Input id="receita-vencimento" type="date" value={formData.data_vencimento} onChange={e => updateFormData({ data_vencimento: e.target.value })} />
               </div>
             </div>
 
+            {/* Parcelamento */}
+            <div className="space-y-1.5">
+              <Label htmlFor="receita-parcelas" className="text-xs">Parcelas</Label>
+              <Select value={formData.parcelas} onValueChange={v => updateFormData({ parcelas: v })}>
+                <SelectTrigger id="receita-parcelas" className="min-h-11 sm:max-w-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: MAX_PARCELAS }, (_, i) => String(i + 1)).map(n => (
+                    <SelectItem key={n} value={n}>{n === '1' ? 'À vista (1 parcela)' : `${n} parcelas mensais`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {quantidadeParcelas > 1 && parcelasReceita.length > 1 && (
+                <p className="text-xs text-muted-foreground" aria-live="polite">
+                  {parcelasReceita.length} contas de {fmt(parcelasReceita[parcelasReceita.length - 1].valor)}
+                  {parcelasReceita[0].valor !== parcelasReceita[parcelasReceita.length - 1].valor && ` (a primeira de ${fmt(parcelasReceita[0].valor)})`}
+                  , de {dataCurta(parcelasReceita[0].vencimento)} a {dataCurta(parcelasReceita[parcelasReceita.length - 1].vencimento)}.
+                </p>
+              )}
+            </div>
+
             {/* Forma pgto + Centro custo */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-xs">Forma de Pagamento</Label>
+                <Label htmlFor="receita-forma" className="text-xs">Forma de pagamento</Label>
                 <Select value={formData.forma_pagamento} onValueChange={v => updateFormData({ forma_pagamento: v })}>
-                  <SelectTrigger aria-label="Forma de pagamento ou centro de custo"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="receita-forma" className="min-h-11"><SelectValue /></SelectTrigger>
                   <SelectContent>{FORMAS_PAGAMENTO.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Centro de Custo</Label>
+                <Label htmlFor="receita-centro-custo" className="text-xs">Centro de custo</Label>
                 <Select value={formData.centro_custo} onValueChange={v => updateFormData({ centro_custo: v })}>
-                  <SelectTrigger aria-label="Centro de custo"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="receita-centro-custo" className="min-h-11"><SelectValue /></SelectTrigger>
                   <SelectContent>{CENTROS_CUSTO_RECEITA.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
 
             {/* Competência + Nº Documento */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-xs">Competência</Label>
-                <Input aria-label="Competência da receita" type="month" value={formData.competencia} onChange={e => updateFormData({ competencia: e.target.value })} />
+                <Label htmlFor="receita-competencia" className="text-xs">Competência</Label>
+                <Input id="receita-competencia" type="month" value={formData.competencia} onChange={e => updateFormData({ competencia: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Nº Documento / NF</Label>
-                <Input aria-label="Número do documento da receita" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })} placeholder="Opcional" />
+                <Label htmlFor="receita-documento" className="text-xs">Nº do documento / NF</Label>
+                <Input id="receita-documento" value={formData.numero_documento} onChange={e => updateFormData({ numero_documento: e.target.value })} placeholder="Opcional" />
               </div>
             </div>
 
             {/* Observações */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Observações</Label>
-              <Textarea aria-label="Observações da receita" value={formData.observacoes} onChange={e => updateFormData({ observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
+              <Label htmlFor="receita-observacoes" className="text-xs">Observações</Label>
+              <Textarea id="receita-observacoes" value={formData.observacoes} onChange={e => updateFormData({ observacoes: e.target.value })} placeholder="Observações adicionais..." rows={2} />
             </div>
           </fieldset>
           </section>
@@ -1358,7 +1418,7 @@ export default function ContasReceber() {
       {isPaymentPage && (
         <main data-testid="receivable-payment-page" className="space-y-5">
           <PageHeader
-            title="Confirmar Recebimento"
+            title="Confirmar recebimento"
             description="Confira o saldo e registre o pagamento no caixa aberto."
             icon={<Receipt />}
             actions={(
@@ -1381,15 +1441,14 @@ export default function ContasReceber() {
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{getPacienteNome(selectedConta)}</p>
                     <h2 className="mt-1 break-words text-lg font-semibold text-foreground">{selectedConta.descricao}</h2>
-                    <Badge variant="outline" className="mt-2">{CATEGORIAS_MAP[selectedConta.categoria]?.label || selectedConta.categoria}</Badge>
+                    <Badge variant="outline" className="mt-2">{rotuloCategoriaCadastro('receita', selectedConta.categoria)}</Badge>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">Saldo em aberto</p>
                     <p className="text-2xl font-bold tabular-nums">{fmt(saldoDevedorConta(selectedConta))}</p>
                   </div>
                 </div>
-                <Separator className="my-4" />
-                <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 text-sm sm:grid-cols-3">
                   <div><dt className="text-xs text-muted-foreground">Valor original</dt><dd className="mt-1 font-semibold tabular-nums">{fmt(Number(selectedConta.valor))}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Já recebido</dt><dd className="mt-1 font-semibold tabular-nums">{fmt(valorRecebidoConta(selectedConta))}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Vencimento</dt><dd className="mt-1 font-semibold">{selectedConta.data_vencimento ? format(parseDateOnly(selectedConta.data_vencimento)!, 'dd/MM/yyyy') : '—'}</dd></div>
@@ -1412,9 +1471,9 @@ export default function ContasReceber() {
                 <form onSubmit={event => { event.preventDefault(); void handleConfirmarBaixa(); }} className="space-y-5">
                   <fieldset disabled={isSubmitting || baixaIncerta} className="space-y-5 border-0 p-0" aria-busy={isSubmitting}>
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold uppercase tracking-wide">Forma de pagamento *</Label>
+                      <Label htmlFor="contas-receber-forma" className="text-xs font-semibold">Forma de pagamento *</Label>
                       <Select value={baixaData.forma_pagamento} onValueChange={value => updateBaixaData({ forma_pagamento: value })}>
-                        <SelectTrigger aria-label="Forma de pagamento"><SelectValue /></SelectTrigger>
+                        <SelectTrigger id="contas-receber-forma" className="min-h-11"><SelectValue /></SelectTrigger>
                         <SelectContent>{FORMAS_PAGAMENTO.map(forma => <SelectItem key={forma.value} value={forma.value}>{forma.label}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
