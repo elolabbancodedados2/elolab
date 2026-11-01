@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPrioridadeListaEspera, PRIORIDADES_LISTA_ESPERA } from '@/lib/listaEsperaPrioridade';
+import { compararPorPrioridade, getPrioridadeListaEspera, PRIORIDADES_LISTA_ESPERA } from '@/lib/listaEsperaPrioridade';
 
 describe('prioridade da lista de espera', () => {
   it('segue o domínio persistido no banco', () => {
@@ -22,5 +22,15 @@ describe('prioridade da lista de espera', () => {
     expect(info.label).toBe('Prioridade desconhecida (alta)');
     expect(info.className).not.toContain('text-destructive');
     expect(info.className).not.toContain('text-info');
+  });
+
+  it('ordena urgente, preferencial e normal, e o mais antigo primeiro no empate', () => {
+    const itens = [
+      { id: 'n-novo', prioridade: 'normal', data_cadastro: '2026-10-20' },
+      { id: 'u', prioridade: 'urgente', data_cadastro: '2026-10-25' },
+      { id: 'n-antigo', prioridade: null, data_cadastro: '2026-10-01' },
+      { id: 'p', prioridade: 'preferencial', data_cadastro: '2026-10-22' },
+    ];
+    expect([...itens].sort(compararPorPrioridade).map(i => i.id)).toEqual(['u', 'p', 'n-antigo', 'n-novo']);
   });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { addDays, addMonths, addWeeks, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
+import { addDays, addMonths, addWeeks, endOfMonth, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, KeyboardSensor, MouseSensor,
   TouchSensor, useSensor, useSensors,
@@ -30,9 +30,15 @@ import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
 import { prepareWaitingListAppointment } from '@/lib/waitingListSlotCompatibility';
+import { compararPorPrioridade, STATUS_ATIVOS_LISTA_ESPERA } from '@/lib/listaEsperaPrioridade';
 import { agendaScreenReaderInstructions, criarAnunciosAgenda } from './agendaDndAccessibility';
 import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 import { nomeMedico } from '@/lib/formatters';
+import { contarTotaisAgenda, eAgendamentoOnline, TIPOS_FIXOS_CONSULTA } from './agendaStatus';
+import { proximaVagaNoDia, type Faixa } from '@/lib/vagaLivreDia';
+import { Ban, Plus } from '@/components/icons/elolabIcons';
+import { AcoesConsultaSheet } from './AcoesConsultaSheet';
+import { cn } from '@/lib/utils';
 
 export type AgendaView = 'daily' | 'weekly' | 'monthly';
 
@@ -46,20 +52,55 @@ type MobileAgendaAppointment = {
   pacientes?: { nome_social?: string | null; nome?: string | null } | null;
 };
 
+type FichaMobile =
+  | { tipo: 'consulta'; hora: string; appointment: MobileAgendaAppointment }
+  | { tipo: 'bloqueio'; hora: string; bloqueio: any }
+  | { tipo: 'livre'; hora: string; medicoId: string };
+
 function MobileDailyAppointments({
   appointments,
   medicoById,
   onCardClick,
+  bloqueios = [],
+  vagasLivres = [],
+  onSlotClick,
+  sempreVisivel = false,
+  comAcoes = false,
+  onNovaConsulta,
+  onRemarcar,
 }: {
+  /** Botão "⋯" com as ações da consulta numa folha (o celular não tem botão direito). */
+  comAcoes?: boolean;
+  onNovaConsulta?: (initial: any) => void;
+  onRemarcar?: (agendamento: any) => void;
   appointments: MobileAgendaAppointment[];
   medicoById: Record<string, { nome?: string | null; crm?: string | null } | undefined>;
   onCardClick: (appointment: MobileAgendaAppointment) => void;
+  /** Bloqueios do dia dos profissionais exibidos. */
+  bloqueios?: any[];
+  /** Próxima vaga livre de cada profissional. */
+  vagasLivres?: Array<{ medicoId: string; hora: string }>;
+  onSlotClick?: (medicoId: string, hora: string) => void;
+  /** Mostra a lista também no desktop (consultas fora da grade). */
+  sempreVisivel?: boolean;
 }) {
   const ordered = [...appointments].sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+  const nomeDoMedico = (id?: string | null) => {
+    const medico = id ? medicoById[id] : undefined;
+    return medico ? nomeMedico(medico.nome || medico.crm) : 'Profissional não informado';
+  };
+  // Consultas, bloqueios e horários livres numa linha do tempo só: no celular
+  // a grade não aparece, e antes a lista escondia bloqueios e vagas.
+  const fichas: FichaMobile[] = [
+    ...ordered.map(appointment => ({ tipo: 'consulta' as const, hora: appointment.hora_inicio.slice(0, 5), appointment })),
+    ...bloqueios.map(bloqueio => ({ tipo: 'bloqueio' as const, hora: bloqueio.dia_inteiro ? '00:00' : String(bloqueio.hora_inicio || '00:00').slice(0, 5), bloqueio })),
+    ...(onSlotClick ? vagasLivres.map(vaga => ({ tipo: 'livre' as const, hora: vaga.hora, medicoId: vaga.medicoId })) : []),
+  ].sort((a, b) => a.hora.localeCompare(b.hora) || (a.tipo === 'consulta' ? -1 : 1));
+  const visibilidade = sempreVisivel ? '' : 'xl:hidden';
 
-  if (ordered.length === 0) {
+  if (fichas.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center xl:hidden">
+      <div className={cn('rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center', visibilidade)}>
         <p className="font-medium text-foreground">Nenhuma consulta neste dia</p>
         <p className="mt-1 text-sm text-muted-foreground">Escolha outra data ou crie um novo agendamento.</p>
       </div>
@@ -67,12 +108,44 @@ function MobileDailyAppointments({
   }
 
   return (
-    <section className="space-y-2 xl:hidden" aria-label="Consultas do dia em ordem de horário">
+    <section className={cn('space-y-2', visibilidade)} aria-label="Consultas do dia em ordem de horário">
       <p className="px-1 text-sm text-muted-foreground">{ordered.length} consulta{ordered.length === 1 ? '' : 's'} neste dia</p>
-      {ordered.map(appointment => {
+      {fichas.map(ficha => {
+        if (ficha.tipo === 'bloqueio') {
+          const b = ficha.bloqueio;
+          return (
+            <div key={`bloqueio-${b.id}`} className="flex min-h-12 items-center gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              <span className="w-[4.5rem] shrink-0 text-xs font-semibold tabular-nums">
+                {b.dia_inteiro ? 'Dia todo' : `${String(b.hora_inicio).slice(0, 5)}–${String(b.hora_fim).slice(0, 5)}`}
+              </span>
+              <span className="min-w-0 flex-1 border-l border-border pl-3">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Ban aria-hidden="true" className="h-3.5 w-3.5" /> Bloqueado</span>
+                <span className="block truncate text-xs">{nomeDoMedico(b.medico_id)}{b.motivo || b.tipo ? ` · ${b.motivo || b.tipo}` : ''}</span>
+              </span>
+            </div>
+          );
+        }
+        if (ficha.tipo === 'livre') {
+          return (
+            <button
+              key={`livre-${ficha.medicoId}-${ficha.hora}`}
+              type="button"
+              onClick={() => onSlotClick?.(ficha.medicoId, ficha.hora)}
+              aria-label={`Agendar no horário livre das ${ficha.hora} com ${nomeDoMedico(ficha.medicoId)}`}
+              className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-dashed border-border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="w-[4.5rem] shrink-0 text-sm font-semibold tabular-nums text-foreground">{ficha.hora}</span>
+              <span className="min-w-0 flex-1 border-l border-border pl-3">
+                <span className="block text-xs font-semibold text-foreground">Horário livre</span>
+                <span className="block truncate text-xs text-muted-foreground">{nomeDoMedico(ficha.medicoId)}</span>
+              </span>
+              <Plus aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+          );
+        }
+        const appointment = ficha.appointment;
         const patient = appointment.pacientes?.nome_social || appointment.pacientes?.nome || 'Paciente';
-        const medico = appointment.medico_id ? medicoById[appointment.medico_id] : undefined;
-        const doctor = medico?.nome || medico?.crm || 'Profissional não informado';
+        const doctor = nomeDoMedico(appointment.medico_id);
         const start = appointment.hora_inicio?.slice(0, 5) || '—';
         const end = appointment.hora_fim?.slice(0, 5);
         const statusKey = appointment.status || 'agendado';
@@ -86,22 +159,28 @@ function MobileDailyAppointments({
               : 'bg-primary/10 text-primary';
 
         return (
-          <button
-            key={appointment.id}
-            type="button"
-            onClick={() => onCardClick(appointment)}
-            aria-label={`Abrir consulta de ${patient} às ${start}, status ${status}`}
-            className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="w-[4.5rem] shrink-0 text-sm font-semibold tabular-nums text-foreground">
-              {start}{end ? <span className="block text-xs font-normal text-muted-foreground">até {end}</span> : null}
-            </span>
-            <span className="min-w-0 flex-1 border-l border-border pl-3">
-              <span className="block truncate text-sm font-semibold text-foreground">{patient}</span>
-              <span className="mt-0.5 block truncate text-xs text-muted-foreground">{doctor}{appointment.tipo ? ` · ${appointment.tipo}` : ''}</span>
-            </span>
-            <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${statusClass}`}>{status}</span>
-          </button>
+          <div key={appointment.id} className="flex items-stretch gap-2">
+            <button
+              type="button"
+              onClick={() => onCardClick(appointment)}
+              aria-label={`Abrir consulta de ${patient} às ${start}, status ${status}`}
+              className="flex min-h-16 min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="w-[4.5rem] shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                {start}{end ? <span className="block text-xs font-normal text-muted-foreground">até {end}</span> : null}
+              </span>
+              <span className="min-w-0 flex-1 border-l border-border pl-3">
+                <span className="block truncate text-sm font-semibold text-foreground">{patient}</span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">{doctor}{appointment.tipo ? ` · ${appointment.tipo}` : ''}</span>
+              </span>
+              <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statusClass}`}>{status}</span>
+            </button>
+            {comAcoes && (
+              <div className="flex items-center">
+                <AcoesConsultaSheet agendamento={appointment} onAbrir={() => onCardClick(appointment)} onNovaConsulta={onNovaConsulta} onRemarcar={onRemarcar} />
+              </div>
+            )}
+          </div>
         );
       })}
     </section>
@@ -127,6 +206,9 @@ function salvarPreferenciaAgenda(chave: string, valor: string) {
     // A preferência é opcional; a agenda deve continuar funcionando sem armazenamento local.
   }
 }
+
+/** Pedido do link público que a recepção ainda não confirmou. */
+const pendenteOnline = (a: any) => a.status === 'agendado' && eAgendamentoOnline(a);
 
 function toMinutes(t: string) {
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(t)) return Number.NaN;
@@ -310,12 +392,20 @@ export function AgendaPage() {
     ],
   });
   const { data: bloqueios = [] } = bloqueiosQuery;
+  // Notificados e confirmados também esperam vaga; a ordem segue a prioridade.
   const waitingQuery = useSupabaseQuery<any>('lista_espera', {
     select: '*, pacientes(nome, nome_social, telefone)',
-    filters: [{ column: 'status', operator: 'eq', value: 'aguardando' }],
-    orderBy: { column: 'created_at', ascending: false },
+    filters: [{ column: 'status', operator: 'in', value: `(${STATUS_ATIVOS_LISTA_ESPERA.join(',')})` }],
+    orderBy: { column: 'created_at', ascending: true },
   });
-  const { data: waiting = [] } = waitingQuery;
+  const waiting = useMemo(() => {
+    const itens = (waitingQuery.data ?? []) as any[];
+    // O médico vê os pedidos dele e os que aceitam qualquer profissional.
+    const doEscopo = isMedicoOnly
+      ? itens.filter(item => !item.medico_id || item.medico_id === myMedicoId)
+      : itens;
+    return [...doEscopo].sort(compararPorPrioridade);
+  }, [waitingQuery.data, isMedicoOnly, myMedicoId]);
   const conveniosQuery = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true } });
   const tiposQuery = useSupabaseQuery<any>('tipos_consulta', { orderBy: { column: 'nome', ascending: true } });
   const salasQuery = useSupabaseQuery<any>('salas', { orderBy: { column: 'nome', ascending: true } });
@@ -452,7 +542,9 @@ export function AgendaPage() {
         return params;
       }, { replace: true });
 
-      if (error || !data || data.paciente_id !== pacienteIdDaRota || data.status !== 'confirmado') {
+      // Qualquer pedido ativo pode ser agendado direto; antes exigia registrar
+      // contato e confirmar (três cliques) para chegar aqui.
+      if (error || !data || data.paciente_id !== pacienteIdDaRota || !(STATUS_ATIVOS_LISTA_ESPERA as readonly string[]).includes(data.status || 'aguardando')) {
         toast.error('Não foi possível iniciar o agendamento', {
           description: error?.message || 'Confirme se o paciente ainda está na lista de espera.',
         });
@@ -504,7 +596,7 @@ export function AgendaPage() {
           tipo: 'consulta',
           status: 'agendado',
           _waiting_id: data.id,
-          _waiting_status: data.status,
+          _waiting_status: data.status || 'aguardando',
         },
       });
     };
@@ -527,7 +619,8 @@ export function AgendaPage() {
         case 'status': return STATUS_CONHECIDOS.has(chave) ? formatAppointmentStatus(chave) : null;
         case 'medico': return medicoById[chave] ? nomeMedico(medicoById[chave].nome || medicoById[chave].crm) : null;
         case 'convenio': return chave === 'particular' ? 'Particular' : (convenios as any[]).find(c => c.id === chave)?.nome ?? null;
-        case 'tipo': return (tipos as any[]).find(t => t.id === chave || t.nome === chave)?.nome ?? null;
+        case 'tipo': return TIPOS_FIXOS_CONSULTA.find(([valor]) => valor === chave)?.[1]
+          ?? (tipos as any[]).find(t => t.id === chave || t.nome === chave)?.nome ?? null;
       }
     };
     return Object.entries(scheme.map)
@@ -560,10 +653,12 @@ export function AgendaPage() {
     });
   }, [allAppts, medicoFilter, search, isMedicoOnly, allowedMedicoId]);
 
-  const filtered = useMemo(
-    () => statusFilter.length ? baseVisivel.filter((a: any) => statusFilter.includes(a.status)) : baseVisivel,
-    [baseVisivel, statusFilter],
-  );
+  const [onlineFilter, setOnlineFilter] = useState(false);
+  const filtered = useMemo(() => baseVisivel.filter((a: any) => {
+    if (statusFilter.length && !statusFilter.includes(a.status)) return false;
+    if (onlineFilter && !pendenteOnline(a)) return false;
+    return true;
+  }), [baseVisivel, statusFilter, onlineFilter]);
 
   const visibleMedicos = useMemo(
     () => isMedicoOnly && myMedicoId ? medicos.filter((m: any) => m.id === myMedicoId) : medicos,
@@ -578,12 +673,18 @@ export function AgendaPage() {
   const dayAppts = useMemo(() => filtered.filter((a: any) => a.data === activeDate), [filtered, activeDate]);
   const dayApptsBase = useMemo(() => baseVisivel.filter((a: any) => a.data === activeDate), [baseVisivel, activeDate]);
 
-  const totals = useMemo(() => ({
-    total: dayApptsBase.length,
-    confirmados: dayApptsBase.filter((a: any) => a.status === 'confirmado').length,
-    aguardando: dayApptsBase.filter((a: any) => a.status === 'aguardando' || a.status === 'agendado').length,
-    cancelados: dayApptsBase.filter((a: any) => a.status === 'cancelado').length,
-  }), [dayApptsBase]);
+  // Os totais acompanham a visão: dia, semana inteira ou só os dias do mês
+  // (a grade mensal carrega semanas vizinhas, que não entram na conta).
+  const periodoTotais = useMemo(() => {
+    if (activeView === 'daily') return { inicio: activeDate, fim: activeDate, rotulo: 'no dia' };
+    if (activeView === 'weekly') return { inicio: periodo.inicio, fim: periodo.fim, rotulo: 'na semana' };
+    const d = parseISO(activeDate);
+    return { inicio: format(startOfMonth(d), 'yyyy-MM-dd'), fim: format(endOfMonth(d), 'yyyy-MM-dd'), rotulo: 'no mês' };
+  }, [activeView, activeDate, periodo]);
+  const totals = useMemo(
+    () => contarTotaisAgenda(baseVisivel.filter((a: any) => a.data >= periodoTotais.inicio && a.data <= periodoTotais.fim)),
+    [baseVisivel, periodoTotais],
+  );
 
   // Dias com consulta no mês exibido (grade de 6 semanas), só para marcar o
   // mini‑calendário — carrega apenas data e status.
@@ -625,15 +726,21 @@ export function AgendaPage() {
         .eq('ativo', true) as any);
       if (error) throw error;
       const minutos: Record<string, number> = {};
+      const faixas: Record<string, Faixa[]> = {};
       for (const j of (data as any[]) ?? []) {
         const ini = toMinutes(String(j.hora_inicio).slice(0, 5));
         const fim = toMinutes(String(j.hora_fim).slice(0, 5));
-        if (Number.isFinite(ini) && Number.isFinite(fim) && fim > ini) minutos[j.medico_id] = (minutos[j.medico_id] ?? 0) + (fim - ini);
+        if (Number.isFinite(ini) && Number.isFinite(fim) && fim > ini) {
+          minutos[j.medico_id] = (minutos[j.medico_id] ?? 0) + (fim - ini);
+          faixas[j.medico_id] = [...(faixas[j.medico_id] ?? []), [ini, fim] as const].sort((a, b) => a[0] - b[0]);
+        }
       }
-      return minutos;
+      return { minutos, faixas };
     },
   });
-  const expedientePorMedico = expedienteQuery.data ?? {};
+  const expedientePorMedico = expedienteQuery.data?.minutos ?? {};
+  // Sem a consulta (carregando ou com erro), a vaga livre volta à grade inteira.
+  const faixasPorMedico = expedienteQuery.isSuccess ? expedienteQuery.data.faixas : undefined;
 
   const proximaDoDia = useMemo(() => {
     if (activeDate !== todaySaoPauloDateOnly()) return null;
@@ -671,10 +778,19 @@ export function AgendaPage() {
     setActiveDrag(null);
     const over = e.over;
     if (!over) return;
-    const slotData = over.data.current as any;
+    const active = e.active.data.current as any;
+    let slotData = over.data.current as any;
+    // Na visão semanal a coluna é o dia: a consulta mantém médico e horário.
+    if (slotData?.semana) {
+      if (!active?.agendamento) return;
+      slotData = {
+        medico_id: active.agendamento.medico_id,
+        data: slotData.data,
+        hora_inicio: String(active.agendamento.hora_inicio).slice(0, 5),
+      };
+    }
     if (!slotData?.medico_id) return;
 
-    const active = e.active.data.current as any;
 
     if (active?.waiting) {
       const w = active.waiting;
@@ -864,6 +980,62 @@ export function AgendaPage() {
     abrirNovaConsulta({ medico_id, data: activeDate, hora_inicio, status: 'agendado', tipo: 'consulta' });
   };
 
+  // Remarcar de verdade: abre uma nova consulta com os dados da original, que é
+  // cancelada (com motivo) só depois que a nova for salva.
+  const remarcarConsulta = (ag: any) => abrirNovaConsulta({
+    paciente_id: ag.paciente_id,
+    medico_id: ag.medico_id || '',
+    sala_id: ag.sala_id || '',
+    data: ag.data,
+    hora_inicio: String(ag.hora_inicio || '').slice(0, 5),
+    tipo: ag.tipo || 'consulta',
+    status: 'agendado',
+    observacoes: ag.observacoes || '',
+    convenio_id: ag.convenio_id || '',
+    _remarcar_id: ag.id,
+    _remarcar_updated_at: ag.updated_at ?? null,
+    _remarcar_resumo: `${String(ag.data).split('-').reverse().join('/')} às ${String(ag.hora_inicio || '').slice(0, 5)}`,
+  });
+
+  const medicosDoDia = medicoFilter.length ? visibleMedicos.filter((m: any) => medicoFilter.includes(m.id)) : visibleMedicos;
+  const bloqueiosDoDia = (bloqueios as any[]).filter((b: any) =>
+    activeDate >= b.data_inicio && activeDate <= b.data_fim && medicosDoDia.some((m: any) => m.id === b.medico_id));
+  // Próxima vaga de cada profissional, para a lista do celular (onde a grade não aparece).
+  const vagasLivresDoDia = activeDate < todaySaoPauloDateOnly() ? [] : medicosDoDia
+    .filter((m: any) => m.ativo !== false)
+    .map((m: any) => ({
+      medicoId: m.id as string,
+      hora: proximaVagaNoDia({
+        agendamentos: dayApptsBase.filter((a: any) => a.medico_id === m.id),
+        bloqueios: bloqueiosDoDia.filter((b: any) => b.medico_id === m.id),
+        faixas: faixasPorMedico ? faixasPorMedico[m.id] ?? [] : undefined,
+        aPartirDe: activeDate === todaySaoPauloDateOnly() ? minutosAgoraSaoPaulo() : 0,
+        duracaoMinutos: Number(m.intervalo_consulta) || 30,
+        passoMinutos: 15,
+      }),
+    }))
+    .filter((v): v is { medicoId: string; hora: string } => !!v.hora);
+  const [listaNoDesktop, setListaNoDesktop] = useState(false);
+
+  const contextoDaAgenda = () => {
+    const query = new URLSearchParams(searchParams);
+    for (const key of ['agendamento', 'reagendar', 'espera', 'paciente']) query.delete(key);
+    query.set('data', activeDate);
+    query.set('view', activeView);
+    return { returnTo: `/agenda?${query}`, agendaFilters: { search, status: statusFilter, medicos: medicoFilter } };
+  };
+  const abrirImpressao = () => {
+    const params = new URLSearchParams({ data: activeDate, view: activeView });
+    if (medicoFilter.length) params.set('medicos', medicoFilter.join(','));
+    navigate(`/agenda/imprimir?${params}`, { state: contextoDaAgenda() });
+  };
+  const abrirConfirmacoes = () => navigate('/agenda/confirmacoes', { state: contextoDaAgenda() });
+  const abrirBuscaDeVaga = () => navigate('/agenda/buscar-vaga', { state: contextoDaAgenda() });
+  const onlineAConfirmar = useMemo(
+    () => baseVisivel.filter((a: any) => pendenteOnline(a) && a.data >= todaySaoPauloDateOnly()).length,
+    [baseVisivel],
+  );
+
   const openBlockManagement = () => {
     const query = new URLSearchParams(searchParams);
     for (const key of ['agendamento', 'reagendar', 'espera', 'paciente']) query.delete(key);
@@ -903,9 +1075,17 @@ export function AgendaPage() {
           onSetDefaultView={setDefaultView}
           search={search}
           onSearchChange={setSearch}
-           medicos={visibleMedicos}
+          medicos={visibleMedicos}
+          hideMedicoFilter={isMedicoOnly}
           statusFilter={statusFilter}
           medicoFilter={medicoFilter}
+          onlineFilter={onlineFilter}
+          onOnlineFilterChange={setOnlineFilter}
+          onlineCount={onlineAConfirmar}
+          totalsLabel={periodoTotais.rotulo}
+          onPrint={abrirImpressao}
+          onOpenConfirmacoes={isMedicoOnly ? undefined : abrirConfirmacoes}
+          onBuscarVaga={isMedicoOnly ? undefined : abrirBuscaDeVaga}
           onStatusFilterChange={setStatusFilter}
           onMedicoFilterChange={setMedicoFilter}
           onNewAppointment={() => abrirNovaConsulta({ data: activeDate })}
@@ -966,14 +1146,29 @@ export function AgendaPage() {
                     colorFor={colorFor}
                     convenioById={Object.fromEntries((convenios as any[]).map(c => [c.id, c]))}
                     expedientePorMedico={expedientePorMedico}
+                    faixasPorMedico={faixasPorMedico}
+                    onVerForaDaGrade={() => setListaNoDesktop(true)}
                     onSlotClick={handleSlotClick}
                     onCardClick={(a: any) => setDialogState({ open: true, initial: a })}
                     onNovaConsulta={(initial: any) => abrirNovaConsulta(initial)}
+                    onRemarcar={remarcarConsulta}
                   />
                 </div>
+                {listaNoDesktop && (
+                  <div className="hidden justify-end xl:flex">
+                    <Button variant="ghost" size="sm" onClick={() => setListaNoDesktop(false)}>Ocultar lista</Button>
+                  </div>
+                )}
                 <MobileDailyAppointments
                   appointments={dayAppts}
                   medicoById={medicoById}
+                  bloqueios={bloqueiosDoDia}
+                  vagasLivres={vagasLivresDoDia}
+                  onSlotClick={novaConsultaBloqueada ? undefined : handleSlotClick}
+                  sempreVisivel={listaNoDesktop}
+                  comAcoes
+                  onNovaConsulta={abrirNovaConsulta}
+                  onRemarcar={remarcarConsulta}
                   onCardClick={(appointment) => setDialogState({ open: true, initial: appointment })}
                 />
               </>
