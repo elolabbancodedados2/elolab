@@ -26,7 +26,7 @@ describe('PrecosServicos', () => {
     );
 
     expect(await screen.findByText('Conteúdo dos tipos de consulta')).toBeVisible();
-    await user.click(screen.getByRole('tab', { name: /Tabela de Preços/ }));
+    await user.click(screen.getByRole('tab', { name: /Tabela de preços/i }));
     expect(await screen.findByText('Conteúdo da tabela de preços')).toBeVisible();
     expect(screen.getByTestId('current-search')).toHaveTextContent('tab=precos');
   });
