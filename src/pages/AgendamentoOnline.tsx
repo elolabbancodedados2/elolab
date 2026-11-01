@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { addDays, format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, Loader2, Mail, MessageCircle, Phone, Stethoscope } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -52,6 +52,34 @@ async function chamar<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+/**
+ * Libera a reserva ao fechar a aba. O invoke comum é cancelado junto com a
+ * página; `keepalive` deixa a requisição terminar depois do pagehide.
+ */
+function liberarAoSair(reserva: { token: string; clinicaId: string }) {
+  try {
+    void fetch(`${SUPABASE_URL}/functions/v1/public-booking`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ action: 'release', clinica_id: reserva.clinicaId, hold_token: reserva.token }),
+    }).catch(() => undefined);
+  } catch {
+    // Sem fetch com keepalive, a reserva expira sozinha em cinco minutos.
+  }
+}
+
+const RESERVA_MS = 5 * 60_000 - 5_000;
+
+function formatarContagem(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 export default function AgendamentoOnline() {
   const { clinicaId = '' } = useParams();
   const [info, setInfo] = useState<Info | null>(null);
@@ -77,14 +105,26 @@ export default function AgendamentoOnline() {
   const holdRef = useRef<{ token: string; clinicaId: string } | null>(null);
   const sucessoRef = useRef<HTMLDivElement>(null);
   const erroRef = useRef<HTMLParagraphElement>(null);
+  const etapaHorarioRef = useRef<HTMLDivElement>(null);
+  const etapaDadosRef = useRef<HTMLDivElement>(null);
+  const [reservaAte, setReservaAte] = useState<number | null>(null);
+  const [agoraMs, setAgoraMs] = useState(() => Date.now());
+  const [diasComVaga, setDiasComVaga] = useState<Set<string> | null>(null);
 
-  const liberarReserva = (reserva = holdRef.current) => {
+  const liberarReserva = (reserva = holdRef.current, aoSair = false) => {
     holdRequestRef.current += 1;
     setReservandoHora(false);
+    setReservaAte(null);
     if (!reserva) return;
     if (holdRef.current?.token === reserva.token) holdRef.current = null;
     setHoldToken('');
-    void chamar({ action: 'release', clinica_id: reserva.clinicaId, hold_token: reserva.token }).catch(() => undefined);
+    if (aoSair) liberarAoSair(reserva);
+    else void chamar({ action: 'release', clinica_id: reserva.clinicaId, hold_token: reserva.token }).catch(() => undefined);
+  };
+
+  // A próxima etapa aparece abaixo da dobra no celular: leva a pessoa até ela.
+  const rolarAte = (ref: React.RefObject<HTMLElement>) => {
+    window.setTimeout(() => ref.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   const selecionarHorario = async (candidato: string) => {
@@ -110,6 +150,8 @@ export default function AgendamentoOnline() {
       holdRef.current = { token, clinicaId };
       setHoldToken(token);
       setHora(candidato);
+      setReservaAte(Date.now() + RESERVA_MS);
+      rolarAte(etapaDadosRef);
     } catch (error) {
       if (requestId !== holdRequestRef.current) return;
       void chamar({ action: 'release', clinica_id: clinicaId, hold_token: token }).catch(() => undefined);
@@ -122,11 +164,18 @@ export default function AgendamentoOnline() {
 
   // Fechar a aba ou sair da página libera o horário para outra pessoa.
   useEffect(() => {
-    const aoSair = () => liberarReserva();
+    const aoSair = () => liberarReserva(holdRef.current, true);
     window.addEventListener('pagehide', aoSair);
-    return () => { window.removeEventListener('pagehide', aoSair); aoSair(); };
+    return () => { window.removeEventListener('pagehide', aoSair); liberarReserva(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Contagem regressiva da reserva, visível enquanto a pessoa preenche os dados.
+  useEffect(() => {
+    if (!reservaAte) return;
+    const timer = window.setInterval(() => setAgoraMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [reservaAte]);
 
   // A reserva vale cinco minutos; ao vencer, a pessoa é avisada e escolhe de novo.
   useEffect(() => {
@@ -136,7 +185,7 @@ export default function AgendamentoOnline() {
       setHora('');
       setErro('A reserva de cinco minutos terminou. Escolha o horário de novo para continuar.');
       setRecarregar((n) => n + 1);
-    }, 5 * 60_000 - 5_000);
+    }, RESERVA_MS);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holdToken]);
@@ -205,6 +254,18 @@ export default function AgendamentoOnline() {
     return () => { ativo = false; };
   }, [medico, data, clinicaId, recarregar]);
 
+  // Marca os dias sem vaga da página exibida. Se o servidor não souber
+  // responder (versão anterior da função), todos os dias seguem clicáveis.
+  useEffect(() => {
+    setDiasComVaga(null);
+    if (!medico || dias.length === 0) return;
+    let ativo = true;
+    chamar<{ dias: string[] }>({ action: 'dias', clinica_id: clinicaId, medico_id: medico.id, datas: dias })
+      .then((r) => { if (ativo && Array.isArray(r?.dias)) setDiasComVaga(new Set(r.dias)); })
+      .catch(() => undefined);
+    return () => { ativo = false; };
+  }, [medico, dias, clinicaId]);
+
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (enviando) return;
@@ -236,6 +297,7 @@ export default function AgendamentoOnline() {
       if (requestId !== bookingRequestRef.current) return;
       holdRef.current = null;
       setHoldToken('');
+      setReservaAte(null);
       setConcluido(r.message);
     } catch (err) {
       if (requestId !== bookingRequestRef.current) return;
@@ -303,6 +365,23 @@ export default function AgendamentoOnline() {
   return (
     <Shell titulo={info.clinica.nome} subtitulo={info.mensagem || 'Escolha o profissional, o dia e o horário.'}>
       <fieldset disabled={enviando} aria-busy={enviando} className="block space-y-4 border-0 p-0 m-0 min-w-0">
+      <ol aria-label="Etapas do agendamento" className="grid grid-cols-3 gap-1.5 text-xs">
+        {['Profissional', 'Dia e horário', 'Seus dados'].map((rotulo, i) => {
+          const etapaAtual = hora ? 2 : medico ? 1 : 0;
+          const estado = i < etapaAtual ? 'feita' : i === etapaAtual ? 'atual' : 'futura';
+          return (
+            <li key={rotulo} aria-current={estado === 'atual' ? 'step' : undefined}
+              className={cn('flex min-h-11 items-center gap-1.5 rounded-lg border px-2 py-1.5',
+                estado === 'atual' ? 'border-transparent bg-foreground text-background' : 'border-border bg-card',
+                estado === 'futura' && 'text-muted-foreground')}>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-[10px] font-semibold tabular-nums">
+                {estado === 'feita' ? <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> : i + 1}
+              </span>
+              <span className="min-w-0 truncate font-medium">{rotulo}</span>
+            </li>
+          );
+        })}
+      </ol>
       {info.horarios_funcionamento && (
         <Card className={CARD}>
           <CardContent className="flex items-start gap-3 py-4">
@@ -327,7 +406,7 @@ export default function AgendamentoOnline() {
         <CardContent className="grid gap-2 sm:grid-cols-2">
           {info.medicos.length === 0 && <p className="text-sm text-muted-foreground">Nenhum profissional com agenda online no momento.</p>}
           {info.medicos.map((m) => (
-            <button key={m.id} type="button" aria-pressed={medico?.id === m.id} onClick={() => { liberarReserva(); setMedico(m); setData(''); setSlots(null); setHora(''); setErro(''); }}
+            <button key={m.id} type="button" aria-pressed={medico?.id === m.id} onClick={() => { liberarReserva(); setMedico(m); setData(''); setSlots(null); setHora(''); setErro(''); rolarAte(etapaHorarioRef); }}
               className={cn('flex min-h-14 items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted',
                 medico?.id === m.id && 'border-primary bg-primary/10 ring-1 ring-primary/50')}>
               <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary', medico?.id === m.id && 'bg-primary text-primary-foreground')}>
@@ -369,7 +448,7 @@ export default function AgendamentoOnline() {
 
       {/* 2. Dia e horário */}
       {medico && (
-        <Card className={CARD}>
+        <Card ref={etapaHorarioRef} className={cn(CARD, 'scroll-mt-4')}>
           <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">2. Dia e horário</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between gap-2">
@@ -390,11 +469,14 @@ export default function AgendamentoOnline() {
               {dias.map((d) => {
                 const dt = parseISO(d);
                 const diaCurto = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][dt.getDay()];
+                const semVaga = !!diasComVaga && !diasComVaga.has(d);
                 return (
                   <button key={d} type="button" data-testid="online-booking-day"
-                    aria-label={format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}
+                    aria-label={`${format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}${semVaga ? ', sem vaga' : ''}`}
+                    disabled={semVaga && data !== d}
                     aria-pressed={data === d} onClick={() => { liberarReserva(); setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
-                    className={cn('flex min-w-0 flex-col items-center rounded-lg border border-border px-0.5 py-2 text-[10px] transition-colors hover:border-primary/50 hover:bg-muted sm:text-xs',
+                    className={cn('flex min-h-14 min-w-0 flex-col items-center rounded-lg border border-border px-0.5 py-2 text-[10px] transition-colors hover:border-primary/50 hover:bg-muted sm:text-xs',
+                      semVaga && 'cursor-not-allowed border-dashed text-muted-foreground opacity-50 hover:border-border hover:bg-transparent',
                       data === d && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90')}>
                     <span className="uppercase">{diaCurto}</span>
                     <span className="text-base font-semibold leading-tight sm:text-lg">{format(dt, 'd')}</span>
@@ -404,6 +486,9 @@ export default function AgendamentoOnline() {
               })}
             </div>
             </div>
+            {diasComVaga && diasComVaga.size === 0 && (
+              <p className="text-sm text-muted-foreground">Sem vagas nestes dias. Veja os próximos dias ou outro profissional.</p>
+            )}
             {data && (carregandoSlots ? (
               <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Buscando horários...</div>
             ) : erroSlots ? (
@@ -423,14 +508,19 @@ export default function AgendamentoOnline() {
               </div>
             ))}
             {reservandoHora && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Reservando este horário por até cinco minutos…</p>}
-            {!!holdToken && <p role="status" className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">Horário reservado por até cinco minutos enquanto você preenche seus dados.</p>}
+            {!!holdToken && (
+              <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                Horário reservado enquanto você preenche seus dados
+                {reservaAte && <> · <span className="font-semibold tabular-nums" aria-label={`restam ${formatarContagem(reservaAte - agoraMs)} minutos`}>{formatarContagem(reservaAte - agoraMs)}</span> restantes</>}.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* 3. Seus dados */}
       {hora && (
-        <Card className={CARD}>
+        <Card ref={etapaDadosRef} className={cn(CARD, 'scroll-mt-4')}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">3. Seus dados</CardTitle>
             <CardDescription>{medico?.nome} · {format(parseISO(data), "EEEE, d 'de' MMMM", { locale: ptBR })} às {hora}</CardDescription>
@@ -456,10 +546,16 @@ export default function AgendamentoOnline() {
                   <Link to="/politica-privacidade" target="_blank" className="text-primary underline">política de privacidade</Link>.</span>
               </label>
               {erro && <p className="text-sm text-destructive sm:col-span-2" role="alert">{erro}</p>}
-              <Button type="submit" className={cn('h-12 sm:col-span-2', BTN_PRIMARY)} disabled={enviando || !aceite || !holdToken}>
+              <Button type="submit" aria-describedby={!aceite || !holdToken ? 'ag-motivo-bloqueio' : undefined} className={cn('h-12 sm:col-span-2', BTN_PRIMARY)} disabled={enviando || !aceite || !holdToken}>
                 {enviando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarCheck className="mr-2 h-4 w-4" />}
                 Solicitar agendamento
               </Button>
+              {/* O botão desabilitado diz por quê, em vez de só ficar cinza. */}
+              {(!aceite || !holdToken) && !enviando && (
+                <p id="ag-motivo-bloqueio" className="text-center text-xs text-muted-foreground sm:col-span-2">
+                  {!holdToken ? 'A reserva do horário terminou. Escolha o horário de novo.' : 'Marque a autorização de uso dos dados para enviar o pedido.'}
+                </p>
+              )}
             </form>
           </CardContent>
         </Card>

@@ -166,6 +166,20 @@ Deno.serve(async (req) => {
       return json({ slots: await horariosLivres(db, clinicaId, medicoId, data) });
     }
 
+    // Dias com pelo menos um horário livre, para o paciente não abrir dia vazio.
+    if (action === 'dias') {
+      const medicoId = String(body.medico_id || '');
+      const datas = Array.isArray(body.datas) ? [...new Set(body.datas.map(String))].filter(dataValida).slice(0, 14) : [];
+      if (!medicoLiberado(medicoId)) return json({ error: 'Profissional indisponível para agendamento online.' }, 404);
+      const hoje = agoraEmBrasilia().data;
+      const resultados = await Promise.all(datas.map(async (data) => {
+        if (data < hoje || data > limiteData) return null;
+        const livres = await horariosLivres(db, clinicaId, medicoId, data);
+        return livres.length ? data : null;
+      }));
+      return json({ dias: resultados.filter(Boolean) });
+    }
+
     if (action === 'hold') {
       const medicoId = String(body.medico_id || '');
       const data = String(body.data || '');
