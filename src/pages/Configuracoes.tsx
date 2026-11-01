@@ -184,15 +184,16 @@ export default function Configuracoes() {
   const { data: planos, isLoading: carregandoPlanos, isError: erroAoCarregarPlanos, error: erroListaPlanos } = usePlanos(!isPlanExempt);
   const navigate = useNavigate();
   const [showCancelPlan, setShowCancelPlan] = useState(false);
+  const [motivoCancelamentoPlano, setMotivoCancelamentoPlano] = useState('');
   const cancelPlanLock = useRef(false);
 
   const cancelPlanMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (motivo: string) => {
       if (!user?.id) throw new Error('Usuário não autenticado');
       const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
         body: {
           action: 'cancel_subscription',
-          motivo: 'Cancelado pelo usuário em Configurações',
+          motivo: motivo.trim().slice(0, 500) || 'Cancelado pelo usuário em Configurações',
         },
       });
       if (error) throw error;
@@ -202,7 +203,9 @@ export default function Configuracoes() {
     onSuccess: () => {
       toast.success('Plano cancelado. O acesso foi encerrado e nenhuma cobrança futura será feita.');
       setShowCancelPlan(false);
+      setMotivoCancelamentoPlano('');
       queryClient.invalidateQueries({ queryKey: ['user_plan'] });
+      queryClient.invalidateQueries({ queryKey: ['billing_status'] });
     },
     onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
     onSettled: () => { cancelPlanLock.current = false; },
@@ -211,7 +214,7 @@ export default function Configuracoes() {
   const confirmarCancelamentoPlano = () => {
     if (cancelPlanLock.current || cancelPlanMutation.isPending) return;
     cancelPlanLock.current = true;
-    cancelPlanMutation.mutate();
+    cancelPlanMutation.mutate(motivoCancelamentoPlano);
   };
 
   const [isCloudSynced, setIsCloudSynced] = useState(false);
@@ -577,10 +580,10 @@ export default function Configuracoes() {
         <TabsContent value="plano">
           <div className="space-y-6">
             {/* Plano Atual */}
-            <Card className={cn('rounded-2xl shadow-xs', hasActivePlan && !isPlanExempt ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60')}>
+            <Card className="rounded-2xl border-border/60 shadow-xs">
               <CardHeader>
-                <CardTitle className={cn('flex items-center gap-2', hasActivePlan && !isPlanExempt ? 'text-white' : '')}><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
-                <CardDescription className={hasActivePlan && !isPlanExempt ? 'text-white/70' : ''}>Visualize e gerencie sua subscrição</CardDescription>
+                <CardTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary text-foreground"><CreditCard className="h-4 w-4" /></span>Seu Plano Atual</CardTitle>
+                <CardDescription>Visualize e gerencie sua subscrição</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {loadingPlanoAtual ? (
@@ -598,7 +601,7 @@ export default function Configuracoes() {
                 ) : !hasActivePlan ? (
                   <div className="text-center py-8 space-y-4">
                     <p className="text-muted-foreground">Você não possui um plano ativo</p>
-                    <Button className="gap-2 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={() => navigate('/planos')}>
+                    <Button className="gap-2 rounded-full bg-gradient-primary text-foreground shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={() => navigate('/planos')}>
                       <CreditCard className="h-4 w-4" />
                       Escolher Plano
                     </Button>
@@ -607,21 +610,21 @@ export default function Configuracoes() {
                   <>
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label className="text-xs text-white/70">Plano Ativo</Label>
-                        <div className="text-2xl font-bold capitalize text-white">{planName || 'Carregando...'}</div>
-                        <p className="text-xs text-white/70">{isTrial ? 'Período de teste' : 'Plano profissional'}</p>
+                        <Label className="text-xs text-muted-foreground">Plano Ativo</Label>
+                        <div className="text-2xl font-bold capitalize text-foreground">{planName || 'Carregando...'}</div>
+                        <p className="text-xs text-muted-foreground">{isTrial ? 'Período de teste' : 'Plano profissional'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs text-white/70">Status</Label>
+                        <Label className="text-xs text-muted-foreground">Status</Label>
                         {isTrial ? (
                           <>
-                            <Badge className="w-fit rounded-full border-transparent bg-white/15 text-white">⏰ Em Teste</Badge>
-                            <p className="text-xs text-white/70">Restam {trialDaysLeft} dia{trialDaysLeft !== 1 ? 's' : ''}</p>
+                            <Badge className="w-fit rounded-full border-transparent bg-secondary text-foreground">⏰ Em Teste</Badge>
+                            <p className="text-xs text-muted-foreground">Restam {trialDaysLeft} dia{trialDaysLeft !== 1 ? 's' : ''}</p>
                           </>
                         ) : (
                           <>
                             <Badge className="w-fit rounded-full border-transparent bg-success/20 text-success">✓ Ativo</Badge>
-                            <p className="text-xs text-white/70">{resumoPeriodo}</p>
+                            <p className="text-xs text-muted-foreground">{resumoPeriodo}</p>
                           </>
                         )}
                       </div>
@@ -629,11 +632,11 @@ export default function Configuracoes() {
 
                     {isTrial && assinaturaAtual?.cobranca_modalidade === 'recorrente' && (
                       <>
-                        <Separator className="bg-white/10" />
-                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/15 bg-white/5 p-4">
+                        <Separator />
+                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-secondary p-4">
                           <div className="space-y-1">
-                            <p className="font-medium text-white">Teste sem cobrança até o fim do período</p>
-                            <p className="text-sm text-white/70">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
+                            <p className="font-medium text-foreground">Teste sem cobrança até o fim do período</p>
+                            <p className="text-sm text-muted-foreground">Cancele aqui antes da primeira cobrança. O cancelamento encerra o acesso ao plano imediatamente.</p>
                           </div>
                           <Button variant="destructive" className="gap-2 rounded-full" onClick={() => setShowCancelPlan(true)}>
                             ✕ Cancelar teste grátis
@@ -644,22 +647,22 @@ export default function Configuracoes() {
 
                     {!isTrial && (
                       <>
-                        <Separator className="bg-white/10" />
+                        <Separator />
 
                         <div className="space-y-4">
-                          <h4 className="font-semibold text-sm text-white">
+                          <h4 className="font-semibold text-sm text-foreground">
                             {assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Próxima renovação' : 'Período vigente'}
                           </h4>
                           <div className="grid gap-4 md:grid-cols-3">
-                            <div className="rounded-lg bg-white/5 p-3">
-                              <p className="text-xs text-white/70">
+                            <div className="rounded-lg bg-secondary p-3">
+                              <p className="text-xs text-muted-foreground">
                                 {assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Vigência e renovação' : 'Vigência do plano'}
                               </p>
-                              <p className="mt-1 text-sm font-semibold text-white">{resumoPeriodo}</p>
+                              <p className="mt-1 text-sm font-semibold text-foreground">{resumoPeriodo}</p>
                             </div>
-                            <div className="rounded-lg bg-white/5 p-3">
-                              <p className="text-xs text-white/70">Valor do plano</p>
-                              <p className="mt-1 text-lg font-semibold text-white">
+                            <div className="rounded-lg bg-secondary p-3">
+                              <p className="text-xs text-muted-foreground">Valor do plano</p>
+                              <p className="mt-1 text-lg font-semibold text-foreground">
                                 {erroAoCarregarPlanos
                                   ? 'Preço indisponível'
                                   : carregandoPlanos
@@ -670,9 +673,9 @@ export default function Configuracoes() {
                               </p>
                               {erroAoCarregarPlanos && <p className="text-xs text-warning" title={erroListaPlanos instanceof Error ? erroListaPlanos.message : undefined}>Atualize os planos para consultar o valor.</p>}
                             </div>
-                            <div className="rounded-lg bg-white/5 p-3">
-                              <p className="text-xs text-white/70">Modalidade de cobrança</p>
-                              <p className="mt-1 flex items-center gap-1 text-xs text-white">
+                            <div className="rounded-lg bg-secondary p-3">
+                              <p className="text-xs text-muted-foreground">Modalidade de cobrança</p>
+                              <p className="mt-1 flex items-center gap-1 text-xs text-foreground">
                                 {assinaturaAtual?.cobranca_modalidade === 'pre_pago' ? 'Período pré-pago' : assinaturaAtual?.cobranca_modalidade === 'recorrente' ? 'Cartão recorrente' : 'Não informada'}
                               </p>
                             </div>
@@ -681,14 +684,14 @@ export default function Configuracoes() {
                       </>
                     )}
 
-                    <Separator className="bg-white/10" />
+                    <Separator />
 
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" className="gap-2 rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white" onClick={() => navigate('/planos')}>
+                      <Button variant="outline" className="gap-2 rounded-full" onClick={() => navigate('/planos')}>
                         <CreditCard className="h-4 w-4" />
                         {textoAcaoPlano(planSlug)}
                       </Button>
-                      <Button variant="outline" asChild className="gap-2 rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white">
+                      <Button variant="outline" asChild className="gap-2 rounded-full">
                         <Link to="/configuracoes/plano/faturas">
                         <Receipt className="h-4 w-4" />
                         Ver histórico de faturas
@@ -718,6 +721,11 @@ export default function Configuracoes() {
                     <div><CancelamentoPlanoResumo isTrial={isTrial} trialEnd={trialEnd} /></div>
                   </DialogDescription>
                 </DialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="cancel-plan-reason" className="text-sm">Motivo do cancelamento (opcional, ajuda a melhorar)</Label>
+                  <Textarea id="cancel-plan-reason" value={motivoCancelamentoPlano} onChange={(e) => setMotivoCancelamentoPlano(e.target.value)} maxLength={500} rows={3} disabled={cancelPlanMutation.isPending} placeholder="Ex.: encontrei outra solução, custo, não atendeu à necessidade..." />
+                  <p className="text-xs text-muted-foreground">{motivoCancelamentoPlano.length}/500</p>
+                </div>
                 <DialogFooter>
                   <Button variant="outline" className="rounded-full" onClick={() => setShowCancelPlan(false)} disabled={cancelPlanMutation.isPending}>Manter assinatura</Button>
                   <Button variant="destructive" className="rounded-full" disabled={cancelPlanMutation.isPending} onClick={confirmarCancelamentoPlano}>
