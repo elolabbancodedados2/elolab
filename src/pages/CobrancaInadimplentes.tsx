@@ -468,7 +468,7 @@ export default function CobrancaInadimplentes() {
                           </TableCell>
                           <TableCell className="text-right">
                             {whatsapp ? (
-                              <Button size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
+                              <Button aria-label={`Contatar ${grupo.pacientes?.nome || 'paciente'} via WhatsApp`} size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
                                 <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${grupo.pacientes?.nome || 'paciente'} via WhatsApp`} title="Contatar via WhatsApp">
                                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
                                 </a>
