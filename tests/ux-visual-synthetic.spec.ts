@@ -1184,6 +1184,8 @@ test('finance role sees only the report tabs and exports allowed for its profile
 });
 
 test('financial reports chart populated synthetic payments and expenses', async ({ page }, testInfo) => {
+  // O relógio acompanha o "today" dos dados sintéticos: os pagamentos são de 1 e 2 dias antes.
+  await page.clock.install({ time: new Date('2026-10-29T10:00:00-03:00') });
   const synthetic = await installSyntheticClinic(page, {
     platformAdmin: false,
     accountsPopulated: true,
@@ -4113,7 +4115,10 @@ test('finance does not report a zero margin when there is no revenue at desktop 
 });
 
 test('finance reconciles populated received revenue with its synthetic payment ledger on desktop', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  // Dia 15 fixo: os pagamentos sintéticos de 1 e 2 dias antes não podem cair no mês anterior.
+  const today = `${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).format(new Date())}-15`;
+  await page.clock.install({ time: new Date(`${today}T10:00:00-03:00`) });
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true, today });
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport);
