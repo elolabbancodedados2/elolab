@@ -721,7 +721,7 @@ export default function RelatorioCustomizado() {
             {cfg.textSearchFields?.length ? (
               <div className="md:col-span-2">
                 <Label className="text-xs">
-                  Busca livre ({cfg.textSearchFields.join(', ')})
+                  Busca livre ({cfg.textSearchFields.map(campo => (cfg.columns.find(coluna => coluna.key === campo)?.label ?? campo.replace(/_/g, ' ')).toLocaleLowerCase('pt-BR')).join(', ')})
                 </Label>
                 <Input aria-label="Buscar registros"
                   placeholder="Digite para filtrar..."

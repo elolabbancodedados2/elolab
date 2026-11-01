@@ -742,14 +742,14 @@ export default function Relatorios() {
           : `${obterRotuloPeriodo()} · ${podeVerAgenda
             ? 'o período se aplica à agenda e ao financeiro; pacientes e estoque mostram o cadastro e o saldo atuais'
             : 'o período se aplica ao financeiro'}`}
-        actions={
-          activeTab !== 'customizado' && <>
+        actions={<>
             <Button asChild variant="outline" className="gap-2">
               <Link to="/relatorios/salvos"><Bookmark className="h-4 w-4" aria-hidden="true" />Relatórios salvos</Link>
             </Button>
             {ehAdmin && <Button asChild variant="outline" className="gap-2">
               <Link to="/analytics"><LineChart className="h-4 w-4" aria-hidden="true" />Indicadores da clínica</Link>
             </Button>}
+          {activeTab !== 'customizado' && <>
             <Button aria-label="Atualizar dados dos relatórios" variant="outline" size="icon" className="rounded-full" onClick={refreshTudo} disabled={isFetching}>
               <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
             </Button>
@@ -785,8 +785,8 @@ export default function Relatorios() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </>
-        }
+          </>}
+        </>}
       />
 
       {/* Pílulas de período */}

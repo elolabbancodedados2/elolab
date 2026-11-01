@@ -614,7 +614,7 @@ export default function Configuracoes() {
                         <div className="text-2xl font-bold capitalize text-foreground">{planName || 'Carregando...'}</div>
                         <p className="text-xs text-muted-foreground">{isTrial ? 'Período de teste' : 'Plano profissional'}</p>
                       </div>
-                      <div className="space-y-2">
+                      <div className="flex flex-col items-start gap-2">
                         <Label className="text-xs text-muted-foreground">Status</Label>
                         {isTrial ? (
                           <>
