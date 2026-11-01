@@ -30,9 +30,10 @@ const DEFAULT_SCHEME: ColorScheme = {
 };
 
 export const PALETTE = [
-  { label: 'Azul primário', value: 'hsl(var(--primary))' },
-  { label: 'Azul-marinho', value: 'hsl(var(--brand-dark))' },
-  { label: 'Ciano EloLab', value: 'hsl(var(--highlight))' },
+  { label: 'Preto', value: 'hsl(var(--primary))' },
+  { label: 'Grafite', value: 'hsl(var(--info))' },
+  { label: 'Azul', value: '#2563EB' },
+  { label: 'Roxo', value: '#7C3AED' },
   { label: 'Sucesso', value: 'hsl(var(--success))' },
   { label: 'Aviso', value: 'hsl(var(--warning))' },
   { label: 'Erro', value: 'hsl(var(--destructive))' },

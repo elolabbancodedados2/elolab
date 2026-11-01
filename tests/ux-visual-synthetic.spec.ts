@@ -3511,9 +3511,9 @@ test('room workspace preserves occupancy safety and readable status filters', as
     if (viewport.width === 1280) {
       await main.getByRole('button', { name: 'Nova Sala / Leito' }).click();
       const colorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
-      await expect(colorPicker.getByRole('button')).toHaveCount(4);
+      await expect(colorPicker.getByRole('button')).toHaveCount(5);
       await expect(colorPicker.getByRole('button', { name: /roxo/i })).toHaveCount(0);
-      await expect(colorPicker.getByRole('button', { name: 'Selecionar cor Azul primário' })).toHaveAttribute('aria-pressed', 'true');
+      await expect(colorPicker.getByRole('button', { name: 'Selecionar cor Grafite' })).toHaveAttribute('aria-pressed', 'true');
       const cyan = colorPicker.getByRole('button', { name: 'Selecionar cor Ciano' });
       await cyan.click();
       await expect(cyan).toHaveAttribute('aria-pressed', 'true');
@@ -3523,7 +3523,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
       await main.getByTestId('room-card-00000000-0000-4000-9000-000000000203').getByRole('button', { name: 'Editar sala Sala de Exames' }).click();
       const savedColorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(savedColorPicker.getByText('Cor salva')).toBeVisible();
-      await expect(savedColorPicker.getByRole('button')).toHaveCount(4);
+      await expect(savedColorPicker.getByRole('button')).toHaveCount(5);
       await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
     }
     if (viewport.width < 500) {
