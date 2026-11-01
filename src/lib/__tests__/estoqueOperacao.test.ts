@@ -87,7 +87,7 @@ describe('estoque: Curva ABC, inventário e histórico', () => {
 
   it('exporta CSV com ponto e vírgula e protege fórmulas', () => {
     const csv = csvPosicaoEstoque([{ id: 'a', nome: '=SOMA(1)', categoria: 'epis', quantidade: 2, valor_unitario: 1.5, unidade: 'ml', validade: '2027-03-01' }]);
-    expect(csv.startsWith('﻿"Produto";')).toBe(true);
+    expect(csv.startsWith('\uFEFF"Produto";')).toBe(true);
     expect(csv).toContain('"\'=SOMA(1)";"EPIs"');
     expect(csv).toContain('"mL"');
     expect(csv).toContain('"01/03/2027"');

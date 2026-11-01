@@ -29,6 +29,8 @@ import { formatarDataOcupacaoAntiga, summarizeRoomOccupancy } from '@/lib/roomOc
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
+import { ativosDaSala, lerCapacidade, ROTULO_STATUS_ATIVO, type AtivoDaSala } from '@/lib/salasOperacao';
+import { mensagemDeErro } from '@/lib/erros';
 
 type StatusSala = Database['public']['Enums']['status_sala'];
 type EstadoSala = StatusSala | 'reservada';
@@ -100,7 +102,8 @@ const isLeito = (tipo: string) => tipo.startsWith('leito_');
 interface SalaForm {
   nome: string;
   tipo: string;
-  capacidade: number;
+  /** Texto do campo: apagar não volta a 1; a validação acontece ao salvar. */
+  capacidade: string;
   status: StatusSala;
   medico_responsavel: string;
   equipamentos: string[];
@@ -115,7 +118,7 @@ interface SalaForm {
 }
 
 const initialForm: SalaForm = {
-  nome: '', tipo: 'consultorio', capacidade: 1, status: 'disponivel',
+  nome: '', tipo: 'consultorio', capacidade: '1', status: 'disponivel',
   medico_responsavel: '', equipamentos: [], setor: '', andar: '',
   horario_inicio: '07:00', horario_fim: '19:00', cor: '#3B3E44',
   genero: '', numero_cama: '', observacoes: '',
@@ -173,6 +176,22 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
   });
   const ocupacoes = ocupacoesQuery.data ?? [];
 
+  // Equipamentos do Patrimônio instalados em cada sala. Falha aqui não pausa a tela.
+  const patrimonioQuery = useQuery({
+    queryKey: ['salas-patrimonio', profile?.clinica_id],
+    enabled: !!profile?.clinica_id && !formPage,
+    staleTime: 30_000,
+    retry: false,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('patrimonio-equipamentos', { body: { action: 'list' } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return (Array.isArray(data?.assets) ? data.assets : []) as AtivoDaSala[];
+    },
+  });
+  const ativosPatrimonio = patrimonioQuery.data ?? [];
+
   const filtered = useMemo(() => {
     let list = salas as any[];
     if (filterTipo !== 'todos') list = list.filter(s => s.tipo === filterTipo);
@@ -208,7 +227,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
     if (!formPage || initialized.current || (editingId && !recordQuery.data)) return;
     const sala = recordQuery.data;
     const value: SalaForm = sala ? {
-        nome: sala.nome, tipo: sala.tipo || 'consultorio', capacidade: sala.capacidade || 1,
+        nome: sala.nome, tipo: sala.tipo || 'consultorio', capacidade: String(sala.capacidade || 1),
         status: sala.status || 'disponivel', medico_responsavel: sala.medico_responsavel || '',
         equipamentos: sala.equipamentos || [], setor: sala.setor || '', andar: sala.andar || '',
         horario_inicio: sala.horario_inicio || '07:00', horario_fim: sala.horario_fim || '19:00',
@@ -239,8 +258,9 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
     if (salasQuery.isError || ocupacoesQuery.isError || medicosQuery.isError || salasQuery.isLoading || ocupacoesQuery.isLoading || medicosQuery.isLoading) { toast.error('Atualize os dados de salas, ocupação e responsáveis antes de salvar.'); return; }
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a página e tente novamente.'); return; }
     if (!form.nome.trim()) { toast.error('Nome da sala é obrigatório.'); return; }
-    if (!Number.isInteger(form.capacidade) || form.capacidade < 1) {
-      toast.error('A capacidade deve ser um número inteiro maior que zero.');
+    const capacidade = lerCapacidade(form.capacidade);
+    if (capacidade === null) {
+      toast.error('A capacidade deve ser um número inteiro de 1 a 999.');
       return;
     }
     if (form.horario_inicio && form.horario_fim && form.horario_fim <= form.horario_inicio) {
@@ -253,7 +273,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
       const payload = {
         nome: form.nome.trim(),
         tipo: form.tipo,
-        capacidade: form.capacidade,
+        capacidade,
         status: form.status as StatusSala,
         medico_responsavel: form.medico_responsavel || null,
         equipamentos: form.equipamentos.length > 0 ? form.equipamentos : null,
@@ -292,7 +312,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
       completed.current = true;
       leaveForm();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar sala.');
+      toast.error('Não foi possível salvar a sala.', { description: mensagemDeErro(error) });
     } finally {
       saveLock.current = false;
       setIsSaving(false);
@@ -303,6 +323,13 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
     if (updatingSalaId) return;
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a página e tente novamente.'); return; }
     const ocupacaoAtiva = (ocupacoes as any[]).some(item => item.sala_id === sala.id);
+    const { bloqueantes } = ativosDaSala(sala.id, ativosPatrimonio);
+    if (bloqueantes.length > 0 && (newStatus === 'ocupado' || newStatus === 'disponivel')) {
+      toast.error('Esta sala está bloqueada por equipamento fora de operação.', {
+        description: `${bloqueantes.map(a => `${a.name} (${ROTULO_STATUS_ATIVO[a.status]})`).join(', ')}. Volte o equipamento a operar no Patrimônio.`,
+      });
+      return;
+    }
     if (ocupacaoAtiva && newStatus !== 'ocupado') {
       toast.error('Não é possível liberar esta sala enquanto houver paciente vinculado.', {
         description: 'Finalize ou transfira o atendimento na Fila antes de marcar a sala para limpeza ou disponibilidade.',
@@ -326,7 +353,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
       queryClient.invalidateQueries({ queryKey: ['salas'] });
       toast.success(`${sala.nome} → ${STATUS_LABELS[newStatus]}`);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao atualizar o estado da sala.');
+      toast.error('Não foi possível atualizar a sala.', { description: mensagemDeErro(error) });
     } finally {
       setUpdatingSalaId(null);
     }
@@ -408,15 +435,17 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
       </section>
     );
   }
-  if (salasQuery.isError && !initialized.current) {
+  // Uma atualização que falha com dados na tela vira aviso; sem dados, a tela pausa.
+  if (salasQuery.isError && !salasQuery.data && !initialized.current) {
     return <ErrorState title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} />;
   }
-  if (ocupacoesQuery.isError && !initialized.current) {
+  if (ocupacoesQuery.isError && !ocupacoesQuery.data && !initialized.current) {
     return <ErrorState title="Não foi possível confirmar a ocupação das salas" description="A tela foi pausada para evitar mostrar uma sala ocupada como disponível." error={ocupacoesQuery.error} onRetry={() => void ocupacoesQuery.refetch()} />;
   }
-  if (medicosQuery.isError && !initialized.current) {
+  if (medicosQuery.isError && !medicosQuery.data && !initialized.current) {
     return <ErrorState title="Não foi possível carregar os médicos responsáveis" error={medicosQuery.error} onRetry={() => void medicosQuery.refetch()} />;
   }
+  const falhaAtualizacao = !formPage && (salasQuery.isError || ocupacoesQuery.isError || medicosQuery.isError);
 
   const getMedicoNome = (id: string | null) => {
     if (!id) return null;
@@ -445,7 +474,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
               <Link to="/fila"><ListChecks aria-hidden="true" className="h-4 w-4" /> Ver fila</Link>
             </Button>
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar salas" title="Atualizar salas">
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={cn('h-4 w-4', (salasQuery.isFetching || ocupacoesQuery.isFetching) && 'animate-spin')} />
             </Button>
             <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full">
               <Plus className="h-4 w-4" /> Nova sala ou leito
@@ -453,6 +482,13 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
           </>
         }
       />
+
+      {falhaAtualizacao && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
+          <span className="text-sm text-muted-foreground">Não foi possível atualizar as salas. A ocupação mostrada pode estar desatualizada; atualize antes de liberar uma sala.</span>
+          <Button size="sm" variant="outline" onClick={() => { refresh(); void medicosQuery.refetch(); }}>Tentar novamente</Button>
+        </div>
+      )}
 
       {/* Situação agora */}
       <section role="group" aria-label="Situação das salas" className="space-y-2">
@@ -579,6 +615,9 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                 const statusExibido = statusEfetivoSala(sala);
                 const capacidade = Math.max(1, Number(sala.capacidade) || 1);
                 const percentualOcupado = Math.min(100, Math.round((ocupacoesSala.length / capacidade) * 100));
+                const patrimonio = ativosDaSala(sala.id, ativosPatrimonio);
+                const bloqueadaPorEquipamento = patrimonio.bloqueantes.length > 0;
+                const atualizando = updatingSalaId === sala.id;
                 return (
                   <Card
                     key={sala.id}
@@ -705,6 +744,26 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                             <Clock aria-hidden="true" className="h-3 w-3" />{sala.horario_inicio?.slice(0, 5)} — {sala.horario_fim?.slice(0, 5)}
                           </p>
                         )}
+                        {patrimonio.daSala.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium text-foreground">Equipamentos do patrimônio</p>
+                            <ul className="flex flex-wrap gap-1">
+                              {patrimonio.daSala.map(ativo => (
+                                <li key={ativo.id}>
+                                  <Badge variant="outline" className={cn('rounded-full text-[10px]', ativo.status !== 'active' && 'border-warning/40 bg-warning/10 text-warning-foreground')}>
+                                    {ativo.name}{ativo.status !== 'active' ? ` · ${ROTULO_STATUS_ATIVO[ativo.status]}` : ''}
+                                  </Badge>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {bloqueadaPorEquipamento && (
+                          <p role="status" className="flex items-start gap-1 text-[11px] font-medium text-destructive">
+                            <AlertTriangle aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+                            Bloqueada: {patrimonio.bloqueantes.map(a => a.name).join(', ')} fora de operação. <Link to="/patrimonio-equipamentos" className="underline">Ver no Patrimônio</Link>
+                          </p>
+                        )}
                         {sala.equipamentos && sala.equipamentos.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {sala.equipamentos.slice(0, 3).map((eq: string) => (
@@ -719,15 +778,15 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
 
                       <div className="flex items-center gap-1.5 pt-1">
                         {statusExibido === 'disponivel' && (
-                          <Button size="sm" className="h-9 rounded-full px-4 text-xs"
-                            onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null}>
-                            {updatingSalaId === sala.id ? 'Salvando...' : 'Ocupar'}
+                          <Button size="sm" className="h-11 gap-1.5 rounded-full px-4 text-xs"
+                            onClick={() => handleChangeStatus(sala, 'ocupado')} disabled={updatingSalaId !== null || bloqueadaPorEquipamento}>
+                            {atualizando && <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />}Ocupar
                           </Button>
                         )}
                         {statusExibido === 'ocupado' && ocupacoesSala.length === 0 && (
-                          <Button size="sm" variant="outline" className="h-9 rounded-full px-4 text-xs"
+                          <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-full px-4 text-xs"
                             onClick={() => handleChangeStatus(sala, 'limpeza')} disabled={updatingSalaId !== null}>
-                            {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
+                            {atualizando ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <Paintbrush aria-hidden="true" className="h-3.5 w-3.5" />}Enviar para limpeza
                           </Button>
                         )}
                         {(statusExibido === 'ocupado' || statusExibido === 'reservada') && ocupacoesSala.length > 0 && (
@@ -745,9 +804,10 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                           </Button>
                         )}
                         {statusExibido === 'manutencao' && (
-                          <Button size="sm" variant="outline" className="h-9 rounded-full px-4 text-xs"
-                            onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null}>
-                            {updatingSalaId === sala.id ? 'Salvando...' : 'Liberar'}
+                          <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-full px-4 text-xs"
+                            onClick={() => handleChangeStatus(sala, 'disponivel')} disabled={updatingSalaId !== null || bloqueadaPorEquipamento}
+                            title={bloqueadaPorEquipamento ? 'Há equipamento fora de operação nesta sala' : undefined}>
+                            {atualizando ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />}Voltar a operar
                           </Button>
                         )}
                         <Button size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full" aria-label={`Editar sala ${sala.nome}`} title="Editar"
@@ -841,8 +901,11 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="sala-capacidade" className="text-xs">Capacidade</Label>
-                  <Input id="sala-capacidade" type="number" min={1} value={form.capacidade}
-                    onChange={e => setForm(p => ({ ...p, capacidade: parseInt(e.target.value) || 1 }))} />
+                  <Input id="sala-capacidade" type="number" min={1} max={999} step={1} inputMode="numeric" value={form.capacidade}
+                    aria-invalid={lerCapacidade(form.capacidade) === null || undefined}
+                    aria-describedby={lerCapacidade(form.capacidade) === null ? 'sala-capacidade-erro' : undefined}
+                    onChange={e => setForm(p => ({ ...p, capacidade: e.target.value }))} />
+                  {lerCapacidade(form.capacidade) === null && <p id="sala-capacidade-erro" className="text-[11px] text-destructive">Informe um número inteiro de 1 a 999.</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="sala-status" className="text-xs">Status</Label>

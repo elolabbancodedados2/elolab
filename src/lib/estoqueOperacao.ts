@@ -231,7 +231,7 @@ export function csvPosicaoEstoque(itens: ItemPosicao[]): string {
     const valor = linha[chave];
     return formatCsvCell(typeof valor === 'number' ? String(valor).replace('.', ',') : valor);
   }).join(';'));
-  return `﻿${[cabecalho.map(formatCsvCell).join(';'), ...corpo].join('\r\n')}`;
+  return `\uFEFF${[cabecalho.map(formatCsvCell).join(';'), ...corpo].join('\r\n')}`;
 }
 
 /** Motivo pré-preenchido para descartar um item vencido. */
