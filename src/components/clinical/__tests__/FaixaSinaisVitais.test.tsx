@@ -20,8 +20,16 @@ describe('FaixaSinaisVitais', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Sinais vitais: PA 165/100 mmHg, FC 72 bpm, Temp 36,5 °C, SpO₂ 98 %, Peso 70 kg. Abrir exame físico' })).toBeInTheDocument();
-    expect(screen.getByText('165/100')).toHaveClass('text-destructive');
+    // Limiares únicos (src/lib/limiaresVitais): 165/100 fica em atenção; o
+    // vermelho é reservado para o limiar de alerta.
+    expect(screen.getByText('165/100')).toHaveClass('text-warning-foreground');
     expect(screen.getByText('72')).toHaveClass('text-foreground');
+  });
+
+  it('usa vermelho só acima do limiar de alerta', () => {
+    render(<FaixaSinaisVitais sinais={{ pressao_sistolica: '185', pressao_diastolica: '100', saturacao: '88' }} onAbrir={() => undefined} />);
+    expect(screen.getByText('185/100')).toHaveClass('text-destructive');
+    expect(screen.getByText('88')).toHaveClass('text-destructive');
   });
 
   it('mostra a triagem como origem e copia para o prontuário', () => {

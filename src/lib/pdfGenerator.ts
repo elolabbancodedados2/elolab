@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDateTimeSaoPaulo, parseDateOnly } from '@/lib/dateOnly';
 import { formatarReferenciaLaudo, procedenciaResultadoLaudo } from '@/lib/laudoWorkflow';
+import { linhaCrmMedico, linhaLocalEData } from '@/lib/documentoEmissao';
 
 /**
  * Carrega jsPDF e jspdf-autotable só quando alguém vai realmente gerar um PDF.
@@ -46,6 +47,9 @@ interface ClinicaInfo {
   telefone: string;
   cnpj: string;
   logoUrl?: string;
+  /** Cidade e UF configuradas; sem elas a cidade é lida do endereço, se possível. */
+  cidade?: string;
+  uf?: string;
 }
 
 /**
@@ -125,6 +129,8 @@ export async function getClinicaInfo(): Promise<ClinicaInfo> {
         telefone: clinic?.telefone || info?.telefone || DEFAULT_CLINICA.telefone,
         cnpj: clinic?.cnpj || info?.cnpj || DEFAULT_CLINICA.cnpj,
         logoUrl: clinic?.logoUrl || (logoConfig?.valor as any)?.url || info?.logoUrl || undefined,
+        cidade: clinic?.cidade || info?.cidade || undefined,
+        uf: clinic?.estado || clinic?.uf || info?.uf || undefined,
       };
     } else {
       _cachedClinica = { ...DEFAULT_CLINICA, nome: nomeCadastro };
@@ -170,18 +176,20 @@ async function addHeader(doc: jsPDF, titulo: string, clinica?: ClinicaInfo) {
     }
   }
 
+  // Preto e grafite: o azul antigo saiu do padrão visual e não imprime bem
+  // em impressoras monocromáticas de consultório.
   doc.setFontSize(18);
-  doc.setTextColor(0, 102, 204);
-  doc.text(info.nome, 105, startY, { align: 'center' });
+  doc.setTextColor(17, 18, 20);
+  if (info.nome) doc.text(info.nome, 105, startY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setTextColor(100, 100, 100);
+  doc.setTextColor(90, 90, 90);
   if (info.endereco) doc.text(info.endereco, 105, startY + 8, { align: 'center' });
   const contato = linhaContatoClinica(info);
   if (contato) doc.text(contato, 105, startY + 14, { align: 'center' });
 
-  doc.setDrawColor(0, 102, 204);
-  doc.setLineWidth(0.5);
+  doc.setDrawColor(60, 60, 60);
+  doc.setLineWidth(0.4);
   doc.line(20, startY + 20, 190, startY + 20);
 
   doc.setFontSize(14);
@@ -202,6 +210,28 @@ function addFooter(doc: jsPDF, pageNum: number = 1) {
   );
 }
 
+/**
+ * Marca "PRÉ-VISUALIZAÇÃO" em todas as páginas: a prévia não foi emitida nem
+ * registrada e não pode ser confundida com o documento válido.
+ */
+export function marcarComoPrevia(doc: jsPDF) {
+  const total = doc.getNumberOfPages();
+  for (let pagina = 1; pagina <= total; pagina += 1) {
+    doc.setPage(pagina);
+    const largura = doc.internal.pageSize.width;
+    const altura = doc.internal.pageSize.height;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(46);
+    doc.setTextColor(215, 215, 215);
+    doc.text('PRÉ-VISUALIZAÇÃO', largura / 2, altura / 2, { align: 'center', angle: 35 });
+    doc.setFontSize(9);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Prévia sem validade: o documento ainda não foi emitido.', largura / 2, 8, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+  }
+}
+
 // Referência estável para o mesmo registro. Não é assinatura criptográfica;
 // serve para que duas vias do mesmo documento não recebam números diferentes.
 function documentReference(...parts: unknown[]): string {
@@ -218,7 +248,7 @@ function documentReference(...parts: unknown[]): string {
 // Gerar receita médica
 export async function gerarReceita(
   paciente: { nome: string; cpf?: string; dataNascimento?: string },
-  medico: { nome: string; crm?: string; especialidade?: string },
+  medico: { nome: string; crm?: string; especialidade?: string; crmUf?: string; rqe?: string },
   medicamentos: Array<{
     nome: string;
     dosagem: string;
@@ -229,9 +259,10 @@ export async function gerarReceita(
     observacoes?: string;
   }>,
   orientacoes: string,
-  tipo: 'simples' | 'controle_especial' | 'antimicrobiano' = 'simples'
+  tipo: 'simples' | 'controle_especial' | 'antimicrobiano' = 'simples',
+  opcoes: { dataEmissao?: string } = {},
 ) {
-  const { JsPDF, autoTable } = await carregarPdfLib();
+  const { JsPDF } = await carregarPdfLib();
   const doc = new JsPDF();
 
   const tipoLabel = {
@@ -240,12 +271,17 @@ export async function gerarReceita(
     antimicrobiano: 'RECEITUÁRIO DE ANTIMICROBIANOS',
   };
 
-  addHeader(doc, tipoLabel[tipo]);
+  // Sem `await` o cabeçalho (assíncrono por causa do logo) podia sair depois
+  // do corpo ou nem sair.
+  await addHeader(doc, tipoLabel[tipo]);
 
-  // Data e número
+  // Data de emissão do documento (a da evolução, quando retroativa).
+  const dataEmissao = opcoes.dataEmissao && parseDateOnly(opcoes.dataEmissao) && !Number.isNaN(parseDateOnly(opcoes.dataEmissao)!.getTime())
+    ? parseDateOnly(opcoes.dataEmissao)!
+    : new Date();
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
-  doc.text(`Data: ${format(new Date(), 'dd/MM/yyyy')}`, 20, 60);
+  doc.text(`Data: ${format(dataEmissao, 'dd/MM/yyyy')}`, 20, 60);
   const referencia = documentReference(paciente, medico, medicamentos, orientacoes, tipo);
   doc.text(`Ref.: ${referencia}`, 170, 60, { align: 'right' });
 
@@ -274,19 +310,27 @@ export async function gerarReceita(
   medicamentos.forEach((med, index) => {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text(`${index + 1}. ${med.nome} ${med.dosagem}`, 25, yPos);
+    doc.text(`${index + 1}. ${[med.nome, med.dosagem].filter(Boolean).join(' ')}`, 25, yPos);
     yPos += 6;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Via: ${med.via} | ${med.frequencia} | ${med.duracao}`, 30, yPos);
-    yPos += 5;
-    doc.text(`Quantidade: ${med.quantidade}`, 30, yPos);
-    yPos += 5;
+    // Partes vazias ficam de fora em vez de imprimir "Via:  |  | ".
+    const uso = [med.via && `Via: ${med.via}`, med.frequencia, med.duracao].filter(Boolean).join(' | ');
+    if (uso) {
+      const linhasUso = doc.splitTextToSize(uso, 150);
+      doc.text(linhasUso, 30, yPos);
+      yPos += linhasUso.length * 5;
+    }
+    if (med.quantidade) {
+      doc.text(`Quantidade: ${med.quantidade}`, 30, yPos);
+      yPos += 5;
+    }
 
     if (med.observacoes) {
-      doc.text(`Obs: ${med.observacoes}`, 30, yPos);
-      yPos += 5;
+      const linhasObs = doc.splitTextToSize(`Obs: ${med.observacoes}`, 150);
+      doc.text(linhasObs, 30, yPos);
+      yPos += linhasObs.length * 5;
     }
     yPos += 5;
 
@@ -315,7 +359,7 @@ export async function gerarReceita(
     paciente: paciente.nome,
     medico: medico.nome,
     crm: medico.crm,
-    data: format(new Date(), 'yyyy-MM-dd'),
+    data: format(dataEmissao, 'yyyy-MM-dd'),
     medicamentos: medicamentos.map(m => m.nome).join(', '),
     referencia,
   });
@@ -337,7 +381,8 @@ export async function gerarReceita(
   doc.text(medico.nome, 90, assinaturaY + 6, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(`CRM: ${medico.crm || 'N/A'} | ${medico.especialidade || ''}`, 90, assinaturaY + 12, { align: 'center' });
+  const crmReceita = linhaCrmMedico(medico);
+  if (crmReceita) doc.text(crmReceita, 90, assinaturaY + 12, { align: 'center' });
   doc.setFontSize(7);
   doc.setTextColor(100, 100, 100);
   // "pendente" sugeria um processo de assinatura em andamento no sistema, que
@@ -353,10 +398,12 @@ export async function gerarReceita(
 // Gerar atestado médico
 export async function gerarAtestado(
   paciente: { nome: string; cpf?: string },
-  medico: { nome: string; crm?: string; especialidade?: string },
+  medico: { nome: string; crm?: string; especialidade?: string; crmUf?: string; rqe?: string },
   atestado: {
     tipo: 'comparecimento' | 'afastamento' | 'aptidao' | 'acompanhante';
     dataAtendimento: string;
+    /** Data que vai na linha "Cidade, data." — a de emissão, não a de hoje. */
+    dataEmissao?: string;
     dataInicio?: string;
     dataFim?: string;
     horarioInicio?: string;
@@ -368,7 +415,7 @@ export async function gerarAtestado(
     versaoModelo?: string;
   }
 ) {
-  const { JsPDF, autoTable } = await carregarPdfLib();
+  const { JsPDF } = await carregarPdfLib();
   const doc = new JsPDF();
 
   const tipoTitulo = {
@@ -378,7 +425,8 @@ export async function gerarAtestado(
     acompanhante: 'DECLARAÇÃO DE ACOMPANHANTE',
   };
 
-  addHeader(doc, tipoTitulo[atestado.tipo]);
+  const clinica = await getClinicaInfo();
+  await addHeader(doc, tipoTitulo[atestado.tipo], clinica);
 
   doc.setFontSize(11);
   doc.setTextColor(0, 0, 0);
@@ -426,8 +474,13 @@ export async function gerarAtestado(
     doc.text(obsLines, 25, obsY + 7);
   }
 
-  // Data e local
-  doc.text(`São Paulo, ${format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}.`, 25, 180);
+  // Data e local: cidade da clínica (configurada ou lida do endereço) e data
+  // de emissão do atestado. Antes saía sempre "São Paulo" com a data de hoje,
+  // mesmo para um atestado retroativo de outra cidade.
+  const localEData = linhaLocalEData(atestado.dataEmissao || atestado.dataAtendimento, {
+    cidade: clinica.cidade, uf: clinica.uf, endereco: clinica.endereco,
+  });
+  if (localEData) doc.text(localEData, 25, 180);
 
   // Assinatura
   doc.line(60, 220, 150, 220);
@@ -436,7 +489,8 @@ export async function gerarAtestado(
   doc.text(medico.nome, 105, 227, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(`CRM: ${medico.crm || 'N/A'} | ${medico.especialidade || ''}`, 105, 233, { align: 'center' });
+  const crmAtestado = linhaCrmMedico(medico);
+  if (crmAtestado) doc.text(crmAtestado, 105, 233, { align: 'center' });
 
   if (atestado.versaoModelo) {
     doc.setFontSize(8);
@@ -447,6 +501,101 @@ export async function gerarAtestado(
 
   addFooter(doc);
 
+  return doc;
+}
+
+export interface CartaEncaminhamentoData {
+  paciente: { nome: string; cpf?: string | null; dataNascimento?: string | null };
+  medicoOrigem: { nome: string; crm?: string | null; crmUf?: string | null; especialidade?: string | null };
+  especialidadeDestino: string;
+  medicoDestinoNome?: string | null;
+  urgencia?: string | null;
+  dataEncaminhamento: string;
+  motivo: string;
+  hipoteseDiagnostica?: string | null;
+  cidPrincipal?: string | null;
+  examesRealizados?: string | null;
+  tratamentoAtual?: string | null;
+  informacoesAdicionais?: string | null;
+}
+
+const ROTULO_URGENCIA: Record<string, string> = { eletivo: 'Eletivo', normal: 'Normal', urgente: 'Urgente', emergencia: 'Emergência' };
+
+/** Carta de encaminhamento (referência) para o paciente levar ao especialista. */
+export async function gerarCartaEncaminhamento(dados: CartaEncaminhamentoData): Promise<jsPDF> {
+  const { JsPDF } = await carregarPdfLib();
+  const doc = new JsPDF();
+  const clinica = await getClinicaInfo();
+  await addHeader(doc, 'ENCAMINHAMENTO MÉDICO', clinica);
+
+  const margem = 22;
+  const largura = 210 - margem * 2;
+  let y = 64;
+  const quebrarPagina = (altura: number) => {
+    if (y + altura > 250) { doc.addPage(); y = 24; }
+  };
+
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Ao(À) ${dados.medicoDestinoNome ? `Dr(a). ${dados.medicoDestinoNome}` : 'colega'} — ${dados.especialidadeDestino}`, margem, y);
+  y += 7;
+  doc.setFont('helvetica', 'normal');
+  const identificacao = [
+    `Paciente: ${dados.paciente.nome}`,
+    dados.paciente.cpf ? `CPF: ${dados.paciente.cpf}` : null,
+    dados.paciente.dataNascimento && parseDateOnly(dados.paciente.dataNascimento)
+      ? `Nascimento: ${format(parseDateOnly(dados.paciente.dataNascimento)!, 'dd/MM/yyyy')}`
+      : null,
+  ].filter(Boolean).join('   ');
+  doc.text(doc.splitTextToSize(identificacao, largura), margem, y);
+  y += 7;
+  if (dados.urgencia) {
+    doc.text(`Prioridade: ${ROTULO_URGENCIA[dados.urgencia] || dados.urgencia}`, margem, y);
+    y += 7;
+  }
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margem, y, margem + largura, y);
+  y += 8;
+
+  const secao = (titulo: string, texto?: string | null) => {
+    if (!texto?.trim()) return;
+    const linhas = doc.splitTextToSize(texto.trim(), largura);
+    quebrarPagina(8 + linhas.length * 5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(titulo, margem, y);
+    y += 5.5;
+    doc.setFont('helvetica', 'normal');
+    doc.text(linhas, margem, y);
+    y += linhas.length * 5 + 4;
+  };
+  secao('Motivo do encaminhamento', dados.motivo);
+  secao('Hipótese diagnóstica', [dados.hipoteseDiagnostica, dados.cidPrincipal && dados.cidPrincipal !== dados.hipoteseDiagnostica ? `CID-10: ${dados.cidPrincipal}` : null].filter(Boolean).join('\n'));
+  secao('Exames realizados', dados.examesRealizados);
+  secao('Tratamento atual', dados.tratamentoAtual);
+  secao('Informações adicionais', dados.informacoesAdicionais);
+
+  quebrarPagina(50);
+  doc.text('Solicito avaliação e conduta. Peço a gentileza da contrarreferência.', margem, y);
+  y += 10;
+  const localEData = linhaLocalEData(dados.dataEncaminhamento, { cidade: clinica.cidade, uf: clinica.uf, endereco: clinica.endereco });
+  if (localEData) doc.text(localEData, margem, y);
+
+  const assinaturaY = Math.max(y + 24, 225);
+  doc.setDrawColor(60, 60, 60);
+  doc.line(60, assinaturaY, 150, assinaturaY);
+  doc.setFont('helvetica', 'bold');
+  doc.text(dados.medicoOrigem.nome, 105, assinaturaY + 6, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  const crm = linhaCrmMedico(dados.medicoOrigem);
+  if (crm) doc.text(crm, 105, assinaturaY + 12, { align: 'center' });
+  doc.setFontSize(7);
+  doc.setTextColor(110, 110, 110);
+  doc.text('Documento sem assinatura digital. Assine de próprio punho ou pelo assinador gov.br.', 105, assinaturaY + 18, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+
+  addFooter(doc);
   return doc;
 }
 
@@ -719,7 +868,13 @@ export async function gerarProntuarioPDF(
     orientacoesPaciente?: string;
     sinaisVitais?: Record<string, string>;
   },
-  prescricoes: Array<{ medicamento: string; dosagem?: string; posologia?: string; duracao?: string; quantidade?: string; observacoes?: string }> = []
+  prescricoes: Array<{ medicamento: string; dosagem?: string; posologia?: string; duracao?: string; quantidade?: string; observacoes?: string }> = [],
+  extras: {
+    /** Situação da assinatura eletrônica registrada no sistema. */
+    assinatura?: { assinado: boolean; assinadoEm?: string | null; assinadoPor?: string | null; crmAssinante?: string | null };
+    /** Adendos registrados depois da assinatura, em ordem cronológica. */
+    adendos?: Array<{ tipo?: string | null; motivo?: string | null; texto: string; medicoNome?: string | null; crm?: string | null; data?: string | null }>;
+  } = {},
 ) {
   const { JsPDF, autoTable } = await carregarPdfLib();
   const doc = new JsPDF();
@@ -938,6 +1093,20 @@ export async function gerarProntuarioPDF(
     });
   }
 
+  // ─── Adendos ───
+  // O PDF exportado de um prontuário assinado precisa mostrar as retificações
+  // e complementos feitos depois; sem eles a cópia impressa ficava desatualizada.
+  const adendos = (extras.adendos ?? []).filter(adendo => adendo.texto?.trim());
+  if (adendos.length > 0) {
+    yPos = addSectionTitle('ADENDOS', yPos);
+    adendos.forEach((adendo, indice) => {
+      const quando = adendo.data ? formatDateTimeSaoPaulo(adendo.data) : '';
+      const autor = [adendo.medicoNome, adendo.crm ? `CRM ${adendo.crm}` : null].filter(Boolean).join(' — ');
+      const titulo = [`Adendo ${indice + 1}`, adendo.tipo, quando, autor].filter(Boolean).join(' · ');
+      yPos = addTextField(titulo, [adendo.motivo ? `Motivo: ${adendo.motivo}` : null, adendo.texto].filter(Boolean).join('\n'), yPos);
+    });
+  }
+
   // ─── Doctor signature ───
   if (yPos > 230) { doc.addPage(); yPos = 20; addPageAccent(doc); }
   yPos = Math.max(yPos + 15, 240);
@@ -959,6 +1128,22 @@ export async function gerarProntuarioPDF(
     medico.especialidade || null,
   ].filter(Boolean).join(' | ');
   doc.text(crmLine, pageWidth / 2, yPos + 11, { align: 'center' });
+
+  // Situação da assinatura, sem afirmar o que o sistema não registrou.
+  const assinatura = extras.assinatura;
+  if (assinatura) {
+    doc.setFontSize(7.5);
+    if (assinatura.assinado) {
+      doc.setTextColor(40, 40, 40);
+      const quem = [assinatura.assinadoPor, assinatura.crmAssinante ? `CRM ${assinatura.crmAssinante}` : null].filter(Boolean).join(' — ');
+      const quando = assinatura.assinadoEm ? ` em ${formatDateTimeSaoPaulo(assinatura.assinadoEm)}` : '';
+      doc.text(`Assinado eletronicamente no EloLab${quem ? ` por ${quem}` : ''}${quando}.`, pageWidth / 2, yPos + 16, { align: 'center' });
+    } else {
+      doc.setTextColor(150, 90, 0);
+      doc.text('RASCUNHO — evolução ainda não assinada. Não tem valor de documento final.', pageWidth / 2, yPos + 16, { align: 'center' });
+    }
+    doc.setTextColor(0, 0, 0);
+  }
 
   // Footer on all pages
   const totalPages = doc.getNumberOfPages();
