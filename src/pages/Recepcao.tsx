@@ -1,6 +1,9 @@
 import { formatCurrency } from '@/lib/formatters';
 import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
-import { printReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
+import { imprimirReciboComAviso, registroProfissional, type ReceiptData } from '@/lib/pdfReceipt';
+import { calcularDesconto, calcularTroco, formatarCampoReais, parseMoneyInput } from '@/lib/dinheiro';
+import { FORMA_LABELS } from '@/lib/caixaFormatacao';
+import { MercadoPagoPointPayment } from '@/components/financeiro/MercadoPagoPointPayment';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -34,7 +37,7 @@ import {
   Timer, Phone, XCircle, Receipt, Eye, CalendarPlus, FileText,
   FlaskConical, RotateCcw, ClipboardCheck, ClipboardList, Lock as LockIcon, LockOpen, Activity,
   UserPlus, DoorOpen, MessageCircle, UserX, ArrowUpDown, Hourglass, Link2, Printer,
-  LayoutGrid, List, Mail, CalendarClock, CalendarDays, MoreHorizontal,
+  LayoutGrid, List, Mail, CalendarClock, CalendarDays, MoreHorizontal, Wallet, Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -53,7 +56,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
-import { calcularSaldoPagamento, montarPagamentos, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
+import { calcularSaldoPagamento, formasDisponiveis, montarPagamentos, restanteDaPrincipal, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
 import { patientStep } from '@/lib/receptionWorkflow';
 import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
 import { useRegrasLiberacaoClinica } from '@/hooks/useRegrasLiberacaoClinica';
@@ -66,13 +69,16 @@ import { getReceptionReturnPath } from '@/lib/receptionReturnPath';
 import { printReceptionTicket, receptionTicketCode } from '@/lib/receptionTicket';
 
 // ─── Constants ──────────────────────────────────────────
+// Ícones neutros e os mesmos rótulos do caixa (FORMA_LABELS): a cor não diz nada
+// sobre a forma de pagamento e o vermelho/âmbar ficam para problema.
 const FORMAS_PAGAMENTO = [
-  { value: 'dinheiro', label: 'Dinheiro', icon: Banknote, color: 'text-success' },
-  { value: 'pix', label: 'PIX', icon: QrCode, color: 'text-info' },
-  { value: 'credito', label: 'Crédito', icon: CreditCard, color: 'text-primary' },
-  { value: 'debito', label: 'Débito', icon: CreditCard, color: 'text-warning' },
-  { value: 'transferencia', label: 'Transferência', icon: Landmark, color: 'text-muted-foreground' },
+  { value: 'dinheiro', label: FORMA_LABELS.dinheiro, icon: Banknote },
+  { value: 'pix', label: FORMA_LABELS.pix, icon: QrCode },
+  { value: 'credito', label: FORMA_LABELS.credito, icon: CreditCard },
+  { value: 'debito', label: FORMA_LABELS.debito, icon: Wallet },
+  { value: 'transferencia', label: FORMA_LABELS.transferencia, icon: Landmark },
 ];
+const PARCELAS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 const STEP_LABELS = ['Check-in', 'Balcão', 'Atendimento', 'Finalizado', 'Concluído'] as const;
 
@@ -208,6 +214,18 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     */
    const [chaveIdempotencia, setChaveIdempotencia] = useState('');
    const [obsPagamento, setObsPagamento] = useState('');
+   // Campos de texto (aceitam vírgula); o número sai deles.
+   const [descontoCampo, setDescontoCampo] = useState('');
+   const [descontoModo, setDescontoModo] = useState<'reais' | 'percentual'>('reais');
+   const [motivoDesconto, setMotivoDesconto] = useState('');
+   const [acrescimoCampo, setAcrescimoCampo] = useState('');
+   const [extrasCampo, setExtrasCampo] = useState<string[]>([]);
+   // Enquanto o operador não mexe no "valor recebido agora", ele acompanha o saldo.
+   const [valorRecebidoEditado, setValorRecebidoEditado] = useState(false);
+   const [parcelas, setParcelas] = useState(1);
+   const [valorEntregue, setValorEntregue] = useState('');
+   const [pointAberto, setPointAberto] = useState(false);
+   const [pointPendente, setPointPendente] = useState(false);
    const [paymentDirty, setPaymentDirty] = useState(false);
    const paymentFormSeededId = useRef<string | null>(null);
    const paymentCompleted = useRef(false);
@@ -351,16 +369,33 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     setFormaPagamento('');
     setDesconto(Number(lancamento.desconto || 0));
     setAcrescimo(Number(lancamento.acrescimo || 0));
-    setValorReceberAgora(calcularSaldoPagamento(
+    setDescontoCampo(Number(lancamento.desconto || 0) > 0 ? formatarCampoReais(Number(lancamento.desconto)) : '');
+    setAcrescimoCampo(Number(lancamento.acrescimo || 0) > 0 ? formatarCampoReais(Number(lancamento.acrescimo)) : '');
+    setDescontoModo('reais');
+    setMotivoDesconto('');
+    setValorRecebidoEditado(false);
+    setParcelas(1);
+    setValorEntregue('');
+    setPointAberto(false);
+    setValorReceberAgora(formatarCampoReais(calcularSaldoPagamento(
       Number(lancamento.valor || 0),
       Number(lancamento.desconto || 0),
       Number(lancamento.acrescimo || 0),
       Number(lancamento.valor_pago || 0),
-    ).toFixed(2));
+    )));
     setObsPagamento('');
     setFormasExtras([]);
+    setExtrasCampo([]);
     setChaveIdempotencia(crypto.randomUUID());
   }, [task, lancamentoId, pagamentoLancamentoQuery.data, pacientePagamentoQuery.data, pacientePagamentoQuery.isLoading, pacientePagamentoQuery.isError]);
+  // Desconto ou acréscimo mudou: o valor recebido acompanha o novo saldo,
+  // a não ser que o operador já tenha digitado um valor parcial.
+  useEffect(() => {
+    if (task !== 'payment' || !selectedLancamento || valorRecebidoEditado) return;
+    setValorReceberAgora(formatarCampoReais(calcularSaldoPagamento(
+      Number(selectedLancamento.valor || 0), desconto, acrescimo, Number(selectedLancamento.valor_pago || 0),
+    )));
+  }, [task, selectedLancamento, desconto, acrescimo, valorRecebidoEditado]);
   const medicosQuery = useMedicos({ suppressGlobalErrorToast: true });
   const { data: medicos = [] } = medicosQuery;
   const { data: salas = [] } = useSalas();
@@ -978,16 +1013,17 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       }
     }
 
-  function gerarComprovante(lanc: any, pac: any, forma: string, valorFinal: number, med?: any) {
+  function gerarComprovante(lanc: any, pac: any, forma: string, valorFinal: number, med: any, extras: Pick<ReceiptData, 'jaPagoAntes' | 'saldoRestante' | 'valorEntregue' | 'troco'>) {
     const formaLabel = FORMAS_PAGAMENTO.find(f => f.value === forma)?.label || forma;
     const agora = dataHoraDaClinica(new Date());
-    printReceiptPdf({
-      titulo: 'COMPROVANTE DE PAGAMENTO',
+    void imprimirReciboComAviso({
+      modelo: 'pagamento',
       dataHora: agora,
       docId: lanc.id?.slice(0, 8).toUpperCase(),
       paciente: pac?.nome || '—',
       cpf: pac?.cpf || '',
       medico: med?.nome || undefined,
+      medicoRegistro: registroProfissional(med),
       especialidade: med?.especialidade || undefined,
       descricao: lanc.descricao || 'Consulta',
       formaPagamento: formaLabel,
@@ -995,6 +1031,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       desconto: desconto > 0 ? desconto : undefined,
       acrescimo: acrescimo > 0 ? acrescimo : undefined,
       valorFinal,
+      operador: profile?.nome || undefined,
+      ...extras,
     });
   }
 
@@ -1064,6 +1102,36 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       toast.error('Preencha forma e valor em cada linha do pagamento dividido.');
       return;
     }
+    const formasUsadas = [formaPagamento, ...formasExtras.map(f => f.forma)];
+    if (new Set(formasUsadas).size !== formasUsadas.length) {
+      toast.error('Cada forma de pagamento só pode aparecer uma vez.');
+      return;
+    }
+    const descontoNovo = desconto > 0 && Math.round(desconto * 100) !== Math.round(Number(selectedLancamento.desconto || 0) * 100);
+    if (descontoNovo && motivoDesconto.trim().length < 3) {
+      toast.error('Informe o motivo do desconto.');
+      return;
+    }
+    const parteEmDinheiro = formaPagamento === 'dinheiro'
+      ? restanteDaPrincipal(valorFinal, formasExtras)
+      : Number(formasExtras.find(f => f.forma === 'dinheiro')?.valor || 0);
+    const entregue = parseMoneyInput(valorEntregue);
+    const troco = entregue === null || parteEmDinheiro <= 0 ? null : calcularTroco(parteEmDinheiro, entregue);
+    if (entregue !== null && parteEmDinheiro > 0 && troco === null) {
+      toast.error('O valor entregue é menor que a parte em dinheiro.');
+      return;
+    }
+    const usaCredito = formasUsadas.includes('credito');
+    // Parcelas e motivo do desconto vão nas observações do pagamento. A
+    // observação vira a descrição do movimento no caixa, então o nome da
+    // cobrança vem junto para a linha continuar legível.
+    const detalhes = [
+      usaCredito && parcelas > 1 ? `Crédito em ${parcelas}x` : null,
+      descontoNovo ? `Desconto: ${motivoDesconto.trim()}` : null,
+    ].filter(Boolean).join(' · ');
+    const observacoesPagamento = sanitizeText(obsPagamento)
+      ? [sanitizeText(obsPagamento), detalhes].filter(Boolean).join(' · ')
+      : detalhes ? `Pagamento: ${selectedLancamento.descricao || 'Atendimento'} · ${detalhes}` : '';
 
     if (!(await checkCaixaAberto())) return;
 
@@ -1092,7 +1160,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         p_desconto: Number(desconto.toFixed(2)),
         p_acrescimo: Number(acrescimo.toFixed(2)),
         p_chave_idempotencia: chaveIdempotencia || null,
-        p_observacoes: sanitizeText(obsPagamento) || null,
+        p_observacoes: observacoesPagamento.slice(0, 500) || null,
       });
       if (error) throw error;
       paymentCompleted.current = true;
@@ -1141,8 +1209,13 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       // Emit receipt automatically - find medico from enriched data
       if (!pagamentoRepetido) {
         const matchedItem = enriched.find(e => e.lanc?.id === selectedLancamento.id);
-        const rotulos = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma.value, forma.label]));
-        gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med);
+        const rotulos = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma.value, forma.value === 'credito' && parcelas > 1 ? `${forma.label} ${parcelas}x` : forma.label]));
+        gerarComprovante(selectedLancamento, selectedPacienteBalcao, resumirPagamentos(pagamentos, rotulos), valorFinal, matchedItem?.med, {
+          jaPagoAntes: jaPago > 0 ? jaPago : undefined,
+          saldoRestante: Math.max(0, Math.round((saldoReceber - valorFinal) * 100) / 100),
+          valorEntregue: troco !== null ? entregue ?? undefined : undefined,
+          troco: troco ?? undefined,
+        });
       }
       navigate(returnTo, { replace: true });
     } catch (err: any) {
@@ -1470,6 +1543,20 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     const valorBase = Number(lancamento?.valor || 0);
     const saldo = lancamento ? calcularSaldoPagamento(valorBase, desconto, acrescimo, Number(lancamento.valor_pago || 0)) : 0;
     const valorValido = lancamento ? validarValorRecebido(valorReceberAgora, saldo) : null;
+    const restantePrincipal = valorValido === null ? null : restanteDaPrincipal(valorValido, formasExtras);
+    const parteDinheiro = valorValido === null ? 0 : formaPagamento === 'dinheiro' ? (restantePrincipal ?? 0) : Number(formasExtras.find(f => f.forma === 'dinheiro')?.valor || 0);
+    const entregueValor = parseMoneyInput(valorEntregue);
+    const trocoTela = entregueValor === null || parteDinheiro <= 0 ? null : calcularTroco(parteDinheiro, entregueValor);
+    const usaCreditoTela = formaPagamento === 'credito' || formasExtras.some(f => f.forma === 'credito');
+    const descontoAlterado = desconto > 0 && Math.round(desconto * 100) !== Math.round(Number(lancamento?.desconto || 0) * 100);
+    const descontoAcimaDoLimite = desconto > valorBase * 0.5;
+    const ajustesSalvos = Boolean(lancamento) && Math.round(desconto * 100) === Math.round(Number(lancamento?.desconto || 0) * 100)
+      && Math.round(acrescimo * 100) === Math.round(Number(lancamento?.acrescimo || 0) * 100);
+    const atualizarDesconto = (texto: string, modo = descontoModo) => {
+      setPaymentDirty(true);
+      setDescontoCampo(texto);
+      setDesconto(texto.trim() === '' ? 0 : calcularDesconto(valorBase, texto, modo) ?? 0);
+    };
     const pacienteNaoLocalizado = Boolean(pagamentoLancamentoQuery.data?.paciente_id && pacientePagamentoQuery.isSuccess && !pacientePagamentoQuery.data);
 
     return (
@@ -1510,16 +1597,28 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                 <div role="group" aria-labelledby="forma-pagamento-label" className="space-y-2">
                   <Label id="forma-pagamento-label">Forma de pagamento</Label>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {FORMAS_PAGAMENTO.map(fp => <button type="button" key={fp.value} onClick={() => { setPaymentDirty(true); setFormaPagamento(fp.value); }} aria-pressed={formaPagamento === fp.value} className={cn('flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border p-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', formaPagamento === fp.value ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:bg-muted/50')}><fp.icon aria-hidden="true" className={cn('h-5 w-5', formaPagamento === fp.value ? 'text-primary' : fp.color)} />{fp.label}</button>)}
+                    {FORMAS_PAGAMENTO.map(fp => <button type="button" key={fp.value} onClick={() => { setPaymentDirty(true); setFormaPagamento(fp.value); setFormasExtras(items => items.map(item => item.forma === fp.value ? { ...item, forma: '' } : item)); }} aria-pressed={formaPagamento === fp.value} className={cn('flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border p-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', formaPagamento === fp.value ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-muted/50')}><fp.icon aria-hidden="true" className="h-5 w-5" />{fp.label}</button>)}
                   </div>
                 </div>
-                <div className="space-y-2"><Label htmlFor="valor-recebido-agora">Valor recebido agora (R$)</Label><Input id="valor-recebido-agora" type="number" min="0.01" max={saldo} step="0.01" value={valorReceberAgora} onChange={event => { setPaymentDirty(true); setValorReceberAgora(event.target.value); }} aria-describedby="saldo-apos-recebimento" /><p id="saldo-apos-recebimento" aria-live="polite" className="text-xs text-muted-foreground">{valorValido === null ? `Saldo atual: ${formatCurrency(saldo)}.` : `Ficará pendente: ${formatCurrency(saldo - valorValido)}.`}</p></div>
-                {formasExtras.length > 0 && <div role="group" aria-labelledby="forma-pagamento-adicional-label" className="space-y-2"><Label id="forma-pagamento-adicional-label">Dividir com outra forma</Label>{formasExtras.map((extra, i) => <div key={i} className="flex items-center gap-2"><Select value={extra.forma} onValueChange={value => { setPaymentDirty(true); setFormasExtras(items => items.map((item, index) => index === i ? { ...item, forma: value } : item)); }}><SelectTrigger aria-label={`Forma de pagamento adicional ${i + 1}`} className="h-10 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger><SelectContent>{FORMAS_PAGAMENTO.filter(fp => fp.value !== formaPagamento).map(fp => <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>)}</SelectContent></Select><Input type="number" min={0} step="0.01" placeholder="R$" aria-label={`Valor da forma de pagamento adicional ${i + 1}`} className="h-10 w-28" value={extra.valor || ''} onChange={event => { setPaymentDirty(true); setFormasExtras(items => items.map((item, index) => index === i ? { ...item, valor: Number(event.target.value) || 0 } : item)); }} /><Button type="button" variant="ghost" size="icon" aria-label={`Remover forma de pagamento adicional ${i + 1}`} className="h-10 w-10 shrink-0 text-destructive" onClick={() => { setPaymentDirty(true); setFormasExtras(items => items.filter((_, index) => index !== i)); }}><XCircle className="h-4 w-4" /></Button></div>)}</div>}
-                {formaPagamento && <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={() => { setPaymentDirty(true); setFormasExtras(items => [...items, { forma: '', valor: 0 }]); }}><DollarSign className="h-4 w-4" />Dividir com outra forma de pagamento</Button>}
-                <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="recepcao-desconto">Desconto (R$)</Label><Input id="recepcao-desconto" type="number" min={0} step="0.01" value={desconto || ''} onChange={event => { setPaymentDirty(true); setDesconto(Number(event.target.value) || 0); }} /></div><div className="space-y-2"><Label htmlFor="recepcao-acrescimo">Acréscimo (R$)</Label><Input id="recepcao-acrescimo" type="number" min={0} step="0.01" value={acrescimo || ''} onChange={event => { setPaymentDirty(true); setAcrescimo(Number(event.target.value) || 0); }} /></div></div>
+                <div className="space-y-2"><Label htmlFor="valor-recebido-agora">Valor recebido agora (R$)</Label><Input id="valor-recebido-agora" type="text" inputMode="decimal" autoComplete="off" placeholder="0,00" value={valorReceberAgora} onChange={event => { setPaymentDirty(true); setValorRecebidoEditado(true); setValorReceberAgora(event.target.value); }} aria-invalid={valorReceberAgora.trim() !== '' && valorValido === null} aria-describedby="saldo-apos-recebimento" />{valorRecebidoEditado && valorValido !== saldo && <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => { setValorRecebidoEditado(false); setValorReceberAgora(formatarCampoReais(saldo)); }}>Receber o saldo inteiro ({formatCurrency(saldo)})</Button>}<p id="saldo-apos-recebimento" aria-live="polite" className="text-xs text-muted-foreground">{valorValido === null ? `Saldo atual: ${formatCurrency(saldo)}.` : `Ficará pendente: ${formatCurrency(saldo - valorValido)}.`}</p></div>
+                {formasExtras.length > 0 && <div role="group" aria-labelledby="forma-pagamento-adicional-label" className="space-y-2"><Label id="forma-pagamento-adicional-label">Dividir com outra forma</Label>{formasExtras.map((extra, i) => <div key={i} className="flex items-center gap-2"><Select value={extra.forma} onValueChange={value => { setPaymentDirty(true); setFormasExtras(items => items.map((item, index) => index === i ? { ...item, forma: value } : item)); }}><SelectTrigger aria-label={`Forma de pagamento adicional ${i + 1}`} className="h-10 flex-1"><SelectValue placeholder="Forma" /></SelectTrigger><SelectContent>{formasDisponiveis(FORMAS_PAGAMENTO, formaPagamento, formasExtras, i).map(fp => <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>)}</SelectContent></Select><Input type="text" inputMode="decimal" autoComplete="off" placeholder="0,00" aria-label={`Valor da forma de pagamento adicional ${i + 1}`} className="h-11 w-28" value={extrasCampo[i] ?? (extra.valor ? formatarCampoReais(extra.valor) : '')} onChange={event => { const texto = event.target.value; setPaymentDirty(true); setExtrasCampo(items => { const copia = [...items]; copia[i] = texto; return copia; }); setFormasExtras(items => items.map((item, index) => index === i ? { ...item, valor: parseMoneyInput(texto) ?? 0 } : item)); }} /><Button type="button" variant="ghost" size="icon" aria-label={`Remover forma de pagamento adicional ${i + 1}`} className="h-11 w-11 shrink-0 text-destructive" onClick={() => { setPaymentDirty(true); setFormasExtras(items => items.filter((_, index) => index !== i)); setExtrasCampo(items => items.filter((_, index) => index !== i)); }}><XCircle className="h-4 w-4" /></Button></div>)}{formaPagamento && restantePrincipal !== null && <p aria-live="polite" className="text-xs text-muted-foreground">Restante em {FORMAS_PAGAMENTO.find(f => f.value === formaPagamento)?.label}: <span className="font-medium tabular-nums text-foreground">{formatCurrency(restantePrincipal)}</span></p>}{valorValido !== null && somaDasExtras(formasExtras) > valorValido && <p role="alert" className="text-xs text-destructive">As formas adicionais somam mais que o valor recebido agora.</p>}</div>}
+                {formaPagamento && formasDisponiveis(FORMAS_PAGAMENTO, formaPagamento, formasExtras, -1).length > 0 && <Button type="button" variant="outline" size="sm" className="min-h-11 w-full gap-2" onClick={() => { setPaymentDirty(true); setFormasExtras(items => [...items, { forma: '', valor: 0 }]); setExtrasCampo(items => [...items, '']); }}><DollarSign className="h-4 w-4" />Dividir com outra forma de pagamento</Button>}
+                {usaCreditoTela && <div className="space-y-2"><Label htmlFor="recepcao-parcelas">Parcelas no crédito</Label><Select value={String(parcelas)} onValueChange={value => { setPaymentDirty(true); setParcelas(Number(value)); }}><SelectTrigger id="recepcao-parcelas" className="h-11"><SelectValue /></SelectTrigger><SelectContent>{PARCELAS.map(n => <SelectItem key={n} value={String(n)}>{n === 1 ? 'À vista (1x)' : `${n}x`}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">Fica registrado nas observações e no comprovante.</p></div>}
+                {parteDinheiro > 0 && <div className="space-y-2"><Label htmlFor="recepcao-valor-entregue">Valor entregue em dinheiro <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="recepcao-valor-entregue" type="text" inputMode="decimal" autoComplete="off" placeholder="0,00" value={valorEntregue} onChange={event => setValorEntregue(event.target.value)} aria-describedby="recepcao-troco" aria-invalid={entregueValor !== null && trocoTela === null} /><p id="recepcao-troco" aria-live="polite" className={entregueValor !== null && trocoTela === null ? 'text-xs text-destructive' : 'text-sm'}>{entregueValor === null ? `Parte em dinheiro: ${formatCurrency(parteDinheiro)}.` : trocoTela === null ? `O valor entregue é menor que ${formatCurrency(parteDinheiro)}.` : <>Troco: <span className="font-semibold tabular-nums">{formatCurrency(trocoTela)}</span></>}</p></div>}
+                <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="recepcao-desconto">Desconto {descontoModo === 'reais' ? '(R$)' : '(%)'}</Label><div role="group" aria-label="Tipo de desconto" className="flex gap-1">{(['reais', 'percentual'] as const).map(modo => <Button key={modo} type="button" size="sm" variant={descontoModo === modo ? 'default' : 'outline'} aria-pressed={descontoModo === modo} className="h-11 min-w-11 px-3" onClick={() => { setDescontoModo(modo); atualizarDesconto('', modo); }}>{modo === 'reais' ? 'R$' : '%'}</Button>)}</div></div><Input id="recepcao-desconto" type="text" inputMode="decimal" autoComplete="off" placeholder={descontoModo === 'reais' ? '0,00' : '0'} value={descontoCampo} onChange={event => atualizarDesconto(event.target.value)} aria-invalid={descontoAcimaDoLimite} aria-describedby="recepcao-desconto-ajuda" /><p id="recepcao-desconto-ajuda" className={descontoAcimaDoLimite ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>{descontoAcimaDoLimite ? `O desconto máximo é 50% (${formatCurrency(valorBase * 0.5)}).` : descontoModo === 'percentual' && desconto > 0 ? `Equivale a ${formatCurrency(desconto)}.` : 'Máximo de 50% do valor.'}</p></div><div className="space-y-2"><Label htmlFor="recepcao-acrescimo">Acréscimo (R$)</Label><Input id="recepcao-acrescimo" type="text" inputMode="decimal" autoComplete="off" placeholder="0,00" value={acrescimoCampo} onChange={event => { setPaymentDirty(true); setAcrescimoCampo(event.target.value); setAcrescimo(parseMoneyInput(event.target.value) ?? 0); }} /></div></div>
+                {descontoAlterado && <div className="space-y-2"><Label htmlFor="recepcao-motivo-desconto">Motivo do desconto <span className="text-destructive">*</span></Label><Input id="recepcao-motivo-desconto" maxLength={120} placeholder="Ex.: retorno, cortesia, convênio parceiro" value={motivoDesconto} onChange={event => { setPaymentDirty(true); setMotivoDesconto(event.target.value); }} aria-invalid={motivoDesconto.trim().length < 3} /></div>}
                 <div className="space-y-2"><Label htmlFor="recepcao-observacoes-pagamento">Observações <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea id="recepcao-observacoes-pagamento" placeholder="Informação complementar sobre o recebimento" value={obsPagamento} onChange={event => { setPaymentDirty(true); setObsPagamento(event.target.value); }} rows={3} /></div>
-                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={isProcessing} onClick={() => navigate(returnTo)}>Cancelar</Button><Button type="button" className="gap-2" disabled={!formaPagamento || isProcessing || !lancamento || valorValido === null || (Boolean(lancamento.paciente_id) && !paciente)} onClick={() => void handleConfirmarPagamento()}>{isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-4 w-4" />}Confirmar pagamento</Button></div>
+                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={isProcessing} onClick={() => navigate(returnTo)}>Cancelar</Button><Button type="button" className="min-h-11 gap-2" disabled={!formaPagamento || isProcessing || !lancamento || valorValido === null || pointPendente || descontoAcimaDoLimite || (descontoAlterado && motivoDesconto.trim().length < 3) || (Boolean(lancamento.paciente_id) && !paciente)} onClick={() => void handleConfirmarPagamento()}>{isProcessing ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-4 w-4" />}Confirmar pagamento</Button></div>
                 {!formaPagamento && <p role="status" className="text-right text-xs text-muted-foreground">Escolha a forma de pagamento para confirmar.</p>}
+                {pointPendente && <p role="status" className="text-right text-xs text-muted-foreground">Há uma cobrança no Point em andamento. Conclua ou cancele no terminal antes de registrar outra forma.</p>}
+                <div className="border-t border-border pt-4">
+                  {!pointAberto ? (
+                    <Button type="button" variant="outline" className="min-h-11 w-full gap-2" onClick={() => setPointAberto(true)} disabled={!ajustesSalvos}><Radio aria-hidden="true" className="h-4 w-4" />Cobrar na maquininha Mercado Pago Point</Button>
+                  ) : (
+                    <MercadoPagoPointPayment clinicId={profile?.clinica_id} lancamentoId={lancamento.id} open={pointAberto} disabled={isProcessing || !ajustesSalvos} saldo={saldo} onPendingChange={setPointPendente} />
+                  )}
+                  {!ajustesSalvos && <p className="mt-2 text-xs text-muted-foreground">Com desconto ou acréscimo alterado nesta tela, registre o pagamento aqui; o Point cobra o saldo já salvo na cobrança.</p>}
+                </div>
               </CardContent>
             </Card>
           </div>
