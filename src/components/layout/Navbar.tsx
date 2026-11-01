@@ -74,23 +74,29 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
 
   useKeyboardShortcuts();
 
-  const { data: queueNotifications = [] } = useQuery({
+  // As duas consultas abaixo são atualizadas pelo canal realtime global
+  // (useRealtimeSubscription invalida 'notification-queue' e
+  // 'central-notificacoes' nos eventos de notification_queue e tarefas). O
+  // intervalo de 60 s só cobre as fontes da central sem canal próprio e o caso
+  // de o realtime cair.
+  const { data: queueNotifications = [], isError: queueNotificationsError } = useQuery({
     queryKey: ['notification-queue', profile?.clinica_id],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('notification_queue')
-        .select('*')
+        .select('id, tipo, assunto, status, destinatario_nome, destinatario_email, destinatario_telefone, created_at')
         .eq('clinica_id', profile.clinica_id)
         .order('created_at', { ascending: false })
         .limit(30);
-      return data || [];
+      if (error) throw error;
+      return data ?? [];
     },
     enabled: !!profile?.clinica_id,
-    refetchInterval: 15000,
+    refetchInterval: 60_000,
   });
 
-  const { data: operationalNotifications = [] } = useQuery({
+  const { data: operationalNotifications = [], isError: operationalNotificationsError } = useQuery({
     queryKey: ['central-notificacoes', user?.id, profile?.clinica_id],
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc('central_notificacoes_usuario', { p_limit: 250 });
@@ -98,7 +104,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
       return (data ?? []) as Array<{ source_type: string; source_id: string; title: string; message: string; severity: 'info' | 'warning' | 'error'; href: string; is_read: boolean }>;
     },
     enabled: !!user && !!profile?.clinica_id,
-    refetchInterval: 20000,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
@@ -363,6 +369,11 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
 
               <TabsContent value="alertas" className="mt-0 p-1.5">
                 <ScrollArea className="h-[280px]">
+                  {operationalNotificationsError && operationalNotifications.length === 0 && (
+                    <p className="px-2 py-2 text-xs text-muted-foreground" role="alert">
+                      Não foi possível atualizar os alertas da clínica.
+                    </p>
+                  )}
                   {operationalNotifications.slice(0, 30).map((item) => (
                     <DropdownMenuItem
                       key={`${item.source_type}:${item.source_id}`}
@@ -395,7 +406,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                         <p className="text-[10px] text-muted-foreground/40 mt-1">{notification.time}</p>
                       </div>
                     </div>
-                  )) : operationalNotifications.length === 0 && (
+                  )) : operationalNotifications.length === 0 && !operationalNotificationsError && (
                     <div className="py-10 text-center text-sm text-muted-foreground/40">
                       <Bell className="h-7 w-7 mx-auto mb-2 opacity-10" />
                       Sem alertas
@@ -430,7 +441,11 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                         </div>
                       </div>
                     </div>
-                  )) : (
+                  )) : queueNotificationsError ? (
+                    <div className="py-10 text-center text-sm text-muted-foreground" role="alert">
+                      Não foi possível carregar os envios recentes.
+                    </div>
+                  ) : (
                     <div className="py-10 text-center text-sm text-muted-foreground/40">
                       <Mail className="h-7 w-7 mx-auto mb-2 opacity-10" />
                       Nenhum envio recente

@@ -1,20 +1,27 @@
 import { expect, test } from '@playwright/test';
 import { installSyntheticClinic } from './helpers/syntheticClinic';
 
+// Dia 15 do mês da clínica: a conta vencida há 5 dias não pode cair no mês anterior,
+// que a tela esconde no filtro padrão "Mês atual".
+const TODAY = `${new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit',
+}).format(new Date())}-15`;
+
 const dateOffset = (days: number) => {
-  const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-  const date = new Date(`${today}T12:00:00-03:00`);
+  const date = new Date(`${TODAY}T12:00:00-03:00`);
   date.setDate(date.getDate() + days);
   return date;
 };
 
 test.use({ serviceWorkers: 'block' });
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.install({ time: new Date(`${TODAY}T10:00:00-03:00`) });
+});
+
 test('receivables prioritize collection, show remaining balance and due urgency', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false, accountsPopulated: true });
   const descricao = 'Procedimento ambulatorial de complexidade intermediária com descrição longa para revisar truncamento e leitura da lista';
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -62,7 +69,7 @@ test('receivables prioritize collection, show remaining balance and due urgency'
 
 test('receivables show useful empty and loading states', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/contas?tab=receber');
   const main = page.locator('#main-content');
@@ -91,7 +98,7 @@ test('receivables show useful empty and loading states', async ({ page }, testIn
 
 test('receivables explain a read error and recover on retry', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false });
   let falhar = true;
   let leituras = 0;
   await page.route('http://127.0.0.1:54321/rest/v1/lancamentos**', async route => {
@@ -118,7 +125,7 @@ test('receivables explain a read error and recover on retry', async ({ page }, t
 });
 
 test('receiving partial amount lives on its own page and keeps idempotent retry data', async ({ page }, info) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false, accountsPopulated: true });
   const payloads: Record<string, unknown>[] = [];
   await page.route('**/rest/v1/rpc/registrar_pagamento', async route => {
     payloads.push(route.request().postDataJSON());
@@ -174,7 +181,7 @@ test('receiving partial amount lives on its own page and keeps idempotent retry 
 });
 
 test('receivable payment protects a modified draft when returning to the list', async ({ page }) => {
-  await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  await installSyntheticClinic(page, { today: TODAY, platformAdmin: false, accountsPopulated: true });
   await page.goto('/contas?tab=receber&status=atrasado');
   await page.getByRole('button', { name: 'Receber saldo' }).first().click();
   await page.getByLabel('Observações').fill('Conferir depois');
@@ -192,7 +199,7 @@ test('receivable payment protects a modified draft when returning to the list', 
 });
 
 test('payment reversal opens its own page and keeps the audited reason after a server rejection', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   const payloads: Record<string, unknown>[] = [];
   await page.route('**/rest/v1/rpc/estornar_pagamento', async route => {
     payloads.push(route.request().postDataJSON());
@@ -242,7 +249,7 @@ test('payment reversal opens its own page and keeps the audited reason after a s
 });
 
 test('payment reversal explains when the account has no active payment', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   await page.route('http://127.0.0.1:54321/rest/v1/pagamentos**', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'content-range': '*/0' }, body: '[]' });
@@ -256,7 +263,7 @@ test('payment reversal explains when the account has no active payment', async (
 });
 
 test('new receivable opens as a page, survives reload, and restores list context', async ({ page }, info) => {
-  const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/contas?tab=receber&status=aberto&mes=2026-10');
   const search = page.getByRole('textbox', { name: 'Buscar contas a receber' });
@@ -296,7 +303,7 @@ test('new receivable opens as a page, survives reload, and restores list context
 });
 
 test('receivable creation keeps the selected patient and draft after an error', async ({ page }, info) => {
-  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
+  await installSyntheticClinic(page, { today: TODAY, appOrigin: String(info.project.use.baseURL), platformAdmin: false, accountsPopulated: true });
   const payloads: Record<string, unknown>[] = [];
   await page.route('**/rest/v1/lancamentos*', async route => {
     if (route.request().method() !== 'POST') return route.fallback();
@@ -335,7 +342,7 @@ test('receivable creation keeps the selected patient and draft after an error', 
 });
 
 test('receivable page protects and discards unsaved form without writing', async ({ page }) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false });
+  const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false });
   await page.goto('/contas/receber/nova');
   await page.getByLabel('Descricao da receita').fill('Rascunho de receita QA');
 

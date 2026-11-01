@@ -1393,8 +1393,20 @@ export default function Prontuarios() {
   useEffect(() => {
     if (isProntuarioOpen || routeOpenedRef.current || !routeAgendamentoId || selectedPacienteId !== routePacienteId
       || !selectedPaciente || pacienteSelecionadoQuery.isLoading || pacienteSelecionadoQuery.isError
-      || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos) return;
+      || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos
+      || (historicoAuditadoPacienteId !== routePacienteId && !erroHistorico)) return;
     if (!user?.clinica_id) return;
+    // A lista de prontuários só é buscada depois da auditoria do histórico; até
+    // lá a query fica desabilitada (sem "loading") e a lista vazia levaria a
+    // criar uma evolução duplicada para um agendamento que já tem prontuário.
+    if (erroHistorico) {
+      routeOpenedRef.current = true;
+      toast.error('Não foi possível confirmar a autorização de leitura', {
+        description: 'O atendimento não foi aberto. Tente novamente após confirmar o acesso ao histórico.',
+      });
+      navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId || '')}`, { replace: true });
+      return;
+    }
 
     // O atalho vem da URL e pode estar desatualizado ou alterado. Confirme no
     // servidor que o agendamento pertence ao paciente e à clínica antes de
@@ -1456,6 +1468,8 @@ export default function Prontuarios() {
     loadingMedicos,
     erroProntuarios,
     erroMedicos,
+    historicoAuditadoPacienteId,
+    erroHistorico,
     pacienteProntuarios,
     handleNovoProntuario,
     user?.clinica_id,
