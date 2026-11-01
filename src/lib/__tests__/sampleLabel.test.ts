@@ -22,6 +22,13 @@ describe('sample labels', () => {
     expect(html).not.toMatch(/João|Nascimento|Idade|Sexo|Hemograma|Paciente/i);
   });
 
+  it('adds patient name, birth date, collection date and exams when provided', () => {
+    const html = sampleLabelHtml({ codigoAmostra: 'a4b82f19', tubo: 'EDTA (Roxo)', paciente: 'Maria <Souza>', nascimento: '1980-03-15', dataColeta: '01/11/2026 09:30', exames: ['Hemograma', 'Glicemia'] });
+    expect(html).toContain('Maria &lt;Souza&gt; · Nasc. 15/03/1980');
+    expect(html).toContain('Coleta: 01/11/2026 09:30');
+    expect(html).toContain('Hemograma, Glicemia');
+  });
+
   it('escapes tube labels before inserting them in the print document', () => {
     expect(sampleLabelHtml({ codigoAmostra: 'a4b82f19', tubo: '<script>alert(1)</script>' }))
       .not.toContain('<script>');
