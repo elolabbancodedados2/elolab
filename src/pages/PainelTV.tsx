@@ -2,8 +2,6 @@ import { nomeMedico } from '@/lib/formatters';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
@@ -34,8 +32,21 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { canalUnico } from '@/lib/realtimeCanal';
-import { chaveChamada, lerChamadasAnunciadas, salvarChamadasAnunciadas } from '@/lib/painelChamadas';
+import {
+  chaveChamada, fraseChamada, lerChamadasAnunciadas, lerChamadasRecentes, lerFiltroPainel,
+  registrarChamadaRecente, salaNoFiltro, salvarChamadasAnunciadas, salvarChamadasRecentes,
+  type ChamadaRecente,
+} from '@/lib/painelChamadas';
 import { receptionTicketCode } from '@/lib/receptionTicket';
+import { dateRangeInTimeZoneIso, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { horaSP } from '@/lib/caixaFormatacao';
+
+const FUSO_CLINICA = 'America/Sao_Paulo';
+const formatarDiaSP = (instante: Date) => new Intl.DateTimeFormat('pt-BR', {
+  timeZone: FUSO_CLINICA, weekday: 'long', day: '2-digit', month: 'long',
+}).format(instante);
+
+type SalaPainel = { id: string; nome: string; tipo?: string | null; setor?: string | null };
 
 interface FilaItem {
   id: string;
@@ -62,7 +73,7 @@ interface MediaItem {
 function chamarPacienteVoz(senha: string, salaNome: string, repetir = 2): Promise<void> {
   if (!('speechSynthesis' in window)) return Promise.resolve();
 
-  const texto = `Senha ${senha}, por favor dirija-se ${salaNome === 'Recepção' ? 'à Recepção' : `à ${salaNome}`}.`;
+  const texto = fraseChamada(senha, salaNome);
   return new Promise(resolve => {
     let terminou = false;
     const finalizar = () => {
@@ -153,6 +164,14 @@ export default function PainelTV() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [chamadoAtual, setChamadoAtual] = useState<string | null>(null);
   const [somAtivo, setSomAtivo] = useState(true);
+  // O navegador só libera som e tela cheia depois de um gesto na página.
+  const [painelAtivado, setPainelAtivado] = useState(false);
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
+  const filtroPainel = lerFiltroPainel(location.search);
+  const filtroRef = useRef(filtroPainel);
+  filtroRef.current = filtroPainel;
+  const chaveFiltro = location.search;
+  const [ultimasChamadas, setUltimasChamadas] = useState<ChamadaRecente[]>([]);
   
   // Track which calls we've already announced
   // persisted per clinic so a reload of the TV does not re-announce old calls
@@ -214,7 +233,48 @@ export default function PainelTV() {
       clearInterval(timeInterval);
       clearInterval(dataInterval);
     };
-  }, [profile?.clinica_id, isMediaManagementPage]);
+  }, [profile?.clinica_id, isMediaManagementPage, chaveFiltro]);
+
+  useEffect(() => {
+    if (profile?.clinica_id) setUltimasChamadas(lerChamadasRecentes(profile.clinica_id, todaySaoPauloDateOnly()));
+  }, [profile?.clinica_id]);
+
+  // Mantém a tela acesa enquanto o painel estiver ativado; o navegador solta o
+  // bloqueio quando a aba some, então ele é pedido de novo ao voltar.
+  useEffect(() => {
+    if (!painelAtivado || isMediaManagementPage) return;
+    const pedir = async () => {
+      try {
+        const wakeLock = (navigator as Navigator & { wakeLock?: { request: (tipo: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock;
+        if (wakeLock && document.visibilityState === 'visible') wakeLockRef.current = await wakeLock.request('screen');
+      } catch {
+        // Sem suporte ou negado: o painel segue funcionando.
+      }
+    };
+    void pedir();
+    const aoVoltar = () => { if (document.visibilityState === 'visible') void pedir(); };
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar);
+      void wakeLockRef.current?.release().catch(() => undefined);
+      wakeLockRef.current = null;
+    };
+  }, [painelAtivado, isMediaManagementPage]);
+
+  const ativarPainel = async () => {
+    setPainelAtivado(true);
+    setSomAtivo(true);
+    try {
+      const Contexto = window.AudioContext || (window as any).webkitAudioContext;
+      if (Contexto) { const ctx = new Contexto(); await ctx.resume(); void ctx.close(); }
+    } catch { /* sem áudio */ }
+    try {
+      if ('speechSynthesis' in window) window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+    } catch { /* sem voz */ }
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+    } catch { /* tela cheia negada */ }
+  };
 
   // Realtime subscription for instant updates
   useEffect(() => {
@@ -278,6 +338,11 @@ export default function PainelTV() {
         const sala = chamado.sala_id ? (salas[chamado.sala_id] || 'Sala') : 'Recepção';
 
         void enfileirarChamadaRef.current?.(senha, sala);
+        setUltimasChamadas((lista) => {
+          const proxima = registrarChamadaRecente(lista, { chave, senha, sala, em: new Date().toISOString() });
+          salvarChamadasRecentes(clinicaId, todaySaoPauloDateOnly(), proxima);
+          return proxima;
+        });
       }
     }
     
@@ -299,15 +364,20 @@ export default function PainelTV() {
     }
     if (!filaCarregadaUmaVez.current) setFilaCarregando(true);
     try {
+      // Só a fila do dia em São Paulo: linhas esquecidas de dias anteriores não vão para a TV.
+      const hoje = todaySaoPauloDateOnly();
+      const intervalo = dateRangeInTimeZoneIso(hoje, hoje, FUSO_CLINICA);
       const { data: filaData, error: filaError } = await supabase
         .from('fila_atendimento')
-        .select('*')
+        .select('id, agendamento_id, posicao, status, sala_id, horario_chegada, prioridade, updated_at')
         .eq('clinica_id', clinicaId)
         .in('status', ['aguardando', 'chamado', 'em_atendimento'])
+        .gte('horario_chegada', intervalo.gte!)
+        .lt('horario_chegada', intervalo.lt!)
         .order('posicao');
       if (filaError) throw filaError;
 
-      const linhasFila = (filaData ?? []) as FilaItem[];
+      let linhasFila = (filaData ?? []) as FilaItem[];
       const agendamentoIds = linhasFila.map((f) => f.agendamento_id);
       let agendamentos: Array<{ id: string; medico_id: string | null; sala_id: string | null }> = [];
       if (agendamentoIds.length > 0) {
@@ -340,14 +410,25 @@ export default function PainelTV() {
       }
 
       const mapaSalas: Record<string, string> = {};
+      const infoSalas: Record<string, SalaPainel> = {};
       if (allSalaIds.length > 0) {
         const { data, error } = await supabase
           .from('salas')
-          .select('id, nome')
+          .select('id, nome, tipo, setor')
           .eq('clinica_id', clinicaId)
           .in('id', allSalaIds);
         if (error) throw error;
-        data?.forEach((sala) => { mapaSalas[sala.id] = sala.nome; });
+        (data as SalaPainel[] | null)?.forEach((sala) => { mapaSalas[sala.id] = sala.nome; infoSalas[sala.id] = sala; });
+      }
+
+      // ?salas= / ?setor=: cada TV mostra só o seu setor.
+      const filtro = filtroRef.current;
+      if (filtro) {
+        const salaDoAgendamento = new Map(agendamentos.map((a) => [a.id, a.sala_id]));
+        linhasFila = linhasFila.filter((linha) => {
+          const salaId = linha.sala_id ?? salaDoAgendamento.get(linha.agendamento_id) ?? null;
+          return salaNoFiltro(filtro, salaId ? infoSalas[salaId] : null);
+        });
       }
 
       if (requestSequence !== filaLoadSequence.current) return;
@@ -664,17 +745,28 @@ export default function PainelTV() {
             <h1 className="text-4xl md:text-5xl font-bold font-display tracking-tight">
               <span className="text-white/60">Elo</span>Lab
             </h1>
-            <p className="text-lg md:text-xl text-white/60 mt-1">Painel de Atendimento</p>
+            <p className="text-lg md:text-xl text-white/60 mt-1">Painel de atendimento</p>
           </div>
           <div className="text-right">
             <p className="text-5xl md:text-6xl font-bold font-display tracking-tight">
-              {format(currentTime, 'HH:mm')}
+              {horaSP(currentTime)}
             </p>
-            <p className="text-lg md:text-xl text-white/60 capitalize">
-              {format(currentTime, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+            <p className="text-lg md:text-xl text-white/60 first-letter:uppercase">
+              {formatarDiaSP(currentTime)}
             </p>
           </div>
         </header>
+
+        {!painelAtivado && (
+          <button
+            type="button"
+            onClick={() => { void ativarPainel(); }}
+            className="mb-4 flex min-h-11 w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-lg font-semibold text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
+          >
+            <Volume2 aria-hidden="true" className="h-5 w-5" />
+            Toque para ativar o som e a tela cheia
+          </button>
+        )}
 
         {filaCarregando && !filaErro && (
           <div role="status" className="mb-4 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center text-white/80">
@@ -786,11 +878,11 @@ export default function PainelTV() {
           )}
         </AnimatePresence>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
           {/* Em Atendimento */}
           <div className="bg-white/[0.07] backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
             <div className="flex items-center justify-between gap-3 bg-gradient-primary px-6 py-4">
-              <h2 className="text-xl md:text-2xl font-bold font-display">Em Atendimento</h2>
+              <h2 className="text-xl md:text-2xl font-bold font-display">Em atendimento</h2>
               <span className="rounded-full bg-white/20 px-3 py-1 text-base font-bold tabular-nums">{emAtendimento.length}</span>
             </div>
             <div className="p-4 md:p-6">
@@ -854,7 +946,7 @@ export default function PainelTV() {
                         </div>
                       </div>
                       <span className="text-white/60 text-sm tabular-nums">
-                        {format(new Date(item.horario_chegada), 'HH:mm')}
+                        {horaSP(item.horario_chegada)}
                       </span>
                     </div>
                   ))}
@@ -865,6 +957,30 @@ export default function PainelTV() {
               )}
             </div>
           </div>
+
+          {/* Últimas chamadas: quem se distraiu confere a senha sem perguntar na recepção. */}
+          <section aria-labelledby="painel-ultimas-chamadas" className="bg-white/[0.07] backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
+            <div className="flex items-center justify-between gap-3 bg-white/10 px-6 py-4">
+              <h2 id="painel-ultimas-chamadas" className="text-xl md:text-2xl font-bold font-display">Últimas chamadas</h2>
+            </div>
+            <div className="p-4 md:p-6">
+              {ultimasChamadas.length === 0 ? (
+                <p className="text-center text-white/50 py-8 text-lg">Nenhuma chamada ainda hoje</p>
+              ) : (
+                <ol className="space-y-2">
+                  {ultimasChamadas.map((item) => (
+                    <li key={item.chave} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/5 p-3 md:p-4">
+                      <div className="min-w-0">
+                        <p className="text-base md:text-lg font-medium">Senha {item.senha}</p>
+                        <p className="truncate text-sm text-white/60">{item.sala}</p>
+                      </div>
+                      <span className="text-sm tabular-nums text-white/60">{horaSP(item.em)}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </section>
         </div>
 
         <footer className="mt-8 text-center text-lg text-white/60">

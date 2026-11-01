@@ -35,7 +35,7 @@ type EstadoSala = StatusSala | 'reservada';
 
 const STATUS_COLORS: Record<StatusSala, string> = {
   disponivel: 'bg-success',
-  ocupado: 'bg-destructive',
+  ocupado: 'bg-foreground',
   manutencao: 'bg-warning',
   limpeza: 'bg-info',
 };
@@ -59,10 +59,10 @@ const ESTADO_SALA_COLORS: Record<EstadoSala, string> = {
 
 const TIPO_LABELS: Record<string, string> = {
   consultorio: 'Consultório',
-  exame: 'Sala de Exames',
-  procedimento: 'Sala de Procedimentos',
+  exame: 'Sala de exames',
+  procedimento: 'Sala de procedimentos',
   triagem: 'Triagem',
-  espera: 'Sala de Espera',
+  espera: 'Sala de espera',
   leito_enfermaria: 'Leito — Enfermaria',
   leito_apartamento: 'Leito — Apartamento',
   leito_uti: 'Leito — UTI',
@@ -332,8 +332,13 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
     }
   };
 
+  // Vínculo de um dia anterior (fila esquecida aberta) não prende a sala hoje:
+  // vai para o bloco "Vínculos antigos", onde a recepção resolve na Fila.
+  const ehOcupacaoAntiga = (item: any) => Boolean(formatarDataOcupacaoAntiga(item.agendamentos?.data, hoje));
   const getOcupacao = (salaId: string) =>
-    (ocupacoes as any[]).filter((item: any) => item.sala_id === salaId);
+    (ocupacoes as any[]).filter((item: any) => item.sala_id === salaId && !ehOcupacaoAntiga(item));
+  const ocupacoesAntigas = (ocupacoes as any[]).filter(ehOcupacaoAntiga);
+  const nomeDaSala = (salaId: string) => (salas as any[]).find((sala: any) => sala.id === salaId)?.nome ?? 'Sala';
 
   const statusEfetivoSala = (sala: any): EstadoSala => {
     const atendimentos = getOcupacao(sala.id);
@@ -443,7 +448,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button onClick={() => handleOpen()} className="shrink-0 gap-2 rounded-full">
-              <Plus className="h-4 w-4" /> Nova Sala / Leito
+              <Plus className="h-4 w-4" /> Nova sala ou leito
             </Button>
           </>
         }
@@ -504,6 +509,32 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
         )}
       </section>
 
+      {ocupacoesAntigas.length > 0 && (
+        <section aria-labelledby="salas-vinculos-antigos" className="space-y-2 rounded-xl border border-warning/40 bg-warning/5 p-4">
+          <h2 id="salas-vinculos-antigos" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <AlertTriangle aria-hidden="true" className="h-4 w-4 text-warning" /> Vínculos antigos
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Registros da fila de dias anteriores que ainda apontam para uma sala. Eles não contam como ocupação hoje; finalize ou retire na Fila.
+          </p>
+          <ul className="divide-y divide-border/60 text-sm">
+            {ocupacoesAntigas.map((oc: any) => {
+              const ag = oc.agendamentos;
+              const pacNome = ag?.pacientes?.nome_social || ag?.pacientes?.nome || 'Paciente';
+              return (
+                <li key={oc.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span className="min-w-0">
+                    <span className="font-medium text-foreground">{nomeDaSala(oc.sala_id)}</span>
+                    <span className="text-muted-foreground"> · {pacNome} · {formatarDataOcupacaoAntiga(ag?.data, hoje)}</span>
+                  </span>
+                  <Link className="inline-flex min-h-11 items-center text-sm font-medium text-foreground underline underline-offset-2" to="/fila">Abrir fila</Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">
@@ -554,7 +585,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                     data-testid={`room-card-${sala.id}`}
                     className={cn(
                       'relative overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
-                      statusExibido === 'ocupado' && 'border-destructive/40',
+                      statusExibido === 'ocupado' && 'border-foreground/30',
                       statusExibido === 'reservada' && 'border-primary/40 ring-1 ring-primary/20',
                     )}
                   >
@@ -588,7 +619,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                           variant="outline"
                           className={cn(
                             'shrink-0 gap-1 rounded-full text-[10px]',
-                            statusExibido === 'ocupado' && 'border-destructive/30 bg-destructive/10 text-destructive',
+                            statusExibido === 'ocupado' && 'border-foreground/30 bg-foreground/10 text-foreground',
                             statusExibido === 'reservada' && 'border-primary/30 bg-primary/10 text-primary',
                             statusExibido === 'disponivel' && 'border-success/30 bg-success/10 text-success',
                             statusExibido === 'limpeza' && 'border-info/30 bg-info/10 text-info',
@@ -605,12 +636,11 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                         <div className={cn(
                           'space-y-1.5 rounded-xl border p-2.5',
                           statusExibido === 'ocupado'
-                            ? 'border-destructive/20 bg-destructive/5'
+                            ? 'border-border bg-muted/40'
                             : 'border-primary/20 bg-primary/5',
                         )}>
                           {ocupacoesSala.map((oc: any) => {
                             const ag = oc.agendamentos;
-                            const dataOcupacaoAntiga = formatarDataOcupacaoAntiga(ag?.data, hoje);
                             const pacNome = ag?.pacientes?.nome_social || ag?.pacientes?.nome;
                             const medNome = ag?.medicos?.nome;
                             const medEsp = ag?.medicos?.especialidade;
@@ -618,7 +648,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                               <div key={oc.id} className="flex flex-col gap-0.5">
                                 {pacNome && (
                                   <span className="flex items-center gap-1 text-xs font-medium text-foreground">
-                                    <User aria-hidden="true" className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-destructive' : 'text-primary')} />
+                                    <User aria-hidden="true" className={cn('h-3 w-3', statusExibido === 'ocupado' ? 'text-foreground' : 'text-primary')} />
                                     {pacNome}
                                   </span>
                                 )}
@@ -636,10 +666,6 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                                 >
                                   {oc.status === 'em_atendimento' ? 'Em atendimento' : oc.status === 'chamado' ? 'Paciente chamado' : 'Aguardando na fila'}
                                 </Badge>
-                                {dataOcupacaoAntiga && <div className="flex flex-wrap items-center gap-2 text-[10px] text-warning-foreground">
-                                  <span>Registro de {dataOcupacaoAntiga}; confira a fila antes de liberar a sala.</span>
-                                  <Link className="inline-flex min-h-11 items-center font-medium text-primary underline" to="/fila">Abrir fila</Link>
-                                </div>}
                               </div>
                             );
                           })}
@@ -747,7 +773,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
             <p className="font-medium text-foreground">{totalSalas === 0 ? 'Nenhuma sala cadastrada' : 'Nenhuma sala corresponde aos filtros'}</p>
             <p className="mt-1 text-sm">{totalSalas === 0 ? 'Cadastre uma sala ou leito para começar.' : 'Limpe a busca, o tipo ou a situação para ver todas as salas.'}</p>
             {totalSalas === 0 ? (
-              <p className="mt-4 text-xs">Use “Nova Sala / Leito” no topo para cadastrar o primeiro espaço.</p>
+              <p className="mt-4 text-xs">Use “Nova sala ou leito” no topo para cadastrar o primeiro espaço.</p>
             ) : (
               <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>
                 Limpar filtros
@@ -765,7 +791,7 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
         : <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="mx-auto max-w-4xl space-y-6 rounded-xl border bg-card p-5 sm:p-8">
           <header className="space-y-2 border-b pb-5">
             <p className="text-sm text-muted-foreground">Gestão do fluxo / Salas e leitos</p>
-            <h1 className="text-2xl font-semibold">{editingId ? 'Editar' : 'Nova'} {isLeito(form.tipo) ? 'Leito' : 'Sala'}</h1>
+            <h1 className="text-2xl font-semibold">{editingId ? (isLeito(form.tipo) ? 'Editar leito' : 'Editar sala') : (isLeito(form.tipo) ? 'Novo leito' : 'Nova sala')}</h1>
             <p className="text-sm text-muted-foreground">Defina a identificação, a disponibilidade e os recursos do espaço.</p>
           </header>
           <fieldset disabled={isSaving} className="min-w-0">
@@ -783,10 +809,10 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
                   <SelectTrigger id="sala-tipo"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="consultorio">Consultório</SelectItem>
-                    <SelectItem value="exame">Sala de Exames</SelectItem>
+                    <SelectItem value="exame">Sala de exames</SelectItem>
                     <SelectItem value="procedimento">Procedimentos</SelectItem>
                     <SelectItem value="triagem">Triagem</SelectItem>
-                    <SelectItem value="espera">Sala de Espera</SelectItem>
+                    <SelectItem value="espera">Sala de espera</SelectItem>
                     <SelectItem value="leito_enfermaria">Leito — Enfermaria</SelectItem>
                     <SelectItem value="leito_apartamento">Leito — Apartamento</SelectItem>
                     <SelectItem value="leito_uti">Leito — UTI</SelectItem>

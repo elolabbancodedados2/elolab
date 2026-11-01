@@ -3362,11 +3362,11 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
       }
       if (path === '/gestao-fluxo') {
         await expect(main.getByRole('heading', { name: 'Salas e Leitos', exact: true })).toBeVisible();
-        await expect(main.getByRole('button', { name: 'Nova Sala / Leito', exact: true })).toHaveCount(1);
-        const addRoom = main.getByRole('button', { name: 'Nova Sala / Leito', exact: true }).first();
+        await expect(main.getByRole('button', { name: 'Nova sala ou leito', exact: true })).toHaveCount(1);
+        const addRoom = main.getByRole('button', { name: 'Nova sala ou leito', exact: true }).first();
         await expect(addRoom).toBeVisible();
         await addRoom.click();
-        await expect(page.getByRole('heading', { name: 'Nova Sala', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Nova sala', exact: true })).toBeVisible();
         await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
         await expect(page.getByRole('dialog')).not.toBeVisible();
       }
@@ -3509,7 +3509,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
     await expect(reservedRoom).toContainText('Bruno Almeida');
     await expect(reservedRoom).toContainText('Reservada');
     if (viewport.width === 1280) {
-      await main.getByRole('button', { name: 'Nova Sala / Leito' }).click();
+      await main.getByRole('button', { name: 'Nova sala ou leito' }).click();
       const colorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(colorPicker.getByRole('button')).toHaveCount(5);
       await expect(colorPicker.getByRole('button', { name: /roxo/i })).toHaveCount(0);
