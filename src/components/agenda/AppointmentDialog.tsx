@@ -196,13 +196,6 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
 
       const novoFim = novoFimInformado ?? novoInicio + DURACAO_PADRAO;
 
-      // Marcar no passado é raro (registro retroativo) e quase sempre engano
-      // de data. Não bloqueia, mas pede confirmação, como o expediente.
-      const mudouHorario = !editing || form.data !== initial?.data || form.hora_inicio?.slice(0, 5) !== String(initial?.hora_inicio || '').slice(0, 5);
-      if (mudouHorario && !dataPassadaConfirmada.current && appointmentStartHasPassed(form.data, form.hora_inicio)) {
-        setDataPassada(true);
-        setTab('consulta'); setSaving(false); return;
-      }
 
       if (novoFim <= novoInicio || novoFim >= 24 * 60) {
         toast.error(novoFim >= 24 * 60 ? 'A consulta precisa terminar antes da meia-noite.' : 'O horário de término deve ser após o início.');
@@ -328,6 +321,15 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         toast.error('Horário bloqueado para este médico', {
           description: bloqueio.motivo || bloqueio.tipo || 'Escolha outro horário.',
         });
+        setTab('consulta'); setSaving(false); return;
+      }
+
+      // Marcar no passado é raro (registro retroativo) e quase sempre engano
+      // de data. Não bloqueia, mas pede confirmação depois das checagens que
+      // bloqueiam (conflito e bloqueio de agenda), como o expediente.
+      const mudouHorario = !editing || form.data !== initial?.data || form.hora_inicio?.slice(0, 5) !== String(initial?.hora_inicio || '').slice(0, 5);
+      if (mudouHorario && !dataPassadaConfirmada.current && appointmentStartHasPassed(form.data, form.hora_inicio)) {
+        setDataPassada(true);
         setTab('consulta'); setSaving(false); return;
       }
 
