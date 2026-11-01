@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, ClipboardCheck, Clock3, DoorOpen, Loader2, Plus, RefreshCw, Search, ShieldCheck, SprayCan, Timer, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock3, DoorOpen, Download, Loader2, Plus, RefreshCw, Search, ShieldCheck, SprayCan, Timer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,10 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { dateOnlyInTimeZone, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { mensagemDeErro } from '@/lib/erros';
+import { downloadStringAsFile } from '@/lib/auditExport';
+import { somarDias } from '@/lib/pedidoCompraDocumento';
+import { csvRelatorioHigiene, formatarMomento, linhasRelatorioHigiene, validarChecklist } from '@/lib/higieneSalasOperacao';
 
 type Room = { id: string; nome: string; status: string; localizacao: string | null };
 type Item = { id: string; label: string; required: boolean; completed?: boolean };
@@ -27,7 +31,7 @@ type Etapa = 'aguardando' | 'executando' | 'inspecao' | 'liberadas';
 type Filtro = Etapa | 'todos';
 
 const EMPTY: Data = { rooms: [], activeChecklistId: null, checklists: [], executions: [], reviews: [], canReview: false, canConfigure: false };
-const fmt = (value: string) => new Date(value).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+const fmt = (value: string) => formatarMomento(value);
 const normalizar = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const plural = (n: number, singular: string, pluralForm: string) => `${n} ${n === 1 ? singular : pluralForm}`;
 
@@ -51,6 +55,9 @@ export default function HigieneSalas() {
   const [search, setSearch] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [configAberta, setConfigAberta] = useState(false);
+  const hojeSp = todaySaoPauloDateOnly();
+  const [relatorioDe, setRelatorioDe] = useState(() => somarDias(hojeSp, -30));
+  const [relatorioAte, setRelatorioAte] = useState(hojeSp);
 
   const query = useQuery({
     queryKey: ['room-hygiene', profile?.clinica_id],
@@ -65,6 +72,21 @@ export default function HigieneSalas() {
     refetchInterval: 30_000,
   });
   const data = query.data ?? EMPTY;
+
+  // Nomes de quem executou e inspecionou (a função de higienização devolve só os ids).
+  const pessoasQuery = useQuery({
+    queryKey: ['room-hygiene-pessoas', profile?.clinica_id],
+    enabled: Boolean(profile?.clinica_id),
+    staleTime: 5 * 60_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data: pessoas, error } = await supabase.from('profiles').select('id, nome').eq('clinica_id', profile!.clinica_id!);
+      if (error) throw error;
+      return new Map((pessoas ?? []).map((p: { id: string; nome: string | null }) => [p.id, p.nome ?? '']));
+    },
+  });
+  const pessoas = pessoasQuery.data instanceof Map ? pessoasQuery.data : new Map<string, string>();
+  const nomePessoa = (id: string | null | undefined) => (id ? pessoas.get(id) || 'Equipe' : 'Equipe');
   const activeChecklist = useMemo(() => data.checklists.find((item) => item.id === data.activeChecklistId) ?? null, [data]);
   const reviewByExecution = useMemo(() => new Map(data.reviews.map((item) => [item.execution_id, item])), [data.reviews]);
   const openByRoom = useMemo(() => new Map(data.executions.filter((item) => !item.submitted_at).map((item) => [item.room_id, item])), [data.executions]);
@@ -73,6 +95,19 @@ export default function HigieneSalas() {
     .sort((a, b) => String(a.submitted_at).localeCompare(String(b.submitted_at))), [data.executions, reviewByExecution]);
   const pendingReviewRoomIds = useMemo(() => new Set(pendingReview.map((item) => item.room_id)), [pendingReview]);
   const pendingByRoom = useMemo(() => new Map(pendingReview.map((item) => [item.room_id, item])), [pendingReview]);
+  // Última execução inspecionada de cada sala: se foi reprovada, a sala mostra quem reprovou e por quê.
+  const ultimaReprovacaoPorSala = useMemo(() => {
+    const mapa = new Map<string, { execution: Execution; review: Review }>();
+    const ordenadas = [...data.executions].sort((a, b) => b.started_at.localeCompare(a.started_at));
+    for (const execution of ordenadas) {
+      if (mapa.has(execution.room_id) || !execution.submitted_at) continue;
+      const review = reviewByExecution.get(execution.id);
+      if (!review) continue;
+      mapa.set(execution.room_id, { execution, review });
+    }
+    for (const [roomId, item] of mapa) if (item.review.decision !== 'rejected') mapa.delete(roomId);
+    return mapa;
+  }, [data.executions, reviewByExecution]);
   const liberadasHojeRoomIds = useMemo(() => {
     const hoje = todaySaoPauloDateOnly();
     const executionById = new Map(data.executions.map((item) => [item.id, item]));
@@ -120,15 +155,42 @@ export default function HigieneSalas() {
     return result;
   };
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['room-hygiene', profile?.clinica_id] });
-  const mutation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error(error.message || 'Operação não concluída') });
+  const mutation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error('Operação não concluída.', { description: mensagemDeErro(error) }) });
+  const problemasChecklist = validarChecklist(title, itemText);
   const createChecklist = useMutation({
     mutationFn: () => {
       const items = itemText.split('\n').map((label, index) => ({ id: `item_${index + 1}`, label: label.trim(), required: true })).filter((item) => item.label);
       return invoke({ action: 'configure', title, items });
     },
     onSuccess: () => { toast.success('Nova versão do checklist ativada'); setConfigAberta(false); void refresh(); },
-    onError: (error) => toast.error(error.message || 'Não foi possível salvar o checklist'),
+    onError: (error) => toast.error('Não foi possível salvar o checklist.', { description: mensagemDeErro(error) }),
   });
+
+  const relatorio = () => linhasRelatorioHigiene({
+    execucoes: data.executions, revisoes: data.reviews, salas: new Map(data.rooms.map(r => [r.id, r.nome])), pessoas, de: relatorioDe, ate: relatorioAte,
+  });
+  const exportarRelatorio = async (formato: 'csv' | 'pdf') => {
+    const linhas = relatorio();
+    if (linhas.length === 0) { toast.info('Nenhuma higienização no período escolhido.'); return; }
+    const nome = `higienizacao-${relatorioDe}-a-${relatorioAte}`;
+    try {
+      if (formato === 'csv') {
+        downloadStringAsFile({ content: csvRelatorioHigiene(linhas), filename: `${nome}.csv`, mimeType: 'text/csv;charset=utf-8' });
+        return;
+      }
+      const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+      const doc = new JsPDF({ orientation: 'landscape' });
+      doc.setFontSize(13);
+      doc.text(`Higienização de salas · ${relatorioDe.split('-').reverse().join('/')} a ${relatorioAte.split('-').reverse().join('/')}`, 14, 16);
+      const colunas = Object.keys(linhas[0]);
+      (autoTable as unknown as (d: unknown, o: unknown) => void)(doc, {
+        startY: 22, head: [colunas], body: linhas.map(l => colunas.map(c => l[c])), styles: { fontSize: 7 }, headStyles: { fillColor: [17, 17, 17] },
+      });
+      doc.save(`${nome}.pdf`);
+    } catch (error) {
+      toast.error('Não foi possível gerar o relatório.', { description: mensagemDeErro(error) });
+    }
+  };
 
   const proximaInspecao = data.canReview ? pendingReview[0] ?? null : null;
   const proximaInspecaoSala = proximaInspecao ? data.rooms.find((item) => item.id === proximaInspecao.room_id) : null;
@@ -231,11 +293,13 @@ export default function HigieneSalas() {
         {activeChecklist && <ul className="grid gap-2 sm:grid-cols-2">{activeChecklist.items.map((item) => <li key={item.id} className="flex items-center gap-2 text-sm"><CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />{item.label}{item.required && <Badge variant="outline" className="ml-1 rounded-full text-[10px]">Obrigatório</Badge>}</li>)}</ul>}
         {(configAberta || !activeChecklist) && <form className="grid gap-3 rounded-xl border border-border bg-muted/40 p-3 md:grid-cols-[1fr_2fr_auto]" onSubmit={(event) => { event.preventDefault(); createChecklist.mutate(); }}>
           <div className="space-y-2"><Label htmlFor="hygiene-title">Nome do checklist</Label><Input id="hygiene-title" className="rounded-full focus-visible:ring-primary" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></div>
-          <div className="space-y-2"><Label htmlFor="hygiene-items">Um item obrigatório por linha</Label><Textarea id="hygiene-items" className="rounded-xl focus-visible:ring-primary" value={itemText} onChange={(event) => setItemText(event.target.value)} rows={4} maxLength={5000} /></div>
+          <div className="space-y-2"><Label htmlFor="hygiene-items">Um item obrigatório por linha</Label><Textarea id="hygiene-items" className="rounded-xl focus-visible:ring-primary" value={itemText} onChange={(event) => setItemText(event.target.value)} rows={4} maxLength={5000}
+            aria-invalid={problemasChecklist.length > 0 || undefined} aria-describedby={problemasChecklist.length > 0 ? 'hygiene-problemas' : undefined} /></div>
           <div className="flex items-end gap-2">
             {activeChecklist && <Button type="button" variant="outline" className="h-9 rounded-full text-xs" onClick={() => setConfigAberta(false)}>Cancelar</Button>}
-            <Button type="submit" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={createChecklist.isPending || !title.trim() || !itemText.trim()}>{createChecklist.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Versionar</Button>
+            <Button type="submit" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={createChecklist.isPending || problemasChecklist.length > 0}>{createChecklist.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Versionar</Button>
           </div>
+          {problemasChecklist.length > 0 && <ul id="hygiene-problemas" role="alert" className="space-y-0.5 text-xs text-destructive md:col-span-3">{problemasChecklist.map((p) => <li key={p.mensagem}>{p.mensagem}</li>)}</ul>}
         </form>}
       </CardContent>
     </Card>}
@@ -277,6 +341,12 @@ export default function HigieneSalas() {
         })();
         const pct = progresso && progresso.total > 0 ? Math.round((progresso.done / progresso.total) * 100) : 0;
         const podeIniciar = Boolean(activeChecklist) && room.status !== 'ocupado' && room.status !== 'manutencao' && !pendingReviewRoomIds.has(room.id) && !mutation.isPending;
+        const motivoNaoInicia = !activeChecklist || pendingReviewRoomIds.has(room.id) ? null
+          : room.status === 'ocupado' ? 'Sala em uso: finalize ou transfira o atendimento antes de higienizar.'
+            : room.status === 'manutencao' ? 'Sala indisponível (manutenção): libere-a em Salas e leitos antes de higienizar.'
+              : null;
+        const reprovacao = !open && !pending ? ultimaReprovacaoPorSala.get(room.id) : undefined;
+        const faltam = open && checklist ? checklist.items.filter((item) => item.required && !(marcados[item.id] ?? false)).length : 0;
         return <Card key={room.id} className={cn('overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200', etapa === 'aguardando' && 'border-info/40 ring-1 ring-info/20', etapa === 'inspecao' && 'border-warning/40 ring-1 ring-warning/20', etapa === 'executando' && 'border-primary/40 ring-1 ring-primary/20')}>
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3">
@@ -293,14 +363,21 @@ export default function HigieneSalas() {
                 <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-success' : 'bg-primary')} style={{ width: `${pct}%` }} />
               </div>
             </div>}
-            {!open && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground disabled:opacity-50" disabled={!podeIniciar} onClick={() => mutation.mutate({ action: 'start', room_id: room.id })}><SprayCan className="mr-2 h-4 w-4" />Iniciar higienização</Button>}
+            {reprovacao && <div role="status" className="space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              <p className="flex items-center gap-1.5 font-medium text-destructive"><AlertTriangle aria-hidden="true" className="h-4 w-4" />Reprovada por {nomePessoa(reprovacao.review.reviewer_id)} · {fmt(reprovacao.review.created_at)}</p>
+              <p className="text-foreground">{reprovacao.review.note}</p>
+              <p className="text-xs text-muted-foreground">Executada por {nomePessoa(reprovacao.execution.submitted_by ?? reprovacao.execution.started_by)}. Refaça o checklist para enviar à inspeção de novo.</p>
+            </div>}
+            {!open && <Button size="sm" className="h-11 rounded-full bg-primary text-xs text-primary-foreground disabled:opacity-50" disabled={!podeIniciar} aria-describedby={motivoNaoInicia ? `motivo-inicio-${room.id}` : undefined} onClick={() => mutation.mutate({ action: 'start', room_id: room.id })}><SprayCan className="mr-2 h-4 w-4" />{reprovacao ? 'Refazer checklist' : 'Iniciar higienização'}</Button>}
+            {motivoNaoInicia && <p id={`motivo-inicio-${room.id}`} className="text-xs text-muted-foreground">{motivoNaoInicia}</p>}
             {!open && !activeChecklist && !pendingReviewRoomIds.has(room.id) && <p className="text-xs text-muted-foreground">Configure o checklist vigente para liberar o início.</p>}
             {pendingReviewRoomIds.has(room.id) && <p className="text-sm font-medium text-warning">Higienização enviada; sala bloqueada até revisão.</p>}
             {open && checklist && <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-3">
-              <p className="text-sm font-medium">Checklist v{checklist.version} · iniciado {fmt(open.started_at)}</p>
+              <p className="text-sm font-medium">Checklist v{checklist.version} · iniciado {fmt(open.started_at)} por {nomePessoa(open.started_by)}</p>
               {checklist.items.map((item) => <label key={item.id} className="flex cursor-pointer items-start gap-2 text-sm"><Checkbox checked={marcados[item.id] ?? false} disabled={Boolean(open.submitted_at)} onCheckedChange={(checked) => setCompleted((current) => ({ ...current, [open.id]: { ...(current[open.id] ?? {}), [item.id]: checked === true } }))} /><span>{item.label}{item.required && <span className="text-destructive"> *</span>}</span></label>)}
               <div className="space-y-1"><Label htmlFor={`notes-${open.id}`}>Observação da execução</Label><Textarea id={`notes-${open.id}`} className="rounded-xl bg-card focus-visible:ring-primary" maxLength={1000} rows={2} value={executionNotes[open.id] ?? ''} disabled={Boolean(open.submitted_at)} onChange={(event) => setExecutionNotes((current) => ({ ...current, [open.id]: event.target.value }))} /></div>
-              {!open.submitted_at && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={mutation.isPending || checklist.items.some((item) => item.required && !(marcados[item.id] ?? false))} onClick={() => mutation.mutate({ action: 'submit', execution_id: open.id, completed_items: checklist.items.map((item) => ({ ...item, completed: marcados[item.id] ?? false })), notes: executionNotes[open.id] ?? '' })}>Enviar para revisão</Button>}
+              {!open.submitted_at && <Button size="sm" className="h-11 rounded-full bg-primary text-xs text-primary-foreground" aria-describedby={faltam > 0 ? `faltam-${open.id}` : undefined} disabled={mutation.isPending || faltam > 0} onClick={() => mutation.mutate({ action: 'submit', execution_id: open.id, completed_items: checklist.items.map((item) => ({ ...item, completed: marcados[item.id] ?? false })), notes: executionNotes[open.id] ?? '' })}>Enviar para revisão</Button>}
+              {!open.submitted_at && faltam > 0 && <p id={`faltam-${open.id}`} className="text-xs text-muted-foreground">Marque os itens obrigatórios para enviar (falta{faltam === 1 ? '' : 'm'} {faltam}).</p>}
               {open.submitted_at && <p className="text-sm text-muted-foreground">Enviado para revisão em {fmt(open.submitted_at)}. A sala permanece bloqueada.</p>}
             </div>}
           </CardContent>
@@ -324,12 +401,13 @@ export default function HigieneSalas() {
               <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums', index === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')}>{index + 1}</span>
               <div className="min-w-0">
                 <h3 className="font-semibold text-foreground">{room?.nome || 'Sala'} · revisão</h3>
-                <p className="text-xs text-muted-foreground">Enviado {fmt(execution.submitted_at!)} · checklist v{checklist?.version ?? '?'}</p>
+                <p className="text-xs text-muted-foreground">Enviado {fmt(execution.submitted_at!)} por {nomePessoa(execution.submitted_by ?? execution.started_by)} · checklist v{checklist?.version ?? '?'}</p>
               </div>
             </div>
             <ul className="space-y-1 text-sm">{(execution.completed_items || []).map((item) => <li key={item.id} className="flex items-center gap-2">{item.completed ? <CheckCircle2 aria-hidden="true" className="h-4 w-4 text-success" /> : <span aria-hidden="true" className="h-4 w-4 rounded-full border" />}{item.label}</li>)}</ul>
             {execution.notes && <p className="rounded-xl bg-muted/40 p-2 text-sm">{execution.notes}</p>}
             <div className="space-y-1"><Label htmlFor={`review-${execution.id}`}>Observação da inspeção *</Label><Textarea id={`review-${execution.id}`} className="rounded-xl focus-visible:ring-primary" minLength={3} maxLength={1000} rows={2} value={reviewNotes[execution.id] || ''} onChange={(event) => setReviewNotes((current) => ({ ...current, [execution.id]: event.target.value }))} /></div>
+            {!notaOk && <p className="text-xs text-muted-foreground">Escreva a observação da inspeção (mínimo 3 caracteres) para aprovar ou reprovar.</p>}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={mutation.isPending || !notaOk} onClick={() => mutation.mutate({ action: 'review', execution_id: execution.id, decision: 'approved', note: reviewNotes[execution.id] })}><ShieldCheck className="mr-2 h-4 w-4" />Aprovar e liberar sala</Button>
               <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={mutation.isPending || !notaOk} onClick={() => mutation.mutate({ action: 'review', execution_id: execution.id, decision: 'rejected', note: reviewNotes[execution.id] })}>Reprovar e manter bloqueada</Button>
@@ -345,6 +423,13 @@ export default function HigieneSalas() {
         <h2 id="history-heading" className="text-base font-semibold text-foreground">Histórico recente</h2>
         <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{Math.min(data.executions.length, 15)}</Badge>
       </div>
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3">
+        <div className="space-y-1"><Label htmlFor="relatorio-de" className="text-xs">De</Label><Input id="relatorio-de" type="date" className="h-10" value={relatorioDe} max={relatorioAte} onChange={(event) => setRelatorioDe(event.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="relatorio-ate" className="text-xs">Até</Label><Input id="relatorio-ate" type="date" className="h-10" value={relatorioAte} min={relatorioDe} onChange={(event) => setRelatorioAte(event.target.value)} /></div>
+        <Button variant="outline" className="h-10 gap-1.5 rounded-full" disabled={!relatorioDe || !relatorioAte || relatorioDe > relatorioAte} onClick={() => void exportarRelatorio('csv')}><Download aria-hidden="true" className="h-4 w-4" />Relatório CSV</Button>
+        <Button variant="outline" className="h-10 gap-1.5 rounded-full" disabled={!relatorioDe || !relatorioAte || relatorioDe > relatorioAte} onClick={() => void exportarRelatorio('pdf')}><Download aria-hidden="true" className="h-4 w-4" />Relatório PDF</Button>
+        <p className="w-full text-[11px] text-muted-foreground">O relatório usa as execuções carregadas nesta tela ({plural(data.executions.length, 'registro', 'registros')}).</p>
+      </div>
       {data.executions.length === 0
         ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="p-6 text-sm text-muted-foreground">As execuções e inspeções aparecerão aqui. Nenhuma alteração foi feita nas salas.</CardContent></Card>
         : <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="divide-y divide-border/60 p-0">{data.executions.slice(0, 15).map((execution) => {
@@ -358,7 +443,7 @@ export default function HigieneSalas() {
                 ? { label: 'Aguardando inspeção', className: 'border-warning/30 bg-warning/10 text-warning' }
                 : { label: 'Em execução', className: 'border-primary/30 bg-primary/10 text-primary' };
           return <div key={execution.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-            <span><strong>{room?.nome || 'Sala'}</strong> · {fmt(execution.started_at)}{review && <span className="text-muted-foreground"> · inspeção {fmt(review.created_at)}</span>}</span>
+            <span><strong>{room?.nome || 'Sala'}</strong> · {fmt(execution.started_at)} · {nomePessoa(execution.submitted_by ?? execution.started_by)}{review && <span className="text-muted-foreground"> · inspeção {fmt(review.created_at)} por {nomePessoa(review.reviewer_id)}</span>}{review?.decision === 'rejected' && review.note && <span className="block text-xs text-muted-foreground">Motivo: {review.note}</span>}</span>
             <Badge variant="outline" className={cn('rounded-full', badge.className)}>{badge.label}</Badge>
           </div>;
         })}</CardContent></Card>}

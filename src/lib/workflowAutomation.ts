@@ -14,6 +14,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { resolveExamPrice } from '@/lib/autoBilling';
 import { format } from 'date-fns';
 import type { Database } from '@/integrations/supabase/types';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import {
+  alertaDaEscolha, escolherItemDispensacao, itensCorrespondentes, lerQuantidadeDispensacao,
+  loteVencido, ordenarFefo, termoBuscaAmpla, type ItemEstoqueDispensacao,
+} from '@/lib/dispensacaoEstoque';
 
 // ─── Types ──────────────────────────────────────────────
 interface WorkflowResult {
@@ -275,43 +280,120 @@ export async function autoCreateColeta(params: {
 }
 
 // ─── 5. Auto Dispensação (Prescrição → Estoque) ─────────
+const CAMPOS_ITEM_DISPENSACAO = 'id, nome, quantidade, quantidade_minima, validade, lote, unidade';
+
+const comoLista = <T,>(data: unknown): T[] => (Array.isArray(data) ? data as T[] : data ? [data as T] : []);
+
+/** Itens com saldo da clínica cujo nome contém a primeira palavra do medicamento (a escolha fina é feita depois). */
+export async function buscarCandidatosDispensacao(clinicaId: string, nome: string): Promise<ItemEstoqueDispensacao[]> {
+  const termo = termoBuscaAmpla(nome);
+  if (!termo) return [];
+  const { data, error } = await supabase
+    .from('estoque')
+    .select(CAMPOS_ITEM_DISPENSACAO)
+    .eq('clinica_id', clinicaId)
+    .ilike('nome', `%${termo}%`)
+    .gt('quantidade', 0)
+    .order('validade', { ascending: true })
+    .limit(50);
+  if (error) throw error;
+  return comoLista<ItemEstoqueDispensacao>(data);
+}
+
+export interface PlanoDispensacaoItem {
+  nome: string;
+  quantidadeTexto: string;
+  /** null quando a quantidade não é um inteiro positivo. */
+  quantidade: number | null;
+  /** Lotes dentro da validade que correspondem ao nome, na ordem FEFO. */
+  opcoes: ItemEstoqueDispensacao[];
+  sugeridoId: string | null;
+  alerta: string | null;
+}
+
+/** Monta a prévia da dispensação para a pessoa confirmar item, lote e quantidade. */
+export async function planejarDispensacao(params: {
+  medicamentos: Array<{ nome: string; quantidade: string }>;
+  clinicaId: string;
+  hoje?: string;
+}): Promise<PlanoDispensacaoItem[]> {
+  const hoje = params.hoje ?? todaySaoPauloDateOnly();
+  const plano: PlanoDispensacaoItem[] = [];
+  for (const med of params.medicamentos) {
+    const nome = med.nome.trim();
+    if (!nome) continue;
+    const quantidade = lerQuantidadeDispensacao(med.quantidade);
+    const candidatos = await buscarCandidatosDispensacao(params.clinicaId, nome);
+    const { itens } = itensCorrespondentes(nome, candidatos);
+    const opcoes = ordenarFefo(itens.filter(item => !loteVencido(item, hoje)));
+    const escolha = escolherItemDispensacao(nome, quantidade ?? 1, candidatos, hoje);
+    plano.push({
+      nome,
+      quantidadeTexto: med.quantidade,
+      quantidade,
+      opcoes,
+      sugeridoId: escolha.tipo === 'ok' ? escolha.item.id : null,
+      alerta: quantidade === null
+        ? `${nome}: quantidade "${med.quantidade}" não é um número inteiro; informe quantas unidades saíram`
+        : alertaDaEscolha(nome, escolha, quantidade),
+    });
+  }
+  return plano;
+}
+
 /** Dispense medications and deduct from stock */
 export async function autoDispensarMedicamentos(params: {
-  medicamentos: Array<{ nome: string; quantidade: string }>;
+  /** `estoqueId` vem da confirmação na tela; sem ele, a escolha é automática e só baixa quando não há dúvida. */
+  medicamentos: Array<{ nome: string; quantidade: string; estoqueId?: string | null }>;
   pacienteId: string;
   pacienteNome: string;
   prontuarioId: string;
+  clinicaId: string;
   userId?: string;
+  hoje?: string;
 }): Promise<WorkflowResult> {
   const actions: string[] = [];
   const alertas: string[] = [];
+  const avisos: string[] = [];
 
   try {
     if (!params.prontuarioId) throw new Error('Salve o prontuário antes de registrar a dispensação.');
+    if (!params.clinicaId) throw new Error('Clínica não identificada para registrar a dispensação.');
+    const hoje = params.hoje ?? todaySaoPauloDateOnly();
 
     for (const med of params.medicamentos) {
       if (!med.nome || !med.quantidade) continue;
-      const qty = parseInt(med.quantidade) || 1;
-
-      // Find in stock by name match
-      const { data: stockItem, error: stockError } = await supabase
-        .from('estoque')
-        .select('id, quantidade, nome, quantidade_minima')
-        .ilike('nome', `%${med.nome.split(' ')[0]}%`)
-        .gt('quantidade', 0)
-        .order('validade', { ascending: true }) // Use closest to expiry first (FEFO)
-        .limit(1)
-        .maybeSingle();
-      if (stockError) throw stockError;
-
-      if (!stockItem) {
-        alertas.push(`${med.nome}: não encontrado no estoque`);
+      const qty = lerQuantidadeDispensacao(med.quantidade);
+      if (qty === null) {
+        alertas.push(`${med.nome}: quantidade "${med.quantidade}" não é um número inteiro; nada foi baixado`);
         continue;
       }
 
-      if (stockItem.quantidade < qty) {
-        alertas.push(`${stockItem.nome}: estoque insuficiente (${stockItem.quantidade} disponível, ${qty} solicitado)`);
-        continue;
+      let stockItem: ItemEstoqueDispensacao | null = null;
+      if (med.estoqueId) {
+        const { data, error } = await supabase
+          .from('estoque')
+          .select(CAMPOS_ITEM_DISPENSACAO)
+          .eq('id', med.estoqueId)
+          .eq('clinica_id', params.clinicaId)
+          .maybeSingle();
+        if (error) throw error;
+        const item = comoLista<ItemEstoqueDispensacao>(data)[0] ?? null;
+        if (!item) { alertas.push(`${med.nome}: item escolhido não está mais no estoque desta clínica`); continue; }
+        if (loteVencido(item, hoje)) { alertas.push(`${item.nome}: o lote escolhido está vencido; nada foi baixado`); continue; }
+        if (Number(item.quantidade) < qty) {
+          alertas.push(`${item.nome}: estoque insuficiente (${item.quantidade} disponível, ${qty} solicitado)`);
+          continue;
+        }
+        stockItem = item;
+      } else {
+        const candidatos = await buscarCandidatosDispensacao(params.clinicaId, med.nome);
+        const escolha = escolherItemDispensacao(med.nome, qty, candidatos, hoje);
+        if (escolha.tipo !== 'ok') {
+          alertas.push(alertaDaEscolha(med.nome, escolha, qty)!);
+          continue;
+        }
+        stockItem = escolha.item;
       }
 
       // O RPC bloqueia o item e grava saldo + movimentação na mesma
@@ -330,12 +412,12 @@ export async function autoDispensarMedicamentos(params: {
       if (baixaError) throw baixaError;
       if (baixa?.[0]?.ja_baixado) continue;
 
-      actions.push(`${stockItem.nome}: -${qty} unidade(s)`);
+      actions.push(`${stockItem.nome}${stockItem.lote ? ` (lote ${stockItem.lote})` : ''}: -${qty} unidade(s)`);
 
       // Alert if below minimum
       const newQty = stockItem.quantidade - qty;
       if (newQty <= (stockItem.quantidade_minima || 0)) {
-        alertas.push(`⚠️ ${stockItem.nome}: estoque crítico (${newQty} restantes)`);
+        avisos.push(`⚠️ ${stockItem.nome}: estoque crítico (${newQty} restantes)`);
       }
     }
 
@@ -343,7 +425,7 @@ export async function autoDispensarMedicamentos(params: {
       ? `Dispensação parcial: ${actions.length} item(s) dispensado(s), ${alertas.length} alerta(s)`
       : `${actions.length} medicamento(s) dispensado(s) com sucesso`;
 
-    return { success: true, message, actions: [...actions, ...alertas] };
+    return { success: true, message, actions: [...actions, ...alertas, ...avisos] };
   } catch (e: any) {
     return { success: false, message: e.message, actions };
   }

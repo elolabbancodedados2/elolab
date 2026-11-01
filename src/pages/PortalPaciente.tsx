@@ -19,11 +19,16 @@ import {
   Star, MessageSquare, CheckCircle2, HeartHandshake, Clock,
   FileText, Phone, Shield,
   Heart, Pill, AlertTriangle, Download, RefreshCw, ClipboardCheck,
-  LogOut, ArrowLeft,
+  LogOut, ArrowLeft, MoreHorizontal, Sparkles,
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
 import { parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, parseDateOnly, todayDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { ageFromDateOnly, appointmentStartHasPassed, daysBetweenDateOnly, formatDateTimeSaoPaulo, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { horaSP } from '@/lib/caixaFormatacao';
+import { rotuloTipoAgendamento, sexoPorExtenso } from '@/lib/pacienteFicha';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +65,31 @@ function PortalSectionUnavailable({ section }: { section: string }) {
       <p className="mt-1 text-xs text-muted-foreground">Use “Tentar novamente” para atualizar o portal.</p>
     </div>
   );
+}
+
+/** Próximos 14 dias no calendário de São Paulo, começando hoje. */
+function proximosDiasSaoPaulo(quantidade = 14): string[] {
+  const hoje = todaySaoPauloDateOnly();
+  return Array.from({ length: quantidade }, (_, indice) => {
+    const dia = new Date(`${hoje}T12:00:00Z`);
+    dia.setUTCDate(dia.getUTCDate() + indice);
+    return dia.toISOString().slice(0, 10);
+  });
+}
+
+const MOTIVOS_CANCELAMENTO = [
+  'Não vou conseguir comparecer',
+  'Já resolvi o problema de saúde',
+  'Vou marcar em outro horário',
+  'Outro motivo',
+] as const;
+
+function avaliacaoJaEnviada(chave: string): boolean {
+  try { return localStorage.getItem(chave) === '1'; } catch { return false; }
+}
+
+function marcarAvaliacaoEnviada(chave: string) {
+  try { localStorage.setItem(chave, '1'); } catch { /* sem armazenamento: vale só nesta sessão */ }
 }
 
 function formatCurrency(v: number) {
@@ -127,7 +157,7 @@ function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
                   />
                 </div>
                 <p id="patient-access-code-hint" className="text-xs text-muted-foreground">
-                  Código fornecido pela clínica EloLab
+                  Código enviado pela sua clínica
                 </p>
               </div>
 
@@ -224,7 +254,7 @@ function NextAppointmentHero({ agendamentos }: { agendamentos: any[] }) {
 }
 
 // ─── NPS Survey ────────────────────────────────────────────
-function NPSSurvey({ token }: { token: string }) {
+function NPSSurvey({ token, chaveEnvio }: { token: string; chaveEnvio: string }) {
   const [nota, setNota] = useState<number | null>(null);
   const [comentario, setComentario] = useState('');
   const [sent, setSent] = useState(false);
@@ -240,6 +270,7 @@ function NPSSurvey({ token }: { token: string }) {
         body: { action: 'submit_feedback', token, nota, comentario },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Não foi possível enviar');
+      marcarAvaliacaoEnviada(chaveEnvio);
       setSent(true);
     } catch (e: any) {
       setSubmitError(e.message);
@@ -265,7 +296,7 @@ function NPSSurvey({ token }: { token: string }) {
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-primary" />
-          <CardTitle className="text-base">Como foi sua experiência?</CardTitle>
+          <CardTitle className="text-base">Como foi sua última consulta?</CardTitle>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -277,7 +308,7 @@ function NPSSurvey({ token }: { token: string }) {
               onClick={() => setNota(n)}
               aria-label={`Avaliação ${n} de 5`}
               aria-pressed={nota === n}
-              className={`w-9 h-9 rounded-full text-sm font-semibold transition-[background-color,color,box-shadow,transform] hover:scale-110 active:scale-95 ${
+              className={`h-11 w-11 rounded-full text-sm font-semibold transition-[background-color,color,box-shadow,transform] hover:scale-110 active:scale-95 ${
                 nota === n
                   ? 'bg-primary text-primary-foreground'
                   : nota !== null && n <= nota
@@ -290,8 +321,8 @@ function NPSSurvey({ token }: { token: string }) {
           ))}
         </div>
         <div className="flex justify-between text-[10px] text-muted-foreground px-1">
-          <span>Nada provável</span>
-          <span>Muito provável</span>
+          <span>Ruim</span>
+          <span>Ótima</span>
         </div>
 
         {nota !== null && (
@@ -305,7 +336,7 @@ function NPSSurvey({ token }: { token: string }) {
               className="text-sm"
             />
             {submitError && <p className="text-xs text-destructive" role="alert">{submitError}</p>}
-            <Button onClick={handleSubmit} disabled={sending} className="w-full gap-2 rounded-full" size="sm">
+            <Button onClick={handleSubmit} disabled={sending} className="h-11 w-full gap-2 rounded-full">
               <Star className="h-3.5 w-3.5" />
               {sending ? 'Enviando…' : 'Enviar Avaliação'}
             </Button>
@@ -398,6 +429,11 @@ export default function PortalPaciente() {
   // (ex.: e-mail automático à clínica) não aconteceu.
   const [actionWarning, setActionWarning] = useState('');
   const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<string | null>(null);
+  const [motivoCancelamento, setMotivoCancelamento] = useState<string>(MOTIVOS_CANCELAMENTO[0]);
+  const [motivoCancelamentoTexto, setMotivoCancelamentoTexto] = useState('');
+  const [proximosHorarios, setProximosHorarios] = useState<Array<{ data: string; hora: string }>>([]);
+  const [proximosHorariosEstado, setProximosHorariosEstado] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const proximosHorariosRef = useRef(0);
   const [retornoRemarcar, setRetornoRemarcar] = useState<any>(null);
   const [novaDataRetorno, setNovaDataRetorno] = useState('');
   const [erroRemarcarRetorno, setErroRemarcarRetorno] = useState('');
@@ -688,6 +724,43 @@ export default function PortalPaciente() {
     }
   };
 
+  const abrirRemarcacao = (a: any) => {
+    lastRescheduleTriggerIdRef.current = a.id;
+    rescheduleLookupRef.current += 1;
+    setRescheduleSlotsLoading(false);
+    setRescheduleError('');
+    setRescheduleSubmitError('');
+    setRescheduleStateStale(false);
+    setRescheduleSlots([]);
+    setRescheduleForm({ data: '', hora_inicio: '' });
+    setRescheduleLimite(null);
+    setRescheduleModal(a);
+    updateRescheduleRoute(true);
+    void loadRescheduleLimite(a.id);
+  };
+
+  /** Varre os próximos 14 dias do médico e mostra os primeiros horários livres. */
+  const buscarProximosHorarios = async (medicoId: string) => {
+    const busca = ++proximosHorariosRef.current;
+    setProximosHorarios([]);
+    if (!medicoId || !token) { setProximosHorariosEstado('idle'); return; }
+    setProximosHorariosEstado('loading');
+    const dias = proximosDiasSaoPaulo(14);
+    const respostas = await Promise.allSettled(dias.map(dia => fetchData(token, 'get_available_slots', {
+      medico_id: medicoId, data_inicio: dia, data_fim: dia,
+    })));
+    if (busca !== proximosHorariosRef.current) return;
+    const encontrados: Array<{ data: string; hora: string }> = [];
+    respostas.forEach((resposta, indice) => {
+      if (resposta.status === 'fulfilled' && Array.isArray(resposta.value)) {
+        for (const hora of resposta.value) encontrados.push({ data: dias[indice], hora: String(hora).slice(0, 5) });
+      }
+    });
+    const todasFalharam = respostas.every(resposta => resposta.status === 'rejected');
+    setProximosHorarios(encontrados.slice(0, 8));
+    setProximosHorariosEstado(todasFalharam ? 'error' : 'ready');
+  };
+
   const handleCreateAgendamento = async () => {
     if (schedulingSubmissionLock.current) return;
     if (!schedulingForm.medico_id || !schedulingForm.data || !schedulingForm.hora_inicio) {
@@ -743,9 +816,12 @@ export default function PortalPaciente() {
       setActionNotice('');
       setActionWarning('');
       setActionError('');
+      const motivoEscolhido = motivoCancelamento === 'Outro motivo'
+        ? motivoCancelamentoTexto.trim() || 'Outro motivo'
+        : motivoCancelamento;
       await fetchData(token, 'cancel_agendamento', {
         agendamento_id,
-        motivo: 'Cancelado pelo paciente',
+        motivo: `Cancelado pelo paciente: ${motivoEscolhido}`.slice(0, 500),
         expected_data: cancelExpectedAppointmentRef.current?.data,
         expected_hora_inicio: cancelExpectedAppointmentRef.current?.hora_inicio,
       });
@@ -781,7 +857,7 @@ export default function PortalPaciente() {
 
   const handleRescheduleReturn = async () => {
     if (!retornoRemarcar || !novaDataRetorno) return;
-    if (novaDataRetorno < todayDateOnly()) {
+    if (novaDataRetorno < todaySaoPauloDateOnly()) {
       setErroRemarcarRetorno('Escolha hoje ou uma data futura.');
       return;
     }
@@ -1018,6 +1094,18 @@ export default function PortalPaciente() {
   const examesPendentes = exames.filter(e => e.status === 'solicitado' || e.status === 'em_andamento').length;
   const laudosDisponiveis = exames.filter(e => e.status === 'laudo_disponivel').length;
   const idade = calcularIdade(profile?.data_nascimento);
+  // `nome_social` e `clinica_nome` dependem do get_profile devolvê-los; sem eles, cai no nome.
+  const nomeExibido: string = String(profile?.nome_social || profile?.nome || '');
+  const nomeClinica: string = String(profile?.clinica_nome || profile?.clinicas?.nome || '').trim();
+  const ultimaFinalizada = agendamentos
+    .filter(a => ['finalizado', 'concluido', 'atendimento_finalizado'].includes(a.status))
+    .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
+  const chaveAvaliacao = ultimaFinalizada ? `elolab_portal_avaliacao_${profile?.id ?? 'paciente'}_${ultimaFinalizada.id}` : '';
+  const mostrarAvaliacao = Boolean(chaveAvaliacao) && !avaliacaoJaEnviada(chaveAvaliacao);
+  const irParaAgendar = () => {
+    setPortalTab('agendar');
+    window.requestAnimationFrame(() => document.getElementById('portal-agendar-titulo')?.scrollIntoView({ block: 'start' }));
+  };
   // Ignora um limite que chegou para outra consulta (diálogo reaberto antes da resposta).
   const limiteRemarcacao = rescheduleLimite && rescheduleLimite.agendamentoId === rescheduleModal?.id
     ? rescheduleLimite.limite
@@ -1039,10 +1127,41 @@ export default function PortalPaciente() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar esta consulta?</AlertDialogTitle>
             <AlertDialogDescription>
-              Essa ação não pode ser desfeita. Se precisar de outro horário, você poderá solicitar um novo agendamento depois.
+              Essa ação não pode ser desfeita. Se precisar de outro horário, você pode remarcar em vez de cancelar.
             </AlertDialogDescription>
             {cancelError && <p role="alert" className="text-sm text-destructive">{cancelError}</p>}
           </AlertDialogHeader>
+          {!cancelStateStale && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="portal-motivo-cancelamento">Motivo do cancelamento</Label>
+                <Select value={motivoCancelamento} onValueChange={setMotivoCancelamento} disabled={actionLoading}>
+                  <SelectTrigger id="portal-motivo-cancelamento" className="h-11"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {MOTIVOS_CANCELAMENTO.map(motivo => <SelectItem key={motivo} value={motivo}>{motivo}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {motivoCancelamento === 'Outro motivo' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="portal-motivo-cancelamento-texto">Conte o motivo (opcional)</Label>
+                  <Textarea id="portal-motivo-cancelamento-texto" value={motivoCancelamentoTexto} maxLength={300} rows={2} onChange={e => setMotivoCancelamentoTexto(e.target.value)} disabled={actionLoading} />
+                </div>
+              )}
+              {(() => {
+                const consulta = agendamentos.find(item => item.id === agendamentoParaCancelar);
+                return consulta ? (
+                  <Button type="button" variant="outline" className="h-11 w-full gap-2" disabled={actionLoading} onClick={() => {
+                    lastCancelTriggerIdRef.current = null;
+                    setAgendamentoParaCancelar(null);
+                    abrirRemarcacao(consulta);
+                  }}>
+                    <RefreshCw aria-hidden="true" className="h-4 w-4" />Prefiro remarcar
+                  </Button>
+                ) : null;
+              })()}
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>{cancelStateStale ? 'Fechar' : 'Manter consulta'}</AlertDialogCancel>
             <AlertDialogAction
@@ -1069,13 +1188,13 @@ export default function PortalPaciente() {
               <HeartHandshake className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold font-display text-foreground">EloLab</h1>
-              <p className="text-[11px] text-muted-foreground -mt-0.5">Portal do Paciente</p>
+              <h1 className="text-lg font-bold font-display text-foreground">{nomeClinica || 'Portal do Paciente'}</h1>
+              {nomeClinica && <p className="text-[11px] text-muted-foreground -mt-0.5">Portal do Paciente</p>}
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold">{profile?.nome}</p>
+              <p className="text-sm font-semibold">{nomeExibido}</p>
               <p className="text-[11px] text-muted-foreground">
                 {idade && `${idade} anos`}
                 {profile?.cpf && ` • CPF: ***${profile.cpf.slice(-5)}`}
@@ -1093,7 +1212,7 @@ export default function PortalPaciente() {
       </header>
 
       {/* ─── Main Content ─── */}
-      <main aria-label="Portal do paciente" className="mx-auto max-w-7xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10">
+      <main aria-label="Portal do paciente" className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-7 sm:pt-8 md:pb-8 lg:px-10">
         {isReschedulePage ? (
           <section aria-labelledby="portal-reschedule-title" className="mx-auto max-w-3xl space-y-6">
             <Button type="button" variant="ghost" onClick={leaveReschedulePage} disabled={actionLoading} className="-ml-3 gap-2">
@@ -1159,17 +1278,17 @@ export default function PortalPaciente() {
                           setRescheduleSubmitError('');
                           void loadRescheduleSlots(event.target.value);
                         }}
-                        min={todayDateOnly()}
+                        min={todaySaoPauloDateOnly()}
                         max={limiteRemarcacao}
                         aria-describedby={limiteRemarcacao ? 'reschedule-date-limit' : undefined}
                         disabled={actionLoading || rescheduleStateStale}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground disabled:opacity-60"
+                        className="h-11 w-full rounded-md border border-input bg-background px-3 text-foreground disabled:opacity-60"
                       />
                     ) : (
                       <Input
                         id="return-reschedule-date"
                         type="date"
-                        min={todayDateOnly()}
+                        min={todaySaoPauloDateOnly()}
                         value={novaDataRetorno}
                         onChange={(event) => setNovaDataRetorno(event.target.value)}
                         disabled={actionLoading}
@@ -1195,7 +1314,7 @@ export default function PortalPaciente() {
                         value={rescheduleForm.hora_inicio}
                         onChange={(event) => setRescheduleForm((form) => ({ ...form, hora_inicio: event.target.value }))}
                         disabled={actionLoading || rescheduleStateStale || rescheduleSlotsLoading || rescheduleSlots.length === 0}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">{rescheduleSlotsLoading ? 'Buscando horários…' : 'Selecione um horário'}</option>
                         {rescheduleSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
@@ -1235,7 +1354,7 @@ export default function PortalPaciente() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1.5">
               <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                Olá, {profile?.nome?.split(' ')[0]}
+                Olá, {nomeExibido.split(' ')[0]}
               </h2>
               <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
                 Acompanhe suas consultas, exames e pagamentos.
@@ -1324,6 +1443,28 @@ export default function PortalPaciente() {
             </div>
           </section>
 
+          {/* ─── Vagas oferecidas: aparecem antes das abas, a reserva expira ─── */}
+          {ofertasEspera.length > 0 && (
+            <div>
+              <Card className="border-primary/40 bg-primary/5">
+                <CardHeader><CardTitle className="text-base">Vaga disponível para você</CardTitle><CardDescription>A reserva expira automaticamente; confirme para garantir o horário.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  {erroAceitarOferta && <p role="alert" className="text-sm text-destructive">{erroAceitarOferta}</p>}
+                  {ofertasEspera.map(oferta => (
+                    <div key={oferta.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3">
+                      <div><p className="font-medium">{format(new Date(`${oferta.vaga.data}T12:00:00`), 'dd/MM/yyyy')} às {oferta.vaga.hora_inicio?.slice(0, 5)}</p>
+                        <p className="text-xs text-muted-foreground">{nomeMedico(oferta.vaga.medicos?.nome || 'Médico')} · expira às {horaSP(oferta.oferta_expira_em)}</p></div>
+                      <Button disabled={actionLoading} onClick={() => void handleAcceptWaitlistOffer(oferta.id)}>
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        {ofertaAceitandoId === oferta.id ? 'Reservando…' : 'Aceitar vaga'}
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* ─── Allergy alert ─── */}
           {profile?.alergias && profile.alergias.length > 0 && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20">
@@ -1337,7 +1478,7 @@ export default function PortalPaciente() {
           {/* ─── Tabs ─── */}
           <div>
             <Tabs value={portalTab} onValueChange={setPortalTab} className="w-full">
-              <TabsList aria-label="Seções do portal" className="grid h-auto w-full grid-cols-3 gap-1.5 rounded-xl border border-border bg-card p-1.5 sm:grid-cols-4 md:grid-cols-7 md:gap-1">
+              <TabsList aria-label="Seções do portal" className="hidden h-auto w-full grid-cols-7 gap-1 rounded-xl border border-border bg-card p-1.5 md:grid">
                 <TabsTrigger value="agendar" className="h-12 flex-col gap-1 rounded-xl text-muted-foreground md:flex-row md:gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span className="text-[11px] sm:text-sm">Agendar</span>
@@ -1372,9 +1513,9 @@ export default function PortalPaciente() {
               <TabsContent value="agendar" className="mt-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle id="portal-agendar-titulo" className="flex items-center gap-2">
                       <Calendar className="h-5 w-5 text-primary" />
-                      Agende uma Consulta
+                      Agende uma consulta
                     </CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">Escolha um médico, data e horário disponível</p>
                   </CardHeader>
@@ -1392,29 +1533,72 @@ export default function PortalPaciente() {
                     )}
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Médico *</label>
-                      <select
+                      <Label htmlFor="portal-agendar-medico">Médico *</Label>
+                      <Select
                         value={schedulingForm.medico_id}
-                        onChange={(e) => {
-                          const medicoId = e.target.value;
+                        onValueChange={(medicoId) => {
                           setSchedulingNotice('');
                           setSchedulingForm(f => ({ ...f, medico_id: medicoId, hora_inicio: '' }));
                           void loadAvailableSlots(medicoId, schedulingForm.data);
+                          void buscarProximosHorarios(medicoId);
                         }}
-                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
                       >
-                        <option value="">Selecione um médico</option>
-                        {medicos.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {nomeMedico(m.nome)} {m.especialidade && `— ${m.especialidade}`}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger id="portal-agendar-medico" className="h-11"><SelectValue placeholder="Selecione um médico" /></SelectTrigger>
+                        <SelectContent>
+                          {medicos.map(m => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {nomeMedico(m.nome)}{m.especialidade ? ` — ${m.especialidade}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
+                    {schedulingForm.medico_id && proximosHorariosEstado !== 'idle' && (
+                      <section aria-labelledby="portal-proximos-horarios" className="space-y-2 rounded-lg border border-border p-3">
+                        <h3 id="portal-proximos-horarios" className="flex items-center gap-1.5 text-sm font-medium">
+                          <Sparkles aria-hidden="true" className="h-4 w-4" />Próximos horários livres (14 dias)
+                        </h3>
+                        {proximosHorariosEstado === 'loading' ? (
+                          <p role="status" className="text-sm text-muted-foreground">Procurando horários…</p>
+                        ) : proximosHorariosEstado === 'error' ? (
+                          <p className="text-sm text-muted-foreground">Não foi possível consultar agora. Escolha uma data abaixo.</p>
+                        ) : proximosHorarios.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">Sem horários livres nos próximos 14 dias com este médico.</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {proximosHorarios.map(item => {
+                              const [, mes, dia] = item.data.split('-');
+                              const semana = format(parseISO(item.data), 'EEE', { locale: ptBR });
+                              const ativo = schedulingForm.data === item.data && schedulingForm.hora_inicio === item.hora;
+                              return (
+                                <button
+                                  key={`${item.data}-${item.hora}`}
+                                  type="button"
+                                  aria-pressed={ativo}
+                                  onClick={() => {
+                                    setSchedulingNotice('');
+                                    setSchedulingForm(f => ({ ...f, data: item.data, hora_inicio: '' }));
+                                    void loadAvailableSlots(schedulingForm.medico_id, item.data).then(() => {
+                                      setSchedulingForm(f => ({ ...f, data: item.data, hora_inicio: item.hora }));
+                                    });
+                                  }}
+                                  className={cn('min-h-11 rounded-lg px-3 py-2 text-left text-sm', ativo ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/80')}
+                                >
+                                  <span className="block text-xs capitalize opacity-80">{semana} {dia}/{mes}</span>
+                                  <span className="font-medium tabular-nums">{item.hora}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </section>
+                    )}
+
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Data *</label>
-                      <input
+                      <Label htmlFor="portal-agendar-data">Data *</Label>
+                      <Input
+                        id="portal-agendar-data"
                         type="date"
                         value={schedulingForm.data}
                         onChange={(e) => {
@@ -1423,25 +1607,27 @@ export default function PortalPaciente() {
                           setSchedulingForm(f => ({ ...f, data, hora_inicio: '' }));
                           void loadAvailableSlots(schedulingForm.medico_id, data);
                         }}
-                        min={todayDateOnly()}
-                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
+                        min={todaySaoPauloDateOnly()}
+                        className="h-11"
                       />
                     </div>
 
                     {schedulingForm.data && schedulingForm.medico_id && (
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Horário Disponível *</label>
+                        <p id="portal-agendar-horarios" className="text-sm font-medium">Horário disponível *</p>
                         {schedulingLoading ? (
                           <div className="text-center py-6 text-muted-foreground">
                             <div className="inline-block h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                           </div>
                         ) : availableSlots.length > 0 ? (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div role="group" aria-labelledby="portal-agendar-horarios" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {availableSlots.map(slot => (
                               <button
                                 key={slot}
+                                type="button"
+                                aria-pressed={schedulingForm.hora_inicio === slot}
                                 onClick={() => setSchedulingForm(f => ({ ...f, hora_inicio: slot }))}
-                                className={`py-2 px-3 rounded-lg text-sm font-medium transition-[background-color,color,box-shadow,transform] ${
+                                className={`min-h-11 py-2 px-3 rounded-lg text-sm font-medium transition-[background-color,color,box-shadow,transform] ${
                                   schedulingForm.hora_inicio === slot
                                     ? 'bg-primary text-primary-foreground'
                                     : 'bg-muted hover:bg-muted/80 text-foreground'
@@ -1460,23 +1646,24 @@ export default function PortalPaciente() {
                     )}
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Tipo de Consulta</label>
-                      <input
+                      <Label htmlFor="portal-agendar-tipo">Tipo de consulta</Label>
+                      <Input
+                        id="portal-agendar-tipo"
                         type="text"
                         value={schedulingForm.tipo}
                         onChange={(e) => setSchedulingForm(f => ({ ...f, tipo: e.target.value }))}
                         placeholder="Ex: Consulta, Check-up"
-                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground"
+                        className="h-11"
                       />
                     </div>
 
                     <Button
                       onClick={handleCreateAgendamento}
                       disabled={!schedulingForm.medico_id || !schedulingForm.data || !schedulingForm.hora_inicio || schedulingLoading || schedulingSubmitting}
-                      className="w-full gap-2"
+                      className="h-11 w-full gap-2"
                     >
                       <Calendar className="h-4 w-4" />
-                      {schedulingSubmitting ? 'Agendando…' : 'Confirmar Agendamento'}
+                      {schedulingSubmitting ? 'Agendando…' : 'Confirmar agendamento'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -1512,7 +1699,7 @@ export default function PortalPaciente() {
                                   </div>
                                   <div className="space-y-0.5">
                                     <div className="flex items-center font-semibold text-sm">
-                                      {a.tipo || 'Consulta'}
+                                      {rotuloTipoAgendamento(a.tipo)}
                                       {a.data === hojeNaClinica && <Badge className="ml-2 bg-primary text-primary-foreground text-[9px]">HOJE</Badge>}
                                     </div>
                                     <p className="text-sm text-muted-foreground">
@@ -1554,20 +1741,7 @@ export default function PortalPaciente() {
                                       if (element) rescheduleTriggersRef.current.set(a.id, element);
                                       else rescheduleTriggersRef.current.delete(a.id);
                                     }}
-                                    onClick={() => {
-                                      lastRescheduleTriggerIdRef.current = a.id;
-                                      rescheduleLookupRef.current += 1;
-                                      setRescheduleSlotsLoading(false);
-                                      setRescheduleError('');
-                                      setRescheduleSubmitError('');
-                                      setRescheduleStateStale(false);
-                                      setRescheduleSlots([]);
-                                      setRescheduleForm({ data: '', hora_inicio: '' });
-                                      setRescheduleLimite(null);
-                                      setRescheduleModal(a);
-                                      updateRescheduleRoute(true);
-                                      void loadRescheduleLimite(a.id);
-                                    }}
+                                    onClick={() => abrirRemarcacao(a)}
                                     disabled={actionLoading}
                                     className="flex-1 text-xs"
                                   >
@@ -1580,6 +1754,8 @@ export default function PortalPaciente() {
                                     onClick={() => {
                                       setCancelError('');
                                       setCancelStateStale(false);
+                                      setMotivoCancelamento(MOTIVOS_CANCELAMENTO[0]);
+                                      setMotivoCancelamentoTexto('');
                                       cancelExpectedAppointmentRef.current = { data: a.data, hora_inicio: a.hora_inicio ?? null };
                                       lastCancelTriggerIdRef.current = a.id;
                                       setAgendamentoParaCancelar(a.id);
@@ -1687,7 +1863,7 @@ export default function PortalPaciente() {
                             <p className="truncate font-semibold text-sm">{documento.nome}</p>
                             <p className="text-xs text-muted-foreground">{documento.categoria || documento.tipo || 'Documento'} · {documento.origem === 'externo' ? 'Origem externa' : 'Da clínica'}</p>
                             <p className="text-xs text-muted-foreground">{documento.validade_ate ? `Válido até ${formatarDataIso(documento.validade_ate)}` : 'Sem vencimento do documento'}</p>
-                            {documento.link_expira_em && <p className="text-xs text-muted-foreground">Link privado válido por cinco minutos · expira em {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(documento.link_expira_em))}</p>}
+                            {documento.link_expira_em && <p className="text-xs text-muted-foreground">Link privado válido por cinco minutos · expira em {formatDateTimeSaoPaulo(documento.link_expira_em)}</p>}
                           </div>
                         </div>
                         {urlAssinada && <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" aria-label={`Abrir ${documento.nome}`} onClick={() => abrirUrlSegura(urlAssinada, storageUrlSeguro)}><Download className="h-4 w-4" />Abrir documento</Button>}
@@ -1769,20 +1945,17 @@ export default function PortalPaciente() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold">Precisa agendar uma consulta?</p>
-                          <p className="text-xs text-muted-foreground">Entre em contato com a clínica</p>
+                          <p className="text-xs text-muted-foreground">Escolha o médico e um horário livre pelo portal.</p>
                         </div>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-                        onClick={() => {
-                          const msg = encodeURIComponent(`Olá! Sou ${profile?.nome}, gostaria de agendar uma consulta.`);
-                          window.open(`https://wa.me/?text=${msg}`, '_blank');
-                        }}
+                        className="h-11 gap-1.5"
+                        onClick={irParaAgendar}
                       >
-                        <Phone className="h-3.5 w-3.5" />
-                        WhatsApp
+                        <Calendar className="h-3.5 w-3.5" />
+                        Agendar
                       </Button>
                     </div>
                   </CardContent>
@@ -1797,13 +1970,13 @@ export default function PortalPaciente() {
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       {profile?.nome && (
-                        <div><span className="text-muted-foreground text-xs">Nome</span><p className="font-medium">{profile.nome}</p></div>
+                        <div><span className="text-muted-foreground text-xs">Nome</span><p className="font-medium">{nomeExibido}</p></div>
                       )}
                       {profile?.data_nascimento && (
                         <div><span className="text-muted-foreground text-xs">Data de Nascimento</span><p className="font-medium">{format(parseISO(profile.data_nascimento), 'dd/MM/yyyy')}</p></div>
                       )}
                       {profile?.sexo && (
-                        <div><span className="text-muted-foreground text-xs">Sexo</span><p className="font-medium capitalize">{profile.sexo}</p></div>
+                        <div><span className="text-muted-foreground text-xs">Sexo</span><p className="font-medium">{sexoPorExtenso(profile.sexo) ?? profile.sexo}</p></div>
                       )}
                     </div>
                     <Separator />
@@ -1883,7 +2056,7 @@ export default function PortalPaciente() {
                               <div className="space-y-0.5">
                                 <p className="font-semibold text-sm">{p.descricao || 'Pagamento'}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {p.created_at ? format(new Date(p.created_at), "dd 'de' MMM, yyyy", { locale: ptBR }) : ''}
+                                  {p.created_at ? formatDateTimeSaoPaulo(p.created_at).slice(0, 10) : ''}
                                   {p.metodo_pagamento && ` • ${p.metodo_pagamento}`}
                                 </p>
                               </div>
@@ -1915,28 +2088,6 @@ export default function PortalPaciente() {
 </TabsContent>
             </Tabs>
           </div>
-
-          {/* ─── NPS Survey ─── */}
-          {ofertasEspera.length > 0 && (
-            <div>
-              <Card className="border-primary/40 bg-primary/5">
-                <CardHeader><CardTitle className="text-base">Vaga disponível para você</CardTitle><CardDescription>A reserva expira automaticamente; confirme para garantir o horário.</CardDescription></CardHeader>
-                <CardContent className="space-y-3">
-                  {erroAceitarOferta && <p role="alert" className="text-sm text-destructive">{erroAceitarOferta}</p>}
-                  {ofertasEspera.map(oferta => (
-                    <div key={oferta.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3">
-                      <div><p className="font-medium">{format(new Date(`${oferta.vaga.data}T12:00:00`), 'dd/MM/yyyy')} às {oferta.vaga.hora_inicio?.slice(0, 5)}</p>
-                        <p className="text-xs text-muted-foreground">{nomeMedico(oferta.vaga.medicos?.nome || 'Médico')} · expira {format(new Date(oferta.oferta_expira_em), 'HH:mm')}</p></div>
-                      <Button disabled={actionLoading} onClick={() => void handleAcceptWaitlistOffer(oferta.id)}>
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                        {ofertaAceitandoId === oferta.id ? 'Reservando…' : 'Aceitar vaga'}
-                      </Button>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          )}
 
           {retornos.length > 0 && (
             <div>
@@ -1979,7 +2130,7 @@ export default function PortalPaciente() {
             </div>
           )}
 
-          <NPSSurvey token={token} />
+          {mostrarAvaliacao && <NPSSurvey token={token} chaveEnvio={chaveAvaliacao} />}
 
           {/* ─── Footer ─── */}
           <div className="text-center py-6 space-y-2">
@@ -1988,9 +2139,49 @@ export default function PortalPaciente() {
               <span>Seus dados são protegidos pela LGPD</span>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              EloLab Clínica Médica • Portal seguro do paciente
+              {nomeClinica ? `${nomeClinica} · Portal seguro do paciente` : 'Portal seguro do paciente'}
             </p>
           </div>
+          <nav aria-label="Seções do portal no celular" className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 md:hidden">
+            <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+              {([
+                { valor: 'consultas', rotulo: 'Consultas', icone: Calendar },
+                { valor: 'agendar', rotulo: 'Agendar', icone: Clock },
+                { valor: 'exames', rotulo: 'Exames', icone: FlaskConical },
+                { valor: 'documentos', rotulo: 'Documentos', icone: FileText },
+              ] as const).map(item => {
+                const Icone = item.icone;
+                const ativo = portalTab === item.valor;
+                return (
+                  <button
+                    key={item.valor}
+                    type="button"
+                    aria-current={ativo ? 'page' : undefined}
+                    onClick={() => setPortalTab(item.valor)}
+                    className={cn('flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] font-medium', ativo ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+                  >
+                    <Icone aria-hidden="true" className="h-4 w-4" />{item.rotulo}
+                  </button>
+                );
+              })}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Mais seções do portal"
+                    className={cn('flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] font-medium', ['prescricoes', 'historico', 'financeiro'].includes(portalTab) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+                  >
+                    <MoreHorizontal aria-hidden="true" className="h-4 w-4" />Mais
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top">
+                  <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setPortalTab('prescricoes')}><Pill aria-hidden="true" className="h-4 w-4" />Receitas</DropdownMenuItem>
+                  <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setPortalTab('historico')}><Heart aria-hidden="true" className="h-4 w-4" />Histórico</DropdownMenuItem>
+                  <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setPortalTab('financeiro')}><CreditCard aria-hidden="true" className="h-4 w-4" />Financeiro</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </nav>
         </div>
         )}
       </main>

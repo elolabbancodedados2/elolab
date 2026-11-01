@@ -27,3 +27,26 @@ export function getPrioridadeListaEspera(prioridade: string | null | undefined):
   if (isPrioridadeListaEspera(prioridade)) return { value: prioridade, ...PRIORIDADE_INFO[prioridade] };
   return { value: null, label: `Prioridade desconhecida (${prioridade})`, className: PRIORIDADE_DESCONHECIDA_CLASS };
 }
+
+const PESO_PRIORIDADE: Record<PrioridadeListaEspera, number> = { urgente: 0, preferencial: 1, normal: 2 };
+
+type ItemOrdenavel = { prioridade?: string | null; data_cadastro?: string | null; created_at?: string | null };
+
+/** Urgente primeiro, depois preferencial e normal; no empate, o cadastro mais antigo. */
+export function compararPorPrioridade(a: ItemOrdenavel, b: ItemOrdenavel): number {
+  const pa = PESO_PRIORIDADE[getPrioridadeListaEspera(a.prioridade).value ?? 'normal'];
+  const pb = PESO_PRIORIDADE[getPrioridadeListaEspera(b.prioridade).value ?? 'normal'];
+  if (pa !== pb) return pa - pb;
+  return String(a.data_cadastro ?? a.created_at ?? '').localeCompare(String(b.data_cadastro ?? b.created_at ?? ''));
+}
+
+/** Pedidos que ainda aguardam vaga; agendados e desistências ficam no histórico. */
+export const STATUS_ATIVOS_LISTA_ESPERA = ['aguardando', 'notificado', 'confirmado'] as const;
+
+export const ROTULO_STATUS_LISTA_ESPERA: Record<string, string> = {
+  aguardando: 'Aguardando',
+  notificado: 'Notificado',
+  confirmado: 'Confirmado',
+  agendado: 'Agendado',
+  desistiu: 'Desistiu',
+};

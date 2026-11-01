@@ -27,12 +27,15 @@ describe('AgendaHeader', () => {
           onOpenColorScheme={vi.fn()}
           onToggleWaiting={vi.fn()}
           waitingCount={0}
-          totals={{ total: 0, confirmados: 0, aguardando: 0, cancelados: 0 }}
+          totals={{ total: 0, confirmados: 0, aConfirmar: 0, naClinica: 0, cancelados: 0 }}
           defaultView={null}
           onSetDefaultView={vi.fn()}
         />
       </MemoryRouter>,
     );
+
+    expect(screen.getByRole('button', { name: /A confirmar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Na clínica/ })).toBeInTheDocument();
 
     expect(screen.getByRole('textbox', { name: 'Buscar paciente, CPF ou telefone' })).toBeInTheDocument();
     const views = screen.getByRole('group', { name: 'Visualização da agenda' });
@@ -50,5 +53,42 @@ describe('AgendaHeader', () => {
     expect(screen.getByText('Aguardando triagem')).toBeInTheDocument();
     expect(screen.getByText('Em triagem')).toBeInTheDocument();
     expect(screen.getByText('Aguardando pagamento')).toBeInTheDocument();
+  });
+
+  it('esconde o filtro de médicos para o médico e separa os totais por situação', () => {
+    const onStatusFilterChange = vi.fn();
+    render(
+      <MemoryRouter>
+        <AgendaHeader
+          date="2026-10-10"
+          view="weekly"
+          onDateChange={vi.fn()}
+          onViewChange={vi.fn()}
+          search=""
+          onSearchChange={vi.fn()}
+          medicos={[{ id: 'm1', nome: 'Ana' }]}
+          statusFilter={[]}
+          medicoFilter={['m1']}
+          hideMedicoFilter
+          onStatusFilterChange={onStatusFilterChange}
+          onMedicoFilterChange={vi.fn()}
+          onNewAppointment={vi.fn()}
+          onNewBlock={vi.fn()}
+          onOpenColorScheme={vi.fn()}
+          onToggleWaiting={vi.fn()}
+          waitingCount={0}
+          totals={{ total: 9, confirmados: 2, aConfirmar: 4, naClinica: 1, cancelados: 2 }}
+          totalsLabel="na semana"
+          defaultView={null}
+          onSetDefaultView={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('button', { name: /Médicos/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Limpar filtros' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /na semana: 9 no total/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Na clínica/ }));
+    expect(onStatusFilterChange).toHaveBeenCalledWith(['aguardando', 'aguardando_triagem', 'em_triagem', 'fila_atendimento', 'em_atendimento']);
   });
 });

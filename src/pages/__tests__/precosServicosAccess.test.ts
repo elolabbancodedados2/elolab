@@ -14,7 +14,8 @@ describe('acessibilidade e permissões dos preços e serviços', () => {
   it('associa rótulos aos controles e nomeia paleta de cores', () => {
     expect(tipos).toMatch(/htmlFor="tipo-nome"/);
     expect(tipos).toMatch(/id="tipo-nome"/);
-    expect(tipos).toMatch(/aria-label=\{`Cor \$\{c\}`\}/);
+    expect(tipos).toMatch(/aria-label=\{`Cor \$\{c\.nome\}`\}/);
+    expect(tipos).not.toMatch(/#1456C0|#06B6D4/i);
     expect(exames).toMatch(/aria-label="Nome do exame"/);
     expect(exames).toMatch(/aria-label="Buscar exame ou código TUSS"/);
     expect(exames).toMatch(/SelectTrigger aria-label="Filtrar por convênio"/);

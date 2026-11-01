@@ -1,6 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search, FileText, Plus, Save, CheckCircle2, CalendarCheck, FileDown, History, Loader2, RefreshCw,
@@ -26,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { gerarProntuarioPDF, downloadPDF, openPDF, sharePDFWhatsApp } from '@/lib/pdfGenerator';
+import { gerarProntuarioPDF, gerarReceita, downloadPDF, openPDF, sharePDFWhatsApp } from '@/lib/pdfGenerator';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -58,11 +58,21 @@ import { obterIdentificacaoAssinante } from '@/lib/prontuarioSigner';
 import { lerConfigsClinica } from '@/lib/configClinica';
 import { buscarPorIdsEmLotes, buscarTodasAsPaginas, combinarEventosAuditoria, EventoAuditoriaExportavel, filtrarEventosAuditoria, gerarCsvAuditoria } from '@/lib/prontuarioAuditExport';
 import { UnsavedChangesDialog } from '@/components/ConfirmDialog';
+import { DispensacaoConfirmacao, type ItemDispensacaoConfirmado } from '@/components/clinical/DispensacaoConfirmacao';
+import type { PlanoDispensacaoItem } from '@/lib/workflowAutomation';
 import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { filtrarRascunhosAbertos, nomeAutorRascunho } from '@/lib/prontuarioDrafts';
 import { needsPatientContextChangeConfirmation } from '@/lib/patientContextChange';
 import { atualizarEvolucaoNoHistorico } from '@/lib/historicoEvolucoes';
+import {
+  camposDaUltimaEvolucao, filtrarEvolucoes, idadePorExtenso, limparDiagnosticosSecundarios,
+  listarMedicamentosParaChecagem, mascararCpf, type FiltroSituacaoEvolucao,
+} from '@/lib/prontuarioEvolucao';
+import { classeSeloNivelVital, classificarSinalVital, piorNivelVital, type SinalVital } from '@/lib/limiaresVitais';
+import { BotaoDitado, juntarTextoDitado } from '@/components/clinical/BotaoDitado';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 const COLUNAS_HISTORICO_EVOLUCOES = 'id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)';
 
@@ -187,34 +197,45 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
 
   const imcClass = classificarIMC(sinais.imc);
 
-  const fields: { key: string; label: string; icon: any; field?: keyof SinaisVitais; placeholder?: string; dual?: boolean; accent: string }[] = [
-    { key: 'pa', label: 'PA (mmHg)', icon: Heart, accent: 'text-destructive', dual: true },
-    { key: 'fc', label: 'FC (bpm)', icon: Heart, accent: 'text-destructive', field: 'frequencia_cardiaca', placeholder: '72' },
-    { key: 'fr', label: 'FR (irpm)', icon: Activity, accent: 'text-info', field: 'frequencia_respiratoria', placeholder: '16' },
-    { key: 'temp', label: 'Temp (°C)', icon: Thermometer, accent: 'text-warning', field: 'temperatura', placeholder: '36.5' },
-    { key: 'spo2', label: 'SpO₂ (%)', icon: Droplets, accent: 'text-info', field: 'saturacao', placeholder: '98' },
-    { key: 'peso', label: 'Peso (kg)', icon: Scale, accent: 'text-success', field: 'peso', placeholder: '70' },
-    { key: 'altura', label: 'Alt (cm)', icon: Ruler, accent: 'text-primary', field: 'altura', placeholder: '170' },
-    { key: 'glicemia', label: 'Glicemia (mg/dL)', icon: Droplets, accent: 'text-warning', field: 'glicemia', placeholder: '90' },
-    { key: 'circ-abd', label: 'Cintura (cm)', icon: Ruler, accent: 'text-info', field: 'circunferencia_abdominal', placeholder: '82' },
-    { key: 'circ-cran', label: 'Cabeça (cm)', icon: Ruler, accent: 'text-info', field: 'circunferencia_craniana', placeholder: '54' },
-    { key: 'glasgow', label: 'Glasgow', icon: Brain, accent: 'text-primary', field: 'glasgow', placeholder: '15' },
-    { key: 'dor', label: 'Dor (0-10)', icon: AlertTriangle, accent: 'text-warning', field: 'dor', placeholder: '0' },
+  // Ícones e rótulos neutros; a cor só aparece quando o valor sai da faixa
+  // (âmbar) ou passa do limiar de alerta (vermelho), pelos limiares únicos.
+  const fields: { key: string; label: string; icon: any; field?: keyof SinaisVitais; placeholder?: string; dual?: boolean; sinal?: SinalVital }[] = [
+    { key: 'pa', label: 'PA (mmHg)', icon: Heart, dual: true },
+    { key: 'fc', label: 'FC (bpm)', icon: Heart, field: 'frequencia_cardiaca', placeholder: '72', sinal: 'frequencia_cardiaca' },
+    { key: 'fr', label: 'FR (irpm)', icon: Activity, field: 'frequencia_respiratoria', placeholder: '16', sinal: 'frequencia_respiratoria' },
+    { key: 'temp', label: 'Temp (°C)', icon: Thermometer, field: 'temperatura', placeholder: '36.5', sinal: 'temperatura' },
+    { key: 'spo2', label: 'SpO₂ (%)', icon: Droplets, field: 'saturacao', placeholder: '98', sinal: 'saturacao' },
+    { key: 'peso', label: 'Peso (kg)', icon: Scale, field: 'peso', placeholder: '70' },
+    { key: 'altura', label: 'Alt (cm)', icon: Ruler, field: 'altura', placeholder: '170' },
+    { key: 'glicemia', label: 'Glicemia (mg/dL)', icon: Droplets, field: 'glicemia', placeholder: '90', sinal: 'glicemia' },
+    { key: 'circ-abd', label: 'Cintura (cm)', icon: Ruler, field: 'circunferencia_abdominal', placeholder: '82' },
+    { key: 'circ-cran', label: 'Cabeça (cm)', icon: Ruler, field: 'circunferencia_craniana', placeholder: '54' },
+    { key: 'glasgow', label: 'Glasgow', icon: Brain, field: 'glasgow', placeholder: '15' },
+    { key: 'dor', label: 'Dor (0-10)', icon: AlertTriangle, field: 'dor', placeholder: '0' },
   ];
+  const nivelDoCampo = (f: typeof fields[number]) => f.dual
+    ? piorNivelVital(classificarSinalVital('pressao_sistolica', sinais.pressao_sistolica), classificarSinalVital('pressao_diastolica', sinais.pressao_diastolica))
+    : f.sinal ? classificarSinalVital(f.sinal, (sinais as any)[f.field!]) : null;
+  const bordaDoNivel = (nivel: ReturnType<typeof nivelDoCampo>) => nivel === 'alerta'
+    ? 'border-destructive/50'
+    : nivel === 'atencao' ? 'border-warning/50' : 'border-border/60';
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Activity className="h-4 w-4 text-primary" />
-        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sinais Vitais</span>
+        <Activity className="h-4 w-4 text-muted-foreground" />
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sinais vitais</span>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {fields.map(f => {
           const Icon = f.icon;
+          const nivel = nivelDoCampo(f);
           return (
-            <div key={f.key} className="rounded-xl border border-border/60 bg-card p-2.5 space-y-1">
-              <Label htmlFor={f.dual ? undefined : `vital-${f.key}`} className={`text-xs font-semibold flex items-center gap-1 ${f.accent}`}>
-                <Icon className="h-3 w-3" />{f.label}
+            <div key={f.key} className={cn('rounded-xl border bg-card p-2.5 space-y-1', bordaDoNivel(nivel))}>
+              <Label htmlFor={f.dual ? undefined : `vital-${f.key}`} className={cn('text-xs font-semibold flex items-center gap-1', nivel === 'alerta' ? 'text-destructive' : nivel === 'atencao' ? 'text-warning-foreground' : 'text-muted-foreground')}>
+                <Icon className="h-3 w-3" aria-hidden="true" />{f.label}
+                {nivel === 'alerta' && <span className="sr-only"> (valor em alerta)</span>}
+                {nivel === 'atencao' && <span className="sr-only"> (fora da faixa usual)</span>}
               </Label>
               {f.dual ? (
                 <div className="grid grid-cols-2 gap-2">
@@ -234,7 +255,7 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
           );
         })}
         <div className="rounded-xl border border-border/60 bg-card p-2.5 space-y-1">
-          <Label className="text-xs font-semibold text-info">IMC</Label>
+          <Label className="text-xs font-semibold text-muted-foreground">IMC</Label>
           <div className="h-7 flex items-center px-2 text-xs font-bold">
             {sinais.imc || '—'}
             {imcClass && <span className={`ml-1 text-xs ${imcClass.color}`}>({imcClass.label})</span>}
@@ -246,27 +267,53 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
 }
 
 // ─── Collapsible Section ───────────────────────────────────
-function Section({ icon: Icon, title, children, collapsible = false }: {
+/**
+ * Seção da evolução. O botão de abrir/fechar fica FORA do fieldset que
+ * bloqueia a edição: antes, no modo leitura, o fieldset desabilitava também
+ * o botão e as seções recolhidas não abriam nem para consulta. Seção com
+ * conteúdo já começa aberta.
+ */
+function Section({ icon: Icon, title, children, collapsible = false, bloqueado = false, temConteudo = false, acao }: {
   icon: React.ElementType; title: string; children: React.ReactNode; collapsible?: boolean;
+  /** Campos somente leitura (registro assinado, modo leitura ou salvando). */
+  bloqueado?: boolean;
+  /** Abre a seção recolhível quando já há texto registrado. */
+  temConteudo?: boolean;
+  /** Ação ao lado do título (ex.: ditado), fora do botão de recolher. */
+  acao?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(!collapsible);
+  const [open, setOpen] = useState(!collapsible || temConteudo);
+  useEffect(() => { if (temConteudo) setOpen(true); }, [temConteudo]);
+  const conteudoId = useId();
+  const cabecalho = (
+    <>
+      <span aria-hidden="true" className="h-8 w-8 rounded-lg border border-border bg-secondary flex items-center justify-center text-foreground flex-shrink-0">
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <span className="text-xs font-bold text-foreground uppercase tracking-wider text-left">{title}</span>
+    </>
+  );
   return (
     <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => collapsible && setOpen(!open)}
-        className="flex items-center gap-2 px-4 py-2.5 w-full hover:bg-muted/30 transition-colors"
-      >
-        <span className="h-8 w-8 rounded-xl bg-gradient-primary flex items-center justify-center text-white flex-shrink-0">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-xs font-bold text-foreground uppercase tracking-wider">{title}</span>
-        {collapsible && (
-          <ChevronDown className={`ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      <div className="flex items-center gap-1 pr-2">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-controls={conteudoId}
+            className="flex min-h-11 flex-1 items-center gap-2 px-4 py-2 hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            {cabecalho}
+            <ChevronDown aria-hidden="true" className={`ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+          </button>
+        ) : (
+          <div className="flex min-h-11 flex-1 items-center gap-2 px-4 py-2">{cabecalho}</div>
         )}
-      </button>
+        {open && acao}
+      </div>
       {open && (
-        <div className="px-4 pb-3 space-y-2">{children}</div>
+        <fieldset id={conteudoId} disabled={bloqueado} className="min-w-0 px-4 pb-3 space-y-2">{children}</fieldset>
       )}
     </div>
   );
@@ -275,6 +322,7 @@ function Section({ icon: Icon, title, children, collapsible = false }: {
 // ─── Patient File Card ─────────────────────────────────────
 function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome: string }) {
   const idade = calcularIdade(paciente.data_nascimento);
+  const idadeTexto = idadePorExtenso(paciente.data_nascimento);
   const isMenor = paciente.data_nascimento ? idade < 18 : false;
 
   return (
@@ -299,7 +347,7 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
               )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 <Badge className="border-border bg-secondary px-2 py-0 text-xs font-bold text-foreground">
-                  {paciente.data_nascimento ? `${idade} anos` : 'Idade N/I'}
+                  {idadeTexto || 'Idade não informada'}
                 </Badge>
                 {paciente.sexo && (
                   <Badge variant="outline" className="border-border px-1.5 py-0 text-xs text-foreground">
@@ -312,6 +360,12 @@ function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome
                   </span>
                 )}
               </div>
+              <Link
+                to={`/pacientes/${encodeURIComponent(paciente.id)}/editar`}
+                className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
+              >
+                <PenLine aria-hidden="true" className="h-3.5 w-3.5" />Editar cadastro
+              </Link>
             </div>
           </div>
         </div>
@@ -676,8 +730,8 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {badge && <Badge className={`text-xs px-1.5 py-0 rounded-full ${badgeClass}`}>{badge}</Badge>}
         {href && (
-          <Link to={href} className="h-7 px-2 rounded-full text-xs text-primary border border-border hover:bg-secondary flex items-center gap-1 transition-colors">
-            <ExternalLink className="h-3 w-3" />Abrir
+          <Link to={href} aria-label={`Abrir ${label}`} className="min-h-9 px-3 rounded-full text-xs text-foreground border border-border hover:bg-secondary flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <ExternalLink aria-hidden="true" className="h-3 w-3" />Abrir
           </Link>
         )}
       </div>
@@ -722,7 +776,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                       {referencia && <span>Referência: {referencia}{resultado.unidade ? ` ${resultado.unidade}` : ''}</span>}
                       {resultado.data_liberacao && <span>Liberado em {format(new Date(resultado.data_liberacao), 'dd/MM/yy HH:mm')}</span>}
-                      {resultado.critico && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Resultado crítico</Badge>}
+                      {resultado.critico && <Badge variant="destructive" className="h-5 px-1.5 text-xs">Resultado crítico</Badge>}
                       {coleta?.id && <Link to={`/laudos-lab?coleta=${encodeURIComponent(coleta.id)}`} className="inline-flex items-center gap-1 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">Abrir laudo <ExternalLink className="h-3 w-3" /></Link>}
                     </div>
                   </li>
@@ -735,23 +789,23 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><FileCheck className="h-3.5 w-3.5" /> Atestados ({atestados.length})</h4>
-          <Link to={`/atestados?paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
+          <Link to={`/documentos-clinicos?tab=atestados&paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
             Ver todos <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
         {atestados.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum atestado</p> : atestados.map(a => (
-          <RecordItem key={a.id} icon={FileCheck} label={a.tipo || 'Atestado'} sub={a.dias ? `(${a.dias}d)` : ''} badge={a.data_emissao ? format(parseDateOnly(a.data_emissao)!, 'dd/MM/yy') : ''} badgeClass="bg-muted text-muted-foreground" href={`/atestados?paciente=${pacienteId}`} />
+          <RecordItem key={a.id} icon={FileCheck} label={a.tipo || 'Atestado'} sub={a.dias ? `(${a.dias}d)` : ''} badge={a.data_emissao ? format(parseDateOnly(a.data_emissao)!, 'dd/MM/yy') : ''} badgeClass="bg-muted text-muted-foreground" href={`/documentos-clinicos?tab=atestados&paciente=${pacienteId}`} />
         ))}
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><ArrowRight className="h-3.5 w-3.5" /> Encaminhamentos ({encaminhamentos.length})</h4>
-          <Link to={`/encaminhamentos?paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
+          <Link to={`/documentos-clinicos?tab=encaminhamentos&paciente=${pacienteId}`} className="text-xs text-primary hover:underline flex items-center gap-0.5">
             Ver todos <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
         {encaminhamentos.length === 0 ? <p className="text-xs text-muted-foreground py-2">Nenhum encaminhamento</p> : encaminhamentos.map(e => (
-          <RecordItem key={e.id} icon={ArrowRight} label={e.especialidade_destino} badge={e.status} badgeClass={sc(e.status)} href={`/encaminhamentos?paciente=${pacienteId}`} />
+          <RecordItem key={e.id} icon={ArrowRight} label={e.especialidade_destino} badge={e.status} badgeClass={sc(e.status)} href={`/documentos-clinicos?tab=encaminhamentos&paciente=${pacienteId}`} />
         ))}
       </div>
     </div>
@@ -793,12 +847,13 @@ export default function Prontuarios() {
   const [dispensando, setDispensando] = useState(false);
   const [exportacaoPendente, setExportacaoPendente] = useState<{ conteudo: string; nomeArquivo: string; tipo: 'application/json' | 'application/xml'; formato: 'FHIR R4 JSON' | 'XML clínico simplificado'; ids: string[] } | null>(null);
 
+  const [planoDispensacao, setPlanoDispensacao] = useState<PlanoDispensacaoItem[] | null>(null);
+  const [prontuarioDispensacaoId, setProntuarioDispensacaoId] = useState<string | null>(null);
+
   /**
-   * Dá baixa no estoque dos medicamentos que a clínica entregou em mãos.
-   *
-   * Só o que tem quantidade preenchida entra: sem quantidade não há o que
-   * descontar, e chutar "1" faria o estoque divergir do armário — que é pior
-   * que não controlar.
+   * Abre a prévia da dispensação: salva o atendimento, procura cada
+   * medicamento no estoque da clínica (só lotes dentro da validade) e deixa a
+   * pessoa confirmar item, lote e quantidade antes de qualquer baixa.
    */
   const dispensarNaClinica = async () => {
     const itens = prescricoes
@@ -809,6 +864,10 @@ export default function Prontuarios() {
       toast.error('Preencha a quantidade dos medicamentos entregues');
       return;
     }
+    if (!user?.clinica_id) {
+      toast.error('Clínica não identificada. Atualize a página antes de dar baixa.');
+      return;
+    }
 
     setDispensando(true);
     try {
@@ -816,25 +875,40 @@ export default function Prontuarios() {
       if (!prontuarioId) {
         throw new Error('Não foi possível salvar as prescrições. Revise o atendimento e tente novamente.');
       }
+      const { planejarDispensacao } = await import('@/lib/workflowAutomation');
+      const plano = await planejarDispensacao({ medicamentos: itens, clinicaId: user.clinica_id });
+      setProntuarioDispensacaoId(prontuarioId);
+      setPlanoDispensacao(plano);
+    } catch (e: any) {
+      toast.error('Não foi possível preparar a dispensação', { description: mensagemDeErro(e) });
+    } finally {
+      setDispensando(false);
+    }
+  };
 
+  const confirmarDispensacao = async (itens: ItemDispensacaoConfirmado[]) => {
+    if (!prontuarioDispensacaoId || !user?.clinica_id) return;
+    setDispensando(true);
+    try {
       const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
       const r = await autoDispensarMedicamentos({
         medicamentos: itens,
         pacienteId: selectedPaciente?.id ?? '',
         pacienteNome: selectedPaciente?.nome ?? 'Paciente',
-        prontuarioId,
+        prontuarioId: prontuarioDispensacaoId,
+        clinicaId: user.clinica_id,
         userId: user?.id,
       });
 
       if (!r.success) throw new Error(r.message);
       // Baixa parcial não é sucesso silencioso: o que não saiu precisa aparecer,
       // senão a clínica acha que descontou tudo.
-      const houveAlerta = r.actions.some(a => a.includes('não encontrado') || a.includes('insuficiente'));
-      if (houveAlerta) {
+      if (r.message.startsWith('Dispensação parcial')) {
         toast.warning(r.message, { description: r.actions.join(' • '), duration: 9000 });
       } else {
         toast.success(r.message, { description: r.actions.join(' • ') });
       }
+      setPlanoDispensacao(null);
     } catch (e: any) {
       toast.error('Não foi possível dar baixa', { description: mensagemDeErro(e) });
     } finally {
@@ -1158,9 +1232,15 @@ export default function Prontuarios() {
     ],
   });
   const selectedPaciente = pacienteSelecionadoQuery.data?.[0] ?? null;
+  // A checagem de interações cruza o que está sendo prescrito com o que o
+  // paciente já usa; ignorar "medicamentos em uso" deixava passar a interação
+  // mais comum na prática (novo remédio x uso contínuo).
   const medicamentosParaChecagem = useMemo(
-    () => prescricoes.map(p => p.medicamento.trim()).filter(Boolean),
-    [prescricoes],
+    () => listarMedicamentosParaChecagem(
+      prescricoes.map(p => p.medicamento),
+      currentProntuario.medicamentos_em_uso,
+    ),
+    [prescricoes, currentProntuario.medicamentos_em_uso],
   );
   const alergiasParaChecagem = useMemo(() => [
     ...(selectedPaciente?.alergias || []),
@@ -1194,6 +1274,20 @@ export default function Prontuarios() {
       .filter(p => p.paciente_id === selectedPacienteId)
       .sort((a, b) => (parseDateOnly(b.data)?.getTime() || 0) - (parseDateOnly(a.data)?.getTime() || 0));
   }, [prontuarios, selectedPacienteId, isMedicoOnly, medicoId]);
+  const [filtroSituacaoEvolucao, setFiltroSituacaoEvolucao] = useState<FiltroSituacaoEvolucao>('todas');
+  const [filtroMedicoEvolucao, setFiltroMedicoEvolucao] = useState<string>('todos');
+  useEffect(() => {
+    setFiltroSituacaoEvolucao('todas');
+    setFiltroMedicoEvolucao('todos');
+  }, [selectedPacienteId]);
+  const evolucoesFiltradas = useMemo(
+    () => filtrarEvolucoes(pacienteProntuarios as Array<Record<string, any>>, { situacao: filtroSituacaoEvolucao, medicoId: filtroMedicoEvolucao }),
+    [pacienteProntuarios, filtroSituacaoEvolucao, filtroMedicoEvolucao],
+  );
+  const medicosDasEvolucoes = useMemo(() => {
+    const ids = [...new Set(pacienteProntuarios.map(p => p.medico_id).filter(Boolean))] as string[];
+    return ids.map(id => ({ id, nome: nomeMedico((medicos as any[]).find(m => m.id === id)?.nome || (medicos as any[]).find(m => m.id === id)?.crm || 'Médico') }));
+  }, [pacienteProntuarios, medicos]);
 
   const applyPatientContextChange = useCallback((pacienteId: string) => {
     prescricoesRequestRef.current += 1;
@@ -1710,7 +1804,7 @@ export default function Prontuarios() {
         exame_pele: currentProntuario.exame_pele,
         hipotese_diagnostica: currentProntuario.hipotese_diagnostica,
         diagnostico_principal: currentProntuario.diagnostico_principal,
-        diagnosticos_secundarios: currentProntuario.diagnosticos_secundarios || [],
+        diagnosticos_secundarios: limparDiagnosticosSecundarios(currentProntuario.diagnosticos_secundarios),
         conduta: currentProntuario.conduta,
         plano_terapeutico: currentProntuario.plano_terapeutico,
         orientacoes_paciente: currentProntuario.orientacoes_paciente,
@@ -1833,6 +1927,8 @@ export default function Prontuarios() {
   const [salvandoProntuario, setSalvandoProntuario] = useState(false);
   /** Confirmação antes de descartar a evolução não salva. */
   const [perguntandoDescartar, setPerguntandoDescartar] = useState(false);
+  /** No celular, as faixas de contexto do atendimento começam recolhidas. */
+  const [contextoAtendimentoAberto, setContextoAtendimentoAberto] = useState(false);
   const handleScheduleReturn = async () => {
     if (!selectedPaciente?.id || salvandoProntuario) return;
 
@@ -1917,6 +2013,66 @@ export default function Prontuarios() {
       setSalvandoProntuario(false);
     }
   };
+
+  /** Ctrl+S: salva e continua na evolução (o botão "Salvar" fecha a tela). */
+  const handleSalvarSemFechar = async () => {
+    if (salvandoProntuario || isReadOnly) return;
+    setSalvandoProntuario(true);
+    try {
+      const id = await performSave(false);
+      if (id) toast.success('Evolução salva', { description: 'Você continua no atendimento.' });
+    } finally {
+      setSalvandoProntuario(false);
+    }
+  };
+
+  // Última evolução já registrada (diferente da que está aberta), para copiar
+  // antecedentes, medicamentos em uso e plano. Queixa, exame e conduta não vão.
+  const ultimaEvolucaoAnterior = historicoEvolucoes.find((ev: any) => ev.id !== currentProntuario.id) ?? null;
+  const camposParaCopiar = camposDaUltimaEvolucao(ultimaEvolucaoAnterior, currentProntuario);
+  const copiarDaUltimaEvolucao = () => {
+    const entradas = Object.entries(camposParaCopiar);
+    if (!ultimaEvolucaoAnterior || entradas.length === 0) {
+      toast.info('Nada para copiar', { description: 'Os campos já estão preenchidos ou a evolução anterior está vazia.' });
+      return;
+    }
+    setCurrentProntuario(prev => ({ ...prev, ...camposParaCopiar }));
+    setHasUnsavedChanges(true);
+    changeVersionRef.current += 1;
+    const dataAnterior = ultimaEvolucaoAnterior.data ? format(parseDateOnly(ultimaEvolucaoAnterior.data)!, 'dd/MM/yyyy') : 'anterior';
+    toast.success(`Dados copiados da evolução de ${dataAnterior}`, { description: 'Revise antecedentes, medicamentos em uso e plano antes de salvar.' });
+  };
+
+  // Atalhos do atendimento: Ctrl+S salva, Ctrl+Enter salva e fecha,
+  // Alt+1…9 troca de seção. Refs evitam recriar o ouvinte a cada tecla.
+  const secoesDoAtendimento = ['anamnese', 'exame', 'diagnostico', 'conduta', 'prescricao', 'anexos', 'historico', 'adendos', ...(user?.roles?.includes('admin') ? ['auditoria'] : [])];
+  const atalhosRef = useRef({ salvar: handleSalvarSemFechar, salvarEFechar: handleSave, trocarSecao: changeProntuarioSection, secoes: secoesDoAtendimento, editavel: !isReadOnly });
+  atalhosRef.current = { salvar: handleSalvarSemFechar, salvarEFechar: handleSave, trocarSecao: changeProntuarioSection, secoes: secoesDoAtendimento, editavel: !isReadOnly };
+  useEffect(() => {
+    if (!isProntuarioOpen) return;
+    const aoTeclar = (evento: KeyboardEvent) => {
+      const atalhos = atalhosRef.current;
+      const ctrl = evento.ctrlKey || evento.metaKey;
+      if (ctrl && !evento.altKey && evento.key.toLowerCase() === 's') {
+        evento.preventDefault();
+        if (atalhos.editavel) void atalhos.salvar();
+        return;
+      }
+      if (ctrl && evento.key === 'Enter') {
+        evento.preventDefault();
+        if (atalhos.editavel) void atalhos.salvarEFechar();
+        return;
+      }
+      if (evento.altKey && !ctrl && /^Digit[1-9]$/.test(evento.code)) {
+        const secao = atalhos.secoes[Number(evento.code.slice(5)) - 1];
+        if (!secao) return;
+        evento.preventDefault();
+        atalhos.trocarSecao(secao);
+      }
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [isProntuarioOpen]);
 
   // ─── Auto-save every 30s ───
   // IMPORTANTE: dependências limitadas a flags estáveis (open/editing) para
@@ -2211,6 +2367,102 @@ export default function Prontuarios() {
     );
   }
 
+  // ─── PDFs do atendimento ───
+  const medicoDoPdf = medicos.find((m: any) => m.id === currentProntuario.medico_id);
+  const nomeArquivoPdf = `prontuario-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`;
+  const carregarAdendosParaPdf = async (prontuarioId: string) => {
+    const { data, error } = await (supabase as any).from('prontuario_adendos')
+      .select('tipo,motivo,texto,medico_nome,crm,created_at')
+      .eq('prontuario_id', prontuarioId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return ((data || []) as any[]).map(item => ({ tipo: item.tipo, motivo: item.motivo, texto: item.texto, medicoNome: item.medico_nome, crm: item.crm, data: item.created_at }));
+  };
+  // `gerarProntuarioPDF` é assíncrono: o jsPDF só é baixado quando alguém
+  // pede o arquivo, em vez de vir junto com a tela.
+  const buildPDF = async () => gerarProntuarioPDF(
+    {
+      nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined,
+      dataNascimento: selectedPaciente?.data_nascimento || undefined,
+      alergias: selectedPaciente?.alergias || [], telefone: selectedPaciente?.telefone || undefined,
+      email: selectedPaciente?.email || undefined, sexo: selectedPaciente?.sexo || undefined,
+      convenio: getConvenioNome(selectedPaciente?.convenio_id),
+      numeroCarteira: selectedPaciente?.numero_carteira || undefined,
+      nomeResponsavel: selectedPaciente?.nome_responsavel || undefined,
+    },
+    { nome: medicoDoPdf?.nome || user?.nome || 'Médico', crm: medicoDoPdf?.crm, especialidade: medicoDoPdf?.especialidade, rqe: medicoDoPdf?.rqe, crmUf: medicoDoPdf?.crm_uf },
+    {
+      id: currentProntuario.id, data: currentProntuario.data, queixaPrincipal: currentProntuario.queixa_principal,
+      historiaDoencaAtual: currentProntuario.historia_doenca_atual,
+      historiaPatologicaPregressa: currentProntuario.historia_patologica_pregressa,
+      historiaFamiliar: currentProntuario.historia_familiar, historiaSocial: currentProntuario.historia_social,
+      revisaoSistemas: currentProntuario.revisao_sistemas, alergiasRelatadas: currentProntuario.alergias_relatadas,
+      medicamentosEmUso: currentProntuario.medicamentos_em_uso, examesFisicos: currentProntuario.exames_fisicos,
+      exameCabecaPescoco: currentProntuario.exame_cabeca_pescoco, exameTorax: currentProntuario.exame_torax,
+      exameAbdomen: currentProntuario.exame_abdomen, exameMembros: currentProntuario.exame_membros,
+      exameNeurologico: currentProntuario.exame_neurologico, examePele: currentProntuario.exame_pele,
+      hipoteseDiagnostica: currentProntuario.hipotese_diagnostica, diagnosticoPrincipal: currentProntuario.diagnostico_principal,
+      diagnosticosSecundarios: limparDiagnosticosSecundarios(currentProntuario.diagnosticos_secundarios),
+      conduta: currentProntuario.conduta, planoTerapeutico: currentProntuario.plano_terapeutico,
+      orientacoesPaciente: currentProntuario.orientacoes_paciente,
+      sinaisVitais: sinaisVitais as unknown as Record<string, string>,
+    },
+    prescricoes.filter(p => p.medicamento.trim()),
+    {
+      assinatura: {
+        assinado: isSigned,
+        assinadoEm: currentProntuario.assinado_em,
+        assinadoPor: identificacaoAssinante.nome,
+        crmAssinante: identificacaoAssinante.crm,
+      },
+      adendos: isSigned && currentProntuario.id ? await carregarAdendosParaPdf(currentProntuario.id) : [],
+    },
+  );
+  const gerarPdfAuditado = async (destino: 'visualizar' | 'baixar' | 'whatsapp') => {
+    if (!await auditarExportacaoPdf(destino === 'whatsapp' ? 'WhatsApp' : 'PDF')) return;
+    try {
+      const pdf = await buildPDF();
+      if (destino === 'visualizar') openPDF(pdf);
+      else if (destino === 'baixar') downloadPDF(pdf, nomeArquivoPdf);
+      else {
+        sharePDFWhatsApp(pdf, nomeArquivoPdf, selectedPaciente?.telefone);
+        toast.info('WhatsApp', { description: 'PDF baixado! Cole na conversa.' });
+      }
+    } catch (error) {
+      toast.error('Não foi possível gerar o PDF do prontuário.', { description: mensagemDeErro(error) });
+    }
+  };
+  // Receita do atendimento: só os medicamentos, no receituário — antes o
+  // botão "Receita PDF" imprimia o prontuário inteiro.
+  const gerarReceitaDoAtendimento = async () => {
+    const itens = prescricoes.filter(p => p.medicamento.trim());
+    if (itens.length === 0) {
+      toast.info('Adicione ao menos um medicamento para gerar a receita.');
+      return;
+    }
+    if (!await auditarExportacaoPdf('PDF')) return;
+    try {
+      const pdf = await gerarReceita(
+        { nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined, dataNascimento: selectedPaciente?.data_nascimento || undefined },
+        { nome: medicoDoPdf?.nome || user?.nome || 'Médico', crm: medicoDoPdf?.crm, especialidade: medicoDoPdf?.especialidade, crmUf: medicoDoPdf?.crm_uf, rqe: medicoDoPdf?.rqe },
+        itens.map(p => ({ nome: p.medicamento.trim(), dosagem: p.dosagem, via: '', frequencia: p.posologia, duracao: p.duracao, quantidade: p.quantidade, observacoes: p.observacoes || undefined })),
+        currentProntuario.orientacoes_paciente || '',
+        'simples',
+        { dataEmissao: currentProntuario.data },
+      );
+      downloadPDF(pdf, `receita-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`);
+    } catch (error) {
+      toast.error('Não foi possível gerar a receita.', { description: mensagemDeErro(error) });
+    }
+  };
+  const bloqueado = isReadOnly || salvandoProntuario;
+  const ditarEm = (campo: string) => (texto: string) => {
+    setCurrentProntuario(prev => ({ ...prev, [campo]: juntarTextoDitado(String(prev[campo] ?? ''), texto) }));
+    setHasUnsavedChanges(true);
+    changeVersionRef.current += 1;
+  };
+  const ditado = (campo: string, rotulo: string) => <BotaoDitado campo={rotulo} onTexto={ditarEm(campo)} disabled={bloqueado} />;
+
   // ═══════════════════════════════════════════════════════════
   // ─── RENDER ─────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════
@@ -2242,7 +2494,7 @@ export default function Prontuarios() {
               <Button
                 onClick={() => handleNovoProntuario()}
                 disabled={!!erroMedicos || !!erroProntuarios}
-                className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 gap-2"
+                className="min-h-10 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                 size="sm"
               >
                 <Plus className="h-4 w-4" />Novo Atendimento
@@ -2422,7 +2674,7 @@ export default function Prontuarios() {
                       key={pac.id}
                       paciente={pac}
                       selecionado={isSelected}
-                      detalhe={pac.data_nascimento ? `${calcularIdade(pac.data_nascimento)} anos` : 'Data de nascimento não informada'}
+                      detalhe={idadePorExtenso(pac.data_nascimento) || 'Data de nascimento não informada'}
                       onSelect={() => {
                         setRascunhoParaAbrir(null);
                         setErroPrescricoes(null);
@@ -2484,7 +2736,7 @@ export default function Prontuarios() {
               <section aria-label="Evoluções e ações do prontuário" className="min-w-0 space-y-4 2xl:col-span-8">
               {/* Actions bar */}
               <div className="flex items-center gap-2">
-                <Button onClick={() => handleNovoProntuario()} size="sm" className="gap-1.5 rounded-full bg-gradient-primary text-white hover:brightness-110" disabled={!!erroMedicos || !!erroProntuarios}>
+                <Button onClick={() => handleNovoProntuario()} size="sm" className="min-h-11 gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 sm:min-h-9" disabled={!!erroMedicos || !!erroProntuarios}>
                   <Plus className="h-3.5 w-3.5" />Novo Atendimento
                 </Button>
                 <span className="text-xs text-muted-foreground flex-1">
@@ -2505,7 +2757,6 @@ export default function Prontuarios() {
                         { val: 'solicitacoes', icon: TestTube, label: 'Solicitações' },
                         { val: 'timeline', icon: History, label: 'Timeline' },
                         { val: 'vitais', icon: Activity, label: 'Sinais' },
-                        { val: 'ficha', icon: User, label: 'Ficha' },
                         { val: 'exportar', icon: Share2, label: 'Exportar' },
                       ].map(t => (
                         <TabsTrigger
@@ -2531,14 +2782,59 @@ export default function Prontuarios() {
                           <Button size="sm" className="mt-1" onClick={() => handleNovoProntuario()} disabled={!!erroMedicos || !!erroProntuarios}><Plus className="h-3.5 w-3.5" />Iniciar primeiro atendimento</Button>
                         </div>
                       ) : (
-                        <div className="space-y-2">
-                          {pacienteProntuarios.map((p, idx) => (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div role="group" aria-label="Filtrar evoluções por situação" className="flex flex-wrap gap-1.5">
+                              {([
+                                { key: 'todas', label: 'Todas' },
+                                { key: 'rascunhos', label: 'Rascunhos' },
+                                { key: 'assinadas', label: 'Assinadas' },
+                              ] as const).map(opcao => {
+                                const ativo = filtroSituacaoEvolucao === opcao.key;
+                                return (
+                                  <button
+                                    key={opcao.key}
+                                    type="button"
+                                    aria-pressed={ativo}
+                                    onClick={() => setFiltroSituacaoEvolucao(opcao.key)}
+                                    className={cn(
+                                      'min-h-11 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9',
+                                      ativo ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                                    )}
+                                  >
+                                    {opcao.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {medicosDasEvolucoes.length > 1 && (
+                              <Select value={filtroMedicoEvolucao} onValueChange={setFiltroMedicoEvolucao}>
+                                <SelectTrigger aria-label="Filtrar evoluções por médico" className="h-11 w-full rounded-full text-xs sm:h-9 sm:w-52"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="todos">Todos os médicos</SelectItem>
+                                  {medicosDasEvolucoes.map(medico => <SelectItem key={medico.id} value={medico.id}>{medico.nome}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            )}
+                            <span className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">{evolucoesFiltradas.length} de {pacienteProntuarios.length}</span>
+                          </div>
+                          {evolucoesFiltradas.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-xs text-muted-foreground">
+                              <p>Nenhuma evolução com esses filtros.</p>
+                              <Button variant="outline" size="sm" className="mt-3 min-h-11 sm:min-h-9" onClick={() => { setFiltroSituacaoEvolucao('todas'); setFiltroMedicoEvolucao('todos'); }}>Limpar filtros</Button>
+                            </div>
+                          ) : evolucoesFiltradas.map((p) => {
+                            const dataEvolucao = parseDateOnly(p.data);
+                            const dataTexto = dataEvolucao && !Number.isNaN(dataEvolucao.getTime()) ? format(dataEvolucao, 'dd/MM/yyyy') : 'data não informada';
+                            const medicoEvolucao = (medicos as any[]).find(m => m.id === p.medico_id);
+                            const nomeMedicoEvolucao = medicoEvolucao ? nomeMedico(medicoEvolucao.nome || medicoEvolucao.crm) : null;
+                            return (
                             <div
                               key={p.id}
                               role="button"
                               tabIndex={0}
-                              className="group cursor-pointer rounded-xl border border-border/40 p-3.5 transition-colors hover:border-primary/30 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                              aria-label={`Abrir evolução de ${format(new Date(p.data), 'dd/MM/yyyy')}: ${p.queixa_principal || 'Atendimento clínico'}`}
+                              className="group cursor-pointer rounded-xl border border-border/60 bg-card p-3.5 transition-colors hover:border-foreground/25 hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                              aria-label={`Abrir evolução de ${dataTexto}${p.assinado ? ', assinada' : ', rascunho'}${nomeMedicoEvolucao ? `, ${nomeMedicoEvolucao}` : ''}: ${p.queixa_principal || 'Atendimento clínico'}`}
                               onKeyDown={event => {
                                 if (event.key === 'Enter' || event.key === ' ') {
                                   event.preventDefault();
@@ -2547,23 +2843,28 @@ export default function Prontuarios() {
                               }}
                               onClick={() => handleViewProntuario(p)}
                             >
-                              <div className="flex justify-between items-start">
+                              <div className="flex justify-between items-start gap-2">
                                 <div className="space-y-1 min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-1.5 py-0">
-                                      {format(parseDateOnly(p.data)!, 'dd/MM/yyyy')}
-                                    </Badge>
+                                    <span className="text-xs font-bold tabular-nums text-foreground">{dataTexto}</span>
+                                    {p.assinado ? (
+                                      <Badge variant="outline" className="gap-1 border-border bg-secondary px-1.5 py-0 text-xs text-foreground"><Lock aria-hidden="true" className="h-3 w-3" />Assinada</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="gap-1 border-warning/40 bg-warning/10 px-1.5 py-0 text-xs text-warning-foreground"><PenLine aria-hidden="true" className="h-3 w-3" />Rascunho</Badge>
+                                    )}
                                     {p.diagnostico_principal && (
-                                      <Badge variant="secondary" className="text-xs px-1.5 py-0">{p.diagnostico_principal}</Badge>
+                                      <Badge variant="secondary" className="max-w-full truncate text-xs px-1.5 py-0">{p.diagnostico_principal}</Badge>
                                     )}
                                   </div>
-                                  <p className="text-xs font-semibold text-foreground truncate">{p.queixa_principal}</p>
+                                  <p className="text-xs font-semibold text-foreground truncate">{p.queixa_principal || 'Queixa não registrada'}</p>
+                                  {nomeMedicoEvolucao && <p className="text-xs text-muted-foreground">{nomeMedicoEvolucao}</p>}
                                   {p.conduta && <p className="text-xs text-muted-foreground line-clamp-1">Conduta: {p.conduta}</p>}
                                 </div>
-                                <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0 mt-1" />
+                                <ChevronRight aria-hidden="true" className="h-4 w-4 text-muted-foreground/50 group-hover:text-foreground transition-colors flex-shrink-0 mt-1" />
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </TabsContent>
@@ -2584,10 +2885,6 @@ export default function Prontuarios() {
 
                     <TabsContent value="vitais" className="mt-0">
                       <VitalSignsChart pacienteId={selectedPacienteId!} />
-                    </TabsContent>
-
-                    <TabsContent value="ficha" className="mt-0">
-                      <FichaPaciente paciente={selectedPaciente} convenioNome={getConvenioNome(selectedPaciente.convenio_id)} />
                     </TabsContent>
 
                     <TabsContent value="exportar" className="mt-0">
@@ -2723,8 +3020,29 @@ export default function Prontuarios() {
                 </h1>
                 {selectedPaciente && <p className="truncate text-sm text-muted-foreground">{selectedPaciente.nome_social || selectedPaciente.nome}</p>}
               </div>
+              {/* No celular as ações do cabeçalho ficam no menu "Mais". */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" className="ml-auto h-11 shrink-0 gap-1.5 rounded-full px-4 text-sm sm:hidden" disabled={salvandoProntuario}>
+                    Mais
+                    <ChevronDown aria-hidden="true" className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {selectedPaciente && (medicoId || user?.id) && (
+                    <DropdownMenuItem className="min-h-11" onSelect={() => { void handleScheduleReturn(); }}><CalendarCheck className="mr-2 h-4 w-4" />Agendar retorno</DropdownMenuItem>
+                  )}
+                  {currentProntuario.id && <>
+                    <DropdownMenuItem className="min-h-11" onSelect={() => { void gerarPdfAuditado('visualizar'); }}><ExternalLink className="mr-2 h-4 w-4" />Visualizar PDF</DropdownMenuItem>
+                    <DropdownMenuItem className="min-h-11" onSelect={() => { void gerarPdfAuditado('baixar'); }}><Printer className="mr-2 h-4 w-4" />Baixar PDF</DropdownMenuItem>
+                    <DropdownMenuItem className="min-h-11" onSelect={() => { void gerarPdfAuditado('whatsapp'); }}><MessageCircle className="mr-2 h-4 w-4" />Enviar por WhatsApp</DropdownMenuItem>
+                  </>}
+                  <DropdownMenuItem className="min-h-11" onSelect={() => openProntuarioTool('relatorio-alta')}><FileCheck className="mr-2 h-4 w-4" />Relatório de alta</DropdownMenuItem>
+                  <DropdownMenuItem className="min-h-11" disabled={!currentProntuario.id || !medicoId} onSelect={handleSolicitarExame}><TestTube className="mr-2 h-4 w-4" />Solicitar exame</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="hidden flex-wrap gap-1.5 sm:flex">
                 {selectedPaciente && (medicoId || user?.id) && (
                   <ReturnScheduler
                     pacienteId={selectedPaciente.id}
@@ -2733,74 +3051,50 @@ export default function Prontuarios() {
                     compact
                   />
                 )}
-                {currentProntuario.id && (() => {
-                  const buildPDF = () => {
-                    const md = medicos.find((m: any) => m.id === currentProntuario.medico_id);
-                    return gerarProntuarioPDF(
-                      {
-                        nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined,
-                        dataNascimento: selectedPaciente?.data_nascimento || undefined,
-                        alergias: selectedPaciente?.alergias || [], telefone: selectedPaciente?.telefone || undefined,
-                        email: selectedPaciente?.email || undefined, sexo: selectedPaciente?.sexo || undefined,
-                        convenio: getConvenioNome(selectedPaciente?.convenio_id),
-                        numeroCarteira: selectedPaciente?.numero_carteira || undefined,
-                        nomeResponsavel: selectedPaciente?.nome_responsavel || undefined,
-                      },
-                      { nome: md?.nome || user?.nome || 'Médico', crm: md?.crm, especialidade: md?.especialidade, rqe: md?.rqe, crmUf: md?.crm_uf },
-                      {
-                        id: currentProntuario.id, data: currentProntuario.data, queixaPrincipal: currentProntuario.queixa_principal,
-                        historiaDoencaAtual: currentProntuario.historia_doenca_atual,
-                        historiaPatologicaPregressa: currentProntuario.historia_patologica_pregressa,
-                        historiaFamiliar: currentProntuario.historia_familiar, historiaSocial: currentProntuario.historia_social,
-                        revisaoSistemas: currentProntuario.revisao_sistemas, alergiasRelatadas: currentProntuario.alergias_relatadas,
-                        medicamentosEmUso: currentProntuario.medicamentos_em_uso, examesFisicos: currentProntuario.exames_fisicos,
-                        exameCabecaPescoco: currentProntuario.exame_cabeca_pescoco, exameTorax: currentProntuario.exame_torax,
-                        exameAbdomen: currentProntuario.exame_abdomen, exameMembros: currentProntuario.exame_membros,
-                        exameNeurologico: currentProntuario.exame_neurologico, examePele: currentProntuario.exame_pele,
-                        hipoteseDiagnostica: currentProntuario.hipotese_diagnostica, diagnosticoPrincipal: currentProntuario.diagnostico_principal,
-                        diagnosticosSecundarios: currentProntuario.diagnosticos_secundarios,
-                        conduta: currentProntuario.conduta, planoTerapeutico: currentProntuario.plano_terapeutico,
-                        orientacoesPaciente: currentProntuario.orientacoes_paciente,
-                        sinaisVitais: sinaisVitais as unknown as Record<string, string>,
-                      },
-                      prescricoes.filter(p => p.medicamento.trim())
-                    );
-                  };
-                  const fn = `prontuario-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`;
-                  return (
-                    <>
-                      {/* `buildPDF()` agora é assíncrono: o jsPDF só é baixado
-                          quando alguém clica, em vez de vir junto com a tela. */}
-                      <Button variant="outline" size="sm" disabled={!currentProntuario.id || salvandoProntuario} onClick={async () => { if (await auditarExportacaoPdf('PDF')) openPDF(await buildPDF()); }} className="gap-1 text-xs h-7"><ExternalLink className="h-3 w-3" />Visualizar</Button>
-                      <Button variant="outline" size="sm" disabled={!currentProntuario.id || salvandoProntuario} onClick={async () => { if (await auditarExportacaoPdf('PDF')) downloadPDF(await buildPDF(), fn); }} className="gap-1 text-xs h-7"><Printer className="h-3 w-3" />PDF</Button>
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        if (!await auditarExportacaoPdf('WhatsApp')) return;
-                        sharePDFWhatsApp(await buildPDF(), fn, selectedPaciente?.telefone);
-                        toast.info('WhatsApp', { description: 'PDF baixado! Cole na conversa.' });
-                      }} disabled={!currentProntuario.id || salvandoProntuario} className="gap-1 text-xs h-7 text-success border-success/30 hover:bg-success/5">
-                        <MessageCircle className="h-3 w-3" />WhatsApp
-                      </Button>
-                    </>
-                  );
-                })()}
-                <Button variant="outline" size="sm" onClick={() => openProntuarioTool('relatorio-alta')} className="text-xs h-7 gap-1">
-                  <FileCheck className="h-3 w-3" />Alta
+                {currentProntuario.id && (
+                  <>
+                    <Button variant="outline" size="sm" disabled={salvandoProntuario} onClick={() => { void gerarPdfAuditado('visualizar'); }} className="h-9 gap-1.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Visualizar</Button>
+                    <Button variant="outline" size="sm" disabled={salvandoProntuario} onClick={() => { void gerarPdfAuditado('baixar'); }} className="h-9 gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" />PDF</Button>
+                    <Button variant="outline" size="sm" disabled={salvandoProntuario} onClick={() => { void gerarPdfAuditado('whatsapp'); }} className="h-9 gap-1.5 text-xs">
+                      <MessageCircle className="h-3.5 w-3.5" />WhatsApp
+                    </Button>
+                  </>
+                )}
+                <Button variant="outline" size="sm" onClick={() => openProntuarioTool('relatorio-alta')} className="h-9 gap-1.5 text-xs">
+                  <FileCheck className="h-3.5 w-3.5" />Alta
                 </Button>
               </div>
           </header>
 
+          {/* No celular as faixas de contexto ficam recolhidas atrás de um botão. */}
+          <button
+            type="button"
+            className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-b border-border/50 px-4 text-xs font-semibold text-foreground sm:hidden"
+            aria-expanded={contextoAtendimentoAberto}
+            aria-controls="prontuario-contexto-atendimento"
+            onClick={() => setContextoAtendimentoAberto(aberto => !aberto)}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              Contexto do atendimento
+              {selectedPaciente?.alergias?.length ? <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">Alergia</span> : null}
+            </span>
+            <ChevronDown aria-hidden="true" className={`h-4 w-4 text-muted-foreground transition-transform ${contextoAtendimentoAberto ? 'rotate-180' : ''}`} />
+          </button>
+          <div id="prontuario-contexto-atendimento" className={cn('flex-shrink-0 space-y-2 px-3 pt-2 sm:block sm:px-0 sm:pt-0', contextoAtendimentoAberto ? 'block' : 'hidden')}>
           {/* Patient summary strip */}
           {selectedPaciente && (
-            <div className="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-xl text-xs border border-border/40">
-              <Badge className="bg-primary/10 text-primary border-primary/20 gap-1 font-bold text-xs">
-                <User className="h-2.5 w-2.5" />{selectedPaciente.nome}
-              </Badge>
-              <span className="text-muted-foreground">{selectedPaciente.data_nascimento ? `${calcularIdade(selectedPaciente.data_nascimento)}a` : 'N/I'}</span>
-              {selectedPaciente.cpf && <span className="text-muted-foreground">• {selectedPaciente.cpf}</span>}
-              <span className="text-muted-foreground">• {getConvenioNome(selectedPaciente.convenio_id)}</span>
-              <Badge className="ml-auto bg-success/10 text-success border-success/20 text-xs rounded-full px-2">
-                <ShieldCheck className="h-2.5 w-2.5 mr-0.5" />LGPD
-              </Badge>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 bg-muted/30 rounded-xl text-xs border border-border/40">
+              <span className="inline-flex items-center gap-1 font-semibold text-foreground">
+                <User aria-hidden="true" className="h-3 w-3" />{selectedPaciente.nome_social || selectedPaciente.nome}
+              </span>
+              <span className="text-muted-foreground">{idadePorExtenso(selectedPaciente.data_nascimento) || 'Idade não informada'}</span>
+              {selectedPaciente.cpf && <span className="text-muted-foreground" title="CPF parcialmente oculto">CPF {mascararCpf(selectedPaciente.cpf)}</span>}
+              <span className="text-muted-foreground">{getConvenioNome(selectedPaciente.convenio_id)}</span>
+              {selectedPaciente.alergias?.length ? (
+                <span role="note" className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">
+                  <AlertTriangle aria-hidden="true" className="h-3 w-3" />Alergia: {selectedPaciente.alergias.join(', ')}
+                </span>
+              ) : null}
             </div>
           )}
 
@@ -2823,6 +3117,7 @@ export default function Prontuarios() {
               })()}
             </div>
           )}
+          </div>
 
           {!currentProntuario.id && !medicoId && (
             <div className="flex-shrink-0 space-y-1.5 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2">
@@ -2867,8 +3162,8 @@ export default function Prontuarios() {
                   : 'Rascunho em modo de leitura'}
               </span>
               {!isSigned && (
-                <Button variant="outline" size="sm" onClick={handleRequestEdit} disabled={!!erroPrescricoes} className="h-6 text-xs gap-1 border-warning/40 text-warning hover:bg-warning/10">
-                  <PenLine className="h-3 w-3" />Solicitar Edição
+                <Button variant="outline" size="sm" onClick={handleRequestEdit} disabled={!!erroPrescricoes} className="min-h-11 text-xs gap-1.5 border-warning/40 text-warning-foreground hover:bg-warning/10 sm:min-h-9">
+                  <PenLine className="h-3.5 w-3.5" />Solicitar edição
                 </Button>
               )}
             </div>
@@ -2885,7 +3180,7 @@ export default function Prontuarios() {
           )}
 
           {(currentProntuario.paciente_id || selectedPacienteId) && (
-            <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2">
+            <div className={cn('flex-shrink-0 flex-wrap items-center justify-between gap-2 px-3 sm:flex sm:px-0', contextoAtendimentoAberto ? 'flex' : 'hidden')}>
               {!isReadOnly && (
                 <AtalhosDocumentos
                   pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
@@ -2928,13 +3223,29 @@ export default function Prontuarios() {
                 </TabsList>
 
                 {/* ─── Anamnese ─── */}
+                {/* Cada Section bloqueia só os próprios campos: o botão de
+                    abrir/recolher continua disponível no modo leitura. */}
                 <TabsContent value="anamnese" className="space-y-4 pt-1">
-                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   {!currentProntuario.id && (
-                    <div className="space-y-2">
-                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                        <BookOpen className="h-3 w-3" />Templates SOAP
-                      </span>
+                    <fieldset disabled={bloqueado} className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <BookOpen aria-hidden="true" className="h-3 w-3" />Modelos SOAP
+                        </span>
+                        {ultimaEvolucaoAnterior && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="min-h-11 gap-1.5 text-xs sm:min-h-9"
+                            onClick={copiarDaUltimaEvolucao}
+                            disabled={Object.keys(camposParaCopiar).length === 0}
+                            title={Object.keys(camposParaCopiar).length === 0 ? 'Os campos copiáveis já estão preenchidos.' : 'Antecedentes, alergias, medicamentos em uso, diagnóstico e plano'}
+                          >
+                            <History aria-hidden="true" className="h-3.5 w-3.5" />Copiar da última evolução
+                          </Button>
+                        )}
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         {[
                           { label: 'Rotina', data: { queixa_principal: 'Consulta de rotina / Check-up', historia_doenca_atual: 'Paciente comparece para avaliação de rotina. Nega queixas ativas.', conduta: 'Exames de rotina. Orientações. Retorno com resultados.' } },
@@ -2945,19 +3256,19 @@ export default function Prontuarios() {
                           { label: 'Ortopedia', data: { queixa_principal: 'Dor em ___', historia_doenca_atual: 'Dor há ___. Mecanismo do trauma: ___. Limitação funcional: ___.' } },
                           { label: 'Dermatologia', data: { queixa_principal: 'Lesão cutânea', historia_doenca_atual: 'Lesão em ___. Tipo: ___. Tamanho: ___cm. Prurido: ___.' } },
                         ].map(t => (
-                          <Button key={t.label} variant="outline" size="sm" className="text-xs h-6 gap-1 px-2" onClick={() => {
+                          <Button key={t.label} type="button" variant="outline" size="sm" className="min-h-11 gap-1 px-3 text-xs sm:min-h-9" onClick={() => {
                             Object.entries(t.data).forEach(([f, v]) => { if (v) updateField(f, v); });
-                            toast.success('Template aplicado', { description: `"${t.label}" preenchido.` });
+                            toast.success('Modelo aplicado', { description: `"${t.label}" preenchido.` });
                           }}>
-                            <Clipboard className="h-2.5 w-2.5" />{t.label}
+                            <Clipboard aria-hidden="true" className="h-3 w-3" />{t.label}
                           </Button>
                         ))}
                       </div>
                       <Separator />
-                    </div>
+                    </fieldset>
                   )}
 
-                  <Section icon={AlertTriangle} title="Queixa Principal *">
+                  <Section icon={AlertTriangle} title="Queixa principal *" bloqueado={bloqueado} acao={ditado('queixa_principal', 'queixa principal')}>
                     <Textarea aria-label="Queixa principal" placeholder="Queixa principal..." value={currentProntuario.queixa_principal || ''} onChange={e => updateField('queixa_principal', e.target.value)} rows={2} />
                     {hasUnsavedChanges && !isSigned && !currentProntuario.queixa_principal?.trim() && (
                       <p role="status" className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
@@ -2965,178 +3276,160 @@ export default function Prontuarios() {
                       </p>
                     )}
                   </Section>
-                  <Section icon={FileText} title="História da Doença Atual (HDA)">
+                  <Section icon={FileText} title="História da doença atual (HDA)" bloqueado={bloqueado} acao={ditado('historia_doenca_atual', 'história da doença atual')}>
                     <Textarea aria-label="História da doença atual" placeholder="Evolução cronológica, fatores de melhora/piora..." value={currentProntuario.historia_doenca_atual || ''} onChange={e => updateField('historia_doenca_atual', e.target.value)} rows={4} />
                   </Section>
-                  <Section icon={History} title="Doenças Pregressas (HDP)" collapsible>
+                  <Section icon={History} title="Doenças pregressas (HDP)" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.historia_patologica_pregressa} acao={ditado('historia_patologica_pregressa', 'doenças pregressas')}>
                     <Textarea aria-label="História patológica pregressa" placeholder="Doenças prévias, cirurgias, internações..." value={currentProntuario.historia_patologica_pregressa || ''} onChange={e => updateField('historia_patologica_pregressa', e.target.value)} rows={3} />
                   </Section>
-                  <Section icon={ShieldCheck} title="Alergias e Medicamentos">
+                  <Section icon={ShieldCheck} title="Alergias e medicamentos" bloqueado={bloqueado}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-xs flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5 text-destructive" />Alergias</Label>
+                        <Label className="text-xs flex items-center gap-1"><AlertTriangle aria-hidden="true" className="h-2.5 w-2.5 text-destructive" />Alergias</Label>
                         <Textarea aria-label="Alergias relatadas" placeholder="Medicamentos, alimentos..." value={currentProntuario.alergias_relatadas || ''} onChange={e => updateField('alergias_relatadas', e.target.value)} rows={2} className="border-destructive/30" />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs flex items-center gap-1"><Pill className="h-2.5 w-2.5" />Em uso</Label>
+                        <Label className="text-xs flex items-center gap-1"><Pill aria-hidden="true" className="h-2.5 w-2.5" />Em uso</Label>
                         <Textarea aria-label="Medicamentos em uso" placeholder="Medicamentos em uso..." value={currentProntuario.medicamentos_em_uso || ''} onChange={e => updateField('medicamentos_em_uso', e.target.value)} rows={2} />
                       </div>
                     </div>
                   </Section>
-                  <Section icon={User} title="História Familiar" collapsible>
+                  <Section icon={User} title="História familiar" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.historia_familiar}>
                     <Textarea aria-label="História familiar" placeholder="DM, HAS, câncer, cardiopatias..." value={currentProntuario.historia_familiar || ''} onChange={e => updateField('historia_familiar', e.target.value)} rows={2} />
                   </Section>
-                  <Section icon={Clipboard} title="História Social" collapsible>
+                  <Section icon={Clipboard} title="História social" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.historia_social}>
                     <Textarea aria-label="História social" placeholder="Tabagismo, etilismo, profissão..." value={currentProntuario.historia_social || ''} onChange={e => updateField('historia_social', e.target.value)} rows={2} />
                   </Section>
-                  <Section icon={ClipboardList} title="Revisão de Sistemas" collapsible>
+                  <Section icon={ClipboardList} title="Revisão de sistemas" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.revisao_sistemas} acao={ditado('revisao_sistemas', 'revisão de sistemas')}>
                     <Textarea aria-label="Revisão de sistemas" placeholder="Cardiovascular, respiratório, GI, neuro..." value={currentProntuario.revisao_sistemas || ''} onChange={e => updateField('revisao_sistemas', e.target.value)} rows={3} />
                   </Section>
-
-                  </fieldset></TabsContent>
+                </TabsContent>
 
                 {/* ─── Exame Físico ─── */}
                 <TabsContent value="exame" className="space-y-4 pt-1">
-                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
-                  <VitalSignsInput sinais={sinaisVitais} onChange={(value) => { setSinaisVitais(value); setHasUnsavedChanges(true); changeVersionRef.current += 1; }} />
+                  <VitalSignsInput sinais={sinaisVitais} onChange={(value) => { setSinaisVitais(value); setHasUnsavedChanges(true); changeVersionRef.current += 1; }} disabled={bloqueado} />
                   <Separator />
-                  <Section icon={Stethoscope} title="Exame Físico Geral">
+                  <Section icon={Stethoscope} title="Exame físico geral" bloqueado={bloqueado} acao={ditado('exames_fisicos', 'exame físico geral')}>
                     <Textarea aria-label="Exame físico geral" placeholder="Estado geral, consciência, hidratação..." value={currentProntuario.exames_fisicos || ''} onChange={e => updateField('exames_fisicos', e.target.value)} rows={3} />
                   </Section>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Section icon={EyeIcon} title="Cabeça e Pescoço" collapsible>
+                    <Section icon={EyeIcon} title="Cabeça e pescoço" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.exame_cabeca_pescoco}>
                       <Textarea aria-label="Exame de cabeça e pescoço" placeholder="Olhos, ouvidos, tireoide..." value={currentProntuario.exame_cabeca_pescoco || ''} onChange={e => updateField('exame_cabeca_pescoco', e.target.value)} rows={3} />
                     </Section>
-                    <Section icon={Heart} title="Tórax" collapsible>
+                    <Section icon={Heart} title="Tórax" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.exame_torax}>
                       <Textarea aria-label="Exame do tórax" placeholder="Ausculta cardíaca/pulmonar..." value={currentProntuario.exame_torax || ''} onChange={e => updateField('exame_torax', e.target.value)} rows={3} />
                     </Section>
-                    <Section icon={Activity} title="Abdome" collapsible>
+                    <Section icon={Activity} title="Abdome" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.exame_abdomen}>
                       <Textarea aria-label="Exame do abdome" placeholder="Inspeção, palpação..." value={currentProntuario.exame_abdomen || ''} onChange={e => updateField('exame_abdomen', e.target.value)} rows={3} />
                     </Section>
-                    <Section icon={Bone} title="Membros" collapsible>
+                    <Section icon={Bone} title="Membros" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.exame_membros}>
                       <Textarea aria-label="Exame dos membros" placeholder="Edema, pulsos, mobilidade..." value={currentProntuario.exame_membros || ''} onChange={e => updateField('exame_membros', e.target.value)} rows={3} />
                     </Section>
-                    <Section icon={Brain} title="Neurológico" collapsible>
+                    <Section icon={Brain} title="Neurológico" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.exame_neurologico}>
                       <Textarea aria-label="Exame neurológico" placeholder="Força, sensibilidade, reflexos..." value={currentProntuario.exame_neurologico || ''} onChange={e => updateField('exame_neurologico', e.target.value)} rows={3} />
                     </Section>
-                    <Section icon={Stethoscope} title="Pele / Tegumentar" collapsible>
+                    <Section icon={Stethoscope} title="Pele / tegumentar" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.exame_pele}>
                       <Textarea aria-label="Exame da pele" placeholder="Lesões, coloração, turgor..." value={currentProntuario.exame_pele || ''} onChange={e => updateField('exame_pele', e.target.value)} rows={3} />
                     </Section>
                   </div>
-
-                  </fieldset></TabsContent>
+                </TabsContent>
 
                 {/* ─── Diagnóstico ─── */}
                 <TabsContent value="diagnostico" className="space-y-4 pt-1">
-                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
-                  <Section icon={BookOpen} title="Hipótese Diagnóstica (CID-10)">
+                  <Section icon={BookOpen} title="Hipótese diagnóstica (CID-10)" bloqueado={bloqueado}>
                     <Cid10Search ariaLabel="Hipótese diagnóstica CID-10" value={currentProntuario.hipotese_diagnostica || ''} onChange={v => updateField('hipotese_diagnostica', v)} />
                   </Section>
-                  <Section icon={FileCheck} title="Diagnóstico Principal">
+                  <Section icon={FileCheck} title="Diagnóstico principal" bloqueado={bloqueado}>
                     <Cid10Search ariaLabel="Diagnóstico principal CID-10" value={currentProntuario.diagnostico_principal || ''} onChange={v => updateField('diagnostico_principal', v)} placeholder="Buscar CID-10 principal..." multiple={false} />
                   </Section>
-                  <Section icon={ClipboardList} title="Diagnósticos Secundários" collapsible>
-                    <Textarea aria-label="Diagnósticos secundários" placeholder="Comorbidades, um por linha" value={(currentProntuario.diagnosticos_secundarios || []).join('\n')} onChange={e => updateField('diagnosticos_secundarios', e.target.value.split('\n').filter(Boolean))} rows={3} />
+                  <Section icon={ClipboardList} title="Diagnósticos secundários" collapsible bloqueado={bloqueado} temConteudo={limparDiagnosticosSecundarios(currentProntuario.diagnosticos_secundarios).length > 0}>
+                    {/* As linhas ficam como digitadas (inclusive a vazia do Enter);
+                        a lista é limpa ao salvar. Antes o filtro a cada tecla
+                        apagava a quebra de linha e impedia o segundo diagnóstico. */}
+                    <Textarea aria-label="Diagnósticos secundários" placeholder="Comorbidades, um por linha" value={(Array.isArray(currentProntuario.diagnosticos_secundarios) ? currentProntuario.diagnosticos_secundarios : []).join('\n')} onChange={e => updateField('diagnosticos_secundarios', e.target.value.split('\n'))} rows={3} />
                   </Section>
-
-                  </fieldset></TabsContent>
+                </TabsContent>
 
                 {/* ─── Conduta ─── */}
                 <TabsContent value="conduta" className="space-y-4 pt-1">
-                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
                   <div className="flex justify-end">
-                    <Button variant="outline" size="sm" onClick={() => openProntuarioTool('protocolos')} className="text-xs h-6 gap-1">
-                      <CalendarCheck className="h-3 w-3" />Aplicar Protocolo Clínico
+                    <Button variant="outline" size="sm" onClick={() => openProntuarioTool('protocolos')} disabled={bloqueado} className="min-h-11 gap-1.5 text-xs sm:min-h-9">
+                      <CalendarCheck aria-hidden="true" className="h-3.5 w-3.5" />Aplicar protocolo clínico
                     </Button>
                   </div>
-                  <Section icon={FileCheck} title="Conduta">
+                  <Section icon={FileCheck} title="Conduta" bloqueado={bloqueado} acao={ditado('conduta', 'conduta')}>
                     <Textarea aria-label="Conduta" placeholder="Conduta terapêutica, exames, encaminhamentos..." value={currentProntuario.conduta || ''} onChange={e => updateField('conduta', e.target.value)} rows={4} />
                   </Section>
-                  <Section icon={ClipboardList} title="Plano Terapêutico">
+                  <Section icon={ClipboardList} title="Plano terapêutico" bloqueado={bloqueado} acao={ditado('plano_terapeutico', 'plano terapêutico')}>
                     <Textarea aria-label="Plano terapêutico" placeholder="Plano detalhado..." value={currentProntuario.plano_terapeutico || ''} onChange={e => updateField('plano_terapeutico', e.target.value)} rows={3} />
                   </Section>
-                  <Section icon={User} title="Orientações ao Paciente">
+                  <Section icon={User} title="Orientações ao paciente" bloqueado={bloqueado} acao={ditado('orientacoes_paciente', 'orientações ao paciente')}>
                     <Textarea aria-label="Orientações ao paciente" placeholder="Cuidados, retorno, sinais de alarme..." value={currentProntuario.orientacoes_paciente || ''} onChange={e => updateField('orientacoes_paciente', e.target.value)} rows={3} />
                   </Section>
                   {/* Procedimento feito na consulta vira cobrança no balcão.
-                      Sem agendamento não há conta onde lançar. */}
-                  {routeAgendamentoId && (
-                    <Section icon={CreditCard} title="Procedimentos Realizados (cobrança)">
+                      Sem agendamento não há conta onde lançar. O vínculo vem
+                      da própria evolução: ao reabrir pelo histórico a URL não
+                      traz mais o agendamento. */}
+                  {(currentProntuario.agendamento_id || routeAgendamentoId) && (
+                    <Section icon={CreditCard} title="Procedimentos realizados (cobrança)" bloqueado={bloqueado}>
                       <ProcedimentosDoAtendimento
-                        agendamentoId={routeAgendamentoId}
+                        agendamentoId={(currentProntuario.agendamento_id || routeAgendamentoId)!}
                         prontuarioId={currentProntuario.id || null}
                       />
                     </Section>
                   )}
-                  <Section icon={ShieldCheck} title="Observações Internas" collapsible>
+                  <Section icon={ShieldCheck} title="Observações internas" collapsible bloqueado={bloqueado} temConteudo={!!currentProntuario.observacoes_internas}>
                     <Textarea aria-label="Observações internas" placeholder="Anotações internas (não imprime)..." value={currentProntuario.observacoes_internas || ''} onChange={e => updateField('observacoes_internas', e.target.value)} rows={2} className="border-dashed" />
                   </Section>
-
-                  </fieldset></TabsContent>
+                </TabsContent>
 
                 {/* ─── Prescrição ─── */}
                 <TabsContent value="prescricao" className="space-y-3 pt-1">
-                  <fieldset disabled={isReadOnly || salvandoProntuario} className="contents">
-                  <div className="flex justify-between items-center">
+                  <fieldset disabled={bloqueado} className="min-w-0 space-y-3">
+                  <div className="flex flex-wrap justify-between items-center gap-2">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <Pill className="h-3.5 w-3.5" />Receituário Digital
+                      <Pill aria-hidden="true" className="h-3.5 w-3.5" />Receituário digital
                     </span>
-                    <div className="flex gap-1.5">
-                      {/* Item 07 (P2): gerar PDF da receita diretamente do prontuário */}
+                    <div className="flex flex-wrap gap-1.5">
                       {currentProntuario.id && (
-                        <Button variant="outline" size="sm" disabled={salvandoProntuario} onClick={async () => {
-                          if (!await auditarExportacaoPdf('PDF')) return;
-                          const md = medicos.find((m: any) => m.id === currentProntuario.medico_id);
-                          const pdf = await gerarProntuarioPDF(
-                            { nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined, dataNascimento: selectedPaciente?.data_nascimento || undefined, alergias: selectedPaciente?.alergias || [], convenio: getConvenioNome(selectedPaciente?.convenio_id), numeroCarteira: selectedPaciente?.numero_carteira || undefined },
-                            { nome: md?.nome || user?.nome || 'Médico', crm: md?.crm, especialidade: md?.especialidade },
-                            { id: currentProntuario.id, data: currentProntuario.data, queixaPrincipal: currentProntuario.queixa_principal, hipoteseDiagnostica: currentProntuario.hipotese_diagnostica, conduta: currentProntuario.conduta, sinaisVitais: sinaisVitais as unknown as Record<string, string> },
-                            prescricoes.filter(p => p.medicamento.trim())
-                          );
-                          downloadPDF(pdf, `receita-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`);
-                        }} className="text-xs h-6 gap-1">
-                          <Printer className="h-3 w-3" />Receita PDF
+                        <Button variant="outline" size="sm" onClick={() => { void gerarReceitaDoAtendimento(); }} className="min-h-11 gap-1.5 text-xs sm:min-h-9">
+                          <Printer aria-hidden="true" className="h-3.5 w-3.5" />Receita PDF
                         </Button>
                       )}
-                      <Button variant="outline" size="sm" onClick={() => openProntuarioTool('protocolos')} className="text-xs h-6 gap-1"><CalendarCheck className="h-3 w-3" />Protocolos</Button>
-                      <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="text-xs h-6 gap-1"><Plus className="h-3 w-3" />Adicionar</Button>
+                      <Button variant="outline" size="sm" onClick={() => openProntuarioTool('protocolos')} className="min-h-11 gap-1.5 text-xs sm:min-h-9"><CalendarCheck aria-hidden="true" className="h-3.5 w-3.5" />Protocolos</Button>
+                      <Button variant="outline" size="sm" onClick={handleAddPrescricao} className="min-h-11 gap-1.5 text-xs sm:min-h-9"><Plus aria-hidden="true" className="h-3.5 w-3.5" />Adicionar</Button>
                     </div>
                   </div>
 
                   {/* Dispensar é DIFERENTE de prescrever, e por isso é um botão
                       separado: a maioria das receitas o paciente leva para a
                       farmácia. Baixar o estoque a cada prescrição faria o
-                      sistema descontar remédio que nunca saiu do armário.
-
-                      A função de baixa existia, testada, e NINGUÉM a chamava —
-                      por isso o estoque tinha zero movimentações e o alerta de
-                      estoque baixo disparava todo dia sobre um número que nunca
-                      mudava. */}
+                      sistema descontar remédio que nunca saiu do armário. */}
                   {prescricoes.filter(p => p.medicamento && p.quantidade).length > 0 && (
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2">
                       <p className="text-xs text-muted-foreground">
                         Entregou o medicamento aqui na clínica? Dê baixa no estoque.
                       </p>
                       <Button
-                        variant="outline" size="sm" className="h-6 shrink-0 gap-1 text-xs"
+                        variant="outline" size="sm" className="min-h-11 shrink-0 gap-1.5 text-xs sm:min-h-9"
                         disabled={dispensando || salvandoProntuario}
                         onClick={dispensarNaClinica}
                       >
-                        <Pill className="h-3 w-3" />
+                        <Pill aria-hidden="true" className="h-3.5 w-3.5" />
                         {dispensando ? 'Baixando…' : 'Dispensar na clínica'}
                       </Button>
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground flex items-center gap-1 bg-muted/40 rounded-lg p-2">
-                    <BadgeCheck className="h-3 w-3" />
+                    <BadgeCheck aria-hidden="true" className="h-3 w-3" />
                     Prescrição sai sem assinatura digital — imprima e assine, ou assine o PDF no gov.br
                   </p>
 
                   {prescricoes.length === 0 ? (
                     <div className="flex flex-col items-center py-10 text-muted-foreground">
-                      <Pill className="h-8 w-8 opacity-20 mb-2" />
+                      <Pill aria-hidden="true" className="h-8 w-8 opacity-20 mb-2" />
                       <p className="text-xs">Nenhuma prescrição</p>
-                      <Button variant="link" size="sm" onClick={handleAddPrescricao} className="text-xs">Adicionar medicamento</Button>
+                      <Button variant="link" size="sm" onClick={handleAddPrescricao} className="min-h-11 text-xs">Adicionar medicamento</Button>
                     </div>
                   ) : (
                     <div className="space-y-2.5">
@@ -3144,7 +3437,7 @@ export default function Prontuarios() {
                         <div key={i} className="border rounded-xl p-3 space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="text-xs font-semibold">Medicamento {i + 1}</span>
-                            <Button variant="ghost" size="sm" onClick={() => handleRemovePrescricao(i)} className="text-destructive h-6 w-6 p-0"><X className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleRemovePrescricao(i)} aria-label={`Remover medicamento ${i + 1}${presc.medicamento ? `: ${presc.medicamento}` : ''}`} className="h-11 w-11 text-destructive sm:h-9 sm:w-9"><X aria-hidden="true" className="h-4 w-4" /></Button>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
                             <div className="col-span-2 space-y-1 md:col-span-3">
@@ -3263,9 +3556,10 @@ export default function Prontuarios() {
                           {ev.conduta && <p className="text-xs"><strong>Conduta:</strong> <span className="text-muted-foreground line-clamp-2">{ev.conduta}</span></p>}
                           {ev.sinais_vitais && Object.keys(ev.sinais_vitais).some(k => ev.sinais_vitais[k]) && (
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {ev.sinais_vitais.pressao_sistolica && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-xs px-1.5 py-0">PA: {ev.sinais_vitais.pressao_sistolica}/{ev.sinais_vitais.pressao_diastolica}</Badge>}
-                              {ev.sinais_vitais.frequencia_cardiaca && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-xs px-1.5 py-0">FC: {ev.sinais_vitais.frequencia_cardiaca}</Badge>}
-                              {ev.sinais_vitais.temperatura && <Badge className="bg-warning/10 text-warning border-warning/20 text-xs px-1.5 py-0">T: {ev.sinais_vitais.temperatura}°C</Badge>}
+                              {/* Neutro por padrão; vermelho/âmbar só fora dos limiares. */}
+                              {ev.sinais_vitais.pressao_sistolica && <Badge variant="outline" className={cn('text-xs px-1.5 py-0', classeSeloNivelVital(piorNivelVital(classificarSinalVital('pressao_sistolica', ev.sinais_vitais.pressao_sistolica), classificarSinalVital('pressao_diastolica', ev.sinais_vitais.pressao_diastolica))))}>PA: {ev.sinais_vitais.pressao_sistolica}/{ev.sinais_vitais.pressao_diastolica}</Badge>}
+                              {ev.sinais_vitais.frequencia_cardiaca && <Badge variant="outline" className={cn('text-xs px-1.5 py-0', classeSeloNivelVital(classificarSinalVital('frequencia_cardiaca', ev.sinais_vitais.frequencia_cardiaca)))}>FC: {ev.sinais_vitais.frequencia_cardiaca}</Badge>}
+                              {ev.sinais_vitais.temperatura && <Badge variant="outline" className={cn('text-xs px-1.5 py-0', classeSeloNivelVital(classificarSinalVital('temperatura', ev.sinais_vitais.temperatura)))}>T: {ev.sinais_vitais.temperatura}°C</Badge>}
                             </div>
                           )}
                         </div>
@@ -3357,16 +3651,23 @@ export default function Prontuarios() {
                   </span>
                 )}
               </div>
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={handleSolicitarExame} disabled={!currentProntuario.id || !medicoId} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="rounded-xl text-xs gap-1">
-                  <TestTube className="h-3.5 w-3.5" />Solicitar Exame
+              {/* No celular o rodapé fica com as ações de salvar; exame e
+                  demais ações estão no menu "Mais" do cabeçalho. */}
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+                {!isReadOnly && (
+                  <p className="col-span-2 hidden w-full text-right text-[11px] text-muted-foreground lg:block" aria-hidden="true">
+                    Ctrl+S salva · Ctrl+Enter salva e fecha · Alt+1 a 9 troca de seção
+                  </p>
+                )}
+                <Button variant="outline" size="sm" onClick={handleSolicitarExame} disabled={!currentProntuario.id || !medicoId} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="hidden min-h-9 gap-1.5 rounded-xl text-xs sm:inline-flex">
+                  <TestTube aria-hidden="true" className="h-3.5 w-3.5" />Solicitar exame
                 </Button>
-                <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="rounded-xl text-xs">Cancelar</Button>
+                <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="hidden min-h-9 rounded-xl text-xs sm:inline-flex">Cancelar</Button>
                 {!isReadOnly && currentProntuario.agendamento_id && (
-                  <Button variant="outline" onClick={() => { void handleSalvarEFinalizar(); }} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />Salvar e finalizar</Button>
+                  <Button variant="outline" onClick={() => { void handleSalvarEFinalizar(); }} size="sm" className="min-h-11 gap-1.5 rounded-xl text-xs sm:min-h-9" disabled={salvandoProntuario}><CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />Salvar e finalizar</Button>
                 )}
                 {!isReadOnly && (
-                  <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
+                  <Button onClick={handleSave} size="sm" className={cn('min-h-11 gap-1.5 rounded-xl text-xs sm:min-h-9', !currentProntuario.agendamento_id && 'col-span-2')} disabled={salvandoProntuario} aria-keyshortcuts="Control+Enter"><Save aria-hidden="true" className="h-3.5 w-3.5" />Salvar prontuário</Button>
                 )}
               </div>
 
@@ -3403,6 +3704,13 @@ export default function Prontuarios() {
           </footer>
       </section>}
 
+      <DispensacaoConfirmacao
+        plano={planoDispensacao ?? []}
+        open={planoDispensacao !== null}
+        onOpenChange={aberto => { if (!aberto) setPlanoDispensacao(null); }}
+        onConfirm={itens => { void confirmarDispensacao(itens); }}
+        enviando={dispensando}
+      />
       <Dialog
         open={!!pendingPatientContextChange}
         onOpenChange={open => { if (!open) cancelPatientContextChange(); }}

@@ -74,3 +74,19 @@ export function totaisPorFormaForaDaGaveta(movimentos: MovimentoCaixa[]) {
   }
   return [...porForma.values()].sort((a, b) => (b.entradas - b.saidas) - (a.entradas - a.saidas));
 }
+
+/** Cédulas e moedas em circulação, para a contagem da gaveta no fechamento. */
+export const CEDULAS_E_MOEDAS = [200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1, 0.05] as const;
+
+/**
+ * Soma a contagem por cédula ({ "50": 3, "0.25": 4 } → 151). Quantidades
+ * inválidas, negativas ou fracionadas contam como zero.
+ */
+export function somarContagemCedulas(contagem: Record<string, number | string | null | undefined>): number {
+  const centavos = CEDULAS_E_MOEDAS.reduce((total, valor) => {
+    const quantidade = Number(contagem[String(valor)] ?? 0);
+    if (!Number.isInteger(quantidade) || quantidade <= 0) return total;
+    return total + Math.round(valor * 100) * quantidade;
+  }, 0);
+  return centavos / 100;
+}

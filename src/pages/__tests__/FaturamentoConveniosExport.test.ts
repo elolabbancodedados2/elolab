@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('src/pages/FaturamentoConvenios.tsx', 'utf8');
+// Os rótulos de status vivem em lib/tissStatus e são compartilhados pelas telas TISS.
+const rotulos = readFileSync('src/lib/tissStatus.ts', 'utf8');
 // Criar lote, registrar glosa e conciliar retorno foram movidos para páginas próprias.
 const paginasTiss = [
   'src/pages/FaturamentoConvenios.tsx',
@@ -30,8 +32,9 @@ describe('exportação do lote de convênio', () => {
   });
 
   it('mostra status traduzidos, compara dinheiro em centavos e lê só as colunas das guias', () => {
-    expect(source).toContain("pago_parcial: 'Pago parcial'");
-    expect(source).toContain("recurso_preparacao: 'Preparando recurso'");
+    expect(rotulos).toContain("pago_parcial: 'Pago parcial'");
+    expect(rotulos).toContain("recurso_preparacao: 'Preparando recurso'");
+    expect(source).toMatch(/rotuloStatusLote\(/);
     expect(source).not.toMatch(/status\.replaceAll\(/);
     expect(source).toMatch(/!mesmoValor\(Number\(lote\.valor_pago/);
     expect(source).not.toMatch(/from\('lote_tiss_guias'\)\.select\('\*'\)/);

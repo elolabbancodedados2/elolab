@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Upload, X, User, Loader2 } from 'lucide-react';
+import { Camera, Upload, X, User, Loader2, Aperture } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -54,6 +54,54 @@ export function PatientPhoto({
   const [uploading, setUploading] = useState(false);
   const [photoUrl, setPhotoUrl] = useState(currentPhotoUrl);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [camera, setCamera] = useState<MediaStream | null>(null);
+  const [cameraErro, setCameraErro] = useState('');
+  const cameraDisponivel = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+
+  const desligarCamera = () => {
+    setCamera(atual => {
+      atual?.getTracks().forEach(track => track.stop());
+      return null;
+    });
+  };
+
+  useEffect(() => {
+    if (videoRef.current && camera) {
+      videoRef.current.srcObject = camera;
+      void videoRef.current.play?.().catch(() => undefined);
+    }
+  }, [camera]);
+
+  // Ao fechar o diálogo ou sair da tela, a câmera precisa ser liberada.
+  useEffect(() => () => { camera?.getTracks().forEach(track => track.stop()); }, [camera]);
+
+  const ligarCamera = async () => {
+    setCameraErro('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      setCamera(stream);
+    } catch {
+      setCameraErro('Não foi possível acessar a câmera. Confira a permissão do navegador ou envie uma foto.');
+    }
+  };
+
+  const capturarFoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    const lado = Math.min(video.videoWidth, video.videoHeight);
+    canvas.width = 480;
+    canvas.height = 480;
+    const contexto = canvas.getContext('2d');
+    if (!contexto) return;
+    contexto.drawImage(video, (video.videoWidth - lado) / 2, (video.videoHeight - lado) / 2, lado, lado, 0, 0, 480, 480);
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      desligarCamera();
+      void enviarArquivo(new File([blob], 'webcam.jpg', { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.9);
+  };
 
   const getInitials = (name: string) => {
     return name
@@ -67,6 +115,10 @@ export function PatientPhoto({
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    await enviarArquivo(file);
+  };
+
+  const enviarArquivo = async (file: File) => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
@@ -156,10 +208,11 @@ export function PatientPhoto({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={(aberto) => { setIsOpen(aberto); if (!aberto) { desligarCamera(); setCameraErro(''); } }}>
       <DialogTrigger asChild>
         <button
           type="button"
+          aria-label={`Alterar foto de ${pacienteNome}`}
           className="relative group cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-full"
         >
           {avatarContent}
@@ -177,14 +230,31 @@ export function PatientPhoto({
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-6 py-4">
-          <Avatar className="h-32 w-32">
-            <StorageAvatarImage bucket="patient-photos" path={photoUrl} alt={pacienteNome} />
-            <AvatarFallback className="bg-primary/10 text-primary text-4xl">
-              {pacienteNome ? getInitials(pacienteNome) : <User className="h-16 w-16" />}
-            </AvatarFallback>
-          </Avatar>
+          {camera ? (
+            <video ref={videoRef} autoPlay playsInline muted aria-label="Pré-visualização da câmera" className="h-48 w-48 rounded-full object-cover" />
+          ) : (
+            <Avatar className="h-32 w-32">
+              <StorageAvatarImage bucket="patient-photos" path={photoUrl} alt={pacienteNome} />
+              <AvatarFallback className="bg-primary/10 text-primary text-4xl">
+                {pacienteNome ? getInitials(pacienteNome) : <User className="h-16 w-16" />}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          {cameraErro && <p role="alert" className="text-center text-sm text-destructive">{cameraErro}</p>}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
+            {cameraDisponivel && (camera ? (
+              <>
+                <Button type="button" className="h-11" onClick={capturarFoto} disabled={uploading}>
+                  <Aperture className="mr-2 h-4 w-4" />Capturar
+                </Button>
+                <Button type="button" variant="outline" className="h-11" onClick={desligarCamera}>Cancelar</Button>
+              </>
+            ) : (
+              <Button type="button" variant="outline" className="h-11" onClick={() => void ligarCamera()} disabled={uploading}>
+                <Camera className="mr-2 h-4 w-4" />Usar câmera
+              </Button>
+            ))}
             <input
               type="file"
               ref={fileInputRef}

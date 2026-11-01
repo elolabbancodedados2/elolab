@@ -29,6 +29,9 @@ const MinhaFilaTarefas = lazy(() => import("@/pages/MinhaFilaTarefas"));
 const Agenda = lazy(() => import("@/pages/Agenda"));
 const AppointmentPage = lazy(() => import("@/pages/AppointmentPage"));
 const BloqueioAgendaPage = lazy(() => import("@/components/agenda/BloqueioAgenda").then(module => ({ default: module.BloqueioAgenda })));
+const AgendaConfirmacoesPage = lazy(() => import("@/pages/AgendaConfirmacoesPage"));
+const AgendaImpressaoPage = lazy(() => import("@/pages/AgendaImpressaoPage"));
+const BuscarVagaPage = lazy(() => import("@/pages/BuscarVagaPage"));
 const Pacientes = lazy(() => import("@/pages/Pacientes"));
 const ConsentimentoLGPDTaskPage = lazy(() => import("@/pages/ConsentimentoLGPDTaskPage"));
 const AutorizacoesConvenioPage = lazy(() => import("@/pages/AutorizacoesConvenioPage"));
@@ -59,6 +62,7 @@ const CashOperationPage = lazy(() => import("@/pages/CashOperationPage").then(mo
 const CashierSalePage = lazy(() => import("@/pages/CashierSalePage").then(module => ({ default: module.CashierSalePage })));
 const Medicos = lazy(() => import("@/pages/Medicos"));
 const Estoque = lazy(() => import("@/pages/Estoque"));
+const EstoqueInventario = lazy(() => import("@/pages/EstoqueInventario"));
 const Compras = lazy(() => import("@/pages/Compras"));
 const Relatorios = lazy(() => import("@/pages/Relatorios"));
 const SalvarRelatorio = lazy(() => import("@/pages/SalvarRelatorioPage"));
@@ -77,6 +81,9 @@ const Convenios = lazy(() => import("@/pages/Convenios"));
 const ContasReceber = lazy(() => import("@/pages/ContasReceber"));
 const ContaReceberDetalhesPage = lazy(() => import("@/pages/ContaReceberDetalhesPage"));
 const ContaReceberEstorno = lazy(() => import("@/pages/ContaReceberEstorno"));
+const ContaReceberRenegociacaoPage = lazy(() => import("@/pages/ContaReceberRenegociacaoPage"));
+const ContaPagarDetalhesPage = lazy(() => import("@/pages/ContaPagarDetalhesPage"));
+const RecorrenciasFinanceiras = lazy(() => import("@/pages/RecorrenciasFinanceiras"));
 const EstornarVendaPdvPage = lazy(() => import("@/pages/EstornarVendaPdvPage"));
 const CorrigirStatusAgendamentoPage = lazy(() => import("@/pages/CorrigirStatusAgendamentoPage"));
 const ContasPagar = lazy(() => import("@/pages/ContasPagar"));
@@ -303,6 +310,16 @@ function RedirecionarTriagem() {
   return <Navigate to={`/fila?${destino.toString()}`} replace />;
 }
 
+/** Redireciona rotas antigas de documentos clínicos sem perder os filtros da URL. */
+function RedirecionarDocumentosClinicos({ aba }: { aba?: 'atestados' | 'encaminhamentos' }) {
+  const [searchParams] = useSearchParams();
+  const destino = new URLSearchParams(searchParams);
+  if (aba) destino.set('tab', aba);
+  else destino.delete('tab');
+  const consulta = destino.toString();
+  return <Navigate to={`/documentos-clinicos${consulta ? `?${consulta}` : ''}`} replace />;
+}
+
 function RouteFallback() {
   return <BrandLoadingScreen message="Abrindo seu ambiente" detail="Estamos carregando esta área do EloLab." />;
 }
@@ -393,6 +410,10 @@ function AppRoutes() {
                           <Route path="/agenda/configurar-cores" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AgendaColorSettingsPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="manage-blocks" /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="create-block" creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/bloqueios/:bloqueioId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="edit-block" creationPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/confirmacoes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><AgendaConfirmacoesPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/imprimir" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AgendaImpressaoPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/buscar-vaga" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem']}><BuscarVagaPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:agendamentoId/corrigir-status" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><CorrigirStatusAgendamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
@@ -404,8 +425,8 @@ function AppRoutes() {
                           <Route path="/prontuarios/*" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prontuarios /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><DocumentosClinicos /></SupabaseProtectedRoute>} />
                           <Route path="/documentos-clinicos/nova-prescricao" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Prescricoes creationPage /></SupabaseProtectedRoute>} />
-                          <Route path="/prescricoes" element={<Navigate to="/documentos-clinicos" replace />} />
-                          <Route path="/atestados" element={<Navigate to="/documentos-clinicos?tab=atestados" replace />} />
+                          <Route path="/prescricoes" element={<RedirecionarDocumentosClinicos />} />
+                          <Route path="/atestados" element={<RedirecionarDocumentosClinicos aba="atestados" />} />
                           <Route path="/documentos-clinicos/novo-atestado" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Atestados creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/atestados/:certificateId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Atestados /></SupabaseProtectedRoute>} />
                           <Route path="/exames" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'enfermagem']}><PlanFeatureGuard feature="exames" requiredPlan="EloLab Pro"><Exames /></PlanFeatureGuard></SupabaseProtectedRoute>} />
@@ -422,7 +443,7 @@ function AppRoutes() {
                           <Route path="/fila/:agendamentoId/liberacao/:tipo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><LiberarAtendimentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/atendimentos/:agendamentoId/finalizar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><FinalizarAtendimento /></SupabaseProtectedRoute>} />
                           <Route path="/triagem" element={<RedirecionarTriagem />} />
-                          <Route path="/encaminhamentos" element={<Navigate to="/documentos-clinicos?tab=encaminhamentos" replace />} />
+                          <Route path="/encaminhamentos" element={<RedirecionarDocumentosClinicos aba="encaminhamentos" />} />
                           <Route path="/documentos-clinicos/novo-encaminhamento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/encaminhamentos/:referralId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><Encaminhamentos /></SupabaseProtectedRoute>} />
                           <Route path="/retornos" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico', 'recepcao']}><Retornos /></SupabaseProtectedRoute>} />
@@ -481,6 +502,7 @@ function AppRoutes() {
                           <Route path="/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/gestao-fluxo/salas" element={<Navigate to="/gestao-fluxo" replace />} />
                           <Route path="/estoque/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="new" /></SupabaseProtectedRoute>} />
+                          <Route path="/estoque/inventario" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><EstoqueInventario /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="edit" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/entrada" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="entry" /></SupabaseProtectedRoute>} />
                           <Route path="/estoque/:itemId/saida" element={<SupabaseProtectedRoute allowedRoles={['admin', 'enfermagem']}><Estoque task="exit" /></SupabaseProtectedRoute>} />
@@ -535,12 +557,15 @@ function AppRoutes() {
                           <Route path="/caixa" element={<Navigate to="/caixa-diario" replace />} />
                           <Route path="/financeiro" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><Financeiro /></SupabaseProtectedRoute>} />
                           <Route path="/financeiro/dre" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><DrePlanoContas /></SupabaseProtectedRoute>} />
+                          <Route path="/financeiro/recorrencias" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><RecorrenciasFinanceiras /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/estorno" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberEstorno /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/detalhes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberDetalhesPage /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/receber/:lancamentoId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaReceberRenegociacaoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/:lancamentoId/recebimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/receber/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasReceber /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPagar /></SupabaseProtectedRoute>} />
+                          <Route path="/contas/pagar/:lancamentoId/detalhes" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarDetalhesPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/pagamento"element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContaPagarPagamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas/pagar/:lancamentoId/historico" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><HistoricoLancamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/contas" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ContasPage /></SupabaseProtectedRoute>} />

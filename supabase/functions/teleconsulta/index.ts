@@ -70,8 +70,23 @@ Deno.serve(async (req) => {
         guest_token_hash: await hashTokenConvidado(token), expires_at: expiresAt.toISOString(),
       }).select('id').single();
       if (error) {
-        if (error.code === '23505') return json({ error: 'Este agendamento já possui uma sala criada.' }, 409);
-        throw error;
+        if (error.code !== '23505') throw error;
+        // get_or_create: a sala já existe. `modo: 'entrar'` só devolve a sala;
+        // `modo: 'link'` emite um novo link (o token só existe em hash) e o
+        // anterior deixa de valer.
+        const modo = body.modo === 'entrar' || body.modo === 'link' ? body.modo : null;
+        if (!modo) return json({ error: 'Este agendamento já possui uma sala criada.' }, 409);
+        const { data: existente } = await db.from('teleconsulta_sessions')
+          .select('id,status,expires_at').eq('agendamento_id', appointment.id).eq('clinica_id', clinicaId).maybeSingle();
+        if (!existente || ['closed', 'expired'].includes(existente.status) || existente.expires_at <= new Date().toISOString()) {
+          return json({ error: 'A sala deste agendamento já foi encerrada.' }, 409);
+        }
+        if (modo === 'entrar') return json({ session_id: existente.id, expires_at: existente.expires_at, reutilizada: true });
+        const { error: erroToken } = await db.from('teleconsulta_sessions')
+          .update({ guest_token_hash: await hashTokenConvidado(token) }).eq('id', existente.id).eq('clinica_id', clinicaId);
+        if (erroToken) throw erroToken;
+        await db.from('audit_log').insert({ user_id: user!.id, clinica_id: clinicaId, action: 'update', collection: 'teleconsulta_sessions', record_id: existente.id, changes: { evento: 'link_reemitido' } });
+        return json({ session_id: existente.id, guest_token: token, expires_at: existente.expires_at, reutilizada: true });
       }
       await db.from('audit_log').insert({ user_id: user!.id, clinica_id: clinicaId, action: 'create', collection: 'teleconsulta_sessions', record_id: session.id, changes: { evento: 'sala_criada' } });
       return json({ session_id: session.id, guest_token: token, expires_at: expiresAt.toISOString() });

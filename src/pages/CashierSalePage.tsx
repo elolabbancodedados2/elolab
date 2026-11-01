@@ -24,6 +24,7 @@ import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { mensagemDeErro } from '@/lib/erros';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
+import { calcularDesconto, calcularTroco, parseMoneyInput } from '@/lib/dinheiro';
 
 type OrigemItem = 'consulta' | 'exame' | 'produto' | 'manual';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cheque' | 'transferencia';
@@ -80,13 +81,12 @@ function toMoney(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseMoneyInput(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact || !/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(compact) && !/^\d+(?:\.\d{1,2})?$/.test(compact)) return null;
-  const normalized = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+const ROTULO_ORIGEM: Record<OrigemItem, string> = {
+  consulta: 'Consulta', exame: 'Exame', produto: 'Produto', manual: 'Item manual',
+};
+
+/** Limite de desconto do balcão, o mesmo que o banco aplica. */
+const DESCONTO_MAXIMO = 0.5;
 
 function temPrecisaoDeCentavos(value: number): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
@@ -114,6 +114,11 @@ export function CashierSalePage() {
   const [catalogSearch, setCatalogSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<FormaPagamento>('dinheiro');
   const [discount, setDiscount] = useState('');
+  const [discountMode, setDiscountMode] = useState<'reais' | 'percentual'>('reais');
+  const [discountReason, setDiscountReason] = useState('');
+  const [cashGiven, setCashGiven] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const discountRef = useRef<HTMLInputElement>(null);
   const [manualName, setManualName] = useState('');
   const [manualAmount, setManualAmount] = useState('');
   const [patientId, setPatientId] = useState<string | null>(null);
@@ -256,12 +261,16 @@ export function CashierSalePage() {
   };
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.valor * item.quantidade, 0), [cart]);
-  const discountValue = discount.trim() === '' ? 0 : parseMoneyInput(discount);
+  const discountValue = discount.trim() === '' ? 0 : calcularDesconto(subtotal, discount, discountMode);
+  const discountAboveLimit = discountValue !== null && subtotal > 0 && discountValue > subtotal * DESCONTO_MAXIMO + 1e-9;
   const discountInvalid = discountValue === null || discountValue < 0 || discountValue > subtotal
-    || (subtotal > 0 && discountValue >= subtotal) || !temPrecisaoDeCentavos(discountValue);
+    || (subtotal > 0 && discountValue >= subtotal) || !temPrecisaoDeCentavos(discountValue) || discountAboveLimit;
+  const discountReasonMissing = (discountValue ?? 0) > 0 && discountReason.trim().length < 3;
   const total = Math.max(0, subtotal - (discountValue ?? 0));
+  const cashGivenValue = paymentMethod === 'dinheiro' ? parseMoneyInput(cashGiven) : null;
+  const change = cashGivenValue === null ? null : calcularTroco(total, cashGivenValue);
   const containsExam = cart.some(item => item.origem === 'exame');
-  const hasUnsavedChanges = cart.length > 0 || discount.trim().length > 0 || manualName.trim().length > 0
+  const hasUnsavedChanges = cart.length > 0 || discount.trim().length > 0 || discountReason.trim().length > 0 || manualName.trim().length > 0
     || manualAmount.trim().length > 0 || patientId !== null || paymentMethod !== 'dinheiro';
 
   useEffect(() => { navigationAllowed.current = false; }, [location.pathname, location.search]);
@@ -276,11 +285,14 @@ export function CashierSalePage() {
     mutationFn: async () => {
       if (!profile?.clinica_id || !cashQuery.data?.id || !cashQuery.data.aberto) throw new Error('O caixa de hoje não está aberto. Atualize os dados antes de registrar a venda.');
       if (!cart.length) throw new Error('Adicione pelo menos um item à venda.');
-      if (discountInvalid) throw new Error('O desconto deve ser menor que o subtotal para manter um valor de venda maior que zero.');
+      if (discountInvalid) throw new Error(discountAboveLimit ? 'O desconto máximo é 50% do subtotal.' : 'O desconto deve ser menor que o subtotal para manter um valor de venda maior que zero.');
+      if (discountReasonMissing) throw new Error('Informe o motivo do desconto.');
       if (!Number.isFinite(total) || total <= 0) throw new Error('O total da venda deve ser maior que zero.');
       if (containsExam && !patientId) throw new Error('Selecione um paciente para registrar os exames vendidos no prontuário.');
 
-      const description = cart.map(item => `${item.nome}${item.quantidade > 1 ? ` x${item.quantidade}` : ''}`).join(', ');
+      const itens = cart.map(item => `${item.nome}${item.quantidade > 1 ? ` x${item.quantidade}` : ''}`).join(', ');
+      // O motivo do desconto fica na descrição do lançamento, que é o que o caixa mostra.
+      const description = (discountValue ?? 0) > 0 ? `${itens} · Desconto: ${discountReason.trim()}`.slice(0, 500) : itens;
       const amountCharged = cart.reduce((sum, item) => sum + item.valor * item.quantidade, 0);
       const fingerprint = JSON.stringify({
         clinic: profile.clinica_id, patient: patientId, date: today,
@@ -324,7 +336,7 @@ export function CashierSalePage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] }),
         queryClient.invalidateQueries({ queryKey: ['exames'] }),
         queryClient.invalidateQueries({ queryKey: ['produtos-caixa', profile?.clinica_id] }),
         queryClient.invalidateQueries({ queryKey: ['estoque'] }),
@@ -347,12 +359,35 @@ export function CashierSalePage() {
     hasUnsavedChanges && !saleMutation.isPending && !navigationAllowed.current
     && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
 
-  const canSubmit = cart.length > 0 && !discountInvalid && (!containsExam || Boolean(patientId)) && !saleMutation.isPending;
+  const cashGivenInvalid = paymentMethod === 'dinheiro' && cashGiven.trim() !== '' && (change === null);
+  const canSubmit = cart.length > 0 && !discountInvalid && !discountReasonMissing && !cashGivenInvalid && (!containsExam || Boolean(patientId)) && !saleMutation.isPending;
+  const finalizar = () => { if (!canSubmit) return; setSubmitError(''); saleMutation.mutate(); };
+  const finalizarRef = useRef(finalizar);
+  finalizarRef.current = finalizar;
+
+  // Atalhos do balcão: F2 busca, F4 desconto, F9 finaliza, Esc limpa a busca.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      if (event.key === 'F2') { event.preventDefault(); searchRef.current?.focus(); }
+      else if (event.key === 'F4') { event.preventDefault(); discountRef.current?.focus(); }
+      else if (event.key === 'F9') { event.preventDefault(); finalizarRef.current(); }
+      else if (event.key === 'Escape' && document.activeElement === searchRef.current && searchRef.current?.value) { event.preventDefault(); setCatalogSearch(''); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+  /** Enter na busca adiciona o primeiro resultado da aba aberta. */
+  const adicionarPrimeiroResultado = () => {
+    if (catalogTab === 'consultas' && consultations[0]) addToCart({ id: consultations[0].id, nome: consultations[0].nome, valor: toMoney(consultations[0].valor_particular), origem: 'consulta' });
+    else if (catalogTab === 'exames' && exams[0]) addToCart({ id: exams[0].id, nome: exams[0].nome, valor: exams[0].valor, origem: 'exame' });
+    else if (catalogTab === 'produtos' && products[0]) addToCart({ id: products[0].id, nome: products[0].nome, valor: toMoney(products[0].valor_venda), origem: 'produto', quantidadeDisponivel: Number(products[0].quantidade) || 0 });
+  };
   const busy = cashQuery.isLoading;
   const backToRegister = () => navigate(returnTo, { state: { cashTab: returnTab } });
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 pb-28 sm:px-6 sm:pb-8">
+    <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 pb-40 sm:px-6 xl:pb-8">
       <PageHeader
         title="Ponto de venda"
         description={cashQuery.data ? `${format(new Date(`${cashQuery.data.data}T12:00:00`), 'dd/MM/yyyy')} · abertura de ${moeda(Number(cashQuery.data.valor_abertura))}` : 'Venda de consultas, exames e produtos no caixa diário.'}
@@ -387,8 +422,11 @@ export function CashierSalePage() {
             </div>
             <div className="relative">
               <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="h-11 pl-9" placeholder="Buscar consulta, exame ou produto" value={catalogSearch} onChange={event => setCatalogSearch(event.target.value)} />
+              <Input ref={searchRef} className="h-11 pl-9" placeholder="Buscar consulta, exame ou produto (F2)" aria-label="Buscar consulta, exame ou produto" aria-keyshortcuts="F2" value={catalogSearch}
+                onChange={event => setCatalogSearch(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); adicionarPrimeiroResultado(); } }} />
             </div>
+            <p className="hidden text-xs text-muted-foreground md:block">Atalhos: F2 buscar · Enter adiciona o primeiro item · F4 desconto · F9 finalizar · Esc limpa a busca</p>
             <Tabs value={catalogTab} onValueChange={value => setCatalogTab(value as CatalogoTab)}>
               <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
                 <TabsTrigger value="consultas" className="min-h-10 gap-1.5"><Stethoscope className="h-4 w-4" />Consultas</TabsTrigger>
@@ -455,8 +493,8 @@ export function CashierSalePage() {
             {cart.length === 0 ? <div className="border-b border-border py-8 text-center text-sm text-muted-foreground"><ShoppingCart className="mx-auto mb-2 h-7 w-7 opacity-40" /><p>Adicione consultas, exames ou produtos.</p></div>
               : <ul aria-label="Itens da venda" className="divide-y divide-border">{cart.map(item => (
                 <li key={`${item.origem}-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                  <div className="min-w-0 flex-1"><p className="truncate font-medium">{item.nome}</p><p className="text-xs text-muted-foreground">{item.origem === 'produto' ? `Estoque: ${item.quantidadeDisponivel}` : item.origem}</p></div>
-                  <div className="flex items-center gap-1"><Button variant="ghost" size="icon" aria-label="Diminuir quantidade" onClick={() => updateQuantity(item.id, item.quantidade - 1)}><Minus className="h-4 w-4" /></Button><span className="w-6 text-center tabular-nums">{item.quantidade}</span><Button variant="ghost" size="icon" aria-label="Aumentar quantidade" disabled={item.origem === 'produto' && item.quantidade >= (item.quantidadeDisponivel ?? 0)} onClick={() => updateQuantity(item.id, item.quantidade + 1)}><Plus className="h-4 w-4" /></Button><span className="w-24 text-right font-medium tabular-nums">{moeda(item.valor * item.quantidade)}</span><Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover item da venda" onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4" /></Button></div>
+                  <div className="min-w-0 flex-1"><p className="truncate font-medium">{item.nome}</p><p className="text-xs text-muted-foreground">{item.origem === 'produto' ? `${ROTULO_ORIGEM.produto} · estoque: ${item.quantidadeDisponivel}` : ROTULO_ORIGEM[item.origem]}</p></div>
+                  <div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Diminuir quantidade de ${item.nome}`} onClick={() => updateQuantity(item.id, item.quantidade - 1)}><Minus className="h-4 w-4" /></Button><span className="w-6 text-center tabular-nums" aria-label={`Quantidade: ${item.quantidade}`}>{item.quantidade}</span><Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Aumentar quantidade de ${item.nome}`} disabled={item.origem === 'produto' && item.quantidade >= (item.quantidadeDisponivel ?? 0)} onClick={() => updateQuantity(item.id, item.quantidade + 1)}><Plus className="h-4 w-4" /></Button><span className="w-24 text-right font-medium tabular-nums">{moeda(item.valor * item.quantidade)}</span><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive" aria-label={`Remover ${item.nome} da venda`} onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4" /></Button></div>
                 </li>
               ))}</ul>}
 
@@ -468,14 +506,44 @@ export function CashierSalePage() {
                 {patientId && containsExam && <p className="text-xs text-muted-foreground">Os exames serão vinculados ao prontuário deste paciente.</p>}
               </div>
 
-              <div className="space-y-2"><Label htmlFor="cash-sale-discount">Desconto (R$)</Label><Input id="cash-sale-discount" type="text" inputMode="decimal" placeholder="0,00" value={discount} onChange={event => { setDiscount(event.target.value); setSubmitError(''); }} aria-invalid={discount.trim().length > 0 && discountInvalid} />{discount.trim().length > 0 && discountInvalid && <p role="alert" className="text-xs text-destructive">Informe desconto válido menor que o subtotal de {moeda(subtotal)}.</p>}</div>
-              <fieldset className="space-y-2"><legend className="text-sm font-medium">Forma de pagamento</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{FORMAS.map(({ value, label, icon: Icon }) => <Button key={value} type="button" variant={paymentMethod === value ? 'default' : 'outline'} aria-pressed={paymentMethod === value} className="min-h-9 gap-1.5" onClick={() => setPaymentMethod(value)}><Icon className="h-4 w-4" />{label}</Button>)}</div></fieldset>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="cash-sale-discount">Desconto {discountMode === 'reais' ? '(R$)' : '(%)'}</Label>
+                  <div role="group" aria-label="Tipo de desconto" className="flex gap-1">
+                    {(['reais', 'percentual'] as const).map(modo => <Button key={modo} type="button" size="sm" variant={discountMode === modo ? 'default' : 'outline'} aria-pressed={discountMode === modo} className="h-11 min-w-11 px-3" onClick={() => { setDiscountMode(modo); setDiscount(''); }}>{modo === 'reais' ? 'R$' : '%'}</Button>)}
+                  </div>
+                </div>
+                <Input ref={discountRef} id="cash-sale-discount" type="text" inputMode="decimal" placeholder={discountMode === 'reais' ? '0,00' : '0'} aria-keyshortcuts="F4" value={discount} onChange={event => { setDiscount(event.target.value); setSubmitError(''); }} aria-invalid={discount.trim().length > 0 && discountInvalid} aria-describedby="cash-sale-discount-help" />
+                <p id="cash-sale-discount-help" className="text-xs text-muted-foreground">{discountMode === 'percentual' && discountValue !== null && discountValue > 0 ? `Equivale a ${moeda(discountValue)}. ` : ''}Máximo de 50% do subtotal.</p>
+                {discount.trim().length > 0 && discountInvalid && <p role="alert" className="text-xs text-destructive">{discountAboveLimit ? `O desconto máximo é 50% do subtotal (${moeda(subtotal * DESCONTO_MAXIMO)}).` : `Informe desconto válido menor que o subtotal de ${moeda(subtotal)}.`}</p>}
+              </div>
+              {(discountValue ?? 0) > 0 && (
+                <div className="space-y-2"><Label htmlFor="cash-sale-discount-reason">Motivo do desconto <span className="text-destructive">*</span></Label><Input id="cash-sale-discount-reason" maxLength={120} placeholder="Ex.: retorno, cortesia, convênio parceiro" value={discountReason} onChange={event => setDiscountReason(event.target.value)} aria-invalid={discountReasonMissing} /></div>
+              )}
+              <fieldset className="space-y-2"><legend className="text-sm font-medium">Forma de pagamento</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{FORMAS.map(({ value, label, icon: Icon }) => <Button key={value} type="button" variant={paymentMethod === value ? 'default' : 'outline'} aria-pressed={paymentMethod === value} className="min-h-11 gap-1.5" onClick={() => setPaymentMethod(value)}><Icon aria-hidden="true" className="h-4 w-4" />{label}</Button>)}</div></fieldset>
+              {paymentMethod === 'dinheiro' && (
+                <div className="space-y-2">
+                  <Label htmlFor="cash-sale-cash-given">Valor entregue pelo cliente (R$) <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                  <Input id="cash-sale-cash-given" type="text" inputMode="decimal" placeholder="0,00" value={cashGiven} onChange={event => setCashGiven(event.target.value)} aria-invalid={cashGivenInvalid} aria-describedby="cash-sale-change" />
+                  <p id="cash-sale-change" aria-live="polite" className={cashGivenInvalid ? 'text-xs text-destructive' : 'text-sm'}>{cashGivenInvalid ? `O valor entregue é menor que o total de ${moeda(total)}.` : change !== null ? <>Troco: <span className="font-semibold tabular-nums">{moeda(change)}</span></> : null}</p>
+                </div>
+              )}
             </div>
 
             <dl className="space-y-2 py-3"><div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-medium tabular-nums">{moeda(subtotal)}</dd></div>{discountValue !== null && discountValue > 0 && <div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">Desconto</dt><dd className="font-medium tabular-nums">− {moeda(discountValue)}</dd></div>}<div className="flex items-baseline justify-between gap-3 border-t border-border pt-3"><dt className="font-semibold">Total a cobrar</dt><dd className="text-2xl font-semibold tabular-nums text-primary">{moeda(total)}</dd></div></dl>
 
             {submitError && <div role="alert" className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Não foi possível confirmar a venda. {submitError}</div>}
-            <Button className="min-h-12 w-full gap-2" disabled={!canSubmit} onClick={() => { setSubmitError(''); saleMutation.mutate(); }}>{saleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Finalizar venda</Button>
+            <Button className="hidden min-h-12 w-full gap-2 xl:flex" aria-keyshortcuts="F9" disabled={!canSubmit} onClick={finalizar}>{saleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Finalizar venda (F9)</Button>
+            {/* No celular e no tablet o total fica fixo no rodapé, sempre à vista. */}
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(16,17,19,0.06)] backdrop-blur xl:hidden">
+              <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+                <div className="min-w-0" aria-live="polite">
+                  <p className="text-xs text-muted-foreground">{cart.length} {cart.length === 1 ? 'item' : 'itens'} · total</p>
+                  <p className="text-xl font-semibold tabular-nums">{moeda(total)}</p>
+                </div>
+                <Button className="min-h-12 gap-2 px-5" disabled={!canSubmit} onClick={finalizar}>{saleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Finalizar venda</Button>
+              </div>
+            </div>
             {saleMutation.isPending && <p role="status" className="mt-2 text-center text-xs text-muted-foreground">Confirmando venda e baixa de estoque…</p>}
           </aside>
         </div>

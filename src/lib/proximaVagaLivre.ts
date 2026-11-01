@@ -36,6 +36,8 @@ export interface ProximaVagaParams {
   agendamentos: OcupacaoAgenda[];
   bloqueios: BloqueioAgenda[];
   dias?: number;
+  /** Período do dia aceito, em minutos (ex.: manhã = [360, 720]). */
+  janela?: readonly [number, number];
 }
 
 const LIBERAM_HORARIO = new Set(['cancelado', 'faltou']);
@@ -68,6 +70,11 @@ export function proximaVagaLivre(params: ProximaVagaParams): { data: string; hor
       .filter(j => j.dia_semana === diaSemana)
       .map(j => [minutos(j.hora_inicio), minutos(j.hora_fim)] as const)
       .filter((f): f is readonly [number, number] => f[0] !== null && f[1] !== null && f[1] > f[0])
+      // A janela corta a faixa sem perder o alinhamento ao início do expediente.
+      .map(([ini, fim]) => params.janela
+        ? [ini + Math.max(0, Math.ceil((params.janela[0] - ini) / passo)) * passo, Math.min(fim, params.janela[1])] as const
+        : [ini, fim] as const)
+      .filter(([ini, fim]) => fim > ini)
       .sort((a, b) => a[0] - b[0]);
     if (!faixas.length) continue;
 

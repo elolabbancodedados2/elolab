@@ -22,3 +22,15 @@ describe('caixaFormatacao', () => {
     expect(textoSeguroCsv(null)).toBe('');
   });
 });
+
+describe('movimentoCorrespondeBusca', () => {
+  it('busca por paciente, forma e valor, sem acento', async () => {
+    const { movimentoCorrespondeBusca } = await import('@/lib/caixaFormatacao');
+    const mov = { descricao: 'Consulta', tipo: 'receita', forma_pagamento: 'pix', valor: 150, paciente_nome: 'João Simões' };
+    expect(movimentoCorrespondeBusca(mov, 'joao')).toBe(true);
+    expect(movimentoCorrespondeBusca(mov, 'simoes pix')).toBe(true);
+    expect(movimentoCorrespondeBusca(mov, '150,00')).toBe(true);
+    expect(movimentoCorrespondeBusca(mov, 'dinheiro')).toBe(false);
+    expect(movimentoCorrespondeBusca(mov, '   ')).toBe(true);
+  });
+});

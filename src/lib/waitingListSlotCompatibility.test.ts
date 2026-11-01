@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { prepareWaitingListAppointment, validateWaitingListSlot } from './waitingListSlotCompatibility';
+import { especialidadeAtende, especialidadesCadastradas, prepareWaitingListAppointment, validateWaitingListSlot } from './waitingListSlotCompatibility';
 
 const waiting = {
   medico_id: 'doctor-1',
@@ -26,6 +26,18 @@ describe('validateWaitingListSlot', () => {
     expect(validateWaitingListSlot({ ...waiting, medico_id: null }, { medico_id: 'doctor-2', hora_inicio: '10:30' }, [
       { id: 'doctor-2', especialidade: 'Neurologia' },
     ])).toMatch(/especialidade solicitada/);
+  });
+
+  it('compara especialidade sem acento, sem caixa e entre várias do cadastro', () => {
+    expect(especialidadeAtende('Clinica Medica / Cardiologia', 'clínica médica')).toBe(true);
+    expect(especialidadeAtende('CARDIOLOGIA', 'Cardiologia')).toBe(true);
+    expect(especialidadeAtende('Cardiologia pediátrica', 'Cardiologia')).toBe(false);
+    expect(especialidadesCadastradas([
+      { especialidade: 'Cardiologia', ativo: true },
+      { especialidade: 'cardiologia', ativo: true },
+      { especialidade: 'Dermatologia, Clínica Médica', ativo: true },
+      { especialidade: 'Ortopedia', ativo: false },
+    ])).toEqual(['Cardiologia', 'Clínica Médica', 'Dermatologia']);
   });
 
   it('bloqueia vaga fora do período preferido', () => {

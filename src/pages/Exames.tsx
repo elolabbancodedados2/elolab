@@ -5,7 +5,7 @@ import { Link, useSearchParams, useLocation, useNavigate, useParams } from 'reac
 import {
   Plus, Search, Eye, FileText, FileDown, Loader2, X,
   AlertTriangle, Upload, Clock, Calendar, Building2, DollarSign, Trash2,
-  RefreshCw, FlaskConical, ClipboardList, ExternalLink, Paperclip,
+  RefreshCw, FlaskConical, ClipboardList, ExternalLink, Paperclip, Check, Printer, RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,10 @@ import { podeExcluirExame, preparosAusentesNaGuia, proximaAcaoExame, textoPrepar
 import { LancarResultado } from '@/components/exames/LancarResultado';
 import { parseDateOnly, toDateOnly } from '@/lib/dateOnly';
 import { gerarGuiaSolicitacaoExames, downloadPDF } from '@/lib/pdfGenerator';
+import { CATALOGO_EXAMES, exameDoTipoGravado, tipoCategorizadoDaCategoria, type ExameCatalogo } from '@/lib/catalogoExames';
+import { contagem, palavra } from '@/lib/plural';
+import { lerDadosDaGuia } from '@/lib/guiaExamesGravada';
+import { PreparoExamesAcoes } from '@/components/exames/PreparoExamesAcoes';
 
 const DIAS_PERIODO_EXAMES = 90;
 
@@ -105,203 +109,9 @@ const STATUS_LABELS: Record<StatusExame, string> = {
   solicitado: 'Solicitado',
   agendado: 'Agendado',
   realizado: 'Realizado',
-  laudo_disponivel: 'Laudo Disponível',
+  laudo_disponivel: 'Laudo disponível',
   cancelado: 'Cancelado',
 };
-
-// ── Catálogo de exames; TUSS só quando confirmado na tabela da ANS ──
-interface ExameCatalogo {
-  nome: string;
-  tuss: string;
-  categoria: string;
-}
-
-const CATALOGO_EXAMES: ExameCatalogo[] = [
-  // Hematologia
-  { nome: 'Hemograma Completo', tuss: '40304361', categoria: 'Hematologia' },
-  { nome: 'Coagulograma', tuss: '40304922', categoria: 'Hematologia' },
-  { nome: 'VHS', tuss: '40304370', categoria: 'Hematologia' },
-  { nome: 'Reticulócitos', tuss: '40304558', categoria: 'Hematologia' },
-  { nome: 'Tipagem Sanguínea (ABO/Rh)', tuss: '40403173', categoria: 'Hematologia' },
-  { nome: 'Eletroforese de Hemoglobina', tuss: '40304353', categoria: 'Hematologia' },
-  { nome: 'TAP (Tempo de Protrombina)', tuss: '40304590', categoria: 'Hematologia' },
-  { nome: 'TTPA', tuss: '40304639', categoria: 'Hematologia' },
-  { nome: 'INR', tuss: '', categoria: 'Hematologia' },
-  { nome: 'Fibrinogênio', tuss: '', categoria: 'Hematologia' },
-  { nome: 'D-Dímero', tuss: '', categoria: 'Hematologia' },
-  // Bioquímica
-  { nome: 'Glicemia em Jejum', tuss: '40302040', categoria: 'Bioquímica' },
-  { nome: 'Hemoglobina Glicada (HbA1c)', tuss: '40302733', categoria: 'Bioquímica' },
-  { nome: 'Curva Glicêmica (TOTG)', tuss: '40301680', categoria: 'Bioquímica' },
-  { nome: 'Colesterol Total', tuss: '40301605', categoria: 'Bioquímica' },
-  { nome: 'Colesterol HDL', tuss: '40301583', categoria: 'Bioquímica' },
-  { nome: 'Colesterol LDL', tuss: '40301591', categoria: 'Bioquímica' },
-  { nome: 'Perfil Lipídico Completo', tuss: '40302750', categoria: 'Bioquímica' },
-  { nome: 'Triglicerídeos', tuss: '40302547', categoria: 'Bioquímica' },
-  { nome: 'Ureia', tuss: '40302580', categoria: 'Bioquímica' },
-  { nome: 'Creatinina', tuss: '40301630', categoria: 'Bioquímica' },
-  { nome: 'Ácido Úrico', tuss: '40301150', categoria: 'Bioquímica' },
-  { nome: 'TGO (AST)', tuss: '40302504', categoria: 'Bioquímica' },
-  { nome: 'TGP (ALT)', tuss: '40302512', categoria: 'Bioquímica' },
-  { nome: 'Gama GT', tuss: '40301990', categoria: 'Bioquímica' },
-  { nome: 'Fosfatase Alcalina', tuss: '40301885', categoria: 'Bioquímica' },
-  { nome: 'Bilirrubinas (Total e Frações)', tuss: '40301397', categoria: 'Bioquímica' },
-  { nome: 'Proteínas Totais e Frações', tuss: '40302385', categoria: 'Bioquímica' },
-  { nome: 'Albumina', tuss: '40301222', categoria: 'Bioquímica' },
-  { nome: 'PCR (Proteína C Reativa)', tuss: '40308391', categoria: 'Bioquímica' },
-  { nome: 'PCR Ultrassensível', tuss: '', categoria: 'Bioquímica' },
-  { nome: 'Ferro Sérico', tuss: '40301842', categoria: 'Bioquímica' },
-  { nome: 'Ferritina', tuss: '40316270', categoria: 'Bioquímica' },
-  { nome: 'Transferrina', tuss: '40302520', categoria: 'Bioquímica' },
-  { nome: 'Sódio', tuss: '40302423', categoria: 'Bioquímica' },
-  { nome: 'Potássio', tuss: '40302318', categoria: 'Bioquímica' },
-  { nome: 'Cálcio Total', tuss: '40301400', categoria: 'Bioquímica' },
-  { nome: 'Cálcio Iônico', tuss: '40301419', categoria: 'Bioquímica' },
-  { nome: 'Magnésio', tuss: '40302237', categoria: 'Bioquímica' },
-  { nome: 'Fósforo', tuss: '40301931', categoria: 'Bioquímica' },
-  { nome: 'Amilase', tuss: '40301281', categoria: 'Bioquímica' },
-  { nome: 'Lipase', tuss: '40302199', categoria: 'Bioquímica' },
-  { nome: 'CPK (Creatinoquinase)', tuss: '40301648', categoria: 'Bioquímica' },
-  { nome: 'CPK-MB', tuss: '', categoria: 'Bioquímica' },
-  { nome: 'Troponina I', tuss: '', categoria: 'Bioquímica' },
-  { nome: 'LDH', tuss: '40301729', categoria: 'Bioquímica' },
-  { nome: 'Lactato', tuss: '', categoria: 'Bioquímica' },
-  // Hormônios
-  { nome: 'TSH', tuss: '40316521', categoria: 'Hormônios' },
-  { nome: 'T4 Livre', tuss: '40316491', categoria: 'Hormônios' },
-  { nome: 'T3 Total', tuss: '40316556', categoria: 'Hormônios' },
-  { nome: 'FSH', tuss: '40316289', categoria: 'Hormônios' },
-  { nome: 'LH', tuss: '40316335', categoria: 'Hormônios' },
-  { nome: 'Estradiol (E2)', tuss: '40316246', categoria: 'Hormônios' },
-  { nome: 'Progesterona', tuss: '40316408', categoria: 'Hormônios' },
-  { nome: 'Testosterona Total', tuss: '40316513', categoria: 'Hormônios' },
-  { nome: 'Prolactina', tuss: '40316416', categoria: 'Hormônios' },
-  { nome: 'Cortisol Basal', tuss: '40316190', categoria: 'Hormônios' },
-  { nome: 'Insulina Basal', tuss: '40316360', categoria: 'Hormônios' },
-  { nome: 'PTH (Paratormônio)', tuss: '40305465', categoria: 'Hormônios' },
-  { nome: 'Vitamina D (25-OH)', tuss: '40302830', categoria: 'Hormônios' },
-  { nome: 'Beta-HCG Quantitativo', tuss: '', categoria: 'Hormônios' },
-  { nome: 'GH', tuss: '40316203', categoria: 'Hormônios' },
-  { nome: 'IGF-1', tuss: '40316440', categoria: 'Hormônios' },
-  { nome: 'DHEA-S', tuss: '', categoria: 'Hormônios' },
-  // Urinálise
-  { nome: 'EAS (Urina Tipo I)', tuss: '', categoria: 'Urinálise' },
-  { nome: 'Urocultura', tuss: '40310213', categoria: 'Urinálise' },
-  { nome: 'Microalbuminúria', tuss: '', categoria: 'Urinálise' },
-  { nome: 'Proteinúria de 24h', tuss: '', categoria: 'Urinálise' },
-  { nome: 'Clearance de Creatinina', tuss: '', categoria: 'Urinálise' },
-  // Sorologia
-  { nome: 'Anti-HIV (1 e 2)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'VDRL', tuss: '', categoria: 'Sorologia' },
-  { nome: 'HBsAg (Hepatite B)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Anti-HBs', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Anti-HBc Total', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Anti-HCV (Hepatite C)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Toxoplasmose (IgG e IgM)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Rubéola (IgG e IgM)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'CMV (IgG e IgM)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Dengue (IgG e IgM)', tuss: '', categoria: 'Sorologia' },
-  { nome: 'Covid-19 PCR (RT-PCR)', tuss: '', categoria: 'Sorologia' },
-  // Imunologia
-  { nome: 'FAN (Fator Antinuclear)', tuss: '', categoria: 'Imunologia' },
-  { nome: 'Fator Reumatoide (FR)', tuss: '', categoria: 'Imunologia' },
-  { nome: 'Anti-CCP', tuss: '', categoria: 'Imunologia' },
-  { nome: 'ASLO', tuss: '', categoria: 'Imunologia' },
-  { nome: 'Complemento C3', tuss: '', categoria: 'Imunologia' },
-  { nome: 'Complemento C4', tuss: '', categoria: 'Imunologia' },
-  { nome: 'IgE Total', tuss: '', categoria: 'Imunologia' },
-  // Marcadores Tumorais
-  { nome: 'PSA Total', tuss: '40316149', categoria: 'Marcadores Tumorais' },
-  { nome: 'PSA Livre', tuss: '40316130', categoria: 'Marcadores Tumorais' },
-  { nome: 'CEA', tuss: '40316122', categoria: 'Marcadores Tumorais' },
-  { nome: 'CA 125', tuss: '40316378', categoria: 'Marcadores Tumorais' },
-  { nome: 'CA 19-9', tuss: '40316378', categoria: 'Marcadores Tumorais' },
-  { nome: 'CA 15-3', tuss: '40316378', categoria: 'Marcadores Tumorais' },
-  { nome: 'AFP (Alfafetoproteína)', tuss: '40316068', categoria: 'Marcadores Tumorais' },
-  // Vitaminas
-  { nome: 'Vitamina B12', tuss: '', categoria: 'Vitaminas' },
-  { nome: 'Ácido Fólico', tuss: '', categoria: 'Vitaminas' },
-  { nome: 'Vitamina A', tuss: '', categoria: 'Vitaminas' },
-  { nome: 'Zinco', tuss: '40313328', categoria: 'Vitaminas' },
-  // Fezes
-  { nome: 'Parasitológico de Fezes (EPF)', tuss: '', categoria: 'Fezes' },
-  { nome: 'Sangue Oculto nas Fezes', tuss: '', categoria: 'Fezes' },
-  { nome: 'Coprocultura', tuss: '', categoria: 'Fezes' },
-  { nome: 'Calprotectina Fecal', tuss: '', categoria: 'Fezes' },
-  // Imagem - Raio-X
-  { nome: 'Raio-X Tórax PA', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Tórax PA e Perfil', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Coluna Cervical', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Coluna Lombar', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Abdome', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Seios da Face', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Joelho', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Ombro', tuss: '', categoria: 'Imagem - RX' },
-  { nome: 'Raio-X Mão', tuss: '', categoria: 'Imagem - RX' },
-  // Imagem - Ultrassom
-  { nome: 'Ultrassom Abdominal Total', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom Pélvico', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom Transvaginal', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom de Tireoide', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom de Mama', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom Rins e Vias Urinárias', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom Obstétrico', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Ultrassom Morfológico', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Doppler de Carótidas', tuss: '', categoria: 'Imagem - US' },
-  { nome: 'Doppler Venoso MMII', tuss: '', categoria: 'Imagem - US' },
-  // Imagem - Tomografia
-  { nome: 'TC Crânio (sem contraste)', tuss: '', categoria: 'Imagem - TC' },
-  { nome: 'TC Crânio (com contraste)', tuss: '', categoria: 'Imagem - TC' },
-  { nome: 'TC Tórax', tuss: '', categoria: 'Imagem - TC' },
-  { nome: 'TC Abdome Total', tuss: '', categoria: 'Imagem - TC' },
-  { nome: 'TC Coluna Lombar', tuss: '', categoria: 'Imagem - TC' },
-  { nome: 'Angiotomografia Coronariana', tuss: '', categoria: 'Imagem - TC' },
-  { nome: 'Angiotomografia Pulmonar', tuss: '', categoria: 'Imagem - TC' },
-  // Imagem - Ressonância
-  { nome: 'RM Crânio', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Coluna Cervical', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Coluna Lombar', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Joelho', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Ombro', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Pelve', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Mama', tuss: '', categoria: 'Imagem - RM' },
-  { nome: 'RM Cardíaca', tuss: '', categoria: 'Imagem - RM' },
-  // Mamografia
-  { nome: 'Mamografia Bilateral', tuss: '', categoria: 'Mamografia' },
-  { nome: 'Densitometria Óssea', tuss: '', categoria: 'Mamografia' },
-  // Cardiologia
-  { nome: 'Eletrocardiograma (ECG)', tuss: '40101010', categoria: 'Cardiologia' },
-  { nome: 'Ecocardiograma Transtorácico', tuss: '', categoria: 'Cardiologia' },
-  { nome: 'Teste Ergométrico', tuss: '40101045', categoria: 'Cardiologia' },
-  { nome: 'Holter 24h', tuss: '', categoria: 'Cardiologia' },
-  { nome: 'MAPA 24h', tuss: '', categoria: 'Cardiologia' },
-  // Endoscopia
-  { nome: 'Endoscopia Digestiva Alta', tuss: '', categoria: 'Endoscopia' },
-  { nome: 'Colonoscopia', tuss: '', categoria: 'Endoscopia' },
-  // Pneumologia
-  { nome: 'Espirometria', tuss: '', categoria: 'Pneumologia' },
-  { nome: 'Polissonografia', tuss: '', categoria: 'Pneumologia' },
-  // Neurologia
-  { nome: 'Eletroencefalograma (EEG)', tuss: '', categoria: 'Neurologia' },
-  { nome: 'Eletroneuromiografia', tuss: '', categoria: 'Neurologia' },
-  // Otorrino
-  { nome: 'Audiometria Tonal', tuss: '', categoria: 'Otorrino' },
-  { nome: 'Impedanciometria', tuss: '', categoria: 'Otorrino' },
-  // Oftalmologia
-  { nome: 'Tonometria', tuss: '', categoria: 'Oftalmologia' },
-  { nome: 'Campimetria Visual', tuss: '', categoria: 'Oftalmologia' },
-  { nome: 'OCT (Tomografia Óptica)', tuss: '', categoria: 'Oftalmologia' },
-  // Ginecologia
-  { nome: 'Citopatológico (Papanicolau)', tuss: '', categoria: 'Ginecologia' },
-  { nome: 'Colposcopia', tuss: '', categoria: 'Ginecologia' },
-  // Gasometria
-  { nome: 'Gasometria Arterial', tuss: '', categoria: 'Gasometria' },
-  // Microbiologia
-  { nome: 'Hemocultura', tuss: '', categoria: 'Microbiologia' },
-  { nome: 'Cultura de Secreção', tuss: '', categoria: 'Microbiologia' },
-  { nome: 'Antibiograma', tuss: '', categoria: 'Microbiologia' },
-  { nome: 'BAAR', tuss: '', categoria: 'Microbiologia' },
-];
 
 // Grouped for display
 const CATEGORIAS_EXAME = [...new Set(CATALOGO_EXAMES.map(e => e.categoria))].sort();
@@ -348,6 +158,38 @@ const initialFormData: FormData = {
   observacoes: '',
   necessita_contraste: false,
 };
+
+const ETAPAS_EXAME = ['Solicitado', 'Agendado', 'Realizado', 'Laudo'] as const;
+const INDICE_ETAPA_EXAME: Record<StatusExame, number> = { solicitado: 0, agendado: 1, realizado: 2, laudo_disponivel: 3, cancelado: -1 };
+
+/** Etapas do exame em texto legível, com a etapa atual destacada e anunciada. */
+function EtapasExame({ status }: { status: StatusExame }) {
+  const atual = INDICE_ETAPA_EXAME[status] ?? 0;
+  if (atual < 0) {
+    return <Badge variant="outline" className="rounded-full border-border bg-muted text-xs text-muted-foreground">Cancelado</Badge>;
+  }
+  return (
+    <ol aria-label={`Etapa atual: ${ETAPAS_EXAME[atual]}`} className="flex flex-wrap items-center gap-1 text-xs">
+      {ETAPAS_EXAME.map((etapa, indice) => (
+        <li key={etapa} aria-current={indice === atual ? 'step' : undefined} className="flex items-center gap-1">
+          <span
+            aria-hidden="true"
+            className={cn(
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold tabular-nums',
+              indice < atual && 'border-foreground/30 bg-secondary text-foreground',
+              indice === atual && 'border-transparent bg-primary text-primary-foreground',
+              indice > atual && 'border-border text-muted-foreground',
+            )}
+          >
+            {indice < atual ? <Check className="h-3 w-3" /> : indice + 1}
+          </span>
+          <span className={cn(indice === atual ? 'font-semibold text-foreground' : 'text-muted-foreground', indice !== atual && 'hidden xl:inline')}>{etapa}</span>
+          {indice < ETAPAS_EXAME.length - 1 && <span aria-hidden="true" className="h-px w-2 bg-border" />}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export default function Exames({ creationPage = false, resultPage = false }: { creationPage?: boolean; resultPage?: boolean }) {
   const location = useLocation();
@@ -708,9 +550,14 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
     initialized.current = taskKey;
     const form = { ...initialFormData, data_solicitacao: todaySaoPauloDateOnly(), paciente_id: pacienteFiltroId || '', medico_solicitante_id: medicoId || '' };
     baseline.current = form; completed.current = false;
-    setFormData(form); setExamesSelecionados([]); setAnexos([]);
+    // "Repetir pedido" chega com os exames da guia anterior já escolhidos.
+    const repetir = Array.isArray(location.state?.repetirExames) ? location.state.repetirExames as ExameSelecionado[] : [];
+    const indicacaoRepetida = typeof location.state?.repetirIndicacao === 'string' ? location.state.repetirIndicacao : '';
+    setFormData(indicacaoRepetida ? { ...form, indicacao_clinica: indicacaoRepetida } : form);
+    setExamesSelecionados(repetir.filter(item => item && typeof item.nome === 'string').map(item => ({ nome: item.nome, tuss: item.tuss || '', categoria: item.categoria })));
+    setAnexos([]);
     setExamSearch(''); setCatFilter(''); setCustomExamCode(''); setReadyFor(taskKey);
-  }, [creationPage, loadingCurrentMedico, currentMedicoError, taskKey, pacienteFiltroId, medicoId]);
+  }, [creationPage, loadingCurrentMedico, currentMedicoError, taskKey, pacienteFiltroId, medicoId, location.state]);
   const handleView = (id: string) => openTask(`/exames/${id}`);
 
   /** Baixa um arquivo do bucket privado via download autorizado (sem tornar o storage público). */
@@ -780,6 +627,78 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
       toast.error('Não foi possível baixar o anexo', { description: mensagemDeErro(error) });
     } finally {
       setAnexoEmAcao(null);
+    }
+  };
+
+  /**
+   * Exames da mesma guia: mesmo paciente, mesma data e o mesmo texto de
+   * detalhes, que é gravado igual em cada exame do envio.
+   */
+  const buscarExamesDaGuia = async (exame: any): Promise<any[]> => {
+    if (!profile?.clinica_id) throw new Error('Clínica não identificada.');
+    let query = supabase.from('exames').select('id, tipo_exame, categoria, observacoes')
+      .eq('clinica_id', profile.clinica_id)
+      .eq('paciente_id', exame.paciente_id)
+      .eq('data_solicitacao', exame.data_solicitacao);
+    query = exame.descricao ? query.eq('descricao', exame.descricao) : query.is('descricao', null);
+    const { data, error } = await query.order('id', { ascending: true }).limit(60);
+    if (error) throw error;
+    return data?.length ? data : [exame];
+  };
+
+  const [reimprimindoGuia, setReimprimindoGuia] = useState(false);
+  const handleReimprimirGuia = async (exame: any) => {
+    if (reimprimindoGuia) return;
+    setReimprimindoGuia(true);
+    try {
+      const itens = await buscarExamesDaGuia(exame);
+      const dados = lerDadosDaGuia(exame.descricao);
+      const validade = dados.validade
+        ?? format(addDays(new Date(`${exame.data_solicitacao}T12:00`), 30), 'yyyy-MM-dd');
+      const doc = await gerarGuiaSolicitacaoExames({
+        paciente: { nome: getPacienteNome(exame), cpf: exame.pacientes?.cpf },
+        medico: exame.medicos ? { nome: exame.medicos.nome, crm: exame.medicos.crm, especialidade: exame.medicos.especialidade } : null,
+        exames: itens.map(item => exameDoTipoGravado(item.tipo_exame || '')),
+        dataSolicitacao: exame.data_solicitacao,
+        dataValidade: validade,
+        indicacaoClinica: dados.indicacaoClinica,
+        hipoteseDiagnostica: dados.hipoteseDiagnostica,
+        urgencia: dados.urgencia,
+        justificativaUrgencia: dados.justificativaUrgencia,
+        jejum: dados.jejum,
+        observacoes: (exame.observacoes || '').split('\n').filter((linha: string) => !/^\s*Anexos:/i.test(linha)).join('\n') || undefined,
+      });
+      const nomeSeguro = getPacienteNome(exame).replace(/[^\p{L}\p{N}-]+/gu, '-').slice(0, 40) || 'paciente';
+      downloadPDF(doc, `guia-exames-${nomeSeguro}`);
+      toast.success('Segunda via da guia baixada.', { description: 'A guia ainda precisa da assinatura do profissional solicitante.' });
+    } catch (error) {
+      toast.error('Não foi possível reimprimir a guia', { description: mensagemDeErro(error) });
+    } finally {
+      setReimprimindoGuia(false);
+    }
+  };
+
+  const [repetindoPedido, setRepetindoPedido] = useState(false);
+  const handleRepetirPedido = async (exame: any) => {
+    if (repetindoPedido) return;
+    setRepetindoPedido(true);
+    try {
+      const itens = await buscarExamesDaGuia(exame);
+      const vistos = new Set<string>();
+      const repetirExames = itens.map(item => exameDoTipoGravado(item.tipo_exame || '')).filter(item => {
+        const chave = normalizarTexto(item.nome);
+        if (!chave || vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      });
+      const dados = lerDadosDaGuia(exame.descricao);
+      navigate(`/exames/nova?paciente=${encodeURIComponent(exame.paciente_id)}`, {
+        state: { returnTo, examSearch: searchTerm, repetirExames, repetirIndicacao: dados.indicacaoClinica ?? '' },
+      });
+    } catch (error) {
+      toast.error('Não foi possível repetir o pedido', { description: mensagemDeErro(error) });
+    } finally {
+      setRepetindoPedido(false);
     }
   };
 
@@ -941,7 +860,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
       if (anexosQueFalharam.length > 0) {
         await limparAnexosSemGuia();
         setIsSubmitting(false);
-        toast.error(`${anexosQueFalharam.length} anexo(s) não foram enviados — a guia não foi criada.`, {
+        toast.error(`${contagem(anexosQueFalharam.length, 'anexo')} não ${palavra(anexosQueFalharam.length, 'foi enviado', 'foram enviados')} — a guia não foi criada.`, {
           description: `${anexosQueFalharam.join(', ')}. Tente de novo; emitir a guia sem o anexo faz o paciente voltar.`,
           duration: 10000,
         });
@@ -957,7 +876,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
         formData.jejum && formData.jejum !== 'nao' && `Jejum: ${formData.jejum}`,
         formData.necessita_contraste && 'Necessita de Contraste: SIM',
         `Validade: até ${format(new Date(validadeData + 'T12:00'), 'dd/MM/yyyy')}`,
-        anexoUrls.length > 0 && `Anexos: ${anexoUrls.length} arquivo(s)`,
+        anexoUrls.length > 0 && `Anexos: ${contagem(anexoUrls.length, 'arquivo')}`,
       ].filter(Boolean).join('\n');
 
       // Insert one row per exam in the batch
@@ -966,7 +885,9 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
         prontuario_id: prontuarioFonteId ? prontuarioFonteQuery.data!.id : null,
         medico_solicitante_id: formData.medico_solicitante_id || null,
         tipo_exame: `${ex.tuss ? ex.tuss + ' - ' : ''}${ex.nome}`,
-        tipo_categorizado: formData.tipo_categorizado || 'laboratorial',
+        // Cada exame recebe o tipo da sua categoria; o seletor só força um tipo
+        // único quando a pessoa escolhe explicitamente.
+        tipo_categorizado: formData.tipo_categorizado || tipoCategorizadoDaCategoria(ex.categoria),
         categoria: ex.categoria || 'geral',
         laboratorio_id: formData.laboratorio_id || null,
         preco_custo: formData.preco_custo ?? null,
@@ -984,17 +905,19 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
         clinica_id: profile?.clinica_id || null,
       }));
 
-      const { data: inserted, error } = await supabase.from('exames').insert(inserts).select('id, tipo_exame');
+      const { data: inserted, error } = await supabase.from('exames').insert(inserts).select('id, tipo_exame, tipo_categorizado');
       if (error) throw error;
       if (!inserted || inserted.length !== inserts.length) {
         throw new Error('O banco não confirmou todos os exames solicitados. Atualize a lista antes de tentar novamente.');
       }
       examesCriados = true;
 
-      // Auto-create coleta records for lab exams
-      if (inserted.length > 0) {
+      // Coleta só para exames laboratoriais: imagem, ultrassom e afins não
+      // passam pelo laboratório.
+      const laboratoriais = inserted.filter(ex => (ex.tipo_categorizado || 'laboratorial') === 'laboratorial');
+      if (laboratoriais.length > 0) {
         const coletaResults = await Promise.all(
-          inserted.map(ex => autoCreateColeta({
+          laboratoriais.map(ex => autoCreateColeta({
             exameId: ex.id,
             pacienteId: formData.paciente_id,
             medicoId: formData.medico_solicitante_id || null,
@@ -1007,7 +930,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
           r.success && r.actions.some(action => action.startsWith('Coleta de '))
         ).length;
         coletasFalhas = coletaResults
-          .map((result, index) => ({ result, tipoExame: inserted[index]?.tipo_exame || 'Exame' }))
+          .map((result, index) => ({ result, tipoExame: laboratoriais[index]?.tipo_exame || 'Exame' }))
           .filter(item => !item.result.success)
           .map(item => item.tipoExame);
       }
@@ -1022,20 +945,20 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
           const nomePaciente = pacienteResumoQuery.data?.nome || 'paciente';
           const nomeSeguro = nomePaciente.replace(/[^\p{L}\p{N}-]+/gu, '-').slice(0, 40) || 'paciente';
           downloadPDF(guiaPdf, `guia-exames-${nomeSeguro}`);
-          toast.success(`${examesSelecionados.length} exame(s) solicitados e guia baixada.`, {
+          toast.success(`${contagem(examesSelecionados.length, 'exame')} ${palavra(examesSelecionados.length, 'solicitado', 'solicitados')} e guia baixada.`, {
             description: 'A guia ainda precisa da assinatura do profissional solicitante.',
           });
         } catch (error) {
           toast.warning('Solicitação salva, mas o PDF não foi baixado.', { description: mensagemDeErro(error) });
         }
       } else {
-        toast.success(`${examesSelecionados.length} exame(s) solicitados com sucesso!`);
+        toast.success(`${contagem(examesSelecionados.length, 'exame')} ${palavra(examesSelecionados.length, 'solicitado', 'solicitados')} com sucesso.`);
       }
       if (coletasCriadas > 0) {
-        toast.info(`${coletasCriadas} coleta(s) de laboratório criada(s) automaticamente.`);
+        toast.info(`${contagem(coletasCriadas, 'coleta')} de laboratório ${palavra(coletasCriadas, 'criada', 'criadas')} automaticamente.`);
       }
       if (coletasFalhas.length > 0) {
-        toast.warning(`${coletasFalhas.length} coleta(s) não foram criadas.`, {
+        toast.warning(`${contagem(coletasFalhas.length, 'coleta')} não ${palavra(coletasFalhas.length, 'foi criada', 'foram criadas')}.`, {
           description: `${coletasFalhas.join(', ')}. As solicitações foram salvas; revise a fila do Laboratório antes da coleta.`,
           duration: 10000,
         });
@@ -1168,16 +1091,6 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
     }
   };
 
-  // Pipeline step for visual indicator
-  const getExameStep = (status: StatusExame): number => {
-    const steps: Record<StatusExame, number> = {
-      solicitado: 0, agendado: 1, realizado: 2, laudo_disponivel: 3, cancelado: -1,
-    };
-    return steps[status] ?? 0;
-  };
-
-  const PIPELINE_STEPS = ['Solicitado', 'Coleta/Agendado', 'Realizado', 'Laudo'] as const;
-
   const getNextStatus = (current: StatusExame): StatusExame | null => {
     const flow: Record<StatusExame, StatusExame | null> = {
       solicitado: 'agendado', agendado: 'realizado', realizado: 'laudo_disponivel',
@@ -1188,7 +1101,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
 
   const getNextStatusLabel = (current: StatusExame): string => {
     const labels: Record<StatusExame, string> = {
-      solicitado: 'Agendar Coleta', agendado: 'Marcar Realizado', realizado: 'Liberar Laudo',
+      solicitado: 'Agendar coleta', agendado: 'Marcar realizado', realizado: 'Liberar laudo',
       laudo_disponivel: '', cancelado: '',
     };
     return labels[current] ?? '';
@@ -1234,6 +1147,80 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
         : <div className="space-y-3"><h1 className="text-2xl font-semibold">Lançamento indisponível nesta etapa</h1><p>Confira o estado atual do exame antes de registrar o resultado.</p>{next.destino === 'laboratorio' && <Button asChild variant="outline"><Link to="/laboratorio">Abrir laboratório</Link></Button>}<Button variant="outline" onClick={() => handleView(selectedExame.id)}>Consultar exame</Button></div>}
     </section>;
   }
+
+  const renderAcoesExame = (exame: any) => {
+    const acaoSeguinte = proximaAcaoExame(exame.status || 'solicitado', exame.tipo_categorizado);
+    const nextStatus = acaoSeguinte.destino === 'status' ? acaoSeguinte.status : null;
+    const nextLabel = getNextStatusLabel(exame.status || 'solicitado');
+    const exameLaboratorial = (exame.tipo_categorizado || '').toLocaleLowerCase('pt-BR') === 'laboratorial';
+    const anexosGuia = extrairAnexosGuia(exame.observacoes);
+    const temResultado = !!(exame.resultado?.trim() || exame.arquivo_resultado);
+    const precisaLancarResultado = nextStatus === 'laudo_disponivel' && !temResultado;
+    return (
+      <>
+        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label={`Ver exame ${exame.tipo_exame || exame.id}`} title="Ver detalhes" onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
+        {anexosGuia.length > 0 && (
+          <Button
+            variant="outline" size="sm" className="min-h-11 gap-1 rounded-full text-xs"
+            aria-label={anexosGuia.length === 1 ? `Abrir anexo da guia de ${exame.tipo_exame || exame.id}` : `Ver anexos da guia de ${exame.tipo_exame || exame.id}`}
+            disabled={anexoEmAcao !== null}
+            onClick={() => anexosGuia.length === 1 ? void handleAbrirAnexo(anexosGuia[0]) : handleView(exame.id)}
+          >
+            {anexoEmAcao === anexosGuia[0] && anexosGuia.length === 1 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />}
+            {anexosGuia.length === 1 ? 'Abrir anexo' : `Anexos (${anexosGuia.length})`}
+          </Button>
+        )}
+        {exame.arquivo_resultado && (
+          <Button
+            variant="outline" size="sm" className="min-h-11 gap-1 rounded-full text-xs"
+            aria-label={`Baixar laudo de ${exame.tipo_exame || exame.id}`}
+            disabled={baixandoLaudoId !== null}
+            onClick={() => void handleDownloadLaudo(exame)}
+          >
+            {baixandoLaudoId === exame.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown aria-hidden="true" className="h-3.5 w-3.5" />}
+            Baixar laudo
+          </Button>
+        )}
+        {nextStatus && (
+          <Button
+            size="sm"
+            className="min-h-11 gap-1 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90"
+            disabled={exameEmAtualizacao !== null}
+            onClick={() => {
+              if (precisaLancarResultado) {
+                setLancandoResultado(exame);
+                return;
+              }
+              handleUpdateStatus(exame.id, nextStatus);
+            }}
+          >
+            {exameEmAtualizacao === exame.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {precisaLancarResultado ? 'Lançar resultado' : nextLabel}
+          </Button>
+        )}
+        {acaoSeguinte.destino === 'laboratorio' && (
+          <Button asChild size="sm" className="min-h-11 gap-1 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90">
+            <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Abrir laboratório</Link>
+          </Button>
+        )}
+        {exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && acaoSeguinte.destino !== 'laboratorio' && (
+          <Button asChild variant="outline" size="sm" className="min-h-11 gap-1 rounded-full text-xs">
+            <Link to="/laboratorio" state={{ buscaPaciente: getPacienteNome(exame) }}><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Coleta no laboratório</Link>
+          </Button>
+        )}
+        {!exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
+          <Button variant="ghost" size="sm" aria-label={`Cancelar exame ${exame.tipo_exame || exame.id}`} title="Cancelar solicitação" className="min-h-11 gap-1 rounded-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setExameParaCancelar({ id: exame.id, nome: exame.tipo_exame || 'este exame' })} disabled={exameEmAtualizacao !== null}>
+            <X aria-hidden="true" className="h-3.5 w-3.5" />Cancelar
+          </Button>
+        )}
+        {podeExcluirExame(profile?.roles || []) && (
+          <Button variant="ghost" size="icon" aria-label={`Excluir exame ${exame.tipo_exame || exame.id}`} className="h-11 w-11 rounded-full text-destructive/60 hover:bg-destructive/10 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)} disabled={exameEmAtualizacao !== null}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -1397,7 +1384,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
         </p>
       </div>
 
-      {/* Table */}
+      {/* Lista: fichas no celular, tabela a partir do tablet */}
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -1405,187 +1392,119 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
               <FileText className="h-4 w-4" />
             </span>
             <CardTitle className="text-base font-semibold">Exames</CardTitle>
-            <Badge variant="outline" className="rounded-full border-primary/25 text-primary">{filteredExames.length}</Badge>
+            <Badge variant="outline" className="rounded-full border-border text-foreground">{filteredExames.length}</Badge>
             {indicador === 'criticos' && contagens.criticos > 0 && (
               <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-destructive">atenção imediata</Badge>
             )}
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Paciente</TableHead>
-                  <TableHead>Exame / Código</TableHead>
-                  <TableHead className="hidden md:table-cell">Solicitante</TableHead>
-                  <TableHead className="hidden sm:table-cell">Data</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredExames.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-3">
-                      <div role="status" aria-live="polite" className="flex flex-col items-center gap-2 py-12 text-center">
-                        <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
-                          <FileText className="h-7 w-7" />
-                        </span>
-                        <h3 className="font-semibold text-foreground">
-                          {examesNoEscopo.length === 0
-                            ? pacienteFiltroId
-                              ? `Nenhum exame encontrado para ${getPacienteNomePorId(pacienteFiltroId, 'este paciente')}`
-                              : 'Ainda não há solicitações de exames'
-                            : 'Nenhum exame corresponde à busca e ao status selecionados'}
-                        </h3>
-                        <p className="max-w-lg text-sm text-muted-foreground">
-                          {examesNoEscopo.length === 0
-                            ? 'Registre uma nova guia para dar início ao acompanhamento dos exames.'
-                            : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
-                        </p>
-                        {examesNoEscopo.length === 0 ? (
-                          <Button className="mt-3 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" onClick={handleOpenNew}>
-                            <Plus aria-hidden="true" className="mr-2 h-4 w-4" />Nova guia de exames
-                          </Button>
-                        ) : (
-                          <Button variant="outline" className="mt-3 rounded-full" onClick={limparFiltrosExames}>Limpar busca e filtro</Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredExames.map(exame => {
-                    const step = getExameStep(exame.status || 'solicitado');
-                    const acaoSeguinte = proximaAcaoExame(exame.status || 'solicitado', exame.tipo_categorizado);
-                    const nextStatus = acaoSeguinte.destino === 'status' ? acaoSeguinte.status : null;
-                    const nextLabel = getNextStatusLabel(exame.status || 'solicitado');
-                    const exameLaboratorial = (exame.tipo_categorizado || '').toLocaleLowerCase('pt-BR') === 'laboratorial';
-                    const anexosGuia = extrairAnexosGuia(exame.observacoes);
-                    const critico = examesCriticos.has(exame.id);
-                    const temResultado = !!(exame.resultado?.trim() || exame.arquivo_resultado);
-                    const precisaLancarResultado = nextStatus === 'laudo_disponivel' && !temResultado;
-                    return (
-                    <TableRow key={exame.id} className={cn(critico && 'bg-destructive/5')}>
-                      <TableCell className="font-medium">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <span>{getPacienteNome(exame)}</span>
-                          {critico && <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-[10px] text-destructive">Crítico</Badge>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm">{exame.tipo_exame}</span>
-                          {anexosGuia.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <Paperclip aria-hidden="true" className="h-3 w-3" />{anexosGuia.length} anexo{anexosGuia.length === 1 ? '' : 's'} na guia
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{getMedicoInfo(exame)}</TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm">
-                        {exame.data_solicitacao && format(parseDateOnly(exame.data_solicitacao)!, 'dd/MM/yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {/* Pipeline visual */}
-                        <div className="flex flex-wrap items-center gap-0.5">
-                          {PIPELINE_STEPS.map((label, i) => (
-                            <div key={i} className="flex items-center gap-0.5">
-                              <div className={cn(
-                                'h-5 px-1.5 rounded-full text-[9px] font-medium flex items-center',
-                                i < step && 'bg-success/10 text-success',
-                                i === step && step >= 0 && 'bg-primary/10 text-primary ring-1 ring-primary/20',
-                                i > step && 'bg-muted text-muted-foreground/40',
-                                step === -1 && 'bg-muted text-muted-foreground line-through',
-                              )}>
-                                {i < step ? '✓' : label}
-                              </div>
-                              {i < PIPELINE_STEPS.length - 1 && (
-                                <div className={cn('w-2 h-px', i < step ? 'bg-success' : 'bg-border')} />
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-wrap justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Ver exame ${exame.tipo_exame || exame.id}`} title="Ver detalhes" onClick={() => handleView(exame.id)}><Eye className="h-4 w-4" /></Button>
-                          {anexosGuia.length > 0 && (
-                            <Button
-                              variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs"
-                              aria-label={anexosGuia.length === 1 ? `Abrir anexo da guia de ${exame.tipo_exame || exame.id}` : `Ver anexos da guia de ${exame.tipo_exame || exame.id}`}
-                              disabled={anexoEmAcao !== null}
-                              onClick={() => anexosGuia.length === 1 ? void handleAbrirAnexo(anexosGuia[0]) : handleView(exame.id)}
-                            >
-                              {anexoEmAcao === anexosGuia[0] && anexosGuia.length === 1 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />}
-                              {anexosGuia.length === 1 ? 'Abrir anexo' : `Anexos (${anexosGuia.length})`}
-                            </Button>
-                          )}
-                          {exame.arquivo_resultado && (
-                            <Button
-                              variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs"
-                              aria-label={`Baixar laudo de ${exame.tipo_exame || exame.id}`}
-                              disabled={baixandoLaudoId !== null}
-                              onClick={() => void handleDownloadLaudo(exame)}
-                            >
-                              {baixandoLaudoId === exame.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown aria-hidden="true" className="h-3.5 w-3.5" />}
-                              Baixar laudo
-                            </Button>
-                          )}
-                          {nextStatus && (
-                            <Button
-                              size="sm"
-                              className={cn(
-                                'h-9 gap-1 rounded-full text-xs',
-                                nextStatus === 'laudo_disponivel' && !precisaLancarResultado
-                                  ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
-                                  : 'bg-primary text-primary-foreground hover:bg-primary/90',
-                              )}
-                              disabled={exameEmAtualizacao !== null}
-                              onClick={() => {
-                                if (precisaLancarResultado) {
-                                  setLancandoResultado(exame);
-                                  return;
-                                }
-                                handleUpdateStatus(exame.id, nextStatus);
-                              }}
-                            >
-                              {exameEmAtualizacao === exame.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                              {precisaLancarResultado ? 'Lançar resultado' : nextLabel}
-                            </Button>
-                          )}
-                          {acaoSeguinte.destino === 'laboratorio' && (
-                            <Button asChild size="sm" className="h-9 gap-1 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90">
-                              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Abrir Laboratório</Link>
-                            </Button>
-                          )}
-                          {exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && acaoSeguinte.destino !== 'laboratorio' && (
-                            <Button asChild variant="outline" size="sm" className="h-9 gap-1 rounded-full text-xs">
-                              <Link to="/laboratorio" state={{ buscaPaciente: getPacienteNome(exame) }}><FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />Coleta no Laboratório</Link>
-                            </Button>
-                          )}
-                          {!exameLaboratorial && exame.status !== 'cancelado' && exame.status !== 'laudo_disponivel' && (
-                            <Button variant="ghost" size="sm" aria-label={`Cancelar exame ${exame.tipo_exame || exame.id}`} title="Cancelar solicitação" className="h-9 gap-1 rounded-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setExameParaCancelar({ id: exame.id, nome: exame.tipo_exame || 'este exame' })} disabled={exameEmAtualizacao !== null}>
-                              <X className="h-3.5 w-3.5" />Cancelar
-                            </Button>
-                          )}
-                          {podeExcluirExame(profile?.roles || []) && (
-                            <Button variant="ghost" size="icon" aria-label={`Excluir exame ${exame.tipo_exame || exame.id}`} className="h-9 w-9 rounded-full text-destructive/60 hover:bg-destructive/10 hover:text-destructive" title="Excluir permanentemente" onClick={() => handleDeleteExame(exame.id)} disabled={exameEmAtualizacao !== null}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+          {filteredExames.length === 0 ? (
+            <div role="status" aria-live="polite" className="flex flex-col items-center gap-2 rounded-xl border border-border/60 py-12 text-center">
+              <span aria-hidden="true" className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-secondary text-foreground">
+                <FileText className="h-7 w-7" />
+              </span>
+              <h3 className="font-semibold text-foreground">
+                {examesNoEscopo.length === 0
+                  ? pacienteFiltroId
+                    ? `Nenhum exame encontrado para ${getPacienteNomePorId(pacienteFiltroId, 'este paciente')}`
+                    : 'Ainda não há solicitações de exames'
+                  : 'Nenhum exame corresponde à busca e ao status selecionados'}
+              </h3>
+              <p className="max-w-lg px-4 text-sm text-muted-foreground">
+                {examesNoEscopo.length === 0
+                  ? 'Registre uma nova guia para dar início ao acompanhamento dos exames.'
+                  : 'Tente outro termo ou remova o filtro de status para rever as solicitações.'}
+              </p>
+              {examesNoEscopo.length === 0 ? (
+                <Button className="mt-3 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" onClick={handleOpenNew}>
+                  <Plus aria-hidden="true" className="mr-2 h-4 w-4" />Nova guia de exames
+                </Button>
+              ) : (
+                <Button variant="outline" className="mt-3 rounded-full" onClick={limparFiltrosExames}>Limpar busca e filtro</Button>
+              )}
             </div>
-          </div>
+          ) : (
+            <>
+              <ul className="space-y-2 md:hidden" aria-label="Solicitações de exames">
+                {filteredExames.map(exame => {
+                  const critico = examesCriticos.has(exame.id);
+                  const anexosGuia = extrairAnexosGuia(exame.observacoes);
+                  return (
+                    <li key={exame.id} className={cn('space-y-3 rounded-xl border border-border/60 bg-card p-3', critico && 'border-destructive/40')}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-words font-medium">{getPacienteNome(exame)}</p>
+                          <p className="break-words text-sm">{exame.tipo_exame}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {exame.data_solicitacao && format(parseDateOnly(exame.data_solicitacao)!, 'dd/MM/yyyy')} · {getMedicoInfo(exame)}
+                          </p>
+                          {anexosGuia.length > 0 && (
+                            <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <Paperclip aria-hidden="true" className="h-3 w-3" />{contagem(anexosGuia.length, 'anexo')} na guia
+                            </p>
+                          )}
+                        </div>
+                        {critico && <Badge variant="outline" className="shrink-0 rounded-full border-destructive/40 bg-destructive/10 text-xs text-destructive">Crítico</Badge>}
+                      </div>
+                      <EtapasExame status={exame.status || 'solicitado'} />
+                      <div className="flex flex-wrap gap-1">{renderAcoesExame(exame)}</div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
+                <div role="region" aria-label="Tabela de solicitações de exames" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Paciente</TableHead>
+                        <TableHead>Exame / código</TableHead>
+                        <TableHead className="hidden lg:table-cell">Solicitante</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Etapa</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredExames.map(exame => {
+                        const anexosGuia = extrairAnexosGuia(exame.observacoes);
+                        const critico = examesCriticos.has(exame.id);
+                        return (
+                          <TableRow key={exame.id} className={cn(critico && 'bg-destructive/5')}>
+                            <TableCell className="font-medium">
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span>{getPacienteNome(exame)}</span>
+                                {critico && <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-xs text-destructive">Crítico</Badge>}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-sm">{exame.tipo_exame}</span>
+                                {anexosGuia.length > 0 && (
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                    <Paperclip aria-hidden="true" className="h-3 w-3" />{contagem(anexosGuia.length, 'anexo')} na guia
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">{getMedicoInfo(exame)}</TableCell>
+                            <TableCell className="text-sm">
+                              {exame.data_solicitacao && format(parseDateOnly(exame.data_solicitacao)!, 'dd/MM/yyyy')}
+                            </TableCell>
+                            <TableCell><EtapasExame status={exame.status || 'solicitado'} /></TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex flex-wrap justify-end gap-1">{renderAcoesExame(exame)}</div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
           {!pacienteFiltroId && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>{incluirExamesAntigos ? 'Exibindo todas as solicitações.' : `Exibindo solicitações dos últimos ${DIAS_PERIODO_EXAMES} dias.`}</span>
@@ -1751,7 +1670,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                       {ex.tuss && <span className="text-[10px] text-muted-foreground font-mono">{ex.tuss}</span>}
                       {ex.nome}
                       {ex.necessita_contraste && <span className="text-warning">⚠ contraste</span>}
-                      <button onClick={() => removeExame(ex.nome)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
+                      <button type="button" aria-label={`Remover ${ex.nome} da guia`} onClick={() => removeExame(ex.nome)} className="relative ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full hover:text-destructive after:absolute after:-inset-2.5 after:content-['']"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
                     </Badge>
                   ))}
                 </div>
@@ -1863,9 +1782,10 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="request-type" className="text-xs font-medium">Tipo de Exame</Label>
-                  <Select value={formData.tipo_categorizado || 'laboratorial'} onValueChange={v => setFormData({ ...formData, tipo_categorizado: v })}>
+                  <Select value={formData.tipo_categorizado || '__auto__'} onValueChange={v => setFormData({ ...formData, tipo_categorizado: v === '__auto__' ? undefined : v })}>
                     <SelectTrigger id="request-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__auto__">Pela categoria de cada exame</SelectItem>
                       <SelectItem value="laboratorial">Laboratorial</SelectItem>
                       <SelectItem value="imagem">Imagem</SelectItem>
                       <SelectItem value="ultrassom">Ultrassom</SelectItem>
@@ -1876,7 +1796,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="request-cost" className="text-xs font-medium">Preço de Custo (R$)</Label>
+                  <Label htmlFor="request-cost" className="text-xs font-medium">Preço de custo por exame (R$)</Label>
                   <Input id="request-cost"
                     type="number"
                     step="0.01"
@@ -1887,7 +1807,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="request-price" className="text-xs font-medium">Preço de Venda (R$)</Label>
+                  <Label htmlFor="request-price" className="text-xs font-medium">Preço de venda por exame (R$)</Label>
                   <Input id="request-price"
                     type="number"
                     step="0.01"
@@ -1899,8 +1819,16 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                 </div>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Custos e preço de venda ficam registrados no pedido para controle do exame. A cobrança no balcão continua usando a tabela de convênio ou o catálogo de preços da clínica.
+                O valor informado vale para cada exame da guia e fica registrado em cada pedido. A cobrança no balcão continua usando a tabela de convênio ou o catálogo de preços da clínica.
               </p>
+              {examesSelecionados.length > 1 && (formData.preco_custo !== undefined || formData.preco_venda !== undefined) && (
+                <p className="mt-1 text-xs text-foreground" aria-live="polite">
+                  Total da guia ({contagem(examesSelecionados.length, 'exame')}):
+                  {formData.preco_custo !== undefined && <> custo <strong>{formatCurrency(formData.preco_custo * examesSelecionados.length)}</strong></>}
+                  {formData.preco_custo !== undefined && formData.preco_venda !== undefined && ' ·'}
+                  {formData.preco_venda !== undefined && <> venda <strong>{formatCurrency(formData.preco_venda * examesSelecionados.length)}</strong></>}
+                </p>
+              )}
 
               <div className="mt-4 space-y-1.5">
                 <Label htmlFor="request-lab" className="text-xs font-medium">Laboratório responsável</Label>
@@ -1924,9 +1852,9 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
               </div>
 
               {Number(formData.preco_custo) > 0 && formData.preco_venda !== undefined && (
-                <div className="mt-3 p-3 bg-success/5 border border-success/20 rounded-lg">
-                  <p className="text-sm text-success">
-                    💰 Margem: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
+                <div className="mt-3 rounded-lg border border-border bg-card p-3">
+                  <p className={cn('text-sm', formData.preco_venda < formData.preco_custo ? 'text-destructive' : 'text-foreground')}>
+                    Margem por exame: <span className="font-bold">{formatCurrency((formData.preco_venda - formData.preco_custo))}</span> ({(((formData.preco_venda - formData.preco_custo) / formData.preco_custo) * 100).toFixed(0)}%)
                   </p>
                 </div>
               )}
@@ -1984,8 +1912,8 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                       const oversizedFiles = validTypeFiles.filter(file => file.size > MAX_ANEXO_EXAME_BYTES);
                       const validFiles = validTypeFiles.filter(file => file.size <= MAX_ANEXO_EXAME_BYTES);
                       const invalidTypeCount = selectedFiles.length - validTypeFiles.length;
-                      if (invalidTypeCount) toast.error(`${invalidTypeCount} arquivo(s) ignorado(s). Use PDF, JPG, PNG, GIF ou WebP.`);
-                      if (oversizedFiles.length) toast.error(`${oversizedFiles.length} arquivo(s) excedem o limite de 10 MB e foram ignorados.`);
+                      if (invalidTypeCount) toast.error(`${contagem(invalidTypeCount, 'arquivo')} ${palavra(invalidTypeCount, 'ignorado', 'ignorados')}. Use PDF, JPG, PNG, GIF ou WebP.`);
+                      if (oversizedFiles.length) toast.error(`${contagem(oversizedFiles.length, 'arquivo')} ${palavra(oversizedFiles.length, 'excede', 'excedem')} o limite de 10 MB e ${palavra(oversizedFiles.length, 'foi ignorado', 'foram ignorados')}.`);
                       setAnexos(prev => {
                         const existing = new Set(prev.map(file => `${file.name}:${file.size}:${file.lastModified}`));
                         const novosArquivos = validFiles.filter(file => {
@@ -2003,7 +1931,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                 <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="gap-1">
                   <Upload className="h-3.5 w-3.5" />Selecionar Arquivos
                 </Button>
-                <span className="text-xs text-muted-foreground">{anexos.length} arquivo(s)</span>
+                <span className="text-xs text-muted-foreground">{contagem(anexos.length, 'arquivo')}</span>
               </div>
               <p className="text-xs text-muted-foreground">PDF, JPG, PNG, GIF ou WebP. Até 10 MB por arquivo.</p>
               {anexos.length > 0 && (
@@ -2011,7 +1939,7 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
                   {anexos.map((f, i) => (
                     <Badge key={i} variant="outline" className="gap-1 text-xs">
                       {f.name.length > 25 ? f.name.slice(0, 25) + '...' : f.name}
-                      <button type="button" aria-label={`Remover anexo ${f.name}`} onClick={() => setAnexos(prev => prev.filter((_, idx) => idx !== i))}><X className="h-3 w-3" /></button>
+                      <button type="button" aria-label={`Remover anexo ${f.name}`} className="relative inline-flex h-6 w-6 items-center justify-center rounded-full hover:text-destructive after:absolute after:-inset-2.5 after:content-['']" onClick={() => setAnexos(prev => prev.filter((_, idx) => idx !== i))}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
                     </Badge>
                   ))}
                 </div>
@@ -2146,8 +2074,26 @@ export default function Exames({ creationPage = false, resultPage = false }: { c
               )}
             </div>
           )}
+          {selectedExame && selectedExame.status !== 'cancelado' && selectedExame.status !== 'laudo_disponivel' && (
+            <section aria-labelledby="exame-preparo-titulo" className="space-y-2 border-t pt-4">
+              <h2 id="exame-preparo-titulo" className="text-sm font-semibold">Preparo do paciente</h2>
+              <PreparoExamesAcoes exames={[selectedExame.tipo_exame || '']} pacienteNome={getPacienteNome(selectedExame)} telefone={selectedExame.pacientes?.telefone} />
+            </section>
+          )}
           <div className="flex flex-wrap justify-end gap-3 border-t pt-5">
             <Button variant="outline" onClick={leaveTask}>Voltar aos exames</Button>
+            {selectedExame && (
+              <Button variant="outline" className="gap-1.5" disabled={reimprimindoGuia} onClick={() => void handleReimprimirGuia(selectedExame)}>
+                {reimprimindoGuia ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Printer aria-hidden="true" className="h-4 w-4" />}
+                Reimprimir guia
+              </Button>
+            )}
+            {selectedExame && (
+              <Button variant="outline" className="gap-1.5" disabled={repetindoPedido} onClick={() => void handleRepetirPedido(selectedExame)}>
+                {repetindoPedido ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <RotateCcw aria-hidden="true" className="h-4 w-4" />}
+                Repetir pedido
+              </Button>
+            )}
             {selectedExame && proximaAcaoExame(selectedExame.status || 'solicitado', selectedExame.tipo_categorizado).destino === 'laboratorio' && <Button asChild><Link to="/laboratorio">Abrir laboratório</Link></Button>}
             {selectedExame?.status === 'realizado' && (selectedExame.tipo_categorizado || '').toLowerCase() !== 'laboratorial' && !selectedExame.resultado && !selectedExame.arquivo_resultado && <Button onClick={() => setLancandoResultado(selectedExame)}>Lançar resultado</Button>}
           </div>

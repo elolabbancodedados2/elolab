@@ -6,8 +6,19 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Search, Edit, Package, AlertTriangle, ArrowDown, ArrowUp, Loader2,
   Barcode, Pill, Building2, ShieldAlert, TrendingDown,
-  History, BarChart3, Trash2, RefreshCw, X, ShoppingCart,
+  History, BarChart3, Trash2, RefreshCw, X, ShoppingCart, MoreHorizontal, Download, ScanLine, ClipboardList,
 } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { mensagemDeErro } from '@/lib/erros';
+import { downloadStringAsFile } from '@/lib/auditExport';
+import {
+  CATEGORIAS_ESTOQUE, UNIDADES_ESTOQUE, DIAS_CONSUMO, consumoPorItem, csvPosicaoEstoque, curvaAbc,
+  diasAteRuptura, lerFiltroAlerta, linhasPosicaoEstoque, motivoDescarteVencido, pareceCodigoBarras,
+  precisaReposicao, rotuloCategoriaEstoque, rotuloUnidadeEstoque, saldosAposMovimentacoes,
+  sugestaoPorConsumo, textoDuracao, type BaseAbc, type FiltroAlertaEstoque,
+} from '@/lib/estoqueOperacao';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,12 +44,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { classifyAbcItem } from '@/lib/abcClassification';
 import { itensParaCotar } from '@/lib/compras';
 import { buscarEstoqueEmCompra, criarCotacao, mensagemErroCompras } from '@/lib/comprasApi';
 
-const CATEGORIAS = ['medicamentos', 'materiais_hospitalares', 'epis', 'escritorio', 'limpeza', 'outros'];
-const UNIDADES = ['unidade', 'comprimido', 'caixa', 'frasco', 'ampola', 'pacote', 'litro', 'kg', 'ml'];
+const CATEGORIAS = CATEGORIAS_ESTOQUE;
+const UNIDADES = UNIDADES_ESTOQUE;
+const PASSO_HISTORICO = 50;
 
 interface FormData {
   id?: string;
@@ -125,22 +136,34 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
   const returnTo = typeof location.state?.stockReturn === 'string' && /^\/estoque(?:\?|$)/.test(location.state.stockReturn) ? location.state.stockReturn : '/estoque';
   const leave = () => navigate(returnTo, { state: { stockFilters: location.state?.stockFilters } });
   const finish = () => { completed.current = true; leave(); };
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedAlert = searchParams.get('alerta');
   const [searchTerm, setSearchTerm] = useState(location.state?.stockFilters?.search ?? '');
   const [filterCategoria, setFilterCategoria] = useState(location.state?.stockFilters?.category ?? 'todos');
-  const [filterAlerta, setFilterAlerta] = useState<'todos' | 'critico' | 'vencidos' | 'validade' | 'ponto_pedido'>(
-    location.state?.stockFilters?.alert ?? (requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos'),
+  const [filterAlerta, setFilterAlertaState] = useState<FiltroAlertaEstoque>(
+    location.state?.stockFilters?.alert ?? lerFiltroAlerta(requestedAlert),
   );
+  const [entradaRapida, setEntradaRapida] = useState<boolean>(location.state?.stockFilters?.quick === true);
+  const [baseAbc, setBaseAbc] = useState<BaseAbc>('valor');
   const timelineItemId = historyPage ? itemId : null;
   const [activeTab, setActiveTab] = useState<'produtos' | 'curva_abc'>(location.state?.stockFilters?.tab ?? 'produtos');
   const selectedId = itemId ?? null;
   const [selectedUpdatedAt, setSelectedUpdatedAt] = useState<string | null>(null);
   const [chaveCadastro] = useState(() => crypto.randomUUID());
-  const [formData, setFormData] = useState<FormData>(initialForm);
-  const [movimentacao, setMovimentacao] = useState<{ tipo: 'entrada' | 'saida'; quantidade: number; motivo: string; chaveIdempotencia: string }>({
-    tipo: task === 'exit' ? 'saida' : 'entrada', quantidade: 0, motivo: '', chaveIdempotencia: crypto.randomUUID(),
+  const [formData, setFormData] = useState<FormData>(() => (
+    task === 'new' && typeof location.state?.ean === 'string' ? { ...initialForm, codigo_ean: location.state.ean } : initialForm
+  ));
+  const prefill = location.state?.movementPrefill as { quantidade?: number; motivo?: string } | undefined;
+  const movimentoInicial = useRef({
+    quantidade: movementPage && Number.isSafeInteger(prefill?.quantidade) ? Number(prefill?.quantidade) : 0,
+    motivo: movementPage && typeof prefill?.motivo === 'string' ? prefill.motivo : '',
   });
+  const [movimentacao, setMovimentacao] = useState<{ tipo: 'entrada' | 'saida'; quantidade: number; motivo: string; chaveIdempotencia: string }>({
+    tipo: task === 'exit' ? 'saida' : 'entrada', ...movimentoInicial.current, chaveIdempotencia: crypto.randomUUID(),
+  });
+  const [limiteHistorico, setLimiteHistorico] = useState(PASSO_HISTORICO);
+  const [filtroTipoHistorico, setFiltroTipoHistorico] = useState<'todos' | 'entrada' | 'saida'>('todos');
+  const [buscaHistorico, setBuscaHistorico] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const saveLock = useRef(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -158,13 +181,23 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
   const { isLoading } = estoqueQuery;
 
   useEffect(() => {
-    if (!location.state?.stockFilters) setFilterAlerta(requestedAlert === 'critico' || requestedAlert === 'vencidos' ? requestedAlert : 'todos');
+    if (!location.state?.stockFilters) setFilterAlertaState(lerFiltroAlerta(requestedAlert));
   }, [requestedAlert, location.state?.stockFilters]);
+
+  /** Troca o filtro de alerta e grava na URL, para o link poder ser compartilhado ou recarregado. */
+  const setFilterAlerta = (valor: FiltroAlertaEstoque) => {
+    setFilterAlertaState(valor);
+    if (task) return;
+    const params = new URLSearchParams(searchParams);
+    if (valor === 'todos') params.delete('alerta'); else params.set('alerta', valor);
+    setSearchParams(params, { replace: true, state: location.state });
+  };
 
   // Movement timeline query
   const movimentacoesQuery = useQuery({
-    queryKey: ['movimentacoes-timeline', user?.id ?? null, profile?.clinica_id ?? null, timelineItemId],
+    queryKey: ['movimentacoes-timeline', user?.id ?? null, profile?.clinica_id ?? null, timelineItemId, limiteHistorico],
     enabled: !!timelineItemId && !!user && !!profile?.clinica_id,
+    placeholderData: anterior => anterior,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('movimentacoes_estoque')
@@ -172,12 +205,41 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
         .eq('clinica_id', profile!.clinica_id!)
         .eq('item_id', timelineItemId || '')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(limiteHistorico + 1);
       if (error) throw error;
-      return data || [];
+      const linhas = data || [];
+      const ids = [...new Set(linhas.map(m => m.usuario_id).filter((id): id is string => !!id))];
+      let nomes: Record<string, string> = {};
+      if (ids.length > 0) {
+        const { data: pessoas } = await supabase.from('profiles').select('id, nome').in('id', ids);
+        nomes = Object.fromEntries((pessoas ?? []).map((p: { id: string; nome: string | null }) => [p.id, p.nome ?? '']));
+      }
+      return { linhas: linhas.slice(0, limiteHistorico), temMais: linhas.length > limiteHistorico, nomes };
     },
   });
-  const movimentacoes = movimentacoesQuery.data ?? [];
+  const movimentacoes = movimentacoesQuery.data?.linhas ?? [];
+  const nomesUsuarios = movimentacoesQuery.data?.nomes ?? {};
+
+  // Saídas dos últimos 90 dias: base da previsão de ruptura e da Curva ABC por consumo.
+  const consumoQuery = useQuery({
+    queryKey: ['estoque-consumo-90d', profile?.clinica_id ?? null],
+    enabled: !task && !!profile?.clinica_id,
+    staleTime: 5 * 60_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const desde = new Date(Date.now() - DIAS_CONSUMO * 86_400_000).toISOString();
+      const { data, error } = await supabase
+        .from('movimentacoes_estoque')
+        .select('item_id, tipo, quantidade')
+        .eq('clinica_id', profile!.clinica_id!)
+        .eq('tipo', 'saida')
+        .gte('created_at', desde)
+        .limit(10000);
+      if (error) throw error;
+      return consumoPorItem(data ?? []);
+    },
+  });
+  const consumo90 = useMemo(() => consumoQuery.data ?? new Map<string, number>(), [consumoQuery.data]);
 
   const hoje = todaySaoPauloDateOnly();
   const daysUntilValidity = useCallback((validade: string | null) => {
@@ -246,24 +308,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
   }, [estoque, getValidadeInfo, daysUntilValidity]);
 
   // ─── ABC Curve Analysis ─────────────────────────────────
-  const abcData = useMemo(() => {
-    const items = (estoque as any[]).map(p => ({
-      nome: p.nome,
-      categoria: p.categoria,
-      valor: p.quantidade * (p.valor_unitario || 0),
-    })).sort((a, b) => b.valor - a.valor);
-
-    const totalValor = items.reduce((acc, i) => acc + i.valor, 0);
-    if (totalValor === 0) return [];
-
-    let accumulated = 0;
-    return items.map(item => {
-      const classe = classifyAbcItem(accumulated, totalValor);
-      accumulated += item.valor;
-      const percentAcc = (accumulated / totalValor) * 100;
-      return { ...item, percentAcc: Math.round(percentAcc), classe };
-    });
-  }, [estoque]);
+  const abcData = useMemo(() => curvaAbc(estoque as any[], baseAbc, consumo90), [estoque, baseAbc, consumo90]);
 
   const abcSummary = useMemo(() => {
     const a = abcData.filter(i => i.classe === 'A');
@@ -285,12 +330,15 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
     }));
   }, [abcData]);
 
-  const ABC_COLORS = { A: 'hsl(var(--destructive))', B: 'hsl(var(--warning))', C: 'hsl(var(--success))' };
+  // Classe ABC não é alerta: preto, cinza e cinza claro.
+  const ABC_COLORS = { A: 'hsl(var(--foreground))', B: 'hsl(var(--muted-foreground))', C: 'hsl(var(--border))' };
+  const ABC_BADGE = { A: 'border-transparent bg-foreground text-background', B: 'border-border bg-secondary text-foreground', C: 'border-border bg-muted text-muted-foreground' };
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-  const formatCategoria = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const formatCategoria = rotuloCategoriaEstoque;
+  const duracaoDe = (produto: any) => textoDuracao(diasAteRuptura(Number(produto.quantidade), consumo90.get(produto.id) ?? 0));
 
-  const openTask = (path: string) => navigate(path, { state: { stockReturn: location.pathname + location.search, stockFilters: { search: searchTerm, category: filterCategoria, alert: filterAlerta, tab: activeTab } } });
+  const openTask = (path: string, extra: Record<string, unknown> = {}) => navigate(path, { state: { stockReturn: location.pathname + location.search, stockFilters: { search: searchTerm, category: filterCategoria, alert: filterAlerta, tab: activeTab, quick: entradaRapida }, ...extra } });
   const handleNew = () => openTask('/estoque/novo');
   const handleEdit = (item: any) => openTask(`/estoque/${item.id}/editar`);
   useEffect(() => {
@@ -392,14 +440,50 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
       await queryClient.invalidateQueries({ queryKey: ['estoque'] });
       finish();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar.');
+      toast.error('Não foi possível salvar o produto.', { description: mensagemDeErro(error) });
     } finally {
       saveLock.current = false;
       setIsSaving(false);
     }
   };
 
-  const handleMovimentacao = (item: any, tipo: 'entrada' | 'saida') => openTask(`/estoque/${item.id}/${tipo}`);
+  const handleMovimentacao = (item: any, tipo: 'entrada' | 'saida', movementPrefill?: { quantidade?: number; motivo?: string }) =>
+    openTask(`/estoque/${item.id}/${tipo}`, movementPrefill ? { movementPrefill } : {});
+
+  /** Enter na busca com um código de barras completo: abre a entrada do item (modo rápido) ou filtra por ele. */
+  const handleBuscaEnter = () => {
+    const codigo = searchTerm.trim();
+    if (!pareceCodigoBarras(codigo)) return;
+    const encontrados = (estoque as any[]).filter(p => String(p.codigo_ean ?? '').trim() === codigo);
+    if (encontrados.length === 1) {
+      if (entradaRapida) {
+        setSearchTerm('');
+        handleMovimentacao(encontrados[0], 'entrada', { quantidade: 1, motivo: 'Entrada por leitor de código de barras' });
+      }
+      return;
+    }
+    if (encontrados.length > 1) { toast.warning('Mais de um produto tem este código de barras. Confira os cadastros.'); return; }
+    toast.info('Código de barras não cadastrado.', {
+      description: 'Cadastre o produto com este código para usar o leitor.',
+      action: { label: 'Cadastrar', onClick: () => openTask('/estoque/novo', { ean: codigo }) },
+    });
+  };
+
+  const exportarPosicao = async (formato: 'xlsx' | 'csv') => {
+    const itens = filteredProdutos as any[];
+    const nome = `estoque-posicao-${hoje}`;
+    try {
+      if (formato === 'csv') {
+        downloadStringAsFile({ content: csvPosicaoEstoque(itens), filename: `${nome}.csv`, mimeType: 'text/csv;charset=utf-8' });
+      } else {
+        const { exportToExcel } = await import('@/lib/excelExporter');
+        await exportToExcel(linhasPosicaoEstoque(itens), 'estoque-posicao', 'Posição do estoque');
+      }
+      toast.success(`Posição exportada (${plural(itens.length, 'item', 'itens')}).`);
+    } catch (error) {
+      toast.error('Não foi possível exportar o estoque.', { description: mensagemDeErro(error) });
+    }
+  };
 
   const handleSaveMovimentacao = async () => {
     if (saveLock.current) return;
@@ -428,7 +512,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
       ]);
       finish();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao registrar.');
+      toast.error('Não foi possível registrar a movimentação.', { description: mensagemDeErro(error) });
     } finally {
       saveLock.current = false;
       setIsSaving(false);
@@ -466,7 +550,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
       setIsDeleteOpen(false);
       setDeleteId(null);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir.');
+      toast.error('Não foi possível excluir o produto.', { description: mensagemDeErro(error) });
     } finally {
       saveLock.current = false;
       setIsSaving(false);
@@ -502,7 +586,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
       // Não cota de novo o que já está em cotação aberta ou pedido ainda não recebido.
       const emCompra = await buscarEstoqueEmCompra(profile.clinica_id);
       const emFalta = itensParaCotar(estoque as any[]);
-      const itens = itensParaCotar(estoque as any[], emCompra);
+      const itens = itensParaCotar(estoque as any[], emCompra, consumo90);
       const pulados = emFalta.length - itens.length;
       const avisoPulados = pulados > 0
         ? `${plural(pulados, 'item já está', 'itens já estão')} em cotação aberta ou pedido não recebido.`
@@ -513,7 +597,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
         return;
       }
       const hojeFormatado = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-      const id = await criarCotacao({ clinicaId: profile.clinica_id, titulo: `Itens em falta · ${hojeFormatado}`, itens });
+      const id = await criarCotacao({ clinicaId: profile.clinica_id, titulo: `Reposição · ${hojeFormatado}`, itens });
       toast.success(`Cotação criada com ${plural(itens.length, 'item', 'itens')}.`, avisoPulados ? { description: `Pulados: ${avisoPulados}` } : undefined);
       navigate(`/compras?aba=cotacoes&cotacao=${id}`);
     } catch (error) {
@@ -523,6 +607,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
     }
   };
 
+  const itensReposicao = (estoque as any[]).filter(precisaReposicao).length;
   const isMedicamento = formData.categoria === 'medicamentos';
   const timelineItem = (estoque as any[]).find(p => p.id === timelineItemId);
   const produtoSelecionado = (estoque as any[]).find(p => p.id === selectedId);
@@ -583,7 +668,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
 
   return (
     <main className="space-y-6 pb-24 lg:pb-8">
-      {(formPage || movementPage) && <UnsavedChangesGuard dirty={formPage ? JSON.stringify(formData) !== baseline.current : !!(movimentacao.quantidade || movimentacao.motivo)} busy={isSaving} completed={completed} />}
+      {(formPage || movementPage) && <UnsavedChangesGuard dirty={formPage ? JSON.stringify(formData) !== baseline.current : (movimentacao.quantidade !== movimentoInicial.current.quantidade || movimentacao.motivo !== movimentoInicial.current.motivo)} busy={isSaving} completed={completed} />}
       {task && <Button variant="outline" onClick={leave} disabled={isSaving}>Voltar ao estoque</Button>}
       {task && estoqueQuery.isError && <ErrorState compact description="Não foi possível atualizar o estoque. Seu preenchimento foi preservado; tente carregar novamente antes de salvar." error={estoqueQuery.error} onRetry={() => void estoqueQuery.refetch()} />}
       {!task && <>
@@ -608,9 +693,23 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
           <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => navigate('/compras')}>
             <ShoppingCart className="h-4 w-4" />Compras
           </Button>
-          {stats.critico > 0 && (
+          <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => openTask('/estoque/inventario')}>
+            <ClipboardList aria-hidden="true" className="h-4 w-4" />Inventário
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="shrink-0 gap-2 rounded-full" disabled={estoque.length === 0}>
+                <Download aria-hidden="true" className="h-4 w-4" />Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => void exportarPosicao('xlsx')}>Planilha Excel (.xlsx)</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void exportarPosicao('csv')}>Arquivo CSV</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {itensReposicao > 0 && (
             <Button variant="outline" className="shrink-0 gap-2 rounded-full" onClick={() => void cotarItensEmFalta()} disabled={criandoCotacao}>
-              {criandoCotacao ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Cotar itens em falta
+              {criandoCotacao ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Cotar reposição ({itensReposicao})
             </Button>
           )}
           <Button onClick={handleNew} className="shrink-0 gap-2"><Plus className="h-4 w-4" />Novo item</Button>
@@ -677,7 +776,9 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Button variant={tipo === 'vencido' ? 'destructive' : 'default'} className="h-10 gap-1.5" onClick={() => handleMovimentacao(item, tipo === 'vencido' ? 'saida' : 'entrada')}>
+              <Button variant={tipo === 'vencido' ? 'destructive' : 'default'} className="h-10 gap-1.5" onClick={() => (tipo === 'vencido'
+                ? handleMovimentacao(item, 'saida', { quantidade: Number(item.quantidade), motivo: motivoDescarteVencido(item.validade) })
+                : handleMovimentacao(item, 'entrada'))}>
                 {tipo === 'vencido' ? <ArrowUp aria-hidden="true" className="h-4 w-4" /> : <ArrowDown aria-hidden="true" className="h-4 w-4" />}
                 {tipo === 'vencido' ? 'Registrar saída' : 'Registrar entrada'}
               </Button>
@@ -692,17 +793,33 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
       {/* ─── ABC Curve Tab ─── */}
       {activeTab === 'curva_abc' && (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {baseAbc === 'valor' ? 'Classificação pelo valor parado em estoque (saldo × custo).' : `Classificação pelo consumo dos últimos ${DIAS_CONSUMO} dias (saídas × custo).`}
+            </p>
+            <div role="group" aria-label="Base da Curva ABC" className="flex rounded-full border border-border bg-card p-1">
+              {([['valor', 'Valor em estoque'], ['consumo', `Consumo ${DIAS_CONSUMO} dias`]] as [BaseAbc, string][]).map(([chave, rotulo]) => (
+                <button key={chave} type="button" aria-pressed={baseAbc === chave} onClick={() => setBaseAbc(chave)}
+                  className={cn('min-h-9 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', baseAbc === chave ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+          {baseAbc === 'consumo' && consumoQuery.isError && (
+            <ErrorState compact title="Não foi possível carregar o consumo" error={consumoQuery.error} onRetry={() => void consumoQuery.refetch()} />
+          )}
           {/* ABC Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { classe: 'A', label: 'Classe A — Alto valor', color: 'text-destructive', bg: 'bg-destructive/10', ...abcSummary.a },
-              { classe: 'B', label: 'Classe B — Médio valor', color: 'text-warning', bg: 'bg-warning/10', ...abcSummary.b },
-              { classe: 'C', label: 'Classe C — Baixo valor', color: 'text-success', bg: 'bg-success/10', ...abcSummary.c },
+              { classe: 'A', label: baseAbc === 'valor' ? 'Classe A — Alto valor' : 'Classe A — Maior consumo', color: 'text-foreground', bg: 'bg-foreground text-background', ...abcSummary.a },
+              { classe: 'B', label: baseAbc === 'valor' ? 'Classe B — Médio valor' : 'Classe B — Consumo médio', color: 'text-foreground', bg: 'bg-secondary', ...abcSummary.b },
+              { classe: 'C', label: baseAbc === 'valor' ? 'Classe C — Baixo valor' : 'Classe C — Menor consumo', color: 'text-muted-foreground', bg: 'bg-muted', ...abcSummary.c },
             ].map(cls => (
               <Card key={cls.classe} className="rounded-2xl border-border/60 shadow-xs">
                 <CardContent className="pt-5">
                   <div className="flex items-center gap-3">
-                    <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center text-lg font-black', cls.bg, cls.color)}>
+                    <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center text-lg font-black', cls.bg)}>
                       {cls.classe}
                     </div>
                     <div>
@@ -719,8 +836,8 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
           {/* ABC Chart */}
           <Card className="rounded-2xl border-border/60 shadow-xs">
             <CardHeader>
-              <CardTitle>Top 20 — Curva ABC de Estoque</CardTitle>
-              <CardDescription>Itens ordenados por valor total (qtd × custo unitário)</CardDescription>
+              <CardTitle>Os 20 itens de maior peso na Curva ABC</CardTitle>
+              <CardDescription>{baseAbc === 'valor' ? 'Itens ordenados por valor total (saldo × custo unitário)' : `Itens ordenados pelo consumo de ${DIAS_CONSUMO} dias (saídas × custo unitário)`}</CardDescription>
             </CardHeader>
             <CardContent>
               {abcChartData.length === 0 ? (
@@ -749,7 +866,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
 
           {/* ABC Table */}
           <Card className="rounded-2xl border-border/60 shadow-xs">
-            <CardHeader><CardTitle>Classificação Completa</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Classificação completa</CardTitle></CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-xl border border-border/60">
                 <Table containerProps={{ role: 'region', 'aria-label': 'Tabela da curva ABC; use a rolagem horizontal para acessar todas as colunas', tabIndex: 0, className: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring' }}>
@@ -758,25 +875,21 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                       <TableHead className="w-12">#</TableHead>
                       <TableHead>Produto</TableHead>
                       <TableHead>Categoria</TableHead>
-                      <TableHead className="text-right">Valor Total</TableHead>
+                      <TableHead className="text-right">{baseAbc === 'valor' ? 'Valor total' : 'Consumo (R$)'}</TableHead>
                       <TableHead className="text-right">% Acum.</TableHead>
                       <TableHead>Classe</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {abcData.map((item, i) => (
-                      <TableRow key={i}>
+                      <TableRow key={item.id}>
                         <TableCell className="font-mono text-xs text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="font-medium text-sm">{item.nome}</TableCell>
                         <TableCell className="text-sm">{formatCategoria(item.categoria)}</TableCell>
                         <TableCell className="text-right font-medium tabular-nums text-sm">{formatCurrency(item.valor)}</TableCell>
                         <TableCell className="text-right tabular-nums text-sm">{item.percentAcc}%</TableCell>
                         <TableCell>
-                          <Badge className={cn('rounded-full font-bold',
-                            item.classe === 'A' ? 'bg-destructive/10 text-destructive border-destructive/20' :
-                            item.classe === 'B' ? 'bg-warning/10 text-warning border-warning/20' :
-                            'bg-success/10 text-success border-success/20',
-                          )}>{item.classe}</Badge>
+                          <Badge className={cn('rounded-full font-bold', ABC_BADGE[item.classe])}>{item.classe}</Badge>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -799,9 +912,16 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative w-full sm:w-72">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input aria-label="Buscar produtos" className="h-10 rounded-full pl-9" placeholder="Produto, EAN, lote, fornecedor..." value={searchTerm}
+                  <Input aria-label="Buscar produtos ou ler código de barras" className="h-10 rounded-full pl-9" placeholder="Produto, EAN, lote, fornecedor..." value={searchTerm}
+                    autoFocus={entradaRapida}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleBuscaEnter(); } }}
                     onChange={e => setSearchTerm(e.target.value)} />
                 </div>
+                <Button type="button" variant="outline" aria-pressed={entradaRapida} onClick={() => setEntradaRapida(v => !v)}
+                  title="Com o leitor de código de barras: ler o código e apertar Enter abre a entrada do produto"
+                  className={cn('h-10 gap-1.5 rounded-full', entradaRapida && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground')}>
+                  <ScanLine aria-hidden="true" className="h-4 w-4" />Entrada rápida
+                </Button>
                 <Select value={filterCategoria} onValueChange={setFilterCategoria}>
                   <SelectTrigger aria-label="Filtrar por categoria" className="h-10 w-full rounded-full sm:w-48"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -823,6 +943,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                 )}
                 <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">{filteredProdutos.length} de {plural(stats.total, 'item', 'itens')}</p>
               </div>
+              {entradaRapida && <p className="text-xs text-muted-foreground" role="status">Entrada rápida ligada: leia o código de barras e aperte Enter para abrir a entrada do produto.</p>}
 
               {filteredProdutos.length === 0 ? (
                 <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-muted-foreground">
@@ -832,7 +953,56 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                   <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); setFilterCategoria('todos'); setFilterAlerta('todos'); }}>Limpar filtros</Button>
                 </CardContent></Card>
               ) : (
-                <Card className="rounded-2xl border-border/60 shadow-xs">
+                <>
+                <ul aria-label="Produtos" className="space-y-2 md:hidden">
+                  {filteredProdutos.map((produto: any) => {
+                    const status = getStatus(produto);
+                    const validadeInfo = getValidadeInfo(produto.validade);
+                    const duracao = duracaoDe(produto);
+                    return (
+                      <li key={produto.id} className="rounded-xl border border-border bg-card p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground [overflow-wrap:anywhere]">{produto.nome}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              <span className="font-medium tabular-nums text-foreground">{produto.quantidade}</span> {rotuloUnidadeEstoque(produto.unidade)}
+                              {produto.localizacao ? ` · ${produto.localizacao}` : ''}
+                            </p>
+                            {produto.validade && (
+                              <p className={cn('mt-0.5 text-xs', validadeInfo?.dias !== undefined && validadeInfo.dias < 0 ? 'font-medium text-destructive' : validadeInfo?.dias !== undefined && validadeInfo.dias <= 30 ? 'font-medium text-warning-foreground' : 'text-muted-foreground')}>
+                                Validade {format(parseDateOnly(produto.validade)!, 'dd/MM/yyyy')}{validadeInfo ? ` · ${validadeInfo.label}` : ''}
+                              </p>
+                            )}
+                            {duracao && <p className="mt-0.5 text-xs text-muted-foreground">{duracao}</p>}
+                          </div>
+                          <Badge variant={status.variant} className="shrink-0 rounded-full">{status.label}</Badge>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <Button variant="outline" size="sm" className="h-11 flex-1 gap-1.5 rounded-full" onClick={() => handleMovimentacao(produto, 'entrada')} aria-label={`Registrar entrada de ${produto.nome}`}>
+                            <ArrowDown aria-hidden="true" className="h-4 w-4" />Entrada
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-11 flex-1 gap-1.5 rounded-full" onClick={() => handleMovimentacao(produto, 'saida')} aria-label={`Registrar saída de ${produto.nome}`}>
+                            <ArrowUp aria-hidden="true" className="h-4 w-4" />Saída
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" aria-label={`Mais ações de ${produto.nome}`}>
+                                <MoreHorizontal aria-hidden="true" className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => handleOpenTimeline(produto)}><History aria-hidden="true" className="mr-2 h-4 w-4" />Histórico</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleEdit(produto)}><Edit aria-hidden="true" className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => { setDeleteId(produto.id); setIsDeleteOpen(true); }}><Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />Excluir</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Card className="hidden rounded-2xl border-border/60 shadow-xs md:block">
                   <CardContent className="p-4">
                     <div className="overflow-hidden rounded-xl border border-border/60">
                       <Table className="md:min-w-[760px]" containerProps={{ role: 'region', 'aria-label': 'Tabela de produtos; use a rolagem horizontal para acessar todas as colunas', tabIndex: 0, className: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring' }}>
@@ -885,11 +1055,15 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                                 </TableCell>
                                 <TableCell>
                                   <span className="font-medium tabular-nums">{produto.quantidade}</span>
-                                  <span className="text-muted-foreground text-xs"> {produto.unidade}</span>
+                                  <span className="text-muted-foreground text-xs"> {rotuloUnidadeEstoque(produto.unidade)}</span>
                                   {produto.ponto_pedido && produto.quantidade <= produto.ponto_pedido && (
                                     <p className="text-[10px] text-destructive flex items-center gap-0.5 mt-0.5">
                                       <TrendingDown className="h-3 w-3" />Ponto de pedido
                                     </p>
+                                  )}
+                                  {duracaoDe(produto) && <p className="mt-0.5 text-[10px] text-muted-foreground">{duracaoDe(produto)}</p>}
+                                  {precisaReposicao(produto) && sugestaoPorConsumo(produto, consumo90.get(produto.id) ?? 0) > 0 && (
+                                    <p className="text-[10px] text-muted-foreground">sugestão: comprar {sugestaoPorConsumo(produto, consumo90.get(produto.id) ?? 0)}</p>
                                   )}
                                 </TableCell>
                                 <TableCell className="hidden sm:table-cell">
@@ -934,6 +1108,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                     </div>
                   </CardContent>
                 </Card>
+                </>
               )}
             </section>
           )}
@@ -957,23 +1132,41 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                 <History className="h-10 w-10 mx-auto opacity-20 mb-2" />
                 <p className="text-sm">Nenhuma movimentação registrada</p>
               </div>
-            ) : (
+            ) : (() => {
+              const saldos = saldosAposMovimentacoes(Number(timelineItem?.quantidade ?? 0), movimentacoes as any[]);
+              const termo = normalizarBuscaEstoque(buscaHistorico);
+              const visiveis = (movimentacoes as any[])
+                .map((mov, indice) => ({ mov, saldoApos: saldos[indice] }))
+                .filter(({ mov }) => (filtroTipoHistorico === 'todos' || mov.tipo === filtroTipoHistorico)
+                  && (!termo || normalizarBuscaEstoque(`${mov.motivo ?? ''} ${nomesUsuarios[mov.usuario_id] ?? ''}`).includes(termo)));
+              const unidade = rotuloUnidadeEstoque(timelineItem?.unidade || 'unidade');
+              return (
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">Exibindo até as 50 movimentações mais recentes.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div role="group" aria-label="Filtrar por tipo de movimentação" className="flex flex-wrap gap-1.5">
+                    {([['todos', 'Todas'], ['entrada', 'Entradas'], ['saida', 'Saídas']] as const).map(([chave, rotulo]) => (
+                      <button key={chave} type="button" aria-pressed={filtroTipoHistorico === chave} onClick={() => setFiltroTipoHistorico(chave)}
+                        className={cn('min-h-9 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', filtroTipoHistorico === chave ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>{rotulo}</button>
+                    ))}
+                  </div>
+                  <Input aria-label="Buscar no histórico por motivo ou usuário" className="h-9 w-full rounded-full sm:w-64" placeholder="Motivo ou usuário" value={buscaHistorico} onChange={e => setBuscaHistorico(e.target.value)} />
+                </div>
+                <p className="text-xs text-muted-foreground">{plural(movimentacoes.length, 'movimentação carregada', 'movimentações carregadas')}, da mais recente para a mais antiga. O saldo após cada movimentação parte do saldo atual.</p>
+                {visiveis.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma movimentação corresponde aos filtros.</p> : (
                 <div className="relative pl-6 space-y-3">
                   <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
-                  {movimentacoes.map((mov: any) => (
+                  {visiveis.map(({ mov, saldoApos }) => (
                     <div
                       key={mov.id}
                       className="relative flex items-start gap-3"
                     >
                       <div className={cn(
                         'absolute -left-6 top-1 h-4 w-4 rounded-full border-2 border-background z-10',
-                        mov.tipo === 'entrada' ? 'bg-success' : 'bg-muted-foreground',
+                        mov.tipo === 'entrada' ? 'bg-foreground' : 'bg-muted-foreground',
                       )} />
                       <div className="flex-1 rounded-xl border border-border/60 bg-card p-3">
-                        <div className="flex items-center justify-between">
-                          <Badge variant={mov.tipo === 'entrada' ? 'success' : 'secondary'} className="rounded-full text-[10px]">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Badge variant="secondary" className="rounded-full text-[10px]">
                             {mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
@@ -981,15 +1174,26 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                           </span>
                         </div>
                         <p className="text-sm font-bold mt-1 tabular-nums">
-                          {mov.tipo === 'entrada' ? '+' : '-'}{mov.quantidade} {timelineItem?.unidade || 'unidade'}
+                          {mov.tipo === 'entrada' ? '+' : '-'}{mov.quantidade} {unidade}
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">saldo após: {saldoApos} {unidade}</span>
                         </p>
                         {mov.motivo && <p className="text-xs text-muted-foreground mt-0.5">{mov.motivo}</p>}
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">Por {mov.usuario_id ? (nomesUsuarios[mov.usuario_id] || 'usuário sem nome') : 'sistema'}</p>
                       </div>
                     </div>
                   ))}
                 </div>
+                )}
+                {movimentacoesQuery.data?.temMais && (
+                  <div className="flex justify-center">
+                    <Button variant="outline" className="rounded-full" disabled={movimentacoesQuery.isFetching} onClick={() => setLimiteHistorico(l => l + PASSO_HISTORICO)}>
+                      {movimentacoesQuery.isFetching ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : null}Carregar mais
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
+              );
+            })()}
           </div>
       </section>}
 
@@ -1023,7 +1227,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
                 <Select value={formData.unidade} onValueChange={v => setFormData({ ...formData, unidade: v })}>
                   <SelectTrigger id="stock-field-3"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {UNIDADES.map(u => <SelectItem key={u} value={u}>{formatCategoria(u)}</SelectItem>)}
+                    {UNIDADES.map(u => <SelectItem key={u} value={u}>{rotuloUnidadeEstoque(u)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -1099,7 +1303,7 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
         <form onSubmit={event => { event.preventDefault(); void handleSaveMovimentacao(); }} className="rounded-xl border bg-card p-5 sm:p-6">
           <fieldset disabled={isSaving} className="space-y-4 py-4">
 
-            <div className="space-y-2"><Label htmlFor="estoque-movimentacao-quantidade">Quantidade * ({produtoSelecionado?.unidade || 'unidade'})</Label>
+            <div className="space-y-2"><Label htmlFor="estoque-movimentacao-quantidade">Quantidade * ({rotuloUnidadeEstoque(produtoSelecionado?.unidade || 'unidade')})</Label>
               <Input required id="estoque-movimentacao-quantidade" type="number" min="1" step="1" value={movimentacao.quantidade || ''} onChange={e => setMovimentacao({ ...movimentacao, quantidade: e.target.value === '' ? 0 : Number(e.target.value) })} />
               {produtoSelecionado && (
                 <p className="text-xs text-muted-foreground" role="status">

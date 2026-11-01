@@ -18,7 +18,9 @@ import { printLaudoPDF, downloadLaudoPDF, LaudoData } from '@/lib/pdfGenerator';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
 
-import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
+import { ageFromDateOnly, formatDateTimeSaoPaulo } from '@/lib/dateOnly';
+import { chaveParametro, pontosSparkline, seriesPorParametro, variacaoPercentual, type ResultadoAnterior } from '@/lib/laudoHistorico';
+import { contagem } from '@/lib/plural';
 import { parseResultadoNumerico, deveNotificarRetificacao, formatarReferenciaLaudo, perfilPodeRetificarResultado, podeRetificarResultado, procedenciaResultadoLaudo, trilhaDeVersoes } from '@/lib/laudoWorkflow';
 
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
@@ -84,7 +86,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
         .from('coletas_laboratorio')
         .select(`
           id, codigo_amostra, status, created_at, data_coleta, observacoes, tipo_amostra, tubo, urgente,
-          numero_guia, material,
+          numero_guia, material, paciente_id,
           pacientes(nome, nome_social, cpf, telefone, email, data_nascimento, sexo),
           medicos(nome, crm),
           convenios(nome),
@@ -103,12 +105,35 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
       if (requestId !== fetchRequestRef.current) return;
       if (!data) { setUnavailable(true); return; }
       setColeta(data);
+      void carregarAnteriores(data as any, requestId);
     } catch (error) {
       if (requestId === fetchRequestRef.current) setLoadError(error);
     } finally {
       if (requestId === fetchRequestRef.current) setLoading(false);
     }
   }, [coletaId, profile?.clinica_id]);
+
+  // Resultados anteriores do mesmo paciente, para comparar com este laudo.
+  const [anteriores, setAnteriores] = useState<ResultadoAnterior[]>([]);
+  const carregarAnteriores = async (atual: any, requestId: number) => {
+    setAnteriores([]);
+    const parametros = [...new Set((atual.resultados_laboratorio ?? []).map((r: any) => r.parametro).filter(Boolean))] as string[];
+    if (!atual.paciente_id || !parametros.length || !profile?.clinica_id) return;
+    const { data, error } = await supabase.from('resultados_laboratorio')
+      .select('parametro, resultado, unidade, created_at')
+      .eq('clinica_id', profile.clinica_id)
+      .eq('paciente_id', atual.paciente_id)
+      .neq('coleta_id', atual.id)
+      .eq('liberado', true)
+      .in('parametro', parametros)
+      .lt('created_at', atual.created_at)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    // Consulta auxiliar: sem ela o laudo continua utilizável, só sem a comparação.
+    if (error || requestId !== fetchRequestRef.current) return;
+    setAnteriores((data ?? []) as ResultadoAnterior[]);
+  };
+  const series = seriesPorParametro(anteriores);
 
   const abrirRetificacao = (res: any) => {
     const draft = {
@@ -195,7 +220,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
 
   const avisarConferenciaPendente = () => {
     toast.error('Esta coleta ainda não foi validada.', {
-      description: `Situação atual: ${coleta?.status || 'desconhecida'}. Conclua a conferência técnica antes de liberar — o paciente é notificado assim que o resultado sai.`,
+      description: `Situação atual: ${STATUS_COLETA_LABELS[coleta?.status] ?? coleta?.status ?? 'desconhecida'}. Conclua a conferência técnica antes de liberar — o paciente é notificado assim que o resultado sai.`,
       duration: 8000,
     });
   };
@@ -230,7 +255,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
      
     } catch (err: any) {
       console.error('handleLiberarResultado error:', err);
-      toast.error('Erro ao liberar: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível liberar o resultado', { description: mensagemDeErro(err) });
     } finally {
       setReleasingIds(current => { const next = new Set(current); next.delete(resultadoId); return next; });
     }
@@ -296,10 +321,10 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
       // resultados. Se ainda houver pendentes, a função mantém a coleta em
       // validado e o contador abaixo informa a liberação parcial.
       const naoLiberados = pendentes.length - liberados.length;
-      const partes = [`${liberados.length} de ${pendentes.length} resultado(s) liberado(s)`];
-      if (naoLiberados > 0) partes.push(`${naoLiberados} falhou(aram)`);
-      if (notificacoesEnfileiradas > 0) partes.push(`${notificacoesEnfileiradas} notificação(ões) na fila de reenvio`);
-      if (notificacoesFalhadas > 0) partes.push(`${notificacoesFalhadas} notificação(ões) falharam e exigem contato manual`);
+      const partes = [`${liberados.length} de ${contagem(pendentes.length, 'resultado liberado', 'resultados liberados')}`];
+      if (naoLiberados > 0) partes.push(`${contagem(naoLiberados, 'não liberado', 'não liberados')}`);
+      if (notificacoesEnfileiradas > 0) partes.push(`${contagem(notificacoesEnfileiradas, 'notificação', 'notificações')} na fila de reenvio`);
+      if (notificacoesFalhadas > 0) partes.push(`${contagem(notificacoesFalhadas, 'notificação falhou e exige', 'notificações falharam e exigem')} contato manual`);
       const msg = partes.join(' · ');
 
       if (naoLiberados > 0) toast.warning(msg);
@@ -308,7 +333,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
      
     } catch (err: any) {
       console.error('handleLiberarTodos error:', err);
-      toast.error('Erro ao liberar em lote: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível liberar os resultados', { description: mensagemDeErro(err) });
     } finally {
       setIsReleasingAll(false);
     }
@@ -390,7 +415,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
       await printLaudoPDF(laudoData, previewWindow);
     } catch (err: any) {
       previewWindow.close();
-      toast.error('Erro ao imprimir laudo: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível imprimir o laudo', { description: mensagemDeErro(err) });
     }
   };
 
@@ -400,7 +425,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
       if (!laudoData) return;
       await downloadLaudoPDF(laudoData);
     } catch (err: any) {
-      toast.error('Erro ao baixar laudo: ' + (err?.message || 'Erro desconhecido'));
+      toast.error('Não foi possível baixar o laudo', { description: mensagemDeErro(err) });
     }
   };
 
@@ -424,7 +449,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
         ) : coleta ? (
           <div className="space-y-5">
             {/* Patient info */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-y py-5 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-y py-5 lg:grid-cols-4">
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Paciente</p>
                 <p className="font-semibold break-words">{coleta.pacientes?.nome_social?.trim() || coleta.pacientes?.nome || '—'}</p>
@@ -432,6 +457,22 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">CPF</p>
                 <p className="font-medium">{coleta.pacientes?.cpf ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Idade e sexo</p>
+                <p className="font-medium">
+                  {coleta.pacientes?.data_nascimento ? `${ageFromDateOnly(coleta.pacientes.data_nascimento)} anos` : 'Idade não informada'}
+                  {' · '}
+                  {(() => { const sexo = String(coleta.pacientes?.sexo ?? '').trim().toLowerCase(); return ['m', 'masculino'].includes(sexo) ? 'Masculino' : ['f', 'feminino'].includes(sexo) ? 'Feminino' : sexo ? 'Outro' : 'Sexo não informado'; })()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Médico solicitante</p>
+                <p className="font-medium break-words">{coleta.medicos?.nome ? `${coleta.medicos.nome}${coleta.medicos.crm ? ` · CRM ${coleta.medicos.crm}` : ''}` : '—'}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Convênio</p>
+                <p className="font-medium">{coleta.convenios?.nome ?? 'Particular'}</p>
               </div>
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Código</p>
@@ -456,7 +497,7 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
               <Activity className="h-4 w-4 text-primary shrink-0" />
               <div className="flex-1">
                 <div className="flex justify-between text-xs mb-1">
-                  <span>{liberados}/{totalResults} liberado(s)</span>
+                  <span>{liberados}/{totalResults} {liberados === 1 ? 'liberado' : 'liberados'}</span>
                   <span className="font-semibold">{totalResults > 0 ? Math.round((liberados / totalResults) * 100) : 0}%</span>
                 </div>
                 <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -528,6 +569,29 @@ function LaudoWorkspace({ coletaId }: { coletaId: string | null }) {
                             <p className="font-medium text-xs">{formatDateTimeSaoPaulo(res.data_liberacao)}</p>
                           </div>
                         )}
+                        {(() => {
+                          const serie = series.get(chaveParametro(res.parametro));
+                          if (!serie) return null;
+                          const variacao = variacaoPercentual(res.resultado, serie.anterior.resultado);
+                          const pontos = pontosSparkline([...serie.valores, ...(numResult !== null ? [numResult] : [])]);
+                          return (
+                            <div className="sm:col-span-3">
+                              <p className="text-[11px] text-muted-foreground">Resultado anterior</p>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <p className="font-medium text-xs">
+                                  {serie.anterior.resultado} {serie.anterior.unidade ?? ''}
+                                  {serie.anterior.created_at && <span className="text-muted-foreground"> · {formatDateTimeSaoPaulo(serie.anterior.created_at)}</span>}
+                                  {variacao !== null && <span className="ml-1 font-semibold">({variacao > 0 ? '+' : ''}{variacao.toFixed(1).replace('.', ',')}%)</span>}
+                                </p>
+                                {pontos && (
+                                  <svg role="img" aria-label={`Evolução de ${res.parametro}: ${[...serie.valores, ...(numResult !== null ? [numResult] : [])].join('; ')}`} width="80" height="24" viewBox="-2 -2 84 28" className="text-foreground">
+                                    <polyline points={pontos} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                     {res.critico && (confirmacaoCriticaAtual ? (

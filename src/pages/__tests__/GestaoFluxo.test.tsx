@@ -24,7 +24,7 @@ describe('Gestão de salas e lista de espera', () => {
 
   it('abre a Lista de Espera pelo link direto', async () => {
     renderAt('/gestao-fluxo?tab=espera');
-    expect(screen.getByRole('tab', { name: 'Lista de Espera' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Lista de espera' })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText('Conteúdo da lista de espera')).toBeInTheDocument();
   });
 });

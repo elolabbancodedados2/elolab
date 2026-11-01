@@ -1,4 +1,5 @@
 import { nomeMedico } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,11 @@ import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
 import { datasDaRecorrencia, FREQUENCIAS_RECORRENCIA, MAX_OCORRENCIAS, type FrequenciaRecorrencia } from '@/lib/recorrenciaAgenda';
 import { describeAppointmentConflict } from '@/lib/agendaConflictMessage';
 import { APPOINTMENT_CANCELLATION_REASONS, appointmentCancellationReasonLabel, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
+import { faixasDoExpediente, horariosLivresNoDia } from '@/lib/vagaLivreDia';
+import { minutosAgoraSaoPaulo } from '@/lib/proximaVagaLivre';
+import { saldoDevedor } from '@/lib/liberacaoAtendimento';
+import { formatCurrency } from '@/lib/formatters';
+import { TIPOS_FIXOS_CONSULTA } from './agendaStatus';
 
 interface Props {
   open: boolean;
@@ -33,10 +39,20 @@ interface Props {
   medicos: any[];
   tipos: any[];
   salas: any[];
+  /** Convênios da clínica; a consulta grava o escolhido em agendamentos.convenio_id. */
+  convenios?: any[];
   onSaved?: () => void | Promise<void>;
 }
 
-export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, salas, onSaved }: Props) {
+const MIN_OCORRENCIAS = 2;
+/** Total de consultas da série, aplicado ao sair do campo e ao salvar (não a cada tecla). */
+export function ocorrenciasValidas(valor: unknown): number {
+  const n = Math.trunc(Number(valor));
+  if (!Number.isFinite(n) || n < MIN_OCORRENCIAS) return MIN_OCORRENCIAS;
+  return Math.min(MAX_OCORRENCIAS, n);
+}
+
+export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, salas, convenios = [], onSaved }: Props) {
   const queryClient = useQueryClient();
   const { profile } = useSupabaseAuth() as any;
   const editing = !!initial?.id;
@@ -71,9 +87,11 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         status: initial?.status || 'agendado',
         sala_id: initial?.sala_id || '',
         observacoes: initial?.observacoes || '',
+        convenio_id: initial?.convenio_id || '',
         send_whatsapp: false,
         repetir: 'nao' as FrequenciaRecorrencia,
-        ocorrencias: 4,
+        ocorrencias: 4 as number | string,
+        motivo_remarcacao: '',
       };
       setForm(value);
       setInitialSnapshot(JSON.stringify(value));
@@ -104,6 +122,80 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
     },
   });
   const ultimoAtendimento = ultimoAtendimentoQuery.data;
+  const remarcando = !editing && !!initial?._remarcar_id;
+
+  // Ficha do paciente: faltas, retorno previsto e saldo em aberto ajudam a
+  // recepção a decidir antes de marcar (confirmar antes, cobrar, juntar retorno).
+  const fichaQuery = useQuery({
+    queryKey: ['agenda-ficha-paciente', profile?.clinica_id, form.paciente_id],
+    enabled: open && !!profile?.clinica_id && !!form.paciente_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const [faltas, retorno] = await Promise.all([
+        supabase.from('agendamentos').select('id', { count: 'exact', head: true })
+          .eq('clinica_id', profile.clinica_id).eq('paciente_id', form.paciente_id).eq('status', 'faltou'),
+        supabase.from('retornos').select('data_retorno_prevista, status')
+          .eq('clinica_id', profile.clinica_id).eq('paciente_id', form.paciente_id)
+          .in('status', ['pendente', 'agendado'])
+          .order('data_retorno_prevista', { ascending: true }).limit(1).maybeSingle(),
+      ]);
+      return {
+        faltas: faltas.error ? null : faltas.count ?? 0,
+        retorno: retorno.error ? null : (retorno.data as { data_retorno_prevista: string; status: string } | null),
+      };
+    },
+  });
+  // Perfil sem acesso ao financeiro recebe erro: a linha do saldo some.
+  const saldoQuery = useQuery({
+    queryKey: ['agenda-saldo-paciente', profile?.clinica_id, form.paciente_id],
+    enabled: open && !!profile?.clinica_id && !!form.paciente_id,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('lancamentos')
+        .select('valor, valor_pago, desconto, acrescimo, status')
+        .eq('paciente_id', form.paciente_id)
+        .eq('tipo', 'receita');
+      if (error) throw error;
+      return (data ?? [])
+        .filter((c: any) => !['cancelado', 'estornado'].includes(String(c.status)))
+        .reduce((total: number, c: any) => total + Math.max(0, saldoDevedor('x', [{ ...c, agendamento_id: 'x' } as any])), 0);
+    },
+  });
+
+  // Horários livres do médico no dia escolhido, como atalho para o campo Início.
+  const duracaoDoTipo = (() => {
+    const tipoEscolhido = (tipos as any[]).find((t: any) => String(t.nome || '').toLocaleLowerCase('pt-BR') === String(form.tipo || '').toLocaleLowerCase('pt-BR'));
+    return Number(tipoEscolhido?.duracao_minutos) > 0 ? Number(tipoEscolhido.duracao_minutos) : 30;
+  })();
+  const dataDoFormValida = /^\d{4}-\d{2}-\d{2}$/.test(form.data || '');
+  const livresQuery = useQuery({
+    queryKey: ['agenda-livres-do-dia', profile?.clinica_id, form.medico_id, form.data, duracaoDoTipo, initial?.id ?? null],
+    enabled: open && !!profile?.clinica_id && !!form.medico_id && dataDoFormValida && form.data >= todaySaoPauloDateOnly(),
+    staleTime: 30_000,
+    queryFn: async () => {
+      const diaSemana = new Date(`${form.data}T12:00:00Z`).getUTCDay();
+      const [ocupacao, bloqueios, jornada] = await Promise.all([
+        supabase.from('agendamentos').select('id, hora_inicio, hora_fim, status')
+          .eq('clinica_id', profile.clinica_id).eq('medico_id', form.medico_id).eq('data', form.data),
+        (supabase.from('bloqueios_agenda' as any).select('hora_inicio, hora_fim, dia_inteiro')
+          .eq('medico_id', form.medico_id).lte('data_inicio', form.data).gte('data_fim', form.data) as any),
+        (supabase.from('medico_disponibilidade' as any).select('hora_inicio, hora_fim')
+          .eq('medico_id', form.medico_id).eq('dia_semana', diaSemana).eq('ativo', true) as any),
+      ]);
+      if (ocupacao.error) throw ocupacao.error;
+      if (bloqueios.error) throw bloqueios.error;
+      if (jornada.error) throw jornada.error;
+      return horariosLivresNoDia({
+        agendamentos: ((ocupacao.data ?? []) as any[]).filter(a => a.id !== initial?.id),
+        bloqueios: bloqueios.data ?? [],
+        faixas: faixasDoExpediente(jornada.data ?? []),
+        aPartirDe: form.data === todaySaoPauloDateOnly() ? minutosAgoraSaoPaulo() + 1 : 0,
+        duracaoMinutos: duracaoDoTipo,
+        limite: 16,
+      });
+    },
+  });
   const whatsappPaciente = paciente?.telefone
     ? linkWhatsApp(paciente.telefone, `Olá, ${(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`)
     : null;
@@ -137,6 +229,10 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
     faltou: 'Faltou',
   };
 
+  const medicoDoForm = medicos.find((m) => m.id === form.medico_id);
+  const rotuloDoTipo = TIPOS_FIXOS_CONSULTA.find(([valor]) => valor === form.tipo)?.[1] || form.tipo || 'Consulta';
+  const convenioDoCadastro = paciente?.convenio_id ? (convenios as any[]).find(c => c.id === paciente.convenio_id)?.nome : null;
+
   const handleSave = async (confirmouForaExpediente = false) => {
     if (salvandoRef.current) return;
     salvandoRef.current = true;
@@ -152,6 +248,11 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
     if (!form.medico_id) { toast.error('Selecione um médico'); setTab('consulta'); return; }
     if (!form.hora_inicio) { toast.error('Informe o horário'); setTab('consulta'); return; }
     if (!profile?.clinica_id) { toast.error('Clínica não identificada. Atualize a sessão e tente novamente.'); return; }
+    if (remarcando && !isAppointmentCancellationReason(form.motivo_remarcacao)) {
+      toast.error('Informe o motivo da remarcação', { description: 'A consulta original será cancelada com esse motivo.' });
+      document.getElementById('appointment-reschedule-reason')?.focus();
+      return;
+    }
 
     if (['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) && !form.observacoes?.trim()) {
       toast.error('Informe qual exame será realizado', {
@@ -370,6 +471,8 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         status: form.status,
         sala_id: form.sala_id || null,
         observacoes: form.observacoes || null,
+        // Vazio: o banco preenche com o convênio do cadastro do paciente.
+        convenio_id: form.convenio_id || null,
       };
       const payloadToSave = appointmentPayloadForSave(payload, editing);
 
@@ -393,36 +496,87 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
       }
       if (result.error) throw result.error;
 
-      toast.success(editing ? 'Consulta atualizada' : 'Consulta agendada');
+      toast.success(editing ? 'Consulta atualizada' : remarcando ? 'Nova consulta marcada' : 'Consulta agendada');
+
+      // Remarcação: a original só é cancelada depois que a nova foi gravada.
+      if (remarcando) {
+        try {
+          const { data, error } = await (supabase as any).rpc('cancelar_agendamento_com_motivo', {
+            p_agendamento_id: initial._remarcar_id,
+            p_clinica_id: profile.clinica_id,
+            p_updated_at: initial._remarcar_updated_at ?? null,
+            p_motivo_cancelamento: form.motivo_remarcacao,
+          });
+          if (error) throw error;
+          const resultado = Array.isArray(data) ? data[0] : data;
+          if (!resultado?.atualizado) throw new Error('A consulta original mudou desde que foi aberta.');
+          toast.success('Consulta remarcada', { description: `A consulta de ${initial._remarcar_resumo || 'origem'} foi cancelada.` });
+        } catch (erroRemarcacao) {
+          toast.warning('Nova consulta salva, mas a original continua marcada.', {
+            description: `${mensagemDeErro(erroRemarcacao)} Cancele a consulta de ${initial._remarcar_resumo || 'origem'} pela agenda.`,
+            duration: 12000,
+          });
+        }
+      }
 
       // Consulta recorrente: a primeira já foi gravada com todas as checagens.
-      // As seguintes respeitam bloqueios e a constraint de sobreposição do
-      // banco; o que não couber é listado, sem desfazer o que foi marcado.
-      const datasSeguintes = !editing && !initial?._waiting_id ? datasDaRecorrencia(form.data, form.repetir, form.ocorrencias) : [];
+      // As seguintes respeitam bloqueios, expediente e a constraint de
+      // sobreposição do banco; o que não couber é listado, sem desfazer o que
+      // foi marcado.
+      const datasSeguintes = !editing && !initial?._waiting_id && !remarcando
+        ? datasDaRecorrencia(form.data, form.repetir, ocorrenciasValidas(form.ocorrencias))
+        : [];
       if (datasSeguintes.length) {
-        const puladas: string[] = [];
-        let criadas = 0;
-        const { data: bloqueiosSerie } = await (supabase.from('bloqueios_agenda' as any)
-          .select('data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro')
-          .eq('medico_id', form.medico_id)
-          .lte('data_inicio', datasSeguintes[datasSeguintes.length - 1])
-          .gte('data_fim', datasSeguintes[0]) as any);
-        for (const data of datasSeguintes) {
-          const bloqueada = ((bloqueiosSerie as any[]) || []).some((b: any) => b.data_inicio <= data && b.data_fim >= data && (
-            b.dia_inteiro || ((toMin(b.hora_inicio) ?? 0) < novoFim && (toMin(b.hora_fim) ?? 0) > novoInicio)
-          ));
-          if (bloqueada) { puladas.push(data); continue; }
-          const { error: erroSerie } = await (supabase.from('agendamentos').insert({ ...payloadToSave, data, status: 'agendado' }) as any);
-          if (erroSerie) puladas.push(data); else criadas += 1;
-        }
         const formatar = (d: string) => d.split('-').reverse().slice(0, 2).join('/');
-        if (puladas.length) {
-          toast.warning(`${criadas} repetição(ões) marcada(s); ${puladas.length} ficou(aram) de fora`, {
-            description: `Horário ocupado ou bloqueado em ${puladas.map(formatar).join(', ')}. Marque essas datas manualmente.`,
+        const [{ data: bloqueiosSerie, error: erroBloqueiosSerie }, { data: jornadaSerie, error: erroJornadaSerie }] = await Promise.all([
+          (supabase.from('bloqueios_agenda' as any)
+            .select('data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro')
+            .eq('medico_id', form.medico_id)
+            .lte('data_inicio', datasSeguintes[datasSeguintes.length - 1])
+            .gte('data_fim', datasSeguintes[0]) as any),
+          (supabase.from('medico_disponibilidade' as any)
+            .select('dia_semana, hora_inicio, hora_fim')
+            .eq('medico_id', form.medico_id).eq('ativo', true) as any),
+        ]);
+        // Sem bloqueios ou expediente, a série poderia cair em férias ou fora de
+        // hora: para e avisa em vez de marcar às cegas.
+        if (erroBloqueiosSerie || erroJornadaSerie) {
+          toast.warning('A primeira consulta foi marcada, mas as repetições não.', {
+            description: `Não foi possível conferir ${erroBloqueiosSerie ? 'os bloqueios' : 'o expediente'} do médico. Marque as datas ${datasSeguintes.map(formatar).join(', ')} manualmente.`,
             duration: 12000,
           });
         } else {
-          toast.success(`${criadas} repetição(ões) marcada(s)`, { description: datasSeguintes.map(formatar).join(', ') });
+          const ocupadas: string[] = [];
+          const foraDoExpediente: string[] = [];
+          let criadas = 0;
+          for (const data of datasSeguintes) {
+            const bloqueada = ((bloqueiosSerie as any[]) || []).some((b: any) => b.data_inicio <= data && b.data_fim >= data && (
+              b.dia_inteiro || ((toMin(b.hora_inicio) ?? 0) < novoFim && (toMin(b.hora_fim) ?? 0) > novoInicio)
+            ));
+            if (bloqueada) { ocupadas.push(data); continue; }
+            const diaSemanaSerie = new Date(`${data}T12:00:00Z`).getUTCDay();
+            const dentro = ((jornadaSerie as any[]) || []).some((j: any) => {
+              const ji = toMin(j.hora_inicio); const jf = toMin(j.hora_fim);
+              return j.dia_semana === diaSemanaSerie && ji !== null && jf !== null && novoInicio >= ji && novoFim <= jf;
+            });
+            // Quem já confirmou "fora do expediente" para a primeira aceitou o horário.
+            if (!dentro && !confirmouForaExpediente) { foraDoExpediente.push(data); continue; }
+            const { error: erroSerie } = await (supabase.from('agendamentos').insert({ ...payloadToSave, data, status: 'agendado' }) as any);
+            if (erroSerie) ocupadas.push(data); else criadas += 1;
+          }
+          const puladas = ocupadas.length + foraDoExpediente.length;
+          if (puladas) {
+            toast.warning(`${criadas} repetição(ões) marcada(s); ${puladas} ficou(aram) de fora`, {
+              description: [
+                ocupadas.length ? `Horário ocupado ou bloqueado em ${ocupadas.map(formatar).join(', ')}.` : '',
+                foraDoExpediente.length ? `Fora do expediente em ${foraDoExpediente.map(formatar).join(', ')}.` : '',
+                'Marque essas datas manualmente.',
+              ].filter(Boolean).join(' '),
+              duration: 12000,
+            });
+          } else {
+            toast.success(`${criadas} repetição(ões) marcada(s)`, { description: datasSeguintes.map(formatar).join(', ') });
+          }
         }
       }
 
@@ -524,10 +678,23 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         <header className="space-y-3 border-b border-border pb-5">
           <Button variant="ghost" className="-ml-3 gap-2" onClick={() => onOpenChange(false)} disabled={saving || deleting}><ArrowLeft className="h-4 w-4" />Voltar à agenda</Button>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{editing ? 'Editar consulta' : 'Nova consulta'}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{editing ? 'Editar consulta' : remarcando ? 'Remarcar consulta' : 'Nova consulta'}</h1>
             <span className="text-sm text-muted-foreground">{JSON.stringify(form) !== initialSnapshot ? 'Alterações não salvas' : 'Agendamento'}</span>
           </div>
-          <p className="text-sm text-muted-foreground">Identifique o paciente, escolha o horário e confira os dados antes de agendar.</p>
+          {/* Ficha-resumo atualizada a cada campo: confere-se tudo sem rolar. */}
+          <p aria-live="polite" className="text-sm text-muted-foreground">
+            {[
+              paciente ? <span key="p" className="font-medium text-foreground">{paciente.nome_social || paciente.nome}</span> : 'Paciente a escolher',
+              form.data && /^\d{4}-\d{2}-\d{2}$/.test(form.data) ? `${form.data.split('-').reverse().join('/')}${form.hora_inicio ? ` às ${form.hora_inicio}` : ''}` : 'data a definir',
+              medicoDoForm ? nomeMedico(medicoDoForm.nome || medicoDoForm.crm) : 'profissional a escolher',
+              rotuloDoTipo,
+            ].map((parte, i) => <span key={i}>{i > 0 ? ' · ' : ''}{parte}</span>)}
+          </p>
+          {remarcando && (
+            <p className="text-sm text-muted-foreground">
+              Ao salvar, a consulta de <span className="font-medium text-foreground">{initial._remarcar_resumo}</span> será cancelada com o motivo escolhido abaixo.
+            </p>
+          )}
           {editing && form.status === 'cancelado' && (
             <p className="text-sm text-muted-foreground">
               Motivo do cancelamento: <span className="font-medium text-foreground">{appointmentCancellationReasonLabel(initial?.motivo_cancelamento) ?? 'Não informado'}</span>
@@ -580,6 +747,28 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                     {ultimoAtendimentoQuery.isLoading && (
                       <p className="mt-1.5 border-t border-border/60 pt-2 text-xs text-muted-foreground">Carregando histórico recente…</p>
                     )}
+                    {(fichaQuery.data || (saldoQuery.data ?? 0) > 0) && (
+                      <dl className="mt-1.5 grid grid-cols-3 gap-2 border-t border-border/60 pt-2 text-xs">
+                        <div>
+                          <dt className="text-muted-foreground">Faltas</dt>
+                          <dd className={cn('font-semibold tabular-nums', (fichaQuery.data?.faltas ?? 0) >= 2 ? 'text-warning-foreground' : 'text-foreground')}>
+                            {fichaQuery.data?.faltas ?? '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Em aberto</dt>
+                          <dd className={cn('font-semibold tabular-nums', (saldoQuery.data ?? 0) > 0 ? 'text-destructive' : 'text-foreground')}>
+                            {saldoQuery.isError || saldoQuery.data === undefined ? '—' : formatCurrency(saldoQuery.data)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Retorno previsto</dt>
+                          <dd className="font-semibold tabular-nums text-foreground">
+                            {fichaQuery.data?.retorno ? String(fichaQuery.data.retorno.data_retorno_prevista).split('-').reverse().join('/') : '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
                   </div>
                 ) : (
                   <div className="flex min-h-11 items-center rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
@@ -626,6 +815,31 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                   <Input id="appointment-end" type="time" value={form.hora_fim} onChange={(e) => setForm({ ...form, hora_fim: e.target.value })} />
                 </div>
               </div>
+              {form.medico_id && livresQuery.data && (
+                <div role="group" aria-label="Horários livres do médico neste dia" className="-mt-1 space-y-1.5">
+                  <p className="text-xs text-muted-foreground">
+                    {livresQuery.data.length ? `Horários livres (${duracaoDoTipo} min):` : 'Sem horário livre no expediente deste dia.'}
+                  </p>
+                  {livresQuery.data.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {livresQuery.data.map(hora => (
+                        <button
+                          key={hora}
+                          type="button"
+                          aria-pressed={form.hora_inicio === hora}
+                          onClick={() => setForm((f: any) => ({ ...f, hora_inicio: hora, hora_fim: '' }))}
+                          className={cn(
+                            'min-h-9 rounded-full border px-3 text-xs font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            form.hora_inicio === hora ? 'border-transparent bg-foreground text-background' : 'border-border bg-card text-foreground hover:bg-accent',
+                          )}
+                        >
+                          {hora}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {terminoPrevisto && (
                 <p className="-mt-2 text-xs text-muted-foreground">
                   Sem término informado: será salvo até <span className="font-semibold text-foreground">{terminoPrevisto.hora}</span> ({terminoPrevisto.duracao} min pelo tipo escolhido).
@@ -670,6 +884,19 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                       fluxo e deixava consulta sem cobrança. */}
                 </div>
               </div>
+              <div>
+                <Label htmlFor="appointment-insurance">Convênio</Label>
+                <Select value={form.convenio_id || 'cadastro'} onValueChange={(v) => setForm({ ...form, convenio_id: v === 'cadastro' ? '' : v })}>
+                  <SelectTrigger id="appointment-insurance"><SelectValue /></SelectTrigger>
+                  <SelectContent data-elo-font-preview="agenda">
+                    <SelectItem value="cadastro">{convenioDoCadastro ? `Do cadastro (${convenioDoCadastro})` : 'Do cadastro do paciente'}</SelectItem>
+                    {(convenios as any[]).filter(c => c.ativo !== false || c.id === form.convenio_id).map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">Define o preço na finalização. Sem escolha, vale o convênio do cadastro.</p>
+              </div>
               {salas.length > 0 && (
                 <div>
                   <Label htmlFor="appointment-room">Sala</Label>
@@ -696,7 +923,21 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
                 <Textarea id="appointment-notes" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
               </div>
-              {!editing && !initial?._waiting_id && (
+              {remarcando && (
+                <div className="space-y-2">
+                  <Label htmlFor="appointment-reschedule-reason">Motivo da remarcação *</Label>
+                  <Select value={form.motivo_remarcacao} onValueChange={(v) => setForm({ ...form, motivo_remarcacao: v })}>
+                    <SelectTrigger id="appointment-reschedule-reason"><SelectValue placeholder="Selecione um motivo" /></SelectTrigger>
+                    <SelectContent data-elo-font-preview="agenda">
+                      {APPOINTMENT_CANCELLATION_REASONS.map((reason) => (
+                        <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Fica registrado no cancelamento da consulta original.</p>
+                </div>
+              )}
+              {!editing && !initial?._waiting_id && !remarcando && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="appointment-repeat">Repetir</Label>
@@ -710,13 +951,16 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                   {form.repetir && form.repetir !== 'nao' && (
                     <div>
                       <Label htmlFor="appointment-occurrences">Total de consultas (até {MAX_OCORRENCIAS})</Label>
-                      <Input id="appointment-occurrences" type="number" min={2} max={MAX_OCORRENCIAS} value={form.ocorrencias}
-                        onChange={(e) => setForm({ ...form, ocorrencias: Math.min(MAX_OCORRENCIAS, Math.max(2, Number(e.target.value) || 2)) })} />
+                      {/* O limite vale ao sair do campo: aplicado a cada tecla, apagar
+                          o "4" para digitar "10" virava 2 na hora. */}
+                      <Input id="appointment-occurrences" type="number" inputMode="numeric" min={MIN_OCORRENCIAS} max={MAX_OCORRENCIAS} value={form.ocorrencias}
+                        onChange={(e) => setForm({ ...form, ocorrencias: e.target.value })}
+                        onBlur={() => setForm((f: any) => ({ ...f, ocorrencias: ocorrenciasValidas(f.ocorrencias) }))} />
                     </div>
                   )}
                   {form.repetir && form.repetir !== 'nao' && (
                     <p className="text-xs text-muted-foreground sm:col-span-2">
-                      Também em {datasDaRecorrencia(form.data, form.repetir, form.ocorrencias).map(d => d.split('-').reverse().slice(0, 2).join('/')).join(', ')}. Horários ocupados ou bloqueados ficam de fora e são avisados.
+                      Também em {datasDaRecorrencia(form.data, form.repetir, ocorrenciasValidas(form.ocorrencias)).map(d => d.split('-').reverse().slice(0, 2).join('/')).join(', ')}. Horários ocupados, bloqueados ou fora do expediente ficam de fora e são avisados.
                     </p>
                   )}
                 </div>
@@ -737,7 +981,8 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
           </section>
         </fieldset>
 
-        <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-border bg-background py-4">
+        {/* Rodapé fixo: o botão de salvar fica sempre à vista, sem rolar o formulário. */}
+        <footer className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:mx-0 sm:px-0">
           <div>
             {podeCancelarConsulta && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)} disabled={saving || deleting} className="text-destructive">
@@ -755,11 +1000,11 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
               </p>
             )}
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Voltar à agenda</Button>
-            <Button onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura}>
+          <div className="ml-auto flex gap-2">
+            <Button variant="outline" className="min-h-11" onClick={() => onOpenChange(false)} disabled={saving || deleting}>Cancelar</Button>
+            <Button className="min-h-11" onClick={() => handleSave()} disabled={saving || deleting || consultaSomenteLeitura}>
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar alterações' : 'Agendar consulta'}
+              {consultaSomenteLeitura ? 'Somente leitura' : editing ? 'Salvar alterações' : remarcando ? 'Remarcar consulta' : 'Agendar consulta'}
             </Button>
           </div>
         </footer>

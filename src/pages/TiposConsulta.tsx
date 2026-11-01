@@ -3,8 +3,12 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import {
   Plus, Search, Edit, Trash2, DollarSign, Clock, Palette, AlertTriangle,
-  Loader2, Building2, Check, X, Stethoscope, CheckCircle2, PauseCircle, Layers,
+  Loader2, Building2, Check, X, Stethoscope, CheckCircle2, PauseCircle, Layers, Copy, LayoutGrid, LayoutList,
 } from 'lucide-react';
+import { GradePrecosConsulta } from '@/components/financeiro/GradePrecosConsulta';
+import { nomeDaCopia, type AlteracaoGrade } from '@/lib/gradePrecosConsulta';
+import { executarEmSequencia } from '@/lib/glosaLote';
+import { mensagemDeErro } from '@/lib/erros';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,10 +36,10 @@ import { PageHeader } from '@/components/PageHeader';
 type FiltroStatus = 'todos' | 'ativos' | 'inativos' | 'sem_convenio';
 
 const INDICADORES: { key: FiltroStatus; label: string; legenda: string; icon: typeof Layers; cor: string }[] = [
-  { key: 'todos', label: 'Tipos', legenda: 'cadastrados', icon: Layers, cor: '' },
+  { key: 'todos', label: 'Tipos', legenda: 'cadastrados', icon: Layers, cor: 'bg-secondary text-foreground' },
   { key: 'ativos', label: 'Ativos', legenda: 'disponíveis para agendar', icon: CheckCircle2, cor: 'bg-success/10 text-success' },
   { key: 'inativos', label: 'Inativos', legenda: 'fora da agenda', icon: PauseCircle, cor: 'bg-muted text-muted-foreground' },
-  { key: 'sem_convenio', label: 'Sem convênio', legenda: 'só valor particular', icon: Building2, cor: 'bg-warning/10 text-warning' },
+  { key: 'sem_convenio', label: 'Sem convênio', legenda: 'só valor particular', icon: Building2, cor: 'bg-secondary text-foreground' },
 ];
 
 const fmt = (v: number) =>
@@ -43,7 +47,16 @@ const fmt = (v: number) =>
 const temNoMaximoDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
 
-const CORES = ['#3B3E44', '#1456C0', '#0B2346', '#06B6D4', '#61748B'];
+/** Paleta sóbria e nomeada, para o leitor de tela anunciar o nome e não o código hexadecimal. */
+const PALETA: { valor: string; nome: string }[] = [
+  { valor: '#3B3E44', nome: 'Grafite' },
+  { valor: '#61748B', nome: 'Ardósia' },
+  { valor: '#2F6B4F', nome: 'Verde-musgo' },
+  { valor: '#8A6D3B', nome: 'Areia' },
+  { valor: '#7A3E48', nome: 'Vinho' },
+  { valor: '#4E5A3A', nome: 'Oliva' },
+];
+const CORES = PALETA.map(cor => cor.valor);
 
 interface TipoConsulta {
   id: string;
@@ -80,12 +93,12 @@ const initialForm: TipoForm = {
   cor: '#3B3E44', ativo: true, valor_particular: 0,
 };
 
-export default function TiposConsulta({ creationPage = false, pricesPage = false }: { creationPage?: boolean; pricesPage?: boolean }) {
+export default function TiposConsulta({ creationPage = false, pricesPage = false, embedded = false }: { creationPage?: boolean; pricesPage?: boolean; embedded?: boolean }) {
   const location = useLocation();
-  return <TiposConsultaWorkspace key={location.pathname} creationPage={creationPage} pricesPage={pricesPage} />;
+  return <TiposConsultaWorkspace key={location.pathname} creationPage={creationPage} pricesPage={pricesPage} embedded={embedded} />;
 }
 
-function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: boolean; pricesPage: boolean }) {
+function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creationPage: boolean; pricesPage: boolean; embedded: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { consultationTypeId } = useParams();
@@ -108,6 +121,9 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>(location.state?.typeFilters?.status ?? 'todos');
+  const [visao, setVisao] = useState<'cartoes' | 'grade'>(location.state?.typeFilters?.visao === 'grade' ? 'grade' : 'cartoes');
+  const [gradeAlterada, setGradeAlterada] = useState(false);
+  const [duplicandoId, setDuplicandoId] = useState<string | null>(null);
 
   const { user, profile, isAdmin } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -185,7 +201,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
     setPrecosTipo(t ?? null);
     setForm(value);
   }, [taskPage, consultationTypeId, recordQuery.data]);
-  const openTask = (path: string) => navigate(path, { state: { returnTo: location.pathname + location.search, typeFilters: { search, status: filtroStatus } } });
+  const openTask = (path: string) => navigate(path, { state: { returnTo: location.pathname + location.search, typeFilters: { search, status: filtroStatus, visao } } });
   const openCreate = () => openTask('/precos-servicos/tipos/novo');
   const openEdit = (t: TipoConsulta) => openTask(`/precos-servicos/tipos/${t.id}/editar`);
 
@@ -249,15 +265,77 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       toast.success('Tipo excluído!');
       setDeleteTarget(null);
     } catch (e: any) {
-      toast.error('Erro ao excluir: ' + (e?.message || 'Tente novamente.'));
+      const alvo = deleteTarget;
+      setDeleteTarget(null);
+      if (e?.code === '23503') {
+        // Tipo já usado em agendamentos: excluir quebraria o histórico. Inativar tira da agenda e preserva tudo.
+        toast.error(`"${alvo.nome}" já foi usado em agendamentos e não pode ser excluído.`, {
+          description: 'Inative o tipo para tirá-lo da agenda e manter o histórico.',
+          action: alvo.ativo ? { label: 'Inativar', onClick: () => void inativarTipo(alvo) } : undefined,
+        });
+      } else toast.error('Não foi possível excluir o tipo.', { description: mensagemDeErro(e) });
     } finally {
       setDeleting(false);
     }
   };
 
+  const inativarTipo = async (tipo: TipoConsulta) => {
+    if (!profile?.clinica_id) return;
+    const { data, error } = await supabase.from('tipos_consulta').update({ ativo: false }).eq('id', tipo.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
+    if (error || !data) { toast.error('Não foi possível inativar o tipo.', { description: error ? mensagemDeErro(error) : 'Sem permissão para alterar.' }); return; }
+    await queryClient.invalidateQueries({ queryKey: ['tipos_consulta'] });
+    toast.success(`"${tipo.nome}" inativado.`);
+  };
+
+  const duplicarTipo = async (tipo: TipoConsulta) => {
+    if (!isAdmin() || !profile?.clinica_id || duplicandoId) return;
+    if (tipos.length >= LIMITE_BUSCA_EM_BLOCOS) { toast.error('A lista atingiu o limite de leitura. Não é possível validar nomes duplicados com segurança.'); return; }
+    setDuplicandoId(tipo.id);
+    try {
+      const { data, error } = await supabase.from('tipos_consulta').insert({
+        nome: nomeDaCopia(tipo.nome, tipos.map(t => t.nome)), descricao: tipo.descricao, instrucoes_preparo: tipo.instrucoes_preparo,
+        duracao_minutos: tipo.duracao_minutos, cor: tipo.cor, ativo: false, valor_particular: tipo.valor_particular, clinica_id: profile.clinica_id,
+      }).select('id').single();
+      if (error) throw error;
+      const precosDoTipo = precos.filter(p => p.tipo_consulta_id === tipo.id);
+      if (precosDoTipo.length) {
+        const { error: precosError } = await supabase.from('precos_consulta_convenio').insert(precosDoTipo.map(p => ({
+          tipo_consulta_id: data.id, convenio_id: p.convenio_id, valor: p.valor, clinica_id: profile.clinica_id,
+        })));
+        if (precosError) throw precosError;
+      }
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['tipos_consulta'] }), queryClient.invalidateQueries({ queryKey: ['precos_consulta_convenio'] })]);
+      toast.success('Cópia criada como inativa.', { description: 'Revise o nome e ative quando estiver pronta.' });
+    } catch (e) {
+      toast.error('Não foi possível duplicar o tipo.', { description: mensagemDeErro(e) });
+    } finally { setDuplicandoId(null); }
+  };
+
+  const salvarGrade = async (alteracoes: AlteracaoGrade[]) => {
+    if (!isAdmin() || !profile?.clinica_id) { toast.error('Somente administradores alteram preços.'); return { falhas: alteracoes.length }; }
+    const clinicaId = profile.clinica_id;
+    const chaves = alteracoes.map(a => `${a.tipoId}|${a.convenioId}`);
+    const resultado = await executarEmSequencia(chaves, async chave => {
+      const alt = alteracoes.find(a => `${a.tipoId}|${a.convenioId}` === chave)!;
+      if (alt.existenteId) {
+        const { data, error } = await supabase.from('precos_consulta_convenio').update({ valor: alt.valor }).eq('id', alt.existenteId).eq('clinica_id', clinicaId).select('id').maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Preço não encontrado ou sem permissão para alterar.');
+      } else {
+        const { error } = await supabase.from('precos_consulta_convenio').insert({ tipo_consulta_id: alt.tipoId, convenio_id: alt.convenioId, valor: alt.valor, clinica_id: clinicaId });
+        if (error) throw error;
+      }
+    });
+    await queryClient.invalidateQueries({ queryKey: ['precos_consulta_convenio'] });
+    if (resultado.falhas.length) toast.error(`${resultado.falhas.length} preço(s) não foram salvos.`, { description: mensagemDeErro(resultado.falhas[0].erro) });
+    else toast.success(`${resultado.concluidas.length} preço(s) salvos.`);
+    return { falhas: resultado.falhas.length };
+  };
+
   const openPrecos = (t: TipoConsulta) => openTask(`/precos-servicos/tipos/${t.id}/precos`);
 
   const handleSavePreco = async (convenioId: string, valor: number) => {
+    if (!isAdmin()) throw new Error('Somente administradores alteram preços.');
     if (!precosTipo || !profile?.clinica_id) throw new Error('Clínica ou tipo de consulta não identificado.');
     if (tiposQuery.isError || tiposQuery.isLoading || conveniosQuery.isError || precosQuery.isError || tiposQuery.isFetching || conveniosQuery.isLoading || precosQuery.isLoading || conveniosQuery.isFetching || precosQuery.isFetching) throw new Error('Aguarde o carregamento de tipos, convênios e preços antes de gravar.');
     if (!tipos.some((tipo) => tipo.id === precosTipo.id)) throw new Error('O tipo de consulta não pertence à clínica atual ou não está mais disponível. Atualize a página e tente novamente.');
@@ -292,25 +370,25 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
 
   return (
     <div className="space-y-6 pb-24 lg:pb-8">
-      <UnsavedChangesGuard dirty={(formOpen && JSON.stringify(form) !== baseline.current) || Object.values(rowStates).some(row => row.dirty)} busy={saving || Object.values(rowStates).some(row => row.busy)} completed={completed} />
+      <UnsavedChangesGuard dirty={(formOpen && JSON.stringify(form) !== baseline.current) || Object.values(rowStates).some(row => row.dirty) || (!taskPage && gradeAlterada)} busy={saving || Object.values(rowStates).some(row => row.busy)} completed={completed} />
       {taskPage && <Button variant="outline" onClick={leaveTask}>Voltar aos tipos de consulta</Button>}
       {taskPage && consultationTypeId && (recordQuery.isError ? <ErrorState title="Não foi possível abrir o tipo de consulta" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />
         : recordQuery.isPending ? <p role="status">Carregando tipo de consulta…</p>
         : !recordQuery.data ? <p role="status">Tipo de consulta não encontrado na clínica atual.</p> : null)}
       {formOpen && !isAdmin() && <p role="status">Somente administradores podem cadastrar e editar tipos de consulta.</p>}
       {!taskPage && <>
-      <PageHeader
-        title="Tipos & Preços de Consulta"
+      {embedded ? <div className="flex justify-end">{isAdmin() && <Button onClick={openCreate} className="min-h-11 gap-2 rounded-full"><Plus className="h-4 w-4" /> Novo tipo</Button>}</div> : <PageHeader
+        title="Tipos e preços de consulta"
         description={tipos.length > 0
           ? `${contagens.ativos} tipo(s) ativo(s) · ${contagens.inativos} inativo(s) · ${contagens.sem_convenio} sem preço de convênio`
           : 'Cadastre tipos de consulta e defina preços por convênio'}
         icon={<Stethoscope />}
         actions={isAdmin() && (
-          <Button onClick={openCreate} className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
-            <Plus className="h-4 w-4" /> Novo Tipo
+          <Button onClick={openCreate} className="min-h-11 gap-2 rounded-full">
+            <Plus className="h-4 w-4" /> Novo tipo
           </Button>
         )}
-      />
+      />}
 
       {tipos.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -323,10 +401,9 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
                 aria-pressed={filtroStatus === key}
                 onClick={() => setFiltroStatus(key)}
                 className={cn(
-                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                  destaque ? 'border-transparent bg-gradient-primary text-white' : 'border-border/60 bg-card',
-                  filtroStatus === key && !destaque && 'border-primary ring-1 ring-primary',
-                  filtroStatus === key && destaque && 'ring-2 ring-primary/40 ring-offset-2',
+                  'flex items-center gap-3 rounded-2xl border p-4 text-left shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  destaque ? 'border-foreground' : 'border-border/60 bg-card',
+                  filtroStatus === key && 'border-foreground ring-1 ring-foreground',
                 )}
               >
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', destaque ? 'bg-white/20 text-white' : cor)}>
@@ -354,6 +431,10 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
         {tipos.length > 0 && (
           <span className="ml-auto text-xs tabular-nums text-muted-foreground">{filtered.length} de {tipos.length}</span>
         )}
+        {tipos.length > 0 && <div role="group" aria-label="Forma de exibição" className="flex gap-1">
+          <Button size="sm" variant={visao === 'cartoes' ? 'default' : 'outline'} className="min-h-11 gap-1.5 rounded-full" aria-pressed={visao === 'cartoes'} onClick={() => setVisao('cartoes')}><LayoutList className="h-4 w-4" />Cartões</Button>
+          <Button size="sm" variant={visao === 'grade' ? 'default' : 'outline'} className="min-h-11 gap-1.5 rounded-full" aria-pressed={visao === 'grade'} disabled={precosQuery.isError || conveniosQuery.isError} onClick={() => setVisao('grade')}><LayoutGrid className="h-4 w-4" />Grade de preços</Button>
+        </div>}
       </div>
 
       {dadosAtingiramLimite && (
@@ -394,6 +475,10 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
             <Button className="mt-4 rounded-full" variant="outline" onClick={limparFiltros}>Limpar busca</Button>
           </CardContent>
         </Card>
+      ) : visao === 'grade' ? (
+        conveniosQuery.isLoading || precosQuery.isLoading
+          ? <p role="status" className="text-sm text-muted-foreground">Carregando convênios e preços…</p>
+          : <GradePrecosConsulta tipos={filtered} convenios={convenios.filter(c => c.ativo)} precos={precos} podeEditar={isAdmin()} onSalvar={salvarGrade} onDirtyChange={setGradeAlterada} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((tipo) => {
@@ -421,7 +506,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <Clock className="h-3 w-3" /> {tipo.duracao_minutos} min
                         </div>
-                        <div className="flex items-center gap-1.5 font-bold text-success">
+                        <div className="flex items-center gap-1.5 font-bold text-foreground">
                           <DollarSign className="h-3 w-3" /> {fmt(tipo.valor_particular)}
                         </div>
                       </div>
@@ -432,15 +517,18 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
 
                       <Separator className="mb-3" />
                       <div className="flex gap-1.5">
-                        <Button variant="outline" size="sm" className="h-9 flex-1 gap-1 rounded-full text-xs" onClick={() => openPrecos(tipo)}>
+                        <Button variant="outline" size="sm" className="min-h-11 flex-1 gap-1 rounded-full text-xs" onClick={() => openPrecos(tipo)}>
                           <Building2 className="h-3 w-3" /> Preços
                         </Button>
                         {isAdmin() && <>
-                          <Button aria-label={`Editar ${tipo.nome}`} variant="ghost" size="sm" className="h-9 w-9 rounded-full p-0" onClick={() => openEdit(tipo)}>
-                            <Edit className="h-3 w-3" />
+                          <Button aria-label={`Editar ${tipo.nome}`} variant="ghost" size="icon" className="h-11 w-11 rounded-full" onClick={() => openEdit(tipo)}>
+                            <Edit className="h-4 w-4" />
                           </Button>
-                          <Button aria-label={`Excluir ${tipo.nome}`} variant="ghost" size="sm" className="h-9 w-9 rounded-full p-0 text-destructive" onClick={() => setDeleteTarget(tipo)}>
-                            <Trash2 className="h-3 w-3" />
+                          <Button aria-label={`Duplicar ${tipo.nome}`} title="Duplicar tipo com os preços" variant="ghost" size="icon" className="h-11 w-11 rounded-full" disabled={duplicandoId !== null} onClick={() => void duplicarTipo(tipo)}>
+                            {duplicandoId === tipo.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                          <Button aria-label={`Excluir ${tipo.nome}`} variant="ghost" size="icon" className="h-11 w-11 rounded-full text-destructive" onClick={() => setDeleteTarget(tipo)}>
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </>}
                       </div>
@@ -486,13 +574,13 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Cor</Label>
-              <div className="flex gap-2 flex-wrap">
+              <Label id="tipo-cor-rotulo" className="text-xs">Cor</Label>
+              <div role="group" aria-labelledby="tipo-cor-rotulo" className="flex gap-2 flex-wrap">
                 {!CORES.includes(form.cor) && <span className="text-xs text-muted-foreground">Cor salva será preservada</span>}
-                {CORES.map(c => (
-                  <button type="button" key={c} aria-label={`Cor ${c}`} aria-pressed={form.cor === c} onClick={() => setForm({ ...form, cor: c })}
-                    className={cn('h-8 w-8 rounded-lg border-2 transition-all', form.cor === c ? 'border-foreground scale-110' : 'border-transparent')}
-                    style={{ backgroundColor: c }} />
+                {PALETA.map(c => (
+                  <button type="button" key={c.valor} aria-label={`Cor ${c.nome}`} title={c.nome} aria-pressed={form.cor === c.valor} onClick={() => setForm({ ...form, cor: c.valor })}
+                    className={cn('h-11 w-11 rounded-lg border-2 transition-colors', form.cor === c.valor ? 'border-foreground' : 'border-transparent')}
+                    style={{ backgroundColor: c.valor }} />
                 ))}
               </div>
             </div>
@@ -514,11 +602,11 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       {precosOpen && recordQuery.data && !recordQuery.isError && <section className="space-y-6 rounded-xl border bg-card p-5 sm:p-8">
           <header className="space-y-2 border-b pb-5">
             <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
+              <Building2 className="h-5 w-5 text-foreground" />
               Preços — {precosTipo?.nome}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Valor particular: {precosTipo && fmt(precosTipo.valor_particular)}. Configure valores por convênio abaixo.
+              Valor particular: {precosTipo && fmt(precosTipo.valor_particular)}. {isAdmin() ? 'Configure valores por convênio abaixo.' : 'Somente leitura: apenas administradores alteram preços.'}
             </p>
           </header>
           {conveniosQuery.isError ? (
@@ -548,7 +636,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
                   {convenios.filter(c => c.ativo).map(conv => {
                     const preco = precosTipo ? getPrecoConvenio(precosTipo.id, conv.id) : null;
                     return (
-                      <PrecoRow key={conv.id} convenio={conv} precoAtual={preco?.valor ?? null}
+                      <PrecoRow key={conv.id} convenio={conv} precoAtual={preco?.valor ?? null} somenteLeitura={!isAdmin()}
                         onSave={(valor) => handleSavePreco(conv.id, valor)} onStateChange={value => updateRowState(conv.id, value)} />
                     );
                   })}
@@ -562,8 +650,8 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}
-        title="Excluir Tipo de Consulta"
-        description={`Tem certeza que deseja excluir "${deleteTarget?.nome}"? Esta ação removerá também todos os preços por convênio vinculados.`}
+        title={`Excluir "${deleteTarget?.nome ?? ''}"?`}
+        description="Os preços por convênio deste tipo também saem. Se ele já foi usado em agendamentos, a exclusão é bloqueada e você pode inativá-lo."
         onConfirm={() => void handleDelete()}
         variant="destructive"
         isLoading={deleting}
@@ -574,8 +662,8 @@ function TiposConsultaWorkspace({ creationPage, pricesPage }: { creationPage: bo
 }
 
 // Sub-component for inline price editing
-function PrecoRow({ convenio, precoAtual, onSave, onStateChange }: {
-  convenio: any; precoAtual: number | null; onSave: (valor: number) => Promise<void>;
+function PrecoRow({ convenio, precoAtual, onSave, onStateChange, somenteLeitura }: {
+  convenio: any; precoAtual: number | null; onSave: (valor: number) => Promise<void>; somenteLeitura: boolean;
   onStateChange: (value: { dirty: boolean; busy: boolean }) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -606,23 +694,23 @@ function PrecoRow({ convenio, precoAtual, onSave, onStateChange }: {
         {editing ? (
           <Input type="number" min="0" step="0.01" aria-label={`Preço para ${convenio.nome}`} value={valor} autoFocus disabled={saving}
             onChange={e => setValor(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && void save()}
-            className="h-8 text-sm" />
+            onKeyDown={e => { if (e.key === 'Enter') void save(); if (e.key === 'Escape') { setValor(precoAtual?.toString() ?? ''); setEditing(false); } }}
+            className="h-11 text-sm" />
         ) : (
-          <span className={cn('text-sm font-bold tabular-nums', precoAtual !== null ? 'text-success' : 'text-muted-foreground')}>
+          <span className={cn('text-sm font-bold tabular-nums', precoAtual !== null ? 'text-foreground' : 'text-muted-foreground')}>
             {precoAtual !== null ? fmt(precoAtual) : '—'}
           </span>
         )}
       </TableCell>
       <TableCell className="text-center">
-        {editing ? (
+        {somenteLeitura ? <span className="text-xs text-muted-foreground">Somente leitura</span> : editing ? (
           <div className="flex gap-1 justify-center">
-            <Button aria-label="Salvar preço" variant="ghost" size="icon" className="h-7 w-7" disabled={saving} onClick={() => void save()}><Check className="h-3.5 w-3.5 text-success" /></Button>
-            <Button aria-label="Cancelar edição do preço" variant="ghost" size="icon" className="h-7 w-7" disabled={saving} onClick={() => setEditing(false)}><X className="h-3.5 w-3.5" /></Button>
+            <Button aria-label={`Salvar preço para ${convenio.nome}`} variant="ghost" size="icon" className="h-11 w-11" disabled={saving} onClick={() => void save()}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}</Button>
+            <Button aria-label={`Cancelar edição do preço para ${convenio.nome}`} variant="ghost" size="icon" className="h-11 w-11" disabled={saving} onClick={() => setEditing(false)}><X className="h-4 w-4" /></Button>
           </div>
         ) : (
-          <Button aria-label={`Editar preço para ${convenio.nome}`} variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setValor(precoAtual?.toString() ?? ''); setEditing(true); }}>
-            <Edit className="h-3.5 w-3.5" />
+          <Button aria-label={`Editar preço para ${convenio.nome}`} variant="ghost" size="icon" className="h-11 w-11" onClick={() => { setValor(precoAtual?.toString() ?? ''); setEditing(true); }}>
+            <Edit className="h-4 w-4" />
           </Button>
         )}
       </TableCell>

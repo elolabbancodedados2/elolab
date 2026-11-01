@@ -216,6 +216,24 @@ describe('PortalPaciente — cancelamento de consulta', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Consulta cancelada.'));
   });
 
+  it('envia o motivo escolhido e oferece remarcar em vez de cancelar', async () => {
+    await iniciarCancelamento();
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByRole('button', { name: 'Prefiro remarcar' })).toBeEnabled();
+    expect(within(dialog).getByRole('combobox', { name: 'Motivo do cancelamento' })).toHaveTextContent('Não vou conseguir comparecer');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar cancelamento' }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('patient-portal', expect.objectContaining({
+      body: expect.objectContaining({ action: 'cancel_agendamento', motivo: 'Cancelado pelo paciente: Não vou conseguir comparecer' }),
+    })));
+  });
+
+  it('não mostra a pesquisa de satisfação antes de uma consulta realizada', async () => {
+    render(<PortalPaciente />);
+    await screen.findAllByText('Consulta de rotina');
+    expect(screen.queryByText('Como foi sua última consulta?')).not.toBeInTheDocument();
+  });
+
   it('mantém o diálogo aberto e mostra erro se o cancelamento falhar', async () => {
     mocks.falharCancelamento = true;
     await iniciarCancelamento();

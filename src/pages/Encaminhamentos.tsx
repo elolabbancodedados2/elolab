@@ -3,7 +3,7 @@ import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search, ArrowRightLeft, FileText, Clock, CheckCircle2,
-  Eye, Loader2, Stethoscope, User, Send, Edit, RefreshCw, MessageCircle, X,
+  Eye, Loader2, Stethoscope, Send, Edit, RefreshCw, MessageCircle, X, Plus, FileDown,
 } from 'lucide-react';
 
 import { ptBR } from 'date-fns/locale';
@@ -18,18 +18,18 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useMedicos } from '@/hooks/useSupabaseData';
-import { useBuscaPacientes, usePacienteResumo } from '@/hooks/useBuscaPacientes';
+import { usePacienteResumo } from '@/hooks/useBuscaPacientes';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { EncaminhamentoMedico } from '@/components/clinical/EncaminhamentoMedico';
+import { gerarCartaEncaminhamento, sharePDFWhatsApp, downloadPDF } from '@/lib/pdfGenerator';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { ErrorState } from '@/components/ErrorState';
 import { normalizarTexto, pacienteCorresponde } from '@/lib/buscaPaciente';
@@ -93,7 +93,6 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
   const updateLock = useRef(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>(() => location.state?.referralFilters?.search || '');
-  const [patientSearchTerm, setPatientSearchTerm] = useState<string>(() => location.state?.referralFilters?.patientSearch || '');
   const [statusFilter, setStatusFilter] = useState<FiltroStatus>(() => location.state?.referralFilters?.status || 'todos');
   const [selectedPacienteId, setSelectedPacienteId] = useState<string | null>(() => params.get('paciente') || location.state?.referralFilters?.patientId || null);
   const [contraRefText, setContraRefText] = useState('');
@@ -102,7 +101,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
   const queryClient = useQueryClient();
   const { user, profile } = useSupabaseAuth();
   const { medicoId, currentMedico, isLoading: loadingMedico, error: medicoError, refetch: refetchMedico } = useCurrentMedico();
-  const referralFilters = { search: searchTerm, status: statusFilter, patientSearch: patientSearchTerm, patientId: selectedPacienteId };
+  const referralFilters = { search: searchTerm, status: statusFilter, patientId: selectedPacienteId };
   const returnTo = /^\/documentos-clinicos(?:\?|$)/.test(location.state?.returnTo || '')
     ? location.state.returnTo : '/documentos-clinicos?tab=encaminhamentos';
   const leaveTask = () => navigate(returnTo, { replace: true, state: { referralFilters } });
@@ -135,8 +134,6 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
     }
   }, [selectedEnc]);
   const medicosQuery = useMedicos();
-  const pacientesBuscaQuery = useBuscaPacientes(patientSearchTerm, { limite: 50 });
-  const pacientesBusca = pacientesBuscaQuery.data?.pacientes ?? [];
   const pacienteSelecionadoQuery = usePacienteResumo(selectedPacienteId);
   const medicos = medicosQuery.data || [];
 
@@ -178,7 +175,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
 
   const getPacienteNome = (id: string) => {
     const paciente = encaminhamentos.find(enc => enc.paciente_id === id)?.paciente
-      ?? pacientesBusca.find(p => p.id === id);
+      ?? (pacienteSelecionadoQuery.data?.id === id ? pacienteSelecionadoQuery.data : null);
     return (paciente as any)?.nome_social || paciente?.nome || '—';
   };
   const getMedicoNome = (id: string) => {
@@ -195,9 +192,10 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
         normalizarTexto(enc.especialidade_destino || '').includes(termo) ||
         normalizarTexto(enc.motivo || '').includes(termo);
       const matchesStatus = statusFilter === 'todos' || enc.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesPaciente = !selectedPacienteId || enc.paciente_id === selectedPacienteId;
+      return matchesSearch && matchesStatus && matchesPaciente;
     });
-  }, [encaminhamentos, searchTerm, statusFilter]);
+  }, [encaminhamentos, searchTerm, statusFilter, selectedPacienteId]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -208,10 +206,11 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
     comContraRef: encaminhamentos.filter(e => !!e.contra_referencia).length,
   }), [encaminhamentos]);
 
-  const temFiltro = !!searchTerm || statusFilter !== 'todos';
+  const temFiltro = !!searchTerm || statusFilter !== 'todos' || !!selectedPacienteId;
   const limparFiltros = () => {
     setSearchTerm('');
     setStatusFilter('todos');
+    setSelectedPacienteId(null);
   };
 
   const mensagemWhatsApp = (enc: EncaminhamentoData) => {
@@ -220,23 +219,9 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
     return `Olá${nome ? `, ${nome}` : ''}! Sobre seu encaminhamento${esp ? ` para ${esp}` : ''}: entre em contato com a clínica para agendar o atendimento com o especialista.`;
   };
 
-  // Pacientes with encaminhamentos for sidebar
-  const pacientesComEnc = useMemo(() => {
-    const countMap = new Map<string, number>();
-    encaminhamentos.forEach(e => countMap.set(e.paciente_id, (countMap.get(e.paciente_id) || 0) + 1));
-    return [...pacientesBusca].sort((a, b) => {
-        const ca = countMap.get(a.id) || 0;
-        const cb = countMap.get(b.id) || 0;
-        return cb - ca;
-      });
-  }, [pacientesBusca, encaminhamentos]);
-
   const selectedPaciente = selectedPacienteId
-    ? pacienteSelecionadoQuery.data ?? pacientesBusca.find(p => p.id === selectedPacienteId) ?? null
+    ? pacienteSelecionadoQuery.data ?? null
     : null;
-  const pacienteEncaminhamentos = selectedPacienteId
-    ? encaminhamentos.filter(e => e.paciente_id === selectedPacienteId)
-    : [];
 
   const handleView = (enc: EncaminhamentoData) => openTask(`/encaminhamentos/${enc.id}`);
 
@@ -298,6 +283,54 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
     finally { updateLock.current = false; setIsUpdating(false); }
   };
 
+  // Carta de encaminhamento em PDF para o paciente levar ou receber pelo
+  // WhatsApp. A geração é auditada como impressão/exportação do documento.
+  const [gerandoCarta, setGerandoCarta] = useState(false);
+  const handleCarta = async (destino: 'baixar' | 'whatsapp') => {
+    if (!selectedEnc || gerandoCarta) return;
+    const medicoOrigem = medicos.find(m => m.id === selectedEnc.medico_origem_id) as Record<string, any> | undefined;
+    const medicoDestino = selectedEnc.medico_destino_id ? medicos.find(m => m.id === selectedEnc.medico_destino_id) as Record<string, any> | undefined : undefined;
+    const paciente = selectedEnc.paciente;
+    if (!paciente?.nome) {
+      toast.error('Paciente do encaminhamento indisponível para montar a carta.');
+      return;
+    }
+    setGerandoCarta(true);
+    try {
+      await registrarAcessoDocumentoClinico('encaminhamento', selectedEnc.id, destino === 'whatsapp' ? 'exportacao' : 'impressao');
+      const doc = await gerarCartaEncaminhamento({
+        paciente: { nome: paciente.nome, cpf: paciente.cpf },
+        medicoOrigem: {
+          nome: medicoOrigem?.nome || selectedEnc.medico_origem?.nome || 'Médico',
+          crm: medicoOrigem?.crm || selectedEnc.medico_origem?.crm,
+          crmUf: medicoOrigem?.crm_uf,
+          especialidade: medicoOrigem?.especialidade,
+        },
+        especialidadeDestino: selectedEnc.especialidade_destino,
+        medicoDestinoNome: medicoDestino?.nome || null,
+        urgencia: selectedEnc.urgencia,
+        dataEncaminhamento: selectedEnc.data_encaminhamento || todaySaoPauloDateOnly(),
+        motivo: selectedEnc.motivo,
+        hipoteseDiagnostica: selectedEnc.hipotese_diagnostica,
+        cidPrincipal: selectedEnc.cid_principal,
+        examesRealizados: selectedEnc.exames_realizados,
+        tratamentoAtual: selectedEnc.tratamento_atual,
+        informacoesAdicionais: selectedEnc.informacoes_adicionais,
+      });
+      const nomeArquivo = `encaminhamento-${String(paciente.nome_social || paciente.nome).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 40)}`;
+      if (destino === 'whatsapp') {
+        sharePDFWhatsApp(doc, nomeArquivo, paciente.telefone || undefined);
+        toast.info('PDF baixado', { description: 'Anexe o arquivo na conversa do WhatsApp que foi aberta.' });
+      } else {
+        downloadPDF(doc, nomeArquivo);
+      }
+    } catch (error) {
+      toast.error('Não foi possível gerar a carta de encaminhamento.', { description: mensagemDeErro(error) });
+    } finally {
+      setGerandoCarta(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -343,9 +376,19 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
           : 'Referências e contra-referências médicas'}
         icon={<ArrowRightLeft />}
         actions={(
-          <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void encaminhamentosQuery.refetch()} aria-label="Atualizar encaminhamentos" title="Atualizar">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+          <>
+            <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={() => void encaminhamentosQuery.refetch()} aria-label="Atualizar encaminhamentos" title="Atualizar">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            {medicoId && currentMedico?.ativo !== false && (
+              <Button
+                className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => openTask(`/documentos-clinicos/novo-encaminhamento${selectedPacienteId ? `?paciente=${encodeURIComponent(selectedPacienteId)}` : ''}`)}
+              >
+                <Plus className="h-4 w-4" />Novo encaminhamento
+              </Button>
+            )}
+          </>
         )}
       />
 
@@ -367,7 +410,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
               onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                s.escuro && 'border-transparent bg-gradient-primary text-white',
+                s.escuro && 'border-transparent bg-primary text-primary-foreground',
                 ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
                 ativo && s.escuro && 'ring-2 ring-primary/60',
               )}
@@ -389,143 +432,44 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
         })}
       </section>
 
-      {/* Main Content */}
-      <div className={cn('grid gap-6', medicoId ? 'lg:grid-cols-3' : 'grid-cols-1')}>
-        {/* Patient List */}
-        {medicoId && (
-        <Card className="rounded-2xl border-border/60 shadow-xs lg:col-span-1">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <User className="h-4 w-4 text-primary" />
-              Pacientes
-            </CardTitle>
-            <div className="relative">
-              <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                aria-label="Buscar paciente por nome, CPF ou telefone"
-                placeholder="Buscar por nome, CPF ou telefone..."
-                value={patientSearchTerm}
-                onChange={(e) => setPatientSearchTerm(e.target.value)}
-                className="h-10 rounded-full pl-9 focus-visible:ring-primary"
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <ScrollArea className="h-[500px]">
-              {pacientesBuscaQuery.isError ? (
-                <div className="p-4">
-                  <ErrorState compact title="Não foi possível buscar pacientes" error={pacientesBuscaQuery.error} onRetry={() => void pacientesBuscaQuery.refetch()} />
-                </div>
-              ) : pacientesBuscaQuery.isFetching || pacientesBuscaQuery.isDebouncing ? (
-                <p role="status" className="px-4 py-10 text-center text-sm text-muted-foreground">Buscando pacientes…</p>
-              ) : pacientesComEnc.length === 0 ? (
-                <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  <p>{patientSearchTerm ? 'Nenhum paciente corresponde à busca.' : 'Nenhum paciente cadastrado.'}</p>
-                  {patientSearchTerm && <Button variant="link" onClick={() => setPatientSearchTerm('')}>Limpar busca</Button>}
-                </div>
-              ) : pacientesComEnc.map((paciente) => {
-                const qtd = encaminhamentos.filter(e => e.paciente_id === paciente.id).length;
-                return (
-                  <div
-                    key={paciente.id}
-                    className={cn(
-                      'p-3 border-b cursor-pointer hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
-                      selectedPacienteId === paciente.id && 'bg-primary/10 border-l-2 border-l-primary',
-                    )}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={selectedPacienteId === paciente.id}
-                    onClick={() => setSelectedPacienteId(paciente.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setSelectedPacienteId(paciente.id);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-sm truncate">{(paciente as any).nome_social || paciente.nome}</p>
-                      {qtd > 0 && (
-                        <Badge variant="secondary" className="rounded-full text-[10px] tabular-nums">{qtd}</Badge>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </ScrollArea>
-            {!pacientesBuscaQuery.isError && !pacientesBuscaQuery.isFetching && pacientesBuscaQuery.data?.incompleta && (
-              <p role="status" className="border-t px-4 py-2 text-xs text-muted-foreground">
-                {patientSearchTerm.trim()
-                  ? 'Há mais pacientes com esse resultado. Refine a busca para localizar o próximo.'
-                  : 'Mostrando os 50 pacientes mais recentes. Pesquise para localizar outros.'}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        )}
-
-        {/* Referral Panel */}
-        <div className={cn(medicoId ? 'lg:col-span-2' : 'mx-auto w-full max-w-3xl')}>
-          {selectedPacienteId && pacienteSelecionadoQuery.isError ? (
-            <ErrorState
-              title="Não foi possível carregar o paciente selecionado"
-              description="Atualize os dados antes de criar ou consultar encaminhamentos para evitar usar uma ficha incorreta."
-              error={pacienteSelecionadoQuery.error}
-              onRetry={() => void pacienteSelecionadoQuery.refetch()}
-            />
-          ) : selectedPacienteId && pacienteSelecionadoQuery.isFetching && !selectedPaciente ? (
-            <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="py-16 text-center text-sm text-muted-foreground">Carregando a ficha do paciente…</CardContent></Card>
-          ) : selectedPaciente && medicoId ? (
-            <EncaminhamentoMedico
-              onNew={() => openTask(`/documentos-clinicos/novo-encaminhamento?paciente=${selectedPaciente.id}`)}
-              onView={id => openTask(`/encaminhamentos/${id}`)}
-              onBack={leaveTask}
-              pacienteId={selectedPaciente.id}
-              pacienteNome={(selectedPaciente as any).nome_social || selectedPaciente.nome}
-              medicoOrigemId={medicoId}
-              encaminhamentos={pacienteEncaminhamentos}
-              onEncaminhamentoCriado={() => queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] })}
-            />
-          ) : (
-            <Card className="rounded-2xl border-border/60 shadow-xs">
-              <CardContent className={cn('text-center', medicoId ? 'py-16' : 'py-8')}>
-                <div className="text-center text-muted-foreground">
-                  <ArrowRightLeft aria-hidden="true" className="mx-auto mb-3 h-10 w-10 text-primary opacity-40" />
-                  <p className="font-medium">
-                    {!medicoId
-                      ? 'Seu usuário não está vinculado a um cadastro médico ativo. Um médico identificado precisa constar como origem do encaminhamento.'
-                      : 'Selecione um paciente para gerenciar encaminhamentos'}
-                  </p>
-                  {!medicoId && profile?.roles?.includes('admin') && (
-                    <Button asChild variant="outline" size="sm" className="mt-4 rounded-full">
-                      <Link to="/equipe">Gerenciar corpo clínico</Link>
-                    </Button>
-                  )}
-                  {!medicoId && !profile?.roles?.includes('admin') && (
-                    <p className="mt-2 text-sm">Peça ao administrador para revisar seu vínculo com o cadastro médico da clínica.</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+      {!medicoId && (
+        <div role="note" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-sm text-muted-foreground">
+          <p>Seu usuário não está vinculado a um cadastro médico ativo. Um médico identificado precisa constar como origem para criar encaminhamentos.</p>
+          {profile?.roles?.includes('admin') && (
+            <Button asChild variant="outline" size="sm" className="min-h-10 rounded-full">
+              <Link to="/equipe">Gerenciar corpo clínico</Link>
+            </Button>
           )}
         </div>
-      </div>
+      )}
 
-      {/* All Referrals Table */}
+      {/* Lista única filtrável: substitui a tela empilhada (lista de pacientes,
+          painel do paciente e tabela geral) por uma só lista com filtros de
+          paciente, status e busca. */}
       <Card className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">Todos os Encaminhamentos <span className="text-muted-foreground">({filteredEncaminhamentos.length})</span></CardTitle>
-              <div className="relative w-full sm:w-80">
-                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  aria-label="Buscar encaminhamentos por paciente, CPF, especialidade ou motivo"
-                  placeholder="Paciente, CPF, especialidade ou motivo..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-10 rounded-full pl-9 focus-visible:ring-primary"
-                />
+              <CardTitle className="text-base">Encaminhamentos <span className="text-muted-foreground">({filteredEncaminhamentos.length})</span></CardTitle>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div className="w-full sm:w-64">
+                  <PacienteCombobox
+                    id="encaminhamentos-filtro-paciente"
+                    value={selectedPacienteId || ''}
+                    onChange={id => setSelectedPacienteId(id || null)}
+                    placeholder="Filtrar por paciente…"
+                  />
+                </div>
+                <div className="relative w-full sm:w-72">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="Buscar encaminhamentos por paciente, CPF, especialidade ou motivo"
+                    placeholder="Paciente, CPF, especialidade ou motivo..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="h-10 rounded-full pl-9 focus-visible:ring-primary"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -546,7 +490,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                       onClick={() => setStatusFilter(opt.key)}
                       className={cn(
                         'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
+                        ativo ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                       )}
                     >
                       {opt.label}
@@ -615,16 +559,16 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                             <span className="text-sm">{enc.especialidade_destino}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm">
+                        <TableCell className="sm:hidden md:table-cell text-sm">
                           {enc.medico_origem?.nome ? `${nomeMedico(enc.medico_origem.nome)}` : getMedicoNome(enc.medico_origem_id)}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">
+                        <TableCell className="sm:hidden md:table-cell">
                           <Badge variant="outline" className={cn('rounded-full', urgCfg.className)}>{urgCfg.label}</Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={cn('rounded-full', statusCfg.className)}>{statusCfg.label}</Badge>
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell">
+                        <TableCell className="sm:hidden lg:table-cell">
                           {enc.contra_referencia ? (
                             <Badge variant="outline" className="rounded-full border-success/30 bg-success/10 text-success">Sim</Badge>
                           ) : (
@@ -644,12 +588,12 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                               <Eye className="h-4 w-4" />Ver
                             </Button>
                             {enc.status === 'pendente' && podeAtualizar && (
-                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating} aria-label={`Iniciar encaminhamento de ${nomePaciente}`}>
+                              <Button className="h-9 gap-1.5 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90" onClick={() => handleUpdateEncStatus(enc.id, 'em_andamento')} disabled={isUpdating} aria-label={`Iniciar encaminhamento de ${nomePaciente}`}>
                                 Iniciar
                               </Button>
                             )}
                             {enc.status === 'em_andamento' && podeAtualizar && (
-                              <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110" onClick={() => { handleView(enc); }} disabled={isUpdating} aria-label={`Registrar contra-referência de ${nomePaciente}`}>
+                              <Button className="h-9 gap-1.5 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90" onClick={() => { handleView(enc); }} disabled={isUpdating} aria-label={`Registrar contra-referência de ${nomePaciente}`}>
                                 <Edit className="h-3.5 w-3.5" />Contra-ref.
                               </Button>
                             )}
@@ -669,7 +613,11 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
       {referralId && <section className="mx-auto max-w-4xl space-y-6">
         <UnsavedChangesGuard dirty={contraRefText !== (selectedEnc?.contra_referencia || '')} busy={isUpdating} completed={completed} />
         <Button variant="ghost" onClick={leaveTask}>← Voltar aos encaminhamentos</Button>
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-5"><h1 className="text-2xl font-semibold tracking-tight">Detalhes do Encaminhamento</h1><Button variant="outline" disabled={isUpdating || recordQuery.isFetching} onClick={() => void recordQuery.refetch()}>Atualizar registro</Button></header>
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-5"><h1 className="text-2xl font-semibold tracking-tight">Detalhes do encaminhamento</h1><div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="gap-1.5" disabled={!selectedEnc || gerandoCarta} onClick={() => { void handleCarta('baixar'); }}>{gerandoCarta ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}Carta em PDF</Button>
+          <Button variant="outline" className="gap-1.5" disabled={!selectedEnc || gerandoCarta} onClick={() => { void handleCarta('whatsapp'); }}><MessageCircle className="h-4 w-4" />Enviar pelo WhatsApp</Button>
+          <Button variant="outline" disabled={isUpdating || recordQuery.isFetching} onClick={() => void recordQuery.refetch()}>Atualizar registro</Button>
+        </div></header>
           {recordQuery.isError && <ErrorState compact title="Não foi possível atualizar o registro" error={recordQuery.error} onRetry={() => void recordQuery.refetch()} />}
           {selectedEnc && (
             <div className="space-y-5 break-words text-sm">
@@ -764,10 +712,11 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                   <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
                     <CheckCircle2 className="h-3 w-3 text-success" /> Contra-referência
                     {selectedEnc.data_contra_referencia && (
-                      <span className="ml-auto text-[10px]">{format(parseDateOnly(selectedEnc.data_contra_referencia)!, 'dd/MM/yyyy')}</span>
+                      <span className="ml-auto text-xs">{format(parseDateOnly(selectedEnc.data_contra_referencia)!, 'dd/MM/yyyy')}</span>
                     )}
                   </p>
-                  <p className="bg-success/5 border border-success/20 rounded-lg p-3">{selectedEnc.contra_referencia}</p>
+                  {/* Quebras de linha do retorno do especialista preservadas. */}
+                  <p className="whitespace-pre-wrap break-words rounded-lg border border-border bg-secondary p-3">{selectedEnc.contra_referencia}</p>
                 </div>
               ) : selectedEnc.status !== 'cancelado' && selectedEnc.status !== 'concluido' && podeAtualizarEncaminhamento(selectedEnc) ? (
                 <div className="space-y-2">
@@ -788,7 +737,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
                     size="sm"
                     onClick={handleSaveContraRef}
                     disabled={!contraRefText.trim() || isUpdating}
-                    className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110"
+                    className="gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                     Salvar e Concluir

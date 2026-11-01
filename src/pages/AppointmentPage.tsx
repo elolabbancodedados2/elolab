@@ -24,6 +24,8 @@ export default function AppointmentPage() {
   const medicos = useMedicos();
   const tipos = useSupabaseQuery<any>('tipos_consulta', { orderBy: { column: 'nome', ascending: true } });
   const salas = useSupabaseQuery<any>('salas', { orderBy: { column: 'nome', ascending: true } });
+  // Opcional: sem a lista, o campo Convênio fica só com "do cadastro".
+  const convenios = useSupabaseQuery<any>('convenios', { orderBy: { column: 'nome', ascending: true }, suppressGlobalErrorToast: true });
   const date = isValidAgendaDate(params.get('data')) ? params.get('data')! : todaySaoPauloDateOnly();
   const appointment = useQuery({
     queryKey: ['agendamento-edicao', profile?.clinica_id, appointmentId, currentMedico.isMedicoOnly ? currentMedico.medicoId : null],
@@ -86,5 +88,5 @@ export default function AppointmentPage() {
 
   return <AppointmentForm key={appointmentId || location.key} open initial={initial}
     medicos={(medicos.data || []).filter((medico: any) => !currentMedico.isMedicoOnly || medico.id === currentMedico.medicoId)}
-    tipos={tipos.data || []} salas={salas.data || []} onOpenChange={open => { if (!open) leave(); }} onSaved={afterSave} />;
+    tipos={tipos.data || []} salas={salas.data || []} convenios={convenios.data || []} onOpenChange={open => { if (!open) leave(); }} onSaved={afterSave} />;
 }

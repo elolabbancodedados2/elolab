@@ -19,6 +19,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { formatWithDatePreference } from '@/lib/datePreference';
+import { invalidarFinanceiro } from '@/lib/invalidarFinanceiro';
+import { parseMoneyInput } from '@/lib/dinheiro';
+import { FORMAS_PAGAMENTO_DESPESA, formaPagamentoParaRpc, rotuloCategoriaCadastro } from '@/lib/financeiroRotulos';
 
 type PaymentMethod = 'pix' | 'boleto' | 'transferencia' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
 type PayableAccount = {
@@ -43,21 +46,8 @@ type PayableAccount = {
 type PaymentDraft = { forma_pagamento: PaymentMethod; observacoes: string; valor: string; data_pagamento: string };
 type PaymentRouteState = { returnTo?: unknown; restoreSearchTerm?: unknown; idempotencyKey?: unknown };
 
-const paymentMethods: { value: PaymentMethod; label: string }[] = [
-  { value: 'pix', label: 'PIX' }, { value: 'boleto', label: 'Boleto' },
-  { value: 'transferencia', label: 'Transferência' }, { value: 'cartao_credito', label: 'Cartão de crédito' },
-  { value: 'cartao_debito', label: 'Cartão de débito' }, { value: 'dinheiro', label: 'Dinheiro' },
-];
-
-function parseMoney(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact) return null;
-  const br = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
-  const decimal = /^\d+(?:\.\d{1,2})?$/;
-  if (!br.test(compact) && !decimal.test(compact)) return null;
-  const parsed = Number(compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+const paymentMethods = FORMAS_PAGAMENTO_DESPESA as ReadonlyArray<{ value: PaymentMethod; label: string }>;
+const parseMoney = parseMoneyInput;
 
 const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const openBalance = (account: PayableAccount) => Math.max(0,
@@ -140,11 +130,7 @@ export default function ContaPagarPagamentoPage() {
   }, [dirty, paymentUncertain]);
 
   const returnToList = () => navigate(returnTo, { state: returnState });
-  const invalidateFinance = async () => Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-    queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
-    queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia'] }),
-  ]);
+  const invalidateFinance = () => invalidarFinanceiro(queryClient);
 
   const finishPayment = async (result: Record<string, unknown>, recurring: boolean) => {
     setPaymentUncertain(false);
@@ -179,8 +165,7 @@ export default function ContaPagarPagamentoPage() {
       }
       if (parsedValue > freshBalance) throw new Error('O pagamento não pode ser maior que o saldo atual em aberto. Atualize a conta e tente novamente.');
 
-      const paymentMethod = draft.forma_pagamento === 'cartao_credito' ? 'credito'
-        : draft.forma_pagamento === 'cartao_debito' ? 'debito' : draft.forma_pagamento;
+      const paymentMethod = formaPagamentoParaRpc(draft.forma_pagamento);
       rpcStarted = true;
       const { data, error } = pagamentoAnterior
         ? await (supabase as any).rpc('registrar_pagamento_despesa_em_data', {
@@ -243,7 +228,7 @@ export default function ContaPagarPagamentoPage() {
   if (error) return <div className="mx-auto w-full max-w-3xl px-4 py-6"><ErrorState title="Não foi possível carregar a conta" error={error} onRetry={() => void accountQuery.refetch()} /></div>;
   if (!account || !canPay || !draft) return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6"><PageHeader title="Conta sem saldo pendente" description="Esta conta não está disponível para um novo pagamento." icon={<CircleAlert />} actions={returnAction} /><Card role="status"><CardContent className="pt-6 text-sm text-muted-foreground">Ela pode pertencer a outra clínica, já estar quitada ou cancelada, ou ter sido atualizada por outra pessoa.</CardContent></Card></div>;
 
-  const categoryLabel = account.categoria?.replace(/_/g, ' ') || 'Não informada';
+  const categoryLabel = account.categoria ? rotuloCategoriaCadastro('despesa', account.categoria) : 'Não informada';
   const dueDate = account.data_vencimento ? parseDateOnly(account.data_vencimento) : null;
 
   return <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">

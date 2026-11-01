@@ -41,6 +41,32 @@ describe('DailyMultiDoctorView', () => {
     expect(onSlotClick).toHaveBeenCalledWith('med-1', '06:05');
   });
 
+  it('avisa consultas fora da grade e sugere a vaga livre dentro do expediente', () => {
+    const onSlotClick = vi.fn();
+    render(
+      <DndContext>
+        <DailyMultiDoctorView
+          date="2999-01-04"
+          medicos={[{ id: 'med-1', nome: 'Ana Silva', ativo: true }]}
+          agendamentos={[
+            { id: 'cedo', medico_id: 'med-1', data: '2999-01-04', hora_inicio: '05:30:00', hora_fim: '06:00:00', status: 'agendado' },
+            { id: 'normal', medico_id: 'med-1', data: '2999-01-04', hora_inicio: '14:00:00', hora_fim: '14:30:00', status: 'agendado' },
+          ]}
+          bloqueios={[]}
+          colorFor={() => '#111'}
+          onSlotClick={onSlotClick}
+          onCardClick={vi.fn()}
+          faixasPorMedico={{ 'med-1': [[14 * 60, 18 * 60]] }}
+        />
+      </DndContext>,
+    );
+
+    expect(screen.getByText(/1 consulta fora da grade/)).toBeInTheDocument();
+    expect(screen.getAllByTestId('appointment-card')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /próxima vaga livre, 14:30/ }));
+    expect(onSlotClick).toHaveBeenCalledWith('med-1', '14:30');
+  });
+
   it('deixa a rolagem vertical para a pagina e sincroniza o cabecalho na horizontal', () => {
     const medicos = Array.from({ length: 6 }, (_, i) => ({ id: `med-${i}`, nome: `Profissional ${i}`, ativo: true }));
     const agendamentos = Array.from({ length: 80 }, (_, i) => ({

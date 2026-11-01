@@ -46,3 +46,27 @@ export function textoSeguroCsv(valor: string | null | undefined): string {
   const texto = valor ?? '';
   return /^[=+@\-\t\r]/.test(texto) ? `'${texto}` : texto;
 }
+
+function semAcento(texto: string): string {
+  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR').trim();
+}
+
+/**
+ * Busca das movimentações do caixa: descrição, paciente, forma, tipo e valor,
+ * sem diferenciar acento nem maiúsculas. "joao pix" acha "João · PIX";
+ * "150" e "150,00" acham o lançamento de R$ 150,00.
+ */
+export function movimentoCorrespondeBusca(
+  movimento: { descricao?: string | null; tipo?: string | null; forma_pagamento?: string | null; valor?: number | null; paciente_nome?: string | null; pacientes?: { nome: string } | null },
+  busca: string,
+): boolean {
+  const termos = semAcento(busca).split(/\s+/).filter(Boolean);
+  if (!termos.length) return true;
+  const valor = Number(movimento.valor) || 0;
+  const alvo = semAcento([
+    movimento.descricao, movimento.tipo, rotuloForma(movimento.forma_pagamento), movimento.forma_pagamento,
+    movimento.paciente_nome || movimento.pacientes?.nome,
+    valor.toFixed(2).replace('.', ','), valor.toFixed(2), String(valor),
+  ].filter(Boolean).join(' '));
+  return termos.every(termo => alvo.includes(termo));
+}

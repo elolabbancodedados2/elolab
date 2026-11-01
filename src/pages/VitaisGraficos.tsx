@@ -15,16 +15,26 @@ import { cn } from '@/lib/utils';
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import {
   consolidarHistoricoVitais,
+  gerarCsvVitais,
   historicoVitaisLimitado,
   type ProntuarioVitalsRow,
   type TriagemVitalsRow,
   type VitalSignData,
 } from '@/lib/vitalsHistory';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea } from 'recharts';
 import {
   TrendingUp, Heart, Droplets, Thermometer, Weight, AlertCircle, X, Activity, Wind,
-  Users, FileText, RefreshCw, Search, CalendarRange,
+  Users, FileText, RefreshCw, Search, CalendarRange, FileDown, Printer,
 } from 'lucide-react';
+import { classificarSinalVital, faixaNormalVital, type SinalVital } from '@/lib/limiaresVitais';
+
+// Faixa usual sombreada atrás das séries, para leitura rápida do que está fora.
+const COR_FAIXA_NORMAL = 'hsl(var(--muted-foreground))';
+// Função (não componente): o Recharts só reconhece o ReferenceArea como filho direto.
+const faixaNormal = (sinal: SinalVital, yAxisId?: string) => {
+  const [y1, y2] = faixaNormalVital(sinal);
+  return <ReferenceArea key={`faixa-${sinal}`} y1={y1} y2={y2} {...(yAxisId ? { yAxisId } : {})} fill={COR_FAIXA_NORMAL} fillOpacity={0.08} strokeOpacity={0} ifOverflow="extendDomain" />;
+};
 
 const MAX_REGISTROS_GRAFICO = 1000;
 const FUSO_CLINICA = 'America/Sao_Paulo';
@@ -61,18 +71,22 @@ const PERIODOS: { key: PeriodoChave; label: string; dias: number | null }[] = [
 
 type CampoVital = Exclude<keyof VitalSignData, 'id' | 'paciente_id' | 'created_at'>;
 
-// Limites de alerta já existentes no projeto (src/components/clinical/ClinicalSafetyPanel.tsx),
-// replicados sem alteração. Sinais sem limite definido no projeto ficam neutros.
+// Limiares únicos do app (src/lib/limiaresVitais.ts), os mesmos da faixa do
+// atendimento e do painel de contexto clínico. Aqui "fora da faixa" é o nível
+// de alerta; sinais sem limiar definido ficam neutros.
+const SINAL_DO_CAMPO: Partial<Record<CampoVital, SinalVital>> = {
+  pressao_sistolica: 'pressao_sistolica',
+  pressao_diastolica: 'pressao_diastolica',
+  frequencia_cardiaca: 'frequencia_cardiaca',
+  frequencia_respiratoria: 'frequencia_respiratoria',
+  temperatura: 'temperatura',
+  oxigenacao: 'saturacao',
+  glicemia: 'glicemia',
+};
 const foraDaFaixa = (campo: CampoVital, valor: number | null): boolean => {
-  if (valor === null || !Number.isFinite(valor)) return false;
-  switch (campo) {
-    case 'pressao_sistolica': return valor >= 180 || valor < 90;
-    case 'pressao_diastolica': return valor >= 120 || valor < 60;
-    case 'frequencia_cardiaca': return valor > 120 || valor < 50;
-    case 'temperatura': return valor >= 38 || valor < 35;
-    case 'oxigenacao': return valor < 94;
-    default: return false;
-  }
+  const sinal = SINAL_DO_CAMPO[campo];
+  if (!sinal || valor === null || !Number.isFinite(valor)) return false;
+  return classificarSinalVital(sinal, valor) === 'alerta';
 };
 
 type GraficoChave = 'pressao' | 'fc' | 'peso' | 'o2';
@@ -246,7 +260,16 @@ export default function VitaisGraficos() {
     setPeriodo('tudo');
     setGraficoFoco(null);
   };
-  const linkProntuario = selectedPacienteId ? `/prontuarios?paciente=${encodeURIComponent(selectedPacienteId)}` : '/prontuarios';
+  const exportarCsv = () => {
+    const csv = gerarCsvVitais(vitais);
+    const url = URL.createObjectURL(new Blob([String.fromCharCode(0xfeff), csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sinais-vitais-${periodo === 'tudo' ? 'historico' : `${periodo}-dias`}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const linkProntuario = selectedPacienteId ?`/prontuarios?paciente=${encodeURIComponent(selectedPacienteId)}` : '/prontuarios';
 
   const descricao = !selectedPacienteId
     ? 'Acompanhe a evolução clínica com medições da triagem e do prontuário.'
@@ -293,6 +316,16 @@ export default function VitaisGraficos() {
             <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
               <Link to="/pacientes"><Users aria-hidden="true" className="h-4 w-4" /> Pacientes</Link>
             </Button>
+            {vitais.length > 0 && (
+              <>
+                <Button variant="outline" className="shrink-0 gap-2 rounded-full print:hidden" onClick={exportarCsv}>
+                  <FileDown aria-hidden="true" className="h-4 w-4" /> Exportar CSV
+                </Button>
+                <Button variant="outline" className="shrink-0 gap-2 rounded-full print:hidden" onClick={() => window.print()}>
+                  <Printer aria-hidden="true" className="h-4 w-4" /> Imprimir
+                </Button>
+              </>
+            )}
             <Button
               variant="outline"
               size="icon"
@@ -497,7 +530,7 @@ export default function VitaisGraficos() {
                       </span>
                       Pressão Arterial
                     </CardTitle>
-                    <CardDescription>Sistólica e Diastólica ao longo do tempo · {resumoStats(vitais.map((v) => v.pressao_sistolica), 'mmHg')}</CardDescription>
+                    <CardDescription>Sistólica e diastólica ao longo do tempo · faixa sombreada: sistólica usual {faixaNormalVital('pressao_sistolica').join('–')} mmHg · {resumoStats(vitais.map((v) => v.pressao_sistolica), 'mmHg')}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
@@ -511,6 +544,7 @@ export default function VitaisGraficos() {
                           labelStyle={ESTILO_ROTULO_TOOLTIP}
                         />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                        {faixaNormal('pressao_sistolica')}
                         <Line
                           type="monotone"
                           dataKey="pressaoSistolica"
@@ -559,6 +593,7 @@ export default function VitaisGraficos() {
                           labelStyle={ESTILO_ROTULO_TOOLTIP}
                         />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                        {faixaNormal('frequencia_cardiaca')}
                         <Line
                           type="monotone"
                           dataKey="frequenciaCardiaca"
@@ -626,6 +661,7 @@ export default function VitaisGraficos() {
                           labelStyle={ESTILO_ROTULO_TOOLTIP}
                         />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                        {faixaNormal('saturacao', 'left')}
                         <Line
                           yAxisId="left"
                           type="monotone"

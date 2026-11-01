@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarPlus, Edit, Eye, MessageCircle } from 'lucide-react';
+import { CalendarPlus, Edit, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PatientPhoto } from '@/components/clinical';
@@ -8,8 +8,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/formatters';
 import { formatWithDatePreference } from '@/lib/datePreference';
 import { saldoDevedor } from '@/lib/liberacaoAtendimento';
-import { linkWhatsApp } from '@/lib/whatsapp';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { cpfMascarado, nomesDoPaciente, rotuloTipoAgendamento, sexoPorExtenso, situacaoCarteirinha, textoIdade } from '@/lib/pacienteFicha';
+import { WhatsAppModelosMenu } from './WhatsAppModelosMenu';
 
 // Painel lateral do protótipo aprovado em 30/10/2026: resumo do paciente sem sair da lista.
 interface Props {
@@ -17,6 +19,8 @@ interface Props {
   idade: number;
   convenio: string;
   podeEditar: boolean;
+  /** Sem acesso ao financeiro, o saldo nem é consultado. */
+  podeVerFinanceiro?: boolean;
   onView: (paciente: any) => void;
   onEdit: (paciente: any) => void;
 }
@@ -32,26 +36,28 @@ const SITUACAO: Record<string, string> = {
   cancelado: 'Cancelada',
 };
 
-function cpfMascarado(cpf: string | null | undefined) {
-  const digitos = String(cpf ?? '').replace(/\D/g, '');
-  return digitos.length === 11 ? `***.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-**` : null;
-}
-
-export function PainelPaciente({ paciente, idade, convenio, podeEditar, onView, onEdit }: Props) {
+export function PainelPaciente({ paciente, idade, convenio, podeEditar, podeVerFinanceiro = false, onView, onEdit }: Props) {
   const navigate = useNavigate();
+  const { user, profile } = useSupabaseAuth();
+  const clinicaId = profile?.clinica_id ?? null;
+  const nomes = nomesDoPaciente(paciente);
+  const carteira = paciente.convenio_id ? situacaoCarteirinha(paciente.validade_carteira) : null;
   const alergias: string[] = Array.isArray(paciente.alergias) ? paciente.alergias.filter(Boolean) : [];
   const cpf = cpfMascarado(paciente.cpf);
-  const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
   const linhas: Array<[string, string | null]> = [
     ['Convênio', convenio],
     ['Telefone', paciente.telefone || null],
     ['E-mail', paciente.email || null],
     ['CPF', cpf],
+    ['Sexo', sexoPorExtenso(paciente.sexo)],
   ];
 
   // Mesma conta de saldo do extrato e da trava de pagamento; perfil sem acesso ao financeiro vê "—".
   const saldoQuery = useQuery({
-    queryKey: ['painel-paciente-saldo', paciente.id],
+    // A chave inclui clínica e usuário: trocar de sessão no mesmo navegador não
+    // pode reaproveitar o saldo calculado para outra pessoa.
+    queryKey: ['painel-paciente-saldo', clinicaId, user?.id ?? null, paciente.id],
+    enabled: podeVerFinanceiro && Boolean(clinicaId && user?.id),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('lancamentos')
@@ -66,7 +72,8 @@ export function PainelPaciente({ paciente, idade, convenio, podeEditar, onView, 
   });
 
   const consultasQuery = useQuery({
-    queryKey: ['painel-paciente-consultas', paciente.id],
+    queryKey: ['painel-paciente-consultas', clinicaId, user?.id ?? null, paciente.id],
+    enabled: Boolean(clinicaId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('agendamentos')
@@ -87,9 +94,10 @@ export function PainelPaciente({ paciente, idade, convenio, podeEditar, onView, 
       <div className="flex items-start gap-3 border-b border-border p-4">
         <PatientPhoto pacienteId={paciente.id} pacienteNome={paciente.nome} currentPhotoUrl={paciente.foto_url} size="md" editable={false} />
         <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold tracking-tight">{paciente.nome}</h2>
+          <h2 className="truncate text-lg font-semibold tracking-tight">{nomes.principal}</h2>
+          {nomes.registro && <p className="truncate text-xs text-muted-foreground">Registro: {nomes.registro}</p>}
           <p className="text-sm text-muted-foreground">
-            {Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : 'Idade não informada'}
+            {paciente.data_nascimento ? textoIdade(paciente.data_nascimento) : Number.isFinite(idade) && idade > 0 ? `${idade} anos` : 'Idade não informada'}
             {paciente.ativo === false && <Badge variant="secondary" className="ml-2 text-[10px]">Inativo</Badge>}
           </p>
         </div>
@@ -103,13 +111,7 @@ export function PainelPaciente({ paciente, idade, convenio, podeEditar, onView, 
         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onView(paciente)}>
           <Eye aria-hidden="true" className="h-4 w-4" /> Abrir ficha
         </Button>
-        {whatsapp && (
-          <Button asChild size="sm" variant="outline" className="gap-1.5">
-            <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Mensagem para ${paciente.nome} no WhatsApp`}>
-              <MessageCircle aria-hidden="true" className="h-4 w-4" /> Mensagem
-            </a>
-          </Button>
-        )}
+        <WhatsAppModelosMenu paciente={paciente} rotulo="Mensagem" className="h-9" />
         {podeEditar && (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEdit(paciente)}>
             <Edit aria-hidden="true" className="h-4 w-4" /> Editar
@@ -127,10 +129,20 @@ export function PainelPaciente({ paciente, idade, convenio, podeEditar, onView, 
             <dd className={valor ? 'min-w-0 truncate py-1 tabular-nums' : 'py-1 text-muted-foreground'}>{valor ?? 'Não informado'}</dd>
           </div>
         ))}
-        <dt className="py-1 text-muted-foreground">Saldo</dt>
-        <dd className={saldo && saldo > 0.009 ? 'py-1 font-medium tabular-nums text-destructive' : 'py-1 tabular-nums'}>
-          {saldoQuery.isLoading ? '…' : saldoQuery.isError ? '—' : formatCurrency(saldo ?? 0)}
-        </dd>
+        {carteira && (
+          <div className="contents">
+            <dt className="py-1 text-muted-foreground">Carteirinha</dt>
+            <dd className={carteira.nivel === 'vencida' ? 'py-1 font-medium text-destructive' : 'py-1 font-medium text-warning-foreground'}>{carteira.texto}</dd>
+          </div>
+        )}
+        {podeVerFinanceiro && (
+          <div className="contents">
+            <dt className="py-1 text-muted-foreground">Saldo</dt>
+            <dd className={saldo && saldo > 0.009 ? 'py-1 font-medium tabular-nums text-destructive' : 'py-1 tabular-nums'}>
+              {saldoQuery.isLoading ? '…' : saldoQuery.isError ? '—' : formatCurrency(saldo ?? 0)}
+            </dd>
+          </div>
+        )}
       </dl>
       <section aria-labelledby={`consultas-${paciente.id}`} className="p-4">
         <h3 id={`consultas-${paciente.id}`} className="mb-2 text-sm font-semibold">Últimas consultas</h3>
@@ -148,7 +160,7 @@ export function PainelPaciente({ paciente, idade, convenio, podeEditar, onView, 
                 <li key={consulta.id} className="relative text-sm">
                   <span aria-hidden="true" className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full border border-border bg-card" />
                   <span className="font-medium tabular-nums">{dia ? formatWithDatePreference(dia, 'dd/MM/yy') : consulta.data}</span>
-                  <span className="text-muted-foreground"> · {consulta.tipo || 'Consulta'}{consulta.medicos?.nome ? ` · ${consulta.medicos.nome}` : ''}</span>
+                  <span className="text-muted-foreground"> · {rotuloTipoAgendamento(consulta.tipo)}{consulta.medicos?.nome ? ` · ${consulta.medicos.nome}` : ''}</span>
                   <span className={consulta.status === 'faltou' ? 'block text-xs text-destructive' : 'block text-xs text-muted-foreground'}>
                     {SITUACAO[consulta.status] ?? consulta.status}
                   </span>
