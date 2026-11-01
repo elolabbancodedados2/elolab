@@ -164,6 +164,12 @@ O branch junta os PRs #71 a #75 da Onda 1 e acrescenta o que ainda dava para faz
 - Menu enxuto: saem Minha fila, Convites e acessos, Itens com baixo estoque, Indicadores da clínica e Relatórios salvos. Todos continuam acessíveis por atalhos nas próprias telas.
 - Visual: resíduos do azul antigo, cartões pretos do Início e do plano, Painel TV em grafite e paleta da Agenda com nomes certos.
 - Textos: acentos corrompidos em telas e testes, e código morto em `workflowAutomation.ts`.
+- P2 feitos:
+  - consulta recorrente na Agenda (semanal, quinzenal ou mensal; as datas que não couberem são avisadas);
+  - triagem do dia pode ser corrigida, e a prioridade da fila acompanha o risco;
+  - fechamento do caixa mostra cartão e Pix do período para conferência;
+  - cobrança de inadimplentes agrupada por paciente;
+  - DRE por competência, além da visão por caixa.
 
 **Conferido e já resolvido antes:** UX-03 (Prescrições e Atestados não usam mais modal).
 
