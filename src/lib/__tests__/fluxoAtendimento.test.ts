@@ -680,12 +680,13 @@ describe('dispensacao - baixa de estoque transacional', () => {
   it('usa a baixa atomica do banco e nao atualiza o saldo pela leitura da tela', async () => {
     mockAtual = criarSupabaseMock({
       'estoque.select': {
-        data: {
+        data: [{
           id: 'item-1',
           nome: 'Dipirona 500mg',
           quantidade: 10,
           quantidade_minima: 2,
-        },
+          validade: '2099-01-01',
+        }],
         error: null,
       },
       'rpc.registrar_baixa_estoque': {
@@ -700,6 +701,7 @@ describe('dispensacao - baixa de estoque transacional', () => {
       pacienteId: 'pac-1',
       pacienteNome: 'Maria',
       prontuarioId: 'pront-1',
+      clinicaId: 'clinica-1',
       userId: 'user-1',
     });
 
@@ -723,11 +725,62 @@ describe('dispensacao - baixa de estoque transacional', () => {
       pacienteId: 'pac-1',
       pacienteNome: 'Maria',
       prontuarioId: '',
+      clinicaId: 'clinica-1',
       userId: 'user-1',
     });
 
     expect(resultado.success).toBe(false);
     expect(resultado.message).toContain('prontuário');
     expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:registrar_baixa_estoque')).toBe(false);
+  });
+
+  const baseDispensacao = { pacienteId: 'pac-1', pacienteNome: 'Maria', prontuarioId: 'pront-1', clinicaId: 'clinica-1', userId: 'user-1', hoje: '2026-11-01' };
+
+  it('filtra pela clínica e não baixa quando só há lote vencido', async () => {
+    mockAtual = criarSupabaseMock({
+      'estoque.select': { data: [{ id: 'v1', nome: 'Dipirona 500mg', quantidade: 10, validade: '2026-10-01' }], error: null },
+    });
+    const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+    const resultado = await autoDispensarMedicamentos({ ...baseDispensacao, medicamentos: [{ nome: 'Dipirona 500mg', quantidade: '2' }] });
+
+    expect(mockAtual.filtros).toContainEqual({ tabela: 'estoque', coluna: 'clinica_id', valor: 'clinica-1' });
+    expect(resultado.actions.join(' ')).toContain('apenas lote vencido');
+    expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:registrar_baixa_estoque')).toBe(false);
+  });
+
+  it('não baixa quando o nome corresponde a mais de um produto', async () => {
+    mockAtual = criarSupabaseMock({
+      'estoque.select': { data: [
+        { id: 'a', nome: 'Dipirona 500mg comprimido', quantidade: 10, validade: null },
+        { id: 'b', nome: 'Dipirona 500mg gotas', quantidade: 10, validade: null },
+      ], error: null },
+    });
+    const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+    const resultado = await autoDispensarMedicamentos({ ...baseDispensacao, medicamentos: [{ nome: 'Dipirona 500mg', quantidade: '1' }] });
+
+    expect(resultado.message).toContain('parcial');
+    expect(resultado.actions.join(' ')).toContain('mais de um item');
+    expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:registrar_baixa_estoque')).toBe(false);
+  });
+
+  it('recusa quantidade fracionada em vez de chutar 1', async () => {
+    const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+    const resultado = await autoDispensarMedicamentos({ ...baseDispensacao, medicamentos: [{ nome: 'Dipirona 500mg', quantidade: '½' }] });
+
+    expect(resultado.actions.join(' ')).toContain('não é um número inteiro');
+    expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:registrar_baixa_estoque')).toBe(false);
+  });
+
+  it('usa o item confirmado na tela (estoque_id) sem buscar por nome', async () => {
+    mockAtual = criarSupabaseMock({
+      'estoque.select': { data: { id: 'esc-1', nome: 'Amoxicilina 500mg', quantidade: 20, quantidade_minima: 0, validade: '2099-01-01', lote: 'L7' }, error: null },
+      'rpc.registrar_baixa_estoque': { data: [{ ja_baixado: false }], error: null },
+    });
+    const { autoDispensarMedicamentos } = await import('@/lib/workflowAutomation');
+    const resultado = await autoDispensarMedicamentos({ ...baseDispensacao, medicamentos: [{ nome: 'Amoxil', quantidade: '3', estoqueId: 'esc-1' }] });
+
+    expect(resultado.actions).toContain('Amoxicilina 500mg (lote L7): -3 unidade(s)');
+    expect(mockAtual.filtros).toContainEqual({ tabela: 'estoque', coluna: 'id', valor: 'esc-1' });
+    expect(mockAtual.chamadas.find(c => c.tabela === 'rpc:registrar_baixa_estoque')?.payload).toMatchObject({ p_item_id: 'esc-1', p_quantidade: 3 });
   });
 });
