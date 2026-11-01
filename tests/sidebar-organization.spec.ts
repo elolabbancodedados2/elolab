@@ -15,7 +15,7 @@ test('grupos do menu organizam as rotinas administrativas no desktop', async ({ 
   await clinicManagement.focus();
   await page.keyboard.press('Enter');
   await expect(navigation.getByRole('link', { name: 'Médicos e funcionários' })).toBeVisible();
-  await expect(navigation.getByRole('link', { name: 'Itens com baixo estoque' })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Estoque', exact: true })).toBeVisible();
 
   await navigation.getByRole('button', { name: 'Comunicação e automação' }).click();
   await expect(navigation.getByRole('link', { name: 'Chat interno' })).toBeVisible();

@@ -12,8 +12,9 @@ import {
   TrendingDown,
   FileSpreadsheet,
   BarChart2, AlertTriangle, RefreshCw, Package,
-  Download, ChevronDown,
+  Download, ChevronDown, Bookmark, LineChart,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -224,6 +225,7 @@ export default function Relatorios() {
   const fimStr = format(periodoRange.end, 'yyyy-MM-dd');
   const { profile } = useSupabaseAuth();
   const podeVerAgenda = !!profile?.roles?.some(role => ['admin', 'medico', 'enfermagem'].includes(role));
+  const ehAdmin = !!profile?.roles?.includes('admin');
   const podeVerRelatorioPacientes = podeAcessarRelatorioCompletoDePacientes(profile?.roles);
   const pacientesQuery = usePacientes(podeVerRelatorioPacientes, { suppressGlobalErrorToast: true });
   const pacientes = pacientesQuery.data ?? [];
@@ -742,6 +744,12 @@ export default function Relatorios() {
             : 'o período se aplica ao financeiro'}`}
         actions={
           activeTab !== 'customizado' && <>
+            <Button asChild variant="outline" className="gap-2">
+              <Link to="/relatorios/salvos"><Bookmark className="h-4 w-4" aria-hidden="true" />Relatórios salvos</Link>
+            </Button>
+            {ehAdmin && <Button asChild variant="outline" className="gap-2">
+              <Link to="/analytics"><LineChart className="h-4 w-4" aria-hidden="true" />Indicadores da clínica</Link>
+            </Button>}
             <Button aria-label="Atualizar dados dos relatórios" variant="outline" size="icon" className="rounded-full" onClick={refreshTudo} disabled={isFetching}>
               <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
             </Button>

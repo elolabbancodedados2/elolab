@@ -23,7 +23,6 @@ import {
   BotMessageSquare,
   ActivitySquare,
   ListChecks,
-  Inbox,
   TestTubes,
   BookMarked,
   MonitorSmartphone,
@@ -89,7 +88,6 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
-      { label: 'Minha fila', icon: Inbox, href: '/minha-fila', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
   {
@@ -162,9 +160,7 @@ export const menuGroups: MenuGroup[] = [
     icon: Building2,
     items: [
       { label: 'Médicos e funcionários', icon: UsersRound, href: '/equipe', roles: ['admin'], exact: true },
-      { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
-      { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
       { label: 'Compras', icon: ShoppingCart, href: '/compras', roles: ['admin', 'enfermagem', 'financeiro'] },
       { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
@@ -187,9 +183,7 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin', 'financeiro', 'recepcao', 'enfermagem', 'medico'],
     items: [
       { label: 'Indicadores de produtividade', icon: ActivitySquare, href: '/indicadores', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
-      { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
-      { label: 'Indicadores da clínica', icon: ActivitySquare, href: '/analytics', roles: ['admin'] },
-      { label: 'Relatórios salvos', icon: FileBarChart, href: '/relatorios/salvos', roles: ['admin', 'financeiro'] },
+      { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', roles: ['admin', 'financeiro'] },
       { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
     ],
   },
