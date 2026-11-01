@@ -221,6 +221,26 @@ export default function FinalizarAtendimento() {
         return;
       }
 
+      // Esta consulta era o retorno de outra? Dá baixa no retorno, que antes
+      // ficava "agendado" para sempre. Falha aqui não desfaz a finalização.
+      const avisos: string[] = [];
+      try {
+        const { data: retornosDestaConsulta, error: erroRetornos } = await supabase
+          .from('retornos')
+          .select('id')
+          .eq('clinica_id', clinicaId)
+          .eq('agendamento_retorno_id', appointment.id)
+          .not('status', 'in', '(realizado,cancelado)');
+        if (erroRetornos) throw erroRetornos;
+        for (const retorno of retornosDestaConsulta ?? []) {
+          const { error: erroBaixa } = await (supabase as any).rpc('marcar_retorno_realizado_atomico', { p_retorno_id: retorno.id });
+          if (erroBaixa) throw erroBaixa;
+          result.actions.push('Retorno marcado como realizado');
+        }
+      } catch {
+        avisos.push('O retorno ligado a esta consulta não foi baixado; marque-o em Retornos.');
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] }),
         queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] }),
@@ -228,10 +248,11 @@ export default function FinalizarAtendimento() {
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] }),
         queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['retornos'] }),
       ]);
       paginaConcluida.current = true;
       const toastOptions = {
-        description: result.actions.join(' • '),
+        description: [...result.actions, ...avisos].join(' • '),
         ...(origem === 'fila'
           ? { duration: 8000, action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') } }
           : {}),
