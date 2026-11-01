@@ -14,6 +14,8 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { mensagemDeErro } from '@/lib/erros';
+import { useRegrasLiberacaoClinica } from '@/hooks/useRegrasLiberacaoClinica';
+import { aguardaTriagemAntesDoInicio } from '@/lib/liberacaoTriagem';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
@@ -81,6 +83,8 @@ const TIPO_LABEL: Record<string, string> = {
 
 export function AppointmentCard({ agendamento, color, minutesToPx, onClick, convenioName, onNovaConsulta }: Props) {
   const queryClient = useQueryClient();
+  const { triagemObrigatoria } = useRegrasLiberacaoClinica();
+  const aguardaTriagem = aguardaTriagemAntesDoInicio(agendamento, triagemObrigatoria);
   const { profile } = useSupabaseAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -463,7 +467,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
           </ContextMenuItem>
         )}
         <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('aguardando')}>Enviar para a fila</ContextMenuItem>
-        <ContextMenuItem disabled={ocupado || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento</ContextMenuItem>
+        <ContextMenuItem disabled={ocupado || aguardaTriagem || !agendamento.paciente_id || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} title={aguardaTriagem ? 'A clínica exige triagem antes do atendimento' : undefined} onSelect={iniciarAtendimento}><PlayCircle className="mr-2 h-4 w-4" /> Iniciar atendimento{aguardaTriagem && <span className="ml-auto pl-3 text-xs text-muted-foreground">exige triagem</span>}</ContextMenuItem>
         {agendamento.status === 'em_atendimento' && (
           <ContextMenuItem
             disabled={ocupado}

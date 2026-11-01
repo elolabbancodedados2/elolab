@@ -36,3 +36,17 @@ export function passouPelaTriagem(
     : new Set(triagensPorAgendamento);
   return feitas.has(agendamentoId);
 }
+
+/**
+ * Antes do check-in ainda não existe triagem. Com a regra da clínica ligada,
+ * iniciar o atendimento direto da Agenda seria recusado pelo banco; a tela usa
+ * isto para desabilitar a ação e dizer o motivo.
+ */
+export function aguardaTriagemAntesDoInicio(
+  agendamento: AgendamentoParaTriagem & { status?: string | null },
+  travaLigada: boolean,
+): boolean {
+  if (!travaLigada) return false;
+  if (!['agendado', 'confirmado'].includes(agendamento.status ?? '')) return false;
+  return agendamento.exige_triagem !== false && !agendamento.liberado_sem_triagem;
+}

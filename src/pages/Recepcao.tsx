@@ -54,6 +54,8 @@ import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
 import { calcularSaldoPagamento, montarPagamentos, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
 import { patientStep } from '@/lib/receptionWorkflow';
+import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
+import { useRegrasLiberacaoClinica } from '@/hooks/useRegrasLiberacaoClinica';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -540,6 +542,13 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     },
   });
 
+  // O trigger `triagem_antes_do_atendimento` recusa o início sem triagem; a
+  // tela antecipa o motivo em vez de oferecer um botão que vai falhar.
+  const { triagemObrigatoria } = useRegrasLiberacaoClinica();
+  const faltaTriagem = (ag: any) => triagemObrigatoria
+    && triagensRegistradasQuery.isSuccess
+    && !passouPelaTriagem(ag.id, ag, triagensRegistradasQuery.data ?? [], true);
+
   const enriched = useMemo(() =>
     todayAgendamentos.map((ag: any) => {
       const pac = ag.pacientes;
@@ -630,9 +639,13 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
          : { label: 'Chamar ao balcão', icon: Bell, run: () => { void handleChamarBalcao(item.lanc, item.pac); } };
      }
      if (item.step === 2 && item.fila) {
-       return item.ag.status === 'em_atendimento'
-         ? { label: 'Finalizar atendimento', icon: Check, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) }
-         : { label: 'Iniciar atendimento', icon: Play, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } };
+       if (item.ag.status === 'em_atendimento') {
+         return { label: 'Finalizar atendimento', icon: Check, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) };
+       }
+       if (faltaTriagem(item.ag)) {
+         return { label: 'Abrir triagem', icon: Activity, run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } };
+       }
+       return { label: 'Iniciar atendimento', icon: Play, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } };
      }
      if (item.step === 3) {
        if (item.lanc && saldo > 0) {
@@ -1854,7 +1867,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                       {selectedBoardAction && <Button type="button" className="w-full justify-center gap-2" onClick={selectedBoardAction.run} disabled={isProcessing}>
                         <selectedBoardAction.icon aria-hidden="true" data-icon="inline-start" />{selectedBoardAction.label}
                       </Button>}
-                      {podeRegistrarTriagem && [1, 2].includes(selectedReceptionEntry.step) && selectedReceptionEntry.ag.status !== 'em_atendimento' && triagensRegistradasQuery.isSuccess && !triagensRegistradasQuery.data?.includes(selectedReceptionEntry.ag.id) && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => void handleEncaminharTriagem(selectedReceptionEntry.ag.id, selectedReceptionEntry.ag.paciente_id)} disabled={isProcessing}><Activity aria-hidden="true" className="size-3.5" />Abrir triagem</Button>}
+                      {podeRegistrarTriagem && [1, 2].includes(selectedReceptionEntry.step) && selectedReceptionEntry.ag.status !== 'em_atendimento' && triagensRegistradasQuery.isSuccess && !triagensRegistradasQuery.data?.includes(selectedReceptionEntry.ag.id) && selectedBoardAction?.label !== 'Abrir triagem' && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => void handleEncaminharTriagem(selectedReceptionEntry.ag.id, selectedReceptionEntry.ag.paciente_id)} disabled={isProcessing}><Activity aria-hidden="true" className="size-3.5" />Abrir triagem</Button>}
                       <div className="grid grid-cols-2 gap-2">
                         {selectedReceptionEntry.ag.paciente_id && <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/prontuarios?paciente=${selectedReceptionEntry.ag.paciente_id}`)}><FileText aria-hidden="true" className="size-3.5" />Prontuário</Button>}
                         <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/agenda?reagendar=${selectedReceptionEntry.ag.id}`)}><CalendarPlus aria-hidden="true" className="size-3.5" />Reagendar</Button>
