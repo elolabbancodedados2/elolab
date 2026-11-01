@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DrugInteractionChecker } from '../DrugInteractionChecker';
 
 describe('DrugInteractionChecker', () => {
-  it('abre a revis?o em uma p?gina de contexto sem modal', () => {
+  it('abre a revisão em uma página de contexto sem modal', () => {
     const onOpenReview = vi.fn();
     render(<DrugInteractionChecker medicamentos={['varfarina', 'aas']} alergias={[]} onOpenReview={onOpenReview} />);
 
@@ -46,7 +46,7 @@ describe('DrugInteractionChecker', () => {
     expect(screen.queryByRole('heading', { name: /Nenhum alerta encontrado/ })).not.toBeInTheDocument();
   });
 
-  it('n?o confunde falha no carregamento com lista vazia e permite tentar novamente', () => {
+  it('não confunde falha no carregamento com lista vazia e permite tentar novamente', () => {
     const onRetry = vi.fn();
     render(<DrugInteractionChecker fullPage medicamentos={[]} alergias={[]} loadError={new Error('offline')} onRetry={onRetry} />);
 

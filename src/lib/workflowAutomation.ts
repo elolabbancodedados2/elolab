@@ -77,50 +77,6 @@ export async function autoCheckin(
     return { success: false, message: e.message, actions };
   }
 }
-
-export async function autoIniciarAtendimento(
-  agendamentoId: string,
-  filaId: string,
-  pacienteId: string,
-  medicoId: string,
-): Promise<WorkflowResult> {
-  const actions: string[] = [];
-
-  try {
-    // A fila visível é atualizada primeiro. Se o agendamento falhar, desfazemos
-    // a fila para não deixar o painel médico em um estado diferente do agenda.
-    const { data: filaAtual, error: filaLeituraError } = await supabase
-      .from('fila_atendimento')
-      .select('status')
-      .eq('id', filaId)
-      .maybeSingle();
-    if (filaLeituraError) throw filaLeituraError;
-    if (!filaAtual) throw new Error('Item da fila não encontrado. Atualize a tela e tente novamente.');
-
-    await must(supabase.from('fila_atendimento')
-      .update({ status: 'em_atendimento' })
-      .eq('id', filaId)
-      .select('id')
-      .single());
-
-    try {
-      await must(supabase.from('agendamentos')
-        .update({ status: 'em_atendimento' })
-        .eq('id', agendamentoId)
-        .select('id')
-        .single());
-    } catch (agendamentoError) {
-      await supabase.from('fila_atendimento').update({ status: filaAtual.status }).eq('id', filaId);
-      throw agendamentoError;
-    }
-    actions.push('Status → Em Atendimento');
-
-    return { success: true, message: 'Atendimento iniciado', actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}
-
 // ─── 3. Finalizar Atendimento (completo) ────────────────
 /** Finalize: billing + auto-schedule return if applicable */
 export async function autoFinalizarAtendimento(params: {
@@ -393,47 +349,6 @@ export async function autoDispensarMedicamentos(params: {
   }
 }
 
-// ─── 6. Auto Notificação Retorno ────────────────────────
-/** Check and notify patients about upcoming returns */
-export async function autoNotificarRetornos(): Promise<WorkflowResult> {
-  const actions: string[] = [];
-  try {
-    const amanha = new Date();
-    amanha.setDate(amanha.getDate() + 1);
-    const amanhaStr = format(amanha, 'yyyy-MM-dd');
-
-    const { data: retornos, error: retornosError } = await supabase
-      .from('retornos')
-      .select('*, pacientes(nome, email, telefone)')
-      .eq('data_retorno_prevista', amanhaStr)
-      .eq('status', 'pendente');
-    if (retornosError) throw retornosError;
-
-    if (!retornos || retornos.length === 0) {
-      return { success: true, message: 'Sem retornos para amanhã', actions: [] };
-    }
-
-    for (const ret of retornos as any[]) {
-      if (ret.pacientes?.email) {
-        await must(supabase.from('notification_queue').insert({
-          tipo: 'email',
-          destinatario_id: ret.paciente_id,
-          destinatario_email: ret.pacientes.email,
-          destinatario_nome: ret.pacientes.nome,
-          assunto: 'Lembrete de Retorno — Amanhã',
-          conteudo: `Olá ${ret.pacientes.nome}, lembramos que seu retorno está agendado para amanhã. Entre em contato para confirmar.`,
-          status: 'pendente',
-        }));
-        actions.push(`Notificação enviada: ${ret.pacientes.nome}`);
-      }
-    }
-
-    return { success: true, message: `${actions.length} notificação(ões) de retorno enviada(s)`, actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}
-
 // ─── 7. Auto Billing Exame ──────────────────────────────
 /** Generate billing when exam report is released */
 export async function autoBillingExame(params: {
@@ -545,18 +460,20 @@ export async function autoTriagemParaFila(params: {
     });
     if (error) throw error;
     const resultado = data as any;
-    if (!resultado) throw new Error('O check-in da triagem nao retornou um resultado.');
+    if (!resultado) throw new Error('O check-in da triagem não retornou um resultado.');
 
-    actions.push(resultado.repetido
-      ? 'Paciente ja estava na fila; prioridade: ' + prioridade
-      : 'Paciente adicionado a fila (prioridade: ' + prioridade + ')');
-    actions.push('Agendamento atualizado para aguardando');
+    if (resultado.repetido) {
+      actions.push('Paciente já estava na fila; prioridade: ' + prioridade);
+    } else {
+      actions.push('Paciente adicionado à fila (prioridade: ' + prioridade + ')');
+      actions.push('Agendamento atualizado para aguardando');
+    }
 
     return {
       success: true,
       message: resultado.repetido
         ? 'Prioridade de triagem confirmada na fila'
-        : 'Paciente adicionado a fila com prioridade',
+        : 'Paciente adicionado à fila com prioridade',
       actions,
     };
   } catch (e: any) {
@@ -608,67 +525,6 @@ export async function autoConfirmarPagamento(params: {
     }
 
     return { success: true, message: 'Pagamento processado com sucesso', actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}
-
-// ─── 10. Confirmar Agendamento + Notificar ──────────────
-/** Confirm appointment and send notification to patient */
-export async function autoConfirmarAgendamento(agendamentoId: string): Promise<WorkflowResult> {
-  const actions: string[] = [];
-
-  try {
-    await must(supabase.from('agendamentos').update({ status: 'confirmado' }).eq('id', agendamentoId));
-    actions.push('Agendamento confirmado');
-
-    // Get patient info for notification
-    const { data: ag } = await supabase
-      .from('agendamentos')
-      .select('data, hora_inicio, paciente_id, medico_id')
-      .eq('id', agendamentoId)
-      .maybeSingle();
-
-    if (ag) {
-      const { data: pac } = await supabase
-        .from('pacientes')
-        .select('nome, email, telefone')
-        .eq('id', ag.paciente_id)
-        .maybeSingle();
-      const { data: med } = await supabase
-        .from('medicos')
-        .select('nome')
-        .eq('id', ag.medico_id)
-        .maybeSingle();
-
-      if (pac?.email) {
-        await must(supabase.from('notification_queue').insert({
-          tipo: 'email',
-          destinatario_id: ag.paciente_id,
-          destinatario_email: pac.email,
-          destinatario_nome: pac.nome,
-          assunto: `Consulta confirmada — ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')}`,
-          conteudo: `Olá ${pac.nome}, sua consulta com ${nomeMedico(med?.nome || 'médico')} no dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} está confirmada.`,
-          status: 'pendente',
-        }));
-        actions.push('Notificação de confirmação enviada por e-mail');
-      }
-
-      if (pac?.telefone) {
-        await must(supabase.from('notification_queue').insert({
-          tipo: 'whatsapp',
-          destinatario_id: ag.paciente_id,
-          destinatario_telefone: pac.telefone,
-          destinatario_nome: pac.nome,
-          assunto: 'Confirmação de Consulta',
-          conteudo: `Olá ${pac.nome}! Sua consulta do dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)} com ${nomeMedico(med?.nome || '')} está confirmada. ✅`,
-          status: 'pendente',
-        }));
-        actions.push('Notificação WhatsApp enfileirada');
-      }
-    }
-
-    return { success: true, message: 'Agendamento confirmado com notificação', actions };
   } catch (e: any) {
     return { success: false, message: e.message, actions };
   }
@@ -919,108 +775,3 @@ export async function autoNotificarMedico(params: {
   }
 }
 
-// ─── 15. Auto Agendar a partir da Lista de Espera ───────
-/** Convert a waiting list entry into a real appointment */
-export async function autoAgendarListaEspera(params: {
-  listaEsperaId: string;
-  pacienteId: string;
-  medicoId: string;
-  data: string;
-  horaInicio: string;
-  horaFim?: string;
-}): Promise<WorkflowResult> {
-  const actions: string[] = [];
-
-  try {
-    // Create appointment
-    const { data: ag, error } = await supabase.from('agendamentos').insert({
-      paciente_id: params.pacienteId,
-      medico_id: params.medicoId,
-      data: params.data,
-      hora_inicio: params.horaInicio,
-      hora_fim: params.horaFim || null,
-      status: 'agendado',
-      observacoes: 'Agendado a partir da lista de espera',
-    }).select('id').single();
-
-    if (error) throw error;
-    actions.push('Agendamento criado');
-
-    // Update waiting list status
-    await must(supabase.from('lista_espera').update({ status: 'agendado' }).eq('id', params.listaEsperaId));
-    actions.push('Lista de espera → Agendado');
-
-    // Notify patient
-    const { data: pac } = await supabase
-      .from('pacientes')
-      .select('nome, email, telefone')
-      .eq('id', params.pacienteId)
-      .maybeSingle();
-
-    if (pac?.email) {
-      const { data: med } = await supabase
-        .from('medicos')
-        .select('nome')
-        .eq('id', params.medicoId)
-        .maybeSingle();
-
-      await must(supabase.from('notification_queue').insert({
-        tipo: 'email',
-        destinatario_id: params.pacienteId,
-        destinatario_email: pac.email,
-        destinatario_nome: pac.nome,
-        assunto: 'Sua consulta foi agendada!',
-        conteudo: `Olá ${pac.nome}! Sua consulta com ${nomeMedico(med?.nome || '')} foi agendada para ${format(new Date(params.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${params.horaInicio.slice(0, 5)}. Nos vemos lá! 🎉`,
-        status: 'pendente',
-      }));
-      actions.push('Paciente notificado por e-mail');
-    }
-
-    return { success: true, message: 'Paciente agendado a partir da lista de espera', actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}
-
-// ─── 16. Auto No-Show em Lote ───────────────────────────
-/** Mark all past unconfirmed appointments as no-show */
-export async function autoMarcarFaltasHoje(): Promise<WorkflowResult> {
-  const actions: string[] = [];
-
-  try {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const agora = format(new Date(), 'HH:mm');
-
-    const { data: faltas } = await supabase
-      .from('agendamentos')
-      .select('id, paciente_id, hora_inicio')
-      .eq('data', today)
-      .in('status', ['agendado'])
-      .lt('hora_inicio', agora);
-
-    if (!faltas || faltas.length === 0) {
-      return { success: true, message: 'Nenhuma falta detectada', actions: [] };
-    }
-
-    for (const ag of faltas) {
-      await autoCancelarAgendamento({
-        agendamentoId: ag.id,
-        motivo: 'faltou',
-      });
-      actions.push(`Falta registrada: ${ag.hora_inicio}`);
-    }
-
-    await must(supabase.from('automation_logs').insert({
-      tipo: 'agenda',
-      nome: 'Auto No-Show',
-      status: 'sucesso',
-      registros_processados: faltas.length,
-      registros_sucesso: faltas.length,
-      detalhes: { data: today, total_faltas: faltas.length },
-    }));
-
-    return { success: true, message: `${faltas.length} falta(s) registrada(s)`, actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}

@@ -197,7 +197,7 @@ describe('AnexosProntuario', () => {
 
   it('retries publication status after a load error before enabling portal changes', async () => {
     mocks.publicationIn
-      .mockResolvedValueOnce({ data: null, error: new Error('Status indispon?vel') })
+      .mockResolvedValueOnce({ data: null, error: new Error('Status indisponível') })
       .mockResolvedValueOnce({ data: [], error: null });
     render(<AnexosProntuario prontuarioId="prontuario-1" pacienteId="paciente-1" anexos={[anexo]} podeGerenciarPortal portalAnexoId="anexo-1" onClosePortalPage={vi.fn()} onAnexoRemovido={vi.fn()} />);
 
