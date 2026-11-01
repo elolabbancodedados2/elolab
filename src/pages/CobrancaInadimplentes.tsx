@@ -48,6 +48,7 @@ export default function CobrancaInadimplentes() {
   const [filtroFaixa, setFiltroFaixa] = useState<FaixaAtraso | 'todas'>('todas');
   const [confirmarExportacao, setConfirmarExportacao] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [agrupamento, setAgrupamento] = useState<'lancamento' | 'paciente'>('lancamento');
   const { profile } = useSupabaseAuth();
   const clinicaId = profile?.clinica_id;
 
@@ -168,6 +169,20 @@ export default function CobrancaInadimplentes() {
     }
     return true;
   }), [dataComDias, filtroIndicador, filtroFaixa, searchTerm]);
+
+  // Um paciente com três títulos vencidos recebia três cobranças separadas;
+  // agrupado, a equipe vê o total devido e fala com a pessoa uma vez só.
+  const porPaciente = useMemo(() => {
+    const grupos = new Map<string, { id: string; pacientes: any; titulos: number; total: number; maiorAtraso: number }>();
+    for (const l of filtrados as any[]) {
+      const atual = grupos.get(l.paciente_id) ?? { id: l.paciente_id, pacientes: l.pacientes, titulos: 0, total: 0, maiorAtraso: 0 };
+      atual.titulos += 1;
+      atual.total += saldo(l);
+      atual.maiorAtraso = Math.max(atual.maiorAtraso, l.dias);
+      grupos.set(l.paciente_id, atual);
+    }
+    return [...grupos.values()].sort((a, b) => b.total - a.total);
+  }, [filtrados]);
 
   const resumoFaixas = useMemo(() => resumoPorFaixa(dataComDias.map((l: any) => ({ dias: l.dias, saldo: saldo(l) }))), [dataComDias]);
   const temFiltro = filtroIndicador !== 'todos' || filtroFaixa !== 'todas' || Boolean(searchTerm.trim());
@@ -409,6 +424,67 @@ export default function CobrancaInadimplentes() {
               onAction={limparFiltros}
             />
           ) : (
+            <div className="space-y-3">
+            <div role="group" aria-label="Agrupar pendências" className="flex flex-wrap gap-2">
+              {([['lancamento', 'Por lançamento'], ['paciente', 'Por paciente']] as const).map(([valor, rotulo]) => (
+                <button key={valor} type="button" aria-pressed={agrupamento === valor} onClick={() => setAgrupamento(valor)}
+                  className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', agrupamento === valor ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>
+                  {rotulo}{valor === 'paciente' ? ` · ${porPaciente.length}` : ` · ${filtrados.length}`}
+                </button>
+              ))}
+            </div>
+            {agrupamento === 'paciente' ? (
+            <div className="overflow-hidden rounded-xl border border-border/60">
+              <ScrollArea className="h-[520px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Títulos</TableHead>
+                      <TableHead>Total devido</TableHead>
+                      <TableHead>Maior atraso</TableHead>
+                      <TableHead>Contato</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {porPaciente.map(grupo => {
+                      const totalFormatado = grupo.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                      const whatsapp = linkWhatsApp(grupo.pacientes?.telefone, mensagemCobranca(primeiroNome(grupo.pacientes?.nome), totalFormatado, grupo.maiorAtraso));
+                      return (
+                        <TableRow key={grupo.id}>
+                          <TableCell className="font-medium">{grupo.pacientes?.nome || '—'}</TableCell>
+                          <TableCell className="tabular-nums">{grupo.titulos}</TableCell>
+                          <TableCell className="font-semibold tabular-nums">{totalFormatado}</TableCell>
+                          <TableCell>
+                            <Badge variant={grupo.maiorAtraso > 30 ? 'destructive' : 'outline'} className={cn('rounded-full', grupo.maiorAtraso <= 30 && 'border-warning/40 bg-warning/10 text-warning-foreground')}>{grupo.maiorAtraso} dias</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1 text-xs">
+                              {grupo.pacientes?.telefone && <p className="flex items-center gap-1"><MessageCircle className="h-3 w-3 text-primary" aria-hidden="true" />{grupo.pacientes.telefone}</p>}
+                              {grupo.pacientes?.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" aria-hidden="true" />{grupo.pacientes.email}</p>}
+                              {!grupo.pacientes?.telefone && !grupo.pacientes?.email && <span className="text-muted-foreground">sem contato</span>}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {whatsapp ? (
+                              <Button size="icon" variant="ghost" asChild className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
+                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${grupo.pacientes?.nome || 'paciente'} via WhatsApp`} title="Contatar via WhatsApp">
+                                  <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                                </a>
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Sem telefone válido</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
+            ) : (
             <div className="overflow-hidden rounded-xl border border-border/60">
               <ScrollArea className="h-[520px]">
                 <Table>
@@ -468,6 +544,8 @@ export default function CobrancaInadimplentes() {
                   </TableBody>
                 </Table>
               </ScrollArea>
+            </div>
+            )}
             </div>
           )}
         </CardContent>
