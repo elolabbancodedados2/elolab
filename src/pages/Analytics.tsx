@@ -746,7 +746,7 @@ export default function Analytics() {
               <CardContent>
                 {agPorDia.length === 0 ? (
                   <p className="flex min-h-[300px] items-center justify-center text-center text-sm text-muted-foreground">
-                    Nenhum dado de agendamento disponÃ­vel no perÃ­odo selecionado.
+                    Nenhum dado de agendamento disponível no período selecionado.
                   </p>
                 ) : <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={agPorDia}>

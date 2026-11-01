@@ -862,7 +862,7 @@ test('Agenda restores date and view through its URL and browser history', async 
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect(page.getByText('NÃ£o conseguimos carregar estas informaÃ§Ãµes agora. Tente novamente em instantes.')).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByText('Não conseguimos carregar estas informações agora. Tente novamente em instantes.')).toBeHidden({ timeout: 10_000 });
   await page.screenshot({ path: testInfo.outputPath('agenda-url-state-mobile.png'), fullPage: true, animations: 'disabled' });
 });
 
@@ -940,7 +940,7 @@ test('agenda keeps a conflicting clinician slot unsaved and explains the conflic
   await expect(page.getByText(/Este médico já tem consulta neste horário/)).toBeVisible();
   await expect(dialog).toBeVisible();
   expect(appointmentInsertCount).toBe(0);
-  await expect(page.getByText(/Este mÃ©dico jÃ¡ tem consulta neste horÃ¡rio/)).toBeHidden();
+  await expect(page.getByText(/Este médico já tem consulta neste horário/)).toBeHidden();
   agendaReadFails = true;
   await dialog.getByRole('button', { name: 'Agendar consulta', exact: true }).click();
   await expect(page.getByText(/Não foi possível conferir os horários da agenda/)).toBeVisible();
@@ -4137,7 +4137,7 @@ test('finance reconciles populated received revenue with its synthetic payment l
     await expect(main.getByRole('heading', { name: 'Painel Financeiro' })).toBeVisible();
     const revenueCard = main.getByText('Entradas recebidas', { exact: true }).first().locator('xpath=../..');
     await expect(revenueCard).toContainText(/R\$\s*720/);
-    await expect(main.getByText('Sem receita para calcular no perÃ­odo', { exact: true })).toHaveCount(0);
+    await expect(main.getByText('Sem receita para calcular no período', { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`finance-populated-${viewport.width}.png`), animations: 'disabled' });
   }

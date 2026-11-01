@@ -8,13 +8,13 @@ describe('estado de erro do aplicativo', () => {
 
     render(
       <ErrorState
-        title="NÃ£o foi possÃ­vel carregar o dashboard"
-        description="Confira sua conexÃ£o e tente novamente."
+        title="Não foi possível carregar o dashboard"
+        description="Confira sua conexão e tente novamente."
         onRetry={onRetry}
       />,
     );
 
-    expect(screen.getByRole('alert')).toHaveTextContent('NÃ£o foi possÃ­vel carregar o dashboard');
+    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível carregar o dashboard');
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(onRetry).toHaveBeenCalledOnce();
   });

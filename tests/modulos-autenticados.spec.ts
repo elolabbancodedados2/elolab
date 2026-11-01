@@ -9,8 +9,8 @@ const CLINIC_SCREEN_ROUTES = [
   '/tarefas', '/analise-preditiva',
 ];
 
-test.describe('Telas autenticadas com backend sintÃ©tico', () => {
-  test('telas da clÃ­nica mostram tÃ­tulo, conteÃºdo e nÃ£o quebram em desktop', async ({ page }) => {
+test.describe('Telas autenticadas com backend sintético', () => {
+  test('telas da clínica mostram título, conteúdo e não quebram em desktop', async ({ page }) => {
     test.setTimeout(60_000);
     const synthetic = await installSyntheticClinic(page);
     const pageErrors: string[] = [];
@@ -19,7 +19,7 @@ test.describe('Telas autenticadas com backend sintÃ©tico', () => {
 
     await page.goto('/dashboard');
     if (!(await page.locator('main').count())) {
-      throw new Error(`O layout autenticado nÃ£o abriu. Chamadas mockadas: ${synthetic.requests.join(' | ')}`);
+      throw new Error(`O layout autenticado não abriu. Chamadas mockadas: ${synthetic.requests.join(' | ')}`);
     }
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByText('Acesso temporariamente suspenso')).toHaveCount(0);
@@ -36,9 +36,9 @@ test.describe('Telas autenticadas com backend sintÃ©tico', () => {
       const contentLength = visibleContent.trim().length;
       const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
 
-      if (!hasHeading) failures.push(`${route}: sem tÃ­tulo h1 visÃ­vel (URL ${new URL(page.url()).pathname}, título "${headingText}")`);
-      if (contentLength < 40) failures.push(`${route}: Ã¡rea principal quase vazia (${contentLength} caracteres)`);
-      if (visibleContent.includes('Acesso temporariamente suspenso')) failures.push(`${route}: backend sintÃ©tico incompleto (guard operacional bloqueou a tela)`);
+      if (!hasHeading) failures.push(`${route}: sem título h1 visível (URL ${new URL(page.url()).pathname}, título "${headingText}")`);
+      if (contentLength < 40) failures.push(`${route}: área principal quase vazia (${contentLength} caracteres)`);
+      if (visibleContent.includes('Acesso temporariamente suspenso')) failures.push(`${route}: backend sintético incompleto (guard operacional bloqueou a tela)`);
       if (scrollWidth > 1441) failures.push(`${route}: overflow horizontal (${scrollWidth}px)`);
       if (pageErrors.length) failures.push(`${route}: erro JavaScript: ${pageErrors.at(-1)}`);
     }
