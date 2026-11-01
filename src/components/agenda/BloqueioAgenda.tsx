@@ -568,8 +568,8 @@ export function BloqueioAgenda({ creationPage = false }: BloqueioAgendaProps) {
                       </div>
                       {podeGerir(bloqueio) && (
                         <div className="flex shrink-0 items-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-11 w-11" asChild>
-                            <Link to={`/agenda/bloqueios/${bloqueio.id}/editar`} state={navigationContext} aria-label={`Editar bloqueio de ${getMedicoLabel(bloqueio.medico_id)}`}>
+                          <Button variant="ghost" size="icon" className="h-11 w-11" asChild aria-label={`Editar bloqueio de ${getMedicoLabel(bloqueio.medico_id)}`}>
+                            <Link to={`/agenda/bloqueios/${bloqueio.id}/editar`} state={navigationContext}>
                               <Pencil className="h-4 w-4" />
                             </Link>
                           </Button>
