@@ -132,3 +132,21 @@ export function parseValorContado(valor: string): number | null {
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return arredondarReais(parsed);
 }
+
+/**
+ * Desconto em reais a partir do que foi digitado, em R$ ou em %.
+ * Devolve null quando o texto não é um número válido.
+ */
+export function calcularDesconto(subtotal: number, digitado: string, modo: 'reais' | 'percentual'): number | null {
+  const valor = parseMoneyInput(digitado);
+  if (valor === null) return null;
+  if (modo === 'reais') return valor;
+  if (valor > 100) return null;
+  return Math.round((emCentavos(subtotal) * valor) / 100) / 100;
+}
+
+/** Troco do pagamento em dinheiro; null quando o valor entregue não cobre o total. */
+export function calcularTroco(total: number, entregue: number): number | null {
+  const diferenca = emCentavos(entregue) - emCentavos(total);
+  return diferenca < 0 ? null : diferenca / 100;
+}

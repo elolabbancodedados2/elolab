@@ -123,3 +123,21 @@ describe('valorPorExtenso', () => {
     expect(valorPorExtenso(2000000)).toBe('dois milhões de reais');
   });
 });
+
+describe('calcularDesconto e calcularTroco', () => {
+  it('converte percentual em reais e recusa mais de 100%', async () => {
+    const { calcularDesconto } = await import('@/lib/dinheiro');
+    expect(calcularDesconto(200, '10', 'percentual')).toBe(20);
+    expect(calcularDesconto(99.9, '15', 'percentual')).toBe(14.99);
+    expect(calcularDesconto(200, '15,50', 'reais')).toBe(15.5);
+    expect(calcularDesconto(200, '120', 'percentual')).toBeNull();
+    expect(calcularDesconto(200, 'x', 'reais')).toBeNull();
+  });
+
+  it('calcula o troco em centavos', async () => {
+    const { calcularTroco } = await import('@/lib/dinheiro');
+    expect(calcularTroco(180.3, 200)).toBe(19.7);
+    expect(calcularTroco(200, 200)).toBe(0);
+    expect(calcularTroco(200, 150)).toBeNull();
+  });
+});
