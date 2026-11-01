@@ -22,6 +22,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { appointmentStartHasPassed, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { appointmentEndMinutes } from '@/lib/agendaTime';
 import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
+import { datasDaRecorrencia, FREQUENCIAS_RECORRENCIA, MAX_OCORRENCIAS, type FrequenciaRecorrencia } from '@/lib/recorrenciaAgenda';
 import { describeAppointmentConflict } from '@/lib/agendaConflictMessage';
 import { APPOINTMENT_CANCELLATION_REASONS, appointmentCancellationReasonLabel, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
 
@@ -71,6 +72,8 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         sala_id: initial?.sala_id || '',
         observacoes: initial?.observacoes || '',
         send_whatsapp: false,
+        repetir: 'nao' as FrequenciaRecorrencia,
+        ocorrencias: 4,
       };
       setForm(value);
       setInitialSnapshot(JSON.stringify(value));
@@ -390,6 +393,37 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
 
       toast.success(editing ? 'Consulta atualizada' : 'Consulta agendada');
 
+      // Consulta recorrente: a primeira já foi gravada com todas as checagens.
+      // As seguintes respeitam bloqueios e a constraint de sobreposição do
+      // banco; o que não couber é listado, sem desfazer o que foi marcado.
+      const datasSeguintes = !editing && !initial?._waiting_id ? datasDaRecorrencia(form.data, form.repetir, form.ocorrencias) : [];
+      if (datasSeguintes.length) {
+        const puladas: string[] = [];
+        let criadas = 0;
+        const { data: bloqueiosSerie } = await (supabase.from('bloqueios_agenda' as any)
+          .select('data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro')
+          .eq('medico_id', form.medico_id)
+          .lte('data_inicio', datasSeguintes[datasSeguintes.length - 1])
+          .gte('data_fim', datasSeguintes[0]) as any);
+        for (const data of datasSeguintes) {
+          const bloqueada = ((bloqueiosSerie as any[]) || []).some((b: any) => b.data_inicio <= data && b.data_fim >= data && (
+            b.dia_inteiro || ((toMin(b.hora_inicio) ?? 0) < novoFim && (toMin(b.hora_fim) ?? 0) > novoInicio)
+          ));
+          if (bloqueada) { puladas.push(data); continue; }
+          const { error: erroSerie } = await (supabase.from('agendamentos').insert({ ...payloadToSave, data, status: 'agendado' }) as any);
+          if (erroSerie) puladas.push(data); else criadas += 1;
+        }
+        const formatar = (d: string) => d.split('-').reverse().slice(0, 2).join('/');
+        if (puladas.length) {
+          toast.warning(`${criadas} repetição(ões) marcada(s); ${puladas.length} ficou(aram) de fora`, {
+            description: `Horário ocupado ou bloqueado em ${puladas.map(formatar).join(', ')}. Marque essas datas manualmente.`,
+            duration: 12000,
+          });
+        } else {
+          toast.success(`${criadas} repetição(ões) marcada(s)`, { description: datasSeguintes.map(formatar).join(', ') });
+        }
+      }
+
       // O lembrete é secundário: a consulta já está marcada e não deve ser
       // desfeita se o WhatsApp falhar. Mas a falha era engolida com
       // `.catch(() => {})` e a recepção não sabia que precisava reenviar —
@@ -660,6 +694,31 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
                 <Textarea id="appointment-notes" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
               </div>
+              {!editing && !initial?._waiting_id && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="appointment-repeat">Repetir</Label>
+                    <Select value={form.repetir || 'nao'} onValueChange={(v) => setForm({ ...form, repetir: v as FrequenciaRecorrencia })}>
+                      <SelectTrigger id="appointment-repeat"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FREQUENCIAS_RECORRENCIA.map(f => <SelectItem key={f.valor} value={f.valor}>{f.rotulo}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {form.repetir && form.repetir !== 'nao' && (
+                    <div>
+                      <Label htmlFor="appointment-occurrences">Total de consultas (até {MAX_OCORRENCIAS})</Label>
+                      <Input id="appointment-occurrences" type="number" min={2} max={MAX_OCORRENCIAS} value={form.ocorrencias}
+                        onChange={(e) => setForm({ ...form, ocorrencias: Math.min(MAX_OCORRENCIAS, Math.max(2, Number(e.target.value) || 2)) })} />
+                    </div>
+                  )}
+                  {form.repetir && form.repetir !== 'nao' && (
+                    <p className="text-xs text-muted-foreground sm:col-span-2">
+                      Também em {datasDaRecorrencia(form.data, form.repetir, form.ocorrencias).map(d => d.split('-').reverse().slice(0, 2).join('/')).join(', ')}. Horários ocupados ou bloqueados ficam de fora e são avisados.
+                    </p>
+                  )}
+                </div>
+              )}
               {!editing && (
                 <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 p-4">
                   <div className="min-w-0">

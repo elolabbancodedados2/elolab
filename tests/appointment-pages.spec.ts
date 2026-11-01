@@ -89,3 +89,41 @@ test('appointment direct edit loads a clinic-scoped record and retains data afte
   expect(saveAttempts).toBe(2);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
+
+test('recurring appointment creates the following dates and reports the ones that did not fit', async ({ page }, testInfo) => {
+  const synthetic = await installSyntheticClinic(page, { appOrigin: String(testInfo.project.use.baseURL), platformAdmin: false, agendaPopulated: true } as any);
+  const inserted: Array<Record<string, unknown>> = [];
+  await page.route('**/rest/v1/agendamentos*', async route => {
+    const request = route.request();
+    if (request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: '[]' });
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON();
+      inserted.push(body);
+      if (body.data === '2030-01-21') {
+        return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: '23P01', message: 'agendamentos_sem_sobreposicao' }) });
+      }
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: `00000000-0000-4000-9000-0000000009${inserted.length}0` }) });
+    }
+    return route.fallback();
+  });
+  await page.route('**/rest/v1/medico_disponibilidade*', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(
+    [0, 1, 2, 3, 4, 5, 6].map(dia => ({ dia_semana: dia, hora_inicio: '07:00:00', hora_fim: '19:00:00' })),
+  ) }));
+  await page.route('**/rest/v1/bloqueios_agenda*', route => route.fulfill({ contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/agenda/nova?data=2030-01-07');
+  await page.locator('#appointment-patient').click();
+  await page.getByPlaceholder('Buscar paciente...').fill('Pessoa');
+  await page.getByRole('option').first().click();
+  await page.locator('#appointment-doctor').click();
+  await page.getByRole('option').first().click();
+  await page.locator('#appointment-repeat').click();
+  await page.getByRole('option', { name: 'Toda semana' }).click();
+  await page.getByLabel(/Total de consultas/).fill('3');
+  await expect(page.getByText('Também em 14/01, 21/01.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Agendar consulta', exact: true }).click();
+  await expect.poll(() => inserted.map(item => item.data)).toEqual(['2030-01-07', '2030-01-14', '2030-01-21']);
+  await expect(page.getByText(/1 repetição\(ões\) marcada\(s\); 1 ficou\(aram\) de fora/)).toBeVisible();
+  expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+});
