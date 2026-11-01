@@ -75,8 +75,10 @@ export function projetarFluxoCaixa(
   for (const r of realizados) {
     const alvo = acc.get(r.data.slice(0, 7));
     if (!alvo || r.data > opcoes.hoje) continue;
-    if (r.tipo === 'receita' || r.tipo === 'suprimento') alvo.re += emCentavos(r.valor);
-    else if (r.tipo === 'despesa' || r.tipo === 'sangria') alvo.rs += emCentavos(r.valor);
+    // Sangria e suprimento são transferências internas e não mudam o resultado
+    // (mesma regra de totaisMovimentoCaixa, do Financeiro e do DRE).
+    if (r.tipo === 'receita') alvo.re += emCentavos(r.valor);
+    else if (r.tipo === 'despesa') alvo.rs += emCentavos(r.valor);
   }
 
   const temContinuacao = new Set(lancamentos.map((l) => l.recorrencia_origem_id).filter(Boolean));
@@ -111,5 +113,45 @@ export function projetarFluxoCaixa(
       recorrenteEntradas: v.ce / 100, recorrenteSaidas: v.cs / 100,
       saldoMes: saldo / 100, saldoAcumulado: acumulado / 100,
     };
+  });
+}
+
+export interface LoteTissProjecao {
+  id: string;
+  status: string;
+  valor_apresentado: number | null;
+  valor_pago: number | null;
+  enviado_em: string | null;
+  competencia?: string | null;
+  convenios?: { prazo_retorno?: number | null } | null;
+}
+
+const LOTE_A_RECEBER = ['enviado', 'processando', 'pago_parcial'];
+
+/**
+ * Lote TISS enviado ainda não vira lançamento: a receita só nasce quando o
+ * retorno é conciliado. Para a projeção não esquecer esse dinheiro, o saldo
+ * do lote entra como receita prevista na data do envio + prazo de retorno do
+ * convênio (30 dias quando não informado).
+ */
+export function lotesTissComoRecebiveis(lotes: ReadonlyArray<LoteTissProjecao>): LancamentoProjecao[] {
+  return lotes.flatMap((lote) => {
+    if (!LOTE_A_RECEBER.includes(lote.status)) return [];
+    const saldo = Number(lote.valor_apresentado || 0) - Number(lote.valor_pago || 0);
+    const base = (lote.enviado_em || lote.competencia || '').slice(0, 10);
+    if (saldo <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(base)) return [];
+    const prazo = Number(lote.convenios?.prazo_retorno);
+    const dias = Number.isFinite(prazo) && prazo >= 0 ? prazo : 30;
+    const [ano, mes, dia] = base.split('-').map(Number);
+    const vencimento = isoUtc(new Date(Date.UTC(ano, mes - 1, dia + dias)));
+    return [{
+      id: `lote-tiss-${lote.id}`,
+      tipo: 'receita',
+      status: 'pendente',
+      valor: saldo,
+      valor_pago: 0,
+      data: base,
+      data_vencimento: vencimento,
+    }];
   });
 }

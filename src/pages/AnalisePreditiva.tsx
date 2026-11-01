@@ -26,7 +26,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useNavigate } from 'react-router-dom';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import {
-  classificarRiscoFalta, correspondeFiltroRiscoFalta, formatarDataHoraRiscoFalta, formatarIndiceRisco,
+  classificarRiscoFalta, consultasAindaPorVir, correspondeFiltroRiscoFalta, formatarDataHoraRiscoFalta, formatarIndiceRisco,
   type FaixaRiscoFalta,
 } from '@/lib/riscoFaltas';
 
@@ -114,7 +114,7 @@ export default function AnalisePreditiva() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const { data: predicoes = [], isLoading, isFetching, isError, error, refetch } = useQuery({
+  const { data: predicoesCarregadas = [], isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['predicoes_no_show', profile?.clinica_id, dataReferencia],
     queryFn: async () => {
       if (!profile?.clinica_id) return [];
@@ -161,6 +161,8 @@ export default function AnalisePreditiva() {
     enabled: !!profile?.clinica_id,
   });
 
+  // A consulta busca a partir de hoje; as de hoje que já começaram saem da lista.
+  const predicoes = useMemo(() => consultasAindaPorVir(predicoesCarregadas, agora), [predicoesCarregadas, agora]);
   const predicoesFiltradas = predicoes.filter(predicao =>
     correspondeFiltroRiscoFalta(predicao.probabilidade_no_show, filtroRisco),
   );
@@ -169,7 +171,7 @@ export default function AnalisePreditiva() {
     .filter(Number.isFinite);
   const ultimaAtualizacao = atualizacoesValidas.length > 0 ? Math.max(...atualizacoesValidas) : null;
   const temPrevisaoAntiga = atualizacoesValidas.some(timestamp => agora.getTime() - timestamp > 2 * 60 * 60 * 1000);
-  const atingiuLimite = predicoes.length >= MAX_LINHAS_AUTO;
+  const atingiuLimite = predicoesCarregadas.length >= MAX_LINHAS_AUTO;
 
   const enviarLembrete = async (predicao: PredictedNoShow) => {
     if (!predicao.telefone && !predicao.email) {
@@ -409,7 +411,7 @@ export default function AnalisePreditiva() {
                     onClick={() => setFiltroRisco(opt.key)}
                     className={cn(
                       'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                      ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                     )}
                   >
                     {opt.label}

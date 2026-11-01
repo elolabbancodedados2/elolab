@@ -652,7 +652,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
       // Somente perfil clínico deve abrir/editar o prontuário. Recepção e
       // enfermagem apenas movem o paciente no fluxo operacional.
       if (ag?.paciente_id && hasAnyRole(['admin', 'medico'])) {
-        navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${agendamentoId}`);
+        navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${agendamentoId}`, { state: { returnTo: '/fila' } });
       } else if (ag?.paciente_id) {
         toast.info('Atendimento iniciado. O médico responsável deve abrir o prontuário.');
       } else {

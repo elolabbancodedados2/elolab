@@ -15,21 +15,41 @@ export default defineConfig(({ mode }) => ({
     // Code splitting for better performance
     rollupOptions: {
       output: {
-        // O Rolldown do Vite 8 aceita `manualChunks` como função. O mapa usado
-        // pelo Rollup antigo agora falha durante o build.
-        manualChunks(id) {
-          const grupos: Array<[string, string[]]> = [
-            ['react-vendor', ['react', 'react-dom', 'react-router-dom']],
-            ['ui-vendor', ['@radix-ui/react-', 'lucide-react']],
-            ['charts-vendor', ['recharts']],
-            ['date-vendor', ['date-fns']],
-            ['motion-vendor', ['framer-motion']],
-            ['supabase-vendor', ['@supabase/supabase-js']],
-            ['form-vendor', ['react-hook-form', 'zod', '@hookform/resolvers']],
-          ];
-
-          if (!id.includes('node_modules')) return undefined;
-          return grupos.find(([, pacotes]) => pacotes.some((pacote) => id.includes(`/node_modules/${pacote}`)))?.[0];
+        // Grupos explícitos do Rolldown (Vite 8). O antigo `manualChunks` vira
+        // um único grupo cujo nome é decidido por módulo; como o Rolldown inclui
+        // as dependências de cada módulo capturado no mesmo chunk, o React core
+        // entrava em `charts-vendor` (dependência do recharts) e o index.html
+        // pré-carregava ~109 KB gzip de gráficos em todas as telas.
+        //
+        // Cada pacote casa com `/node_modules/<pacote>/` (com barra final, para
+        // 'react' não casar 'react-is' ou 'react-smooth'). A prioridade segue a
+        // ordem da lista: o react-vendor captura React, ReactDOM e scheduler
+        // antes dos demais grupos, que então não podem puxá-los. clsx e
+        // tailwind-merge (usados por `cn()` em toda tela, e também dependências
+        // do recharts) ficam no ui-vendor pelo mesmo motivo.
+        codeSplitting: {
+          groups: (
+            [
+              ['react-vendor', ['react', 'react-dom', 'scheduler', 'react-router', 'react-router-dom']],
+              ['ui-vendor', ['@radix-ui/react-', 'lucide-react', 'clsx', 'tailwind-merge']],
+              ['charts-vendor', ['recharts']],
+              ['date-vendor', ['date-fns']],
+              ['motion-vendor', ['framer-motion']],
+              ['supabase-vendor', ['@supabase/supabase-js']],
+              ['form-vendor', ['react-hook-form', 'zod', '@hookform/resolvers']],
+            ] as Array<[string, string[]]>
+          ).map(([name, pacotes], indice, lista) => ({
+            name,
+            priority: lista.length - indice,
+            test: (id: string) => {
+              const caminho = id.replaceAll('\\', '/');
+              // Prefixos terminados em '-' (ex.: '@radix-ui/react-') agrupam
+              // uma família de pacotes; os demais exigem o nome exato.
+              return pacotes.some((pacote) => caminho.includes(
+                pacote.endsWith('-') ? `/node_modules/${pacote}` : `/node_modules/${pacote}/`,
+              ));
+            },
+          })),
           // NÃO agrupar jspdf/xlsx aqui.
           //
           // Havia um `'export-vendor': ['jspdf', 'xlsx']`. Forçar essas duas

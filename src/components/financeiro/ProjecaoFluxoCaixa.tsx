@@ -3,7 +3,7 @@ import { CalendarRange } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { CENARIOS_FLUXO, projetarFluxoCaixa, type CenarioFluxo, type LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
+import { CENARIOS_FLUXO, lotesTissComoRecebiveis, projetarFluxoCaixa, type CenarioFluxo, type LancamentoProjecao, type LoteTissProjecao } from '@/lib/projecaoFluxoCaixa';
 import { cn } from '@/lib/utils';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -14,13 +14,20 @@ interface Props {
   lancamentos: ReadonlyArray<LancamentoProjecao>;
   realizados: ReadonlyArray<{ tipo: string; valor: number; data: string }>;
   realizadoIndisponivel?: boolean;
+  /** Lotes TISS enviados e ainda sem retorno; o saldo entra como receita prevista. */
+  lotesTiss?: ReadonlyArray<LoteTissProjecao>;
+  lotesTissIndisponivel?: boolean;
 }
 
-export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponivel = false }: Props) {
+const SEM_LOTES: ReadonlyArray<LoteTissProjecao> = [];
+
+export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponivel = false, lotesTiss = SEM_LOTES, lotesTissIndisponivel = false }: Props) {
   const [cenario, setCenario] = useState<CenarioFluxo>('realista');
+  const recebiveisConvenio = useMemo(() => lotesTissComoRecebiveis(lotesTiss), [lotesTiss]);
+  const totalConvenio = recebiveisConvenio.reduce((total, item) => total + item.valor, 0);
   const meses = useMemo(
-    () => projetarFluxoCaixa(lancamentos, realizados, { hoje: todaySaoPauloDateOnly(), meses: 3, cenario }),
-    [lancamentos, realizados, cenario],
+    () => projetarFluxoCaixa([...lancamentos, ...recebiveisConvenio], realizados, { hoje: todaySaoPauloDateOnly(), meses: 3, cenario }),
+    [lancamentos, recebiveisConvenio, realizados, cenario],
   );
 
   return <Card className="rounded-2xl border-border/60 shadow-xs">
@@ -67,6 +74,8 @@ export function ProjecaoFluxoCaixa({ lancamentos, realizados, realizadoIndisponi
         </TableRow>)}</TableBody>
       </Table>
       {realizadoIndisponivel && <p className="mt-2 text-[11px] text-warning-foreground">Volte ao mês atual na navegação acima para incluir o realizado deste mês na projeção.</p>}
+      {totalConvenio > 0 && <p className="mt-2 text-xs text-muted-foreground">Inclui {brl(totalConvenio)} de {recebiveisConvenio.length} lote{recebiveisConvenio.length === 1 ? '' : 's'} TISS enviado{recebiveisConvenio.length === 1 ? '' : 's'}, previsto{recebiveisConvenio.length === 1 ? '' : 's'} pelo prazo de retorno do convênio.</p>}
+      {lotesTissIndisponivel && <p className="mt-2 text-xs text-warning-foreground">Não foi possível somar os lotes TISS enviados; a projeção mostra só os lançamentos.</p>}
       <p className="mt-2 text-[11px] text-muted-foreground">Não inclui saldo inicial de caixa. Nenhum lançamento é criado pela projeção.</p>
     </CardContent>
   </Card>;

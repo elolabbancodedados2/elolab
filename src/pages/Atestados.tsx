@@ -543,7 +543,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
   const getTipoLabel = (tipo: string | null) => TIPOS_ATESTADO.find(t => t.value === tipo)?.label || tipo;
   const getTipoBadge = (tipo: string | null) => {
     switch (tipo) {
-      case 'comparecimento': return 'border-border bg-[#EEF4FA] text-primary';
+      case 'comparecimento': return 'border-border bg-secondary text-primary';
       case 'afastamento': return 'border-warning/30 bg-warning/10 text-warning';
       case 'aptidao': return 'border-success/30 bg-success/10 text-success';
       case 'acompanhante': return 'border-border bg-muted text-foreground';
@@ -708,7 +708,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                       onClick={() => setPeriodoFiltro(opt.key)}
                       className={cn(
                         'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                       )}
                     >
                       {opt.label}

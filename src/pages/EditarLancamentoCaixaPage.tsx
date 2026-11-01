@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { formatWithDatePreference } from '@/lib/datePreference';
+import { ehMovimentoDoCaixa, origemExternaDoMovimento } from '@/lib/origemMovimentoCaixa';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
 type MovementType = 'receita' | 'despesa' | 'sangria' | 'suprimento';
@@ -88,7 +89,10 @@ export default function EditarLancamentoCaixaPage() {
     },
   });
   const movement = movementQuery.data;
-  const isEditable = Boolean(movement && movement.tipo !== 'receita' && !movement.origem_pagamento);
+  // Mesmo critério do Caixa diário: quem abre por URL um repasse, ajuste de convênio
+  // ou baixa de conta não consegue alterar o valor por aqui.
+  const isEditable = Boolean(movement && ehMovimentoDoCaixa(movement));
+  const origemExterna = movement && !isEditable ? origemExternaDoMovimento(movement) : null;
 
   useEffect(() => {
     if (!movement || !isEditable || draft) return;
@@ -108,7 +112,7 @@ export default function EditarLancamentoCaixaPage() {
   const saveMutation = useMutation({
     mutationFn: async (payload: { id: string; descricao: string; valor: number; forma_pagamento: PaymentMethod }) => {
       if (!clinicId) throw new Error('Clínica não identificada. Atualize a sessão e tente novamente.');
-      if (!isEditable) throw new Error('Este lançamento não pode ser alterado por esta tela.');
+      if (!isEditable) throw new Error('Este lançamento veio de outro módulo e não pode ser alterado pelo caixa.');
       const { data, error } = await supabase.from('lancamentos')
         .update({ descricao: payload.descricao, valor: payload.valor, forma_pagamento: payload.forma_pagamento })
         .eq('id', payload.id).eq('clinica_id', clinicId).select('id');
@@ -162,7 +166,10 @@ export default function EditarLancamentoCaixaPage() {
 
       {busy ? <div aria-busy="true" className="space-y-4 rounded-lg border border-border bg-card p-6"><Skeleton className="h-5 w-2/5" /><Skeleton className="h-24" /><Skeleton className="h-40" /></div>
         : error ? <ErrorState title="Não foi possível carregar este lançamento" error={error} onRetry={() => void movementQuery.refetch()} />
-          : !isEditable || !movement || !draft ? <Card role="status"><CardHeader><CardTitle>Lançamento não disponível para edição</CardTitle></CardHeader><CardContent className="space-y-4"><p className="text-sm text-muted-foreground">O registro pode pertencer a outro período, não pertencer à clínica ativa ou ser um recebimento vinculado a pagamento.</p><Button variant="outline" onClick={back}>Voltar ao caixa diário</Button></CardContent></Card>
+          : !isEditable || !movement || !draft ? <Card role="status"><CardHeader><CardTitle>Lançamento não disponível para edição</CardTitle></CardHeader><CardContent className="space-y-4">{origemExterna
+              ? <p className="text-sm text-muted-foreground">Este lançamento veio de outro módulo ({origemExterna.descricao.toLowerCase()}) e não pode ser alterado pelo caixa. Corrija na tela de origem para manter os registros coerentes.</p>
+              : <p className="text-sm text-muted-foreground">O registro pode pertencer a outro período, não pertencer à clínica ativa ou ser um recebimento vinculado a pagamento.</p>}
+              <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={back}>Voltar ao caixa diário</Button>{origemExterna?.rota && <Button onClick={() => navigate(origemExterna.rota!)}>Abrir {origemExterna.rotulo}</Button>}</div></CardContent></Card>
             : <Card>
               <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Receipt className="h-5 w-5 text-primary" />{movementLabels[movement.tipo]}</CardTitle></CardHeader>
               <CardContent>

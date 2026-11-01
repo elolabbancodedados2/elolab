@@ -407,15 +407,20 @@ export default function ContasReceber() {
 
   const stats = useMemo(() => {
     const filtered = filteredContas;
+    const pendente = filtered.filter(c => ['pendente', 'parcial'].includes(c.status || '') && !c.vencido).reduce((a, c) => a + saldoDevedorConta(c), 0);
+    const atrasado = filtered.filter(c => c.vencido).reduce((a, c) => a + saldoDevedorConta(c), 0);
+    const pago = filtered.filter(c => c.status === 'pago' || c.status === 'parcial').reduce((a, c) => a + valorRecebidoConta(c), 0);
     return {
-      total: filtered.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').reduce((a, c) => a + c.valor, 0),
-      pendente: filtered.filter(c => ['pendente', 'parcial'].includes(c.status || '') && !c.vencido).reduce((a, c) => a + saldoDevedorConta(c), 0),
-      atrasado: filtered.filter(c => c.vencido).reduce((a, c) => a + saldoDevedorConta(c), 0),
-      pago: filtered.filter(c => c.status === 'pago' || c.status === 'parcial').reduce((a, c) => a + valorRecebidoConta(c), 0),
+      // O total é a soma dos três quadros ao lado. Somar o valor bruto deixava
+      // desconto e acréscimo de fora, e o total não fechava com eles.
+      total: pendente + atrasado + pago,
+      pendente,
+      atrasado,
+      pago,
       countPendente: filtered.filter(c => ['pendente', 'parcial'].includes(c.status || '') && !c.vencido).length,
       countAtrasado: filtered.filter(c => c.vencido).length,
       countPago: filtered.filter(c => c.status === 'pago' || c.status === 'parcial').length,
-      countTotal: filtered.length,
+      countTotal: filtered.filter(c => c.status !== 'cancelado' && c.status !== 'estornado').length,
     };
   }, [filteredContas, lancamentosComPagamento, pagamentosAtivosPorLancamento, pagamentosAtingiramLimite]);
 

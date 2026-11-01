@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
@@ -123,5 +123,25 @@ describe('ConvitesList — gestão de convites expirados', () => {
     expect(query.delete).toHaveBeenCalledOnce();
     expect(query.eq).toHaveBeenNthCalledWith(1, 'id', 'invite-1');
     expect(query.eq).toHaveBeenNthCalledWith(2, 'clinica_id', 'clinic-1');
+  });
+
+  it('usa vermelho em Expirados só quando há convite vencido', () => {
+    const valorExpirados = () => within(screen.getByRole('button', { name: /Expirados/ })).getByText(/^\d+$/);
+
+    const { unmount } = render(<MemoryRouter><ConvitesList /></MemoryRouter>);
+    expect(valorExpirados()).toHaveTextContent('1');
+    expect(valorExpirados()).toHaveClass('text-destructive');
+    unmount();
+
+    mocks.invites = [];
+    render(<MemoryRouter><ConvitesList /></MemoryRouter>);
+    expect(valorExpirados()).toHaveTextContent('0');
+    expect(valorExpirados()).not.toHaveClass('text-destructive');
+  });
+
+  it('a explicação do convite é nota, não alerta', () => {
+    render(<MemoryRouter><ConvitesList /></MemoryRouter>);
+    expect(screen.getByRole('note')).toHaveTextContent('Como funciona o convite');
+    expect(screen.queryAllByRole('alert').some(el => el.textContent?.includes('Como funciona o convite'))).toBe(false);
   });
 });

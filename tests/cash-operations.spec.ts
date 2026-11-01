@@ -104,6 +104,8 @@ test('cash replenishment stays on its own page and preserves the optional descri
 });
 
 test('cash expense preserves category and payment method on its own page', async ({ page }, testInfo) => {
+  // 22:30 em São Paulo já é o dia seguinte em UTC: a despesa precisa ficar no caixa de hoje.
+  await page.clock.setFixedTime(new Date(`${todaySaoPaulo()}T22:30:00-03:00`));
   const synthetic = await installOpenCash(page);
   const payloads = await installMovementWrites(page);
 
@@ -128,6 +130,7 @@ test('cash expense preserves category and payment method on its own page', async
   await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(1);
   expect(payloads[0]).toMatchObject({ tipo: 'despesa', valor: 60.9, descricao: 'Material de limpeza', categoria: 'Limpeza', forma_pagamento: 'pix', status: 'pago' });
+  expect(payloads[0]).toMatchObject({ data: todaySaoPaulo(), data_pagamento: todaySaoPaulo() });
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

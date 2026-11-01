@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 // Atalhos do protótipo aprovado em 30/10/2026: a tecla / leva aos documentos do atendimento.
 interface Props {
   pacienteId: string;
+  /** Evolução já salva: o pedido de exame nasce ligado a ela. */
+  prontuarioId?: string | null;
   onReceita: () => void;
 }
 
@@ -14,7 +16,7 @@ function digitando(alvo: EventTarget | null) {
   return alvo.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName);
 }
 
-export function AtalhosDocumentos({ pacienteId, onReceita }: Props) {
+export function AtalhosDocumentos({ pacienteId, prontuarioId, onReceita }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const primeiro = useRef<HTMLButtonElement>(null);
@@ -40,7 +42,7 @@ export function AtalhosDocumentos({ pacienteId, onReceita }: Props) {
       <Button ref={primeiro} type="button" variant="outline" className={botao} onClick={onReceita}>
         <Pill aria-hidden="true" className="h-3.5 w-3.5" /> Receita
       </Button>
-      <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/exames/nova?paciente=${paciente}`)}>
+      <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/exames/nova?paciente=${paciente}${prontuarioId ? `&prontuario=${encodeURIComponent(prontuarioId)}` : ''}`)}>
         <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" /> Pedido de exame
       </Button>
       <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/documentos-clinicos/novo-atestado?paciente=${paciente}`)}>

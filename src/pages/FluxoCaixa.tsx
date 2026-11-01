@@ -47,7 +47,7 @@ import {
   parseFinanceMonth,
 } from '@/lib/financeRouteState';
 import { ProjecaoFluxoCaixa } from '@/components/financeiro/ProjecaoFluxoCaixa';
-import type { LancamentoProjecao } from '@/lib/projecaoFluxoCaixa';
+import type { LancamentoProjecao, LoteTissProjecao } from '@/lib/projecaoFluxoCaixa';
 import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly } from '@/lib/dateOnly';
 
 const statusRealizado = (status: string | null) => status === 'pago' || status === 'parcial';
@@ -109,6 +109,24 @@ export default function FluxoCaixa() {
   const fimPeriodoPagamentosExclusivo = format(addDays(endOfMonth(currentDate), 1), 'yyyy-MM-dd');
   const inicioPeriodoPagamentosIso = inicioDoDiaEmFusoIso(inicioPeriodoPagamentos, 'America/Sao_Paulo');
   const fimPeriodoPagamentosIso = inicioDoDiaEmFusoIso(fimPeriodoPagamentosExclusivo, 'America/Sao_Paulo');
+  // Lotes enviados ao convênio ainda sem retorno: a receita só vira lançamento
+  // na conciliação, então sem isto a projeção ignorava esse dinheiro.
+  const lotesTissQuery = useQuery<LoteTissProjecao[]>({
+    queryKey: ['projecao-lotes-tiss', profile?.clinica_id],
+    enabled: Boolean(profile?.clinica_id),
+    staleTime: 60_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('lotes_tiss')
+        .select('id, status, valor_apresentado, valor_pago, enviado_em, competencia, convenios(prazo_retorno)')
+        .eq('clinica_id', profile!.clinica_id)
+        .in('status', ['enviado', 'processando', 'pago_parcial'])
+        .limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const pagamentosQuery = useQuery({
     queryKey: ['pagamentos-fluxo-caixa', profile?.clinica_id ?? null, inicioPeriodoPagamentos, fimPeriodoPagamentosExclusivo],
     queryFn: async () => {
@@ -398,6 +416,20 @@ export default function FluxoCaixa() {
         ))}
       </section>
 
+      {(totaisMes.suprimentos > 0 || totaisMes.sangrias > 0) && (
+        <section aria-label="Transferências internas do mês" className="flex flex-col gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground">Transferências internas</p>
+            <p className="text-xs text-muted-foreground">Sangrias e suprimentos movem dinheiro entre a gaveta e o cofre ou banco. Não entram nas entradas, saídas nem no saldo do mês.</p>
+          </div>
+          <dl className="flex shrink-0 flex-wrap gap-x-5 gap-y-1 tabular-nums">
+            <div className="flex gap-1.5"><dt className="text-muted-foreground">Suprimentos</dt><dd className="font-semibold">{formatCurrency(totaisMes.suprimentos)}</dd></div>
+            <div className="flex gap-1.5"><dt className="text-muted-foreground">Sangrias</dt><dd className="font-semibold">{formatCurrency(totaisMes.sangrias)}</dd></div>
+            <div className="flex gap-1.5"><dt className="text-muted-foreground">Líquido</dt><dd className="font-semibold">{formatCurrency(totaisMes.transferenciasLiquidas)}</dd></div>
+          </dl>
+        </section>
+      )}
+
       {/* Gráficos */}
       {temMovimentosNoMes ? (
       <div className="grid gap-6 lg:grid-cols-2">
@@ -410,7 +442,7 @@ export default function FluxoCaixa() {
               </span>
               <div>
                 <CardTitle className="text-base font-semibold">Evolução Diária</CardTitle>
-                <CardDescription>Entradas e saídas registradas por dia</CardDescription>
+                <CardDescription>Receitas e despesas por dia; sangrias e suprimentos aparecem como transferências</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -432,8 +464,8 @@ export default function FluxoCaixa() {
                   <Legend />
                   <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos (transferência)" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sangrias" name="Sangrias (transferência)" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -449,7 +481,7 @@ export default function FluxoCaixa() {
               </span>
               <div>
                 <CardTitle className="text-base font-semibold">Saldo Acumulado</CardTitle>
-                <CardDescription>Variação acumulada no mês; não inclui saldo inicial de caixa</CardDescription>
+                <CardDescription>Receitas menos despesas acumuladas no mês; não inclui saldo inicial nem transferências</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -498,7 +530,7 @@ export default function FluxoCaixa() {
         </div>
       )}
 
-      <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} />
+      <ProjecaoFluxoCaixa lancamentos={lancamentos as LancamentoProjecao[]} realizados={visualizandoMesAtual ? eventosRealizados : []} realizadoIndisponivel={!visualizandoMesAtual} lotesTiss={lotesTissQuery.data} lotesTissIndisponivel={lotesTissQuery.isError} />
 
       {/* Por Categoria */}
       {temMovimentosNoMes && <Card className="rounded-2xl border-border/60 shadow-xs">
@@ -539,8 +571,8 @@ export default function FluxoCaixa() {
                   <Legend />
                   <Bar dataKey="receitas" name="Receitas" fill="hsl(var(--success))" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="suprimentos" name="Suprimentos" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="sangrias" name="Sangrias" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="suprimentos" name="Suprimentos (transferência)" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="sangrias" name="Sangrias (transferência)" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

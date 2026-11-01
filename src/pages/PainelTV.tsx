@@ -643,7 +643,7 @@ export default function PainelTV() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#04182B] via-[#0A3558] to-[#062540] text-white relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#0E1013] via-[#1A1C20] to-[#111214] text-white relative overflow-hidden">
       {/* Background Media Carousel */}
       {mediaItems.length > 0 && currentMedia && (
         <div className="absolute inset-0 z-0">
@@ -652,7 +652,7 @@ export default function PainelTV() {
           ) : (
             <video key={currentMedia.id} src={currentMedia.url} autoPlay muted onEnded={handleVideoEnded} className="w-full h-full object-cover" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#04182B]/95 via-[#0A3558]/75 to-[#062540]/55" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0E1013]/95 via-[#1A1C20]/75 to-[#111214]/55" />
         </div>
       )}
 
@@ -662,7 +662,7 @@ export default function PainelTV() {
         <header className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-4xl md:text-5xl font-bold font-display tracking-tight">
-              <span className="text-[#5BB4EE]">Elo</span>Lab
+              <span className="text-white/60">Elo</span>Lab
             </h1>
             <p className="text-lg md:text-xl text-white/60 mt-1">Painel de Atendimento</p>
           </div>
@@ -683,7 +683,7 @@ export default function PainelTV() {
           </div>
         )}
         {filaErro && (
-          <div role="alert" className="mb-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-warning/50 bg-[#04182B]/90 px-4 py-3 text-center text-white">
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-warning/50 bg-[#0E1013]/90 px-4 py-3 text-center text-white">
             <span>{filaErro}</span>
             <Button
               type="button"
@@ -726,7 +726,7 @@ export default function PainelTV() {
 
         {/* Media Controls */}
         {isAdmin() && mediaItems.length > 1 && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#04182B]/70 backdrop-blur-sm rounded-full border border-white/10 px-3 py-2">
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#0E1013]/70 backdrop-blur-sm rounded-full border border-white/10 px-3 py-2">
             <Button aria-label="Mídia anterior" variant="ghost" size="icon" onClick={() => setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length)} className="h-8 w-8 text-white hover:bg-white/20">
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -775,7 +775,7 @@ export default function PainelTV() {
                       </p>
                     </div>
                     <div className="text-left md:text-right">
-                      <p className="text-2xl md:text-3xl font-bold bg-white text-[#0B4F7D] px-6 py-3 rounded-2xl inline-block shadow-lg">
+                      <p className="text-2xl md:text-3xl font-bold bg-white text-[#111214] px-6 py-3 rounded-2xl inline-block shadow-lg">
                         {getSalaNome(chamado.sala_id)}
                       </p>
                     </div>
@@ -799,7 +799,7 @@ export default function PainelTV() {
               ) : (
                 <div className="space-y-3">
                   {emAtendimento.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-primary/20 rounded-xl border border-[#5BB4EE]/30">
+                    <div key={item.id} className="flex justify-between items-center gap-3 p-4 bg-primary/20 rounded-xl border border-white/30">
                       <div>
                         <p className="text-lg md:text-xl font-semibold">Senha {receptionTicketCode(item.id)}</p>
                         <p className="text-white/60">{getMedicoNome(item.agendamento_id)}</p>
@@ -837,14 +837,14 @@ export default function PainelTV() {
                       className={cn(
                         'flex justify-between items-center p-3 md:p-4 rounded-xl transition-colors',
                         index === 0
-                          ? 'bg-primary/25 border border-[#5BB4EE]/50'
+                          ? 'bg-primary/25 border border-white/50'
                           : 'bg-white/5 border border-white/5'
                       )}
                     >
                       <div className="flex items-center gap-3 md:gap-4">
                         <span className={cn(
                           'w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold text-sm md:text-base',
-                          index === 0 ? 'bg-white text-[#0B4F7D]' : 'bg-white/10'
+                          index === 0 ? 'bg-white text-[#111214]' : 'bg-white/10'
                         )}>
                           {index + 1}
                         </span>

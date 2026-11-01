@@ -24,6 +24,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { isValidAgendaDate, normalizeAgendaDate } from '@/lib/agendaDate';
+import { minutosAgoraSaoPaulo, proximaVagaLivre } from '@/lib/proximaVagaLivre';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
@@ -433,13 +434,47 @@ export function AgendaPage() {
         return;
       }
 
+      // Sugere a próxima vaga real do médico pedido; sem médico ou sem
+      // expediente cadastrado, mantém o padrão de hoje às 09:00.
+      const hoje = todaySaoPauloDateOnly();
+      let sugestao: { data: string; hora_inicio: string } | null = null;
+      if (data.medico_id) {
+        try {
+          const ate = new Date(`${hoje}T12:00:00Z`);
+          ate.setUTCDate(ate.getUTCDate() + 13);
+          const fim = ate.toISOString().slice(0, 10);
+          const [jornada, ocupacao, bloqueios] = await Promise.all([
+            (supabase.from('medico_disponibilidade' as any).select('dia_semana, hora_inicio, hora_fim')
+              .eq('medico_id', data.medico_id).eq('ativo', true) as any),
+            supabase.from('agendamentos').select('data, hora_inicio, hora_fim, status')
+              .eq('clinica_id', profile.clinica_id).eq('medico_id', data.medico_id).gte('data', hoje).lte('data', fim),
+            (supabase.from('bloqueios_agenda' as any).select('data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro')
+              .eq('medico_id', data.medico_id).lte('data_inicio', fim).gte('data_fim', hoje) as any),
+          ]);
+          if (!jornada.error && !ocupacao.error && !bloqueios.error) {
+            const medico = (medicos as any[]).find(m => m.id === data.medico_id);
+            sugestao = proximaVagaLivre({
+              hoje,
+              agoraMinutos: minutosAgoraSaoPaulo(),
+              duracaoMinutos: Number(medico?.intervalo_consulta) || 30,
+              jornada: jornada.data ?? [],
+              agendamentos: ocupacao.data ?? [],
+              bloqueios: bloqueios.data ?? [],
+            });
+          }
+        } catch {
+          sugestao = null;
+        }
+        if (!active) return;
+      }
+
       setDialogState({
         open: true,
         initial: {
           paciente_id: data.paciente_id,
           medico_id: data.medico_id || '',
-          data: todaySaoPauloDateOnly(),
-          hora_inicio: '09:00',
+          data: sugestao?.data ?? hoje,
+          hora_inicio: sugestao?.hora_inicio ?? '09:00',
           observacoes: data.motivo || '',
           tipo: 'consulta',
           status: 'agendado',

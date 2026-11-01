@@ -32,7 +32,7 @@ test('esquema de cores da agenda tem página própria e preserva retorno à vis�
   expect(saveButtonBox && mobileNavigationBox && saveButtonBox.y + saveButtonBox.height <= mobileNavigationBox.y).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('agenda-color-settings-mobile-actions.png'), animations: 'disabled' });
 
-  const navyForScheduled = page.getByRole('button', { name: 'Usar Azul-marinho para Agendado' });
+  const navyForScheduled = page.getByRole('button', { name: 'Usar Grafite para Agendado' });
   await navyForScheduled.click();
   await expect(navyForScheduled).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Salvar cores' }).click();
@@ -41,7 +41,7 @@ test('esquema de cores da agenda tem página própria e preserva retorno à vis�
   expect(writes[0]).toMatchObject({
     chave: 'agenda_color_scheme',
     user_id: synthetic.userId,
-    valor: { criterion: 'status', map: { agendado: 'hsl(var(--brand-dark))' } },
+    valor: { criterion: 'status', map: { agendado: 'hsl(var(--info))' } },
   });
 
   await page.getByRole('button', { name: 'Voltar à agenda' }).click();
@@ -73,10 +73,10 @@ test('esquema de cores mantém escolhas em caso de falha e protege saída sem sa
   await page.goto('/agenda', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Mais opções da agenda' }).click();
   await page.getByRole('menuitem', { name: /Esquema de cores/ }).click();
-  await page.getByRole('button', { name: 'Usar Azul-marinho para Agendado' }).click();
+  await page.getByRole('button', { name: 'Usar Grafite para Agendado' }).click();
   await page.getByRole('button', { name: 'Salvar cores' }).click();
   await expect(page.getByRole('alert')).toContainText('Não foi possível salvar');
-  await expect(page.getByRole('button', { name: 'Usar Azul-marinho para Agendado' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Usar Grafite para Agendado' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.getByRole('button', { name: 'Voltar à agenda' }).click();
   await expect(page.getByRole('alertdialog')).toBeVisible();

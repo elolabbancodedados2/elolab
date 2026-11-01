@@ -143,7 +143,7 @@ export default function NovaGlosaTissPage() {
   return <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
     <PageHeader title="Registrar glosa" description="Registre a contestação recebida da operadora vinculada a um lote enviado." icon={<AlertTriangle />} actions={<Button variant="outline" onClick={voltar} disabled={registrar.isPending}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} />
     {lotes.length === 0 ? <Card><CardContent className="space-y-3 pt-6"><p className="text-sm text-muted-foreground">Não há lotes enviados com saldo para novas glosas nesta clínica.</p><Button variant="outline" onClick={voltar}>Voltar ao faturamento</Button></CardContent></Card> : <>
-      <div role="note" className="rounded-lg border border-[#DFE7F0] bg-[#F5F8FC] p-3 text-sm text-[#172B4D]">A gravação é feita de forma transacional no EloLab. O total de glosas não poderá ultrapassar o valor apresentado do lote; a conferência final também ocorre no banco para lidar com registros simultâneos.</div>
+      <div role="note" className="rounded-lg border border-border bg-secondary p-3 text-sm text-foreground">A gravação é feita de forma transacional no EloLab. O total de glosas não poderá ultrapassar o valor apresentado do lote; a conferência final também ocorre no banco para lidar com registros simultâneos.</div>
       <Card>
         <CardHeader className="border-b border-border/70"><CardTitle className="text-base">Identificação da glosa</CardTitle><p className="text-sm text-muted-foreground">Use os dados do demonstrativo de glosa enviado pela operadora.</p></CardHeader>
         <CardContent className="space-y-5 pt-5">

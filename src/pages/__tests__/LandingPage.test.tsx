@@ -41,7 +41,7 @@ describe('navegação mobile da landing', () => {
 });
 
 describe('hero institucional', () => {
-  it('usa uma imagem de ambiente clÃ­nico sem expor dados demonstrativos fictÃ­cios', () => {
+  it('usa uma imagem de ambiente clínico sem expor dados demonstrativos fictícios', () => {
     render(
       <MemoryRouter>
         <LandingPage />

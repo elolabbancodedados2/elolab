@@ -504,7 +504,7 @@ function UsuariosWorkspace({ editing }: { editing: boolean }) {
                   {Object.entries(ROLE_LABELS).map(([key, label]) => {
                     const role = key as AppRole;
                     const checked = formData.roles?.includes(role) || false;
-                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-xl border border-border px-3 hover:border-[#9CC7EC]">
+                    return <label key={role} className="flex min-h-11 items-center gap-3 rounded-xl border border-border px-3 hover:border-foreground/25">
                       <Checkbox checked={checked} onCheckedChange={(value) => setFormData((current) => ({
                         ...current,
                         roles: value === true

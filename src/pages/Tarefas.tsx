@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import {
   ListTodo, Plus, CheckCircle2, Clock, AlertTriangle, Circle, Search, Trash2,
   Loader2, CalendarClock, User2, LayoutGrid, LayoutList, GripVertical, CircleX, RotateCcw,
-  Pencil, UserPlus, CalendarDays, ArrowUpDown,
+  Pencil, UserPlus, CalendarDays, ArrowUpDown, Inbox,
 } from 'lucide-react';
 import { parseDateOnly, toDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useRecoverableDraft } from '@/hooks/useRecoverableDraft';
@@ -668,6 +668,9 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
                 <LayoutList className="h-3.5 w-3.5" /> Lista
               </Button>
             </div>
+            <Button asChild variant="outline" className="h-11 w-full gap-2 rounded-full px-4 sm:w-auto">
+              <RouterLink to="/minha-fila"><Inbox className="h-4 w-4" aria-hidden="true" /> Minha fila</RouterLink>
+            </Button>
             <Button onClick={abrirNova} className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110 sm:w-auto">
               <Plus className="h-4 w-4" /> Nova Tarefa
             </Button>

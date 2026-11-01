@@ -152,7 +152,7 @@ export default function RepassePagamentoPage() {
       </CardHeader>
       <CardContent className="grid gap-4 pt-5 sm:grid-cols-2">
         <div><p className="text-xs text-muted-foreground">Valor do repasse</p><p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{moeda(valor)}</p></div>
-        <div className="rounded-lg border border-[#DFE7F0] bg-[#F5F8FC] p-3 text-sm text-[#172B4D]"><p className="font-medium">Pagamento já realizado?</p><p className="mt-1 text-muted-foreground">O registro criará uma despesa no Fluxo de Caixa.</p><p className="mt-1 font-medium">Nenhuma transferência bancária será iniciada pelo EloLab.</p></div>
+        <div className="rounded-lg border border-border bg-secondary p-3 text-sm text-foreground"><p className="font-medium">Pagamento já realizado?</p><p className="mt-1 text-muted-foreground">O registro criará uma despesa no Fluxo de Caixa.</p><p className="mt-1 font-medium">Nenhuma transferência bancária será iniciada pelo EloLab.</p></div>
       </CardContent>
     </Card>
 

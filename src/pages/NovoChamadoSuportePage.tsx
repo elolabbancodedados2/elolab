@@ -93,7 +93,7 @@ export default function NovoChamadoSuportePage() {
   if (!profile?.clinica_id || !user?.id) {
     return <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
       <PageHeader title="Abrir chamado" description="Registre uma solicitação para a equipe de suporte." icon={<MessageSquarePlus />} actions={<Button variant="outline" onClick={cancelar}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao suporte</Button>} />
-      <div role="alert" className="rounded-lg border border-[#DFE7F0] bg-[#F5F8FC] p-4 text-sm text-[#172B4D]">Não foi possível identificar sua clínica nesta sessão. Atualize a página e tente novamente; nenhum chamado foi enviado.</div>
+      <div role="alert" className="rounded-lg border border-border bg-secondary p-4 text-sm text-foreground">Não foi possível identificar sua clínica nesta sessão. Atualize a página e tente novamente; nenhum chamado foi enviado.</div>
     </div>;
   }
 

@@ -135,7 +135,7 @@ export default function PlatformHistoricoFinanceiro() {
             <CardContent className="space-y-2">
               {visibleEvents.map((event) => {
                 const delta = Number(event.mrr_delta || 0);
-                return <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-[#9CC7EC] hover:bg-secondary">
+                return <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-foreground/25 hover:bg-secondary">
                   <div><p className="font-medium">{event.clinica_nome || 'Clínica não vinculada'}</p><p className="text-xs text-muted-foreground">{eventLabels[event.event_type] || event.event_type} · {event.old_plan_slug || event.old_status || '—'} → {event.new_plan_slug || event.new_status || '—'} · {dateTime(event.occurred_at)}</p><p className="text-xs text-muted-foreground">{sourceLabels[event.source] || event.source}</p></div>
                   <div className="flex items-center gap-2">{delta !== 0 && (delta > 0 ? <ArrowUpRight className="h-4 w-4 text-success" /> : <ArrowDownRight className="h-4 w-4 text-destructive" />)}<Badge variant={delta < 0 ? 'destructive' : 'outline'} className={cn('rounded-full tabular-nums', delta > 0 && 'border-success/30 bg-success/10 text-success')}>{delta > 0 ? '+' : ''}{currency(delta)}</Badge></div>
                 </article>;

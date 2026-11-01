@@ -1,20 +1,11 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Check, Crown, Sparkles, Clock, Gift, ArrowRight, Shield, CreditCard, XCircle } from 'lucide-react';
+import { Check, Crown, Sparkles, Clock, Gift, ArrowRight, Shield, CreditCard } from 'lucide-react';
 import { useUserPlan, usePlanos } from '@/hooks/useSubscriptionPlan';
 import { useBillingStatus } from '@/hooks/usePlanCheckout';
-import { CancelamentoPlanoResumo } from '@/components/CancelamentoPlanoResumo';
 import { AvisoAlteracaoPlano } from '@/components/AvisoAlteracaoPlano';
 
 function rotuloFrequencia(frequencia: string) {
@@ -27,7 +18,6 @@ function rotuloFrequencia(frequencia: string) {
   }
 }
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { toast } from 'sonner';
 import { descricaoComercialPlano } from '@/lib/planFeatures';
 import { cn } from '@/lib/utils';
 
@@ -46,7 +36,7 @@ const planConfig: Record<string, {
     icon: <Crown className="h-7 w-7" />,
     gradient: 'from-primary/5 via-transparent to-transparent',
     iconBg: 'bg-primary/10 text-primary',
-    borderAccent: 'border-[#DCE6F2] hover:border-[#9CC7EC]',
+    borderAccent: 'border-border hover:border-foreground/25',
     btnClass: '',
   },
   'elolab-ultra': {
@@ -87,7 +77,7 @@ const featureLabels: Record<string, string> = {
 const premiumFeatures = ['agente_ia'];
 
 export default function Planos() {
-  const { user, isPlatformAdmin } = useSupabaseAuth();
+  const { isPlatformAdmin } = useSupabaseAuth();
   const { data: planos, isLoading: loadingPlanos, isError: erroAoCarregarPlanos, error: erroPlanos, refetch: refetchPlanos } = usePlanos(!isPlatformAdmin);
   const { planSlug, hasActivePlan, isTrial, trialEnd, trialDaysLeft, isLoading: loadingAssinatura, isError: erroAoConsultarAssinatura, error: erroAssinatura, refetch: refetchAssinatura } = useUserPlan();
   const {
@@ -110,34 +100,6 @@ export default function Planos() {
   const elegibilidadeTesteConhecida = !loadingBilling && !erroAoConsultarCobranca && !!billing;
   const prePagoFim = prePago?.data_fim ? new Date(prePago.data_fim) : null;
   const diasParaVencer = prePagoFim ? Math.ceil((prePagoFim.getTime() - Date.now()) / 86400000) : null;
-  const queryClient = useQueryClient();
-
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-
-  const cancelMutation = useMutation({
-    mutationFn: async (motivo: string) => {
-      if (!user?.id) throw new Error('Usuário não autenticado');
-
-      const { data, error } = await supabase.functions.invoke('mercadopago-checkout', {
-        body: {
-          action: 'cancel_subscription',
-          motivo: motivo.trim().slice(0, 500) || null,
-        },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('Plano cancelado. O acesso foi encerrado e nenhuma cobrança futura será feita.');
-      setShowCancelDialog(false);
-      setCancelReason('');
-      queryClient.invalidateQueries({ queryKey: ['user_plan'] });
-      queryClient.invalidateQueries({ queryKey: ['billing_status'] });
-    },
-    onError: (err: any) => toast.error(err.message || 'Erro ao cancelar assinatura'),
-  });
 
   if (isPlatformAdmin) {
     return (
@@ -180,7 +142,7 @@ export default function Planos() {
           </p>
         </div>
         {!hasActivePlan && elegibilidadeTesteConhecida && planos.some((plano) => Number(plano.trial_dias) > 0) && (
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-[#F3F8FC] px-4 py-2.5 text-sm font-medium text-primary">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-primary">
             <Gift className="h-4 w-4" />
             {temTesteElegivel
               ? 'Há um teste grátis disponível para esta conta'
@@ -192,7 +154,7 @@ export default function Planos() {
       {hasActivePlan && <AvisoAlteracaoPlano />}
 
       {loadingBilling && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-[#F3F8FC] px-4 py-3 text-sm text-primary">
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-primary">
           <Clock className="h-4 w-4" /> Confirmando a forma de cobrança da sua assinatura…
         </div>
       )}
@@ -205,7 +167,7 @@ export default function Planos() {
         </div>
       )}
       {pedidoAberto && (
-        <div role="status" className="flex flex-col gap-3 rounded-xl border border-border bg-[#F3F8FC] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-border bg-secondary p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <span>Há um pagamento pendente para {planos?.find((plano) => plano.slug === pedidoAberto.plano_slug)?.nome ?? 'um plano'}. Conclua ou cancele esse pedido antes de escolher outro plano.</span>
           <Button type="button" size="sm" className="shrink-0 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => irParaCheckout(pedidoAberto.plano_slug)}>
             Continuar pagamento
@@ -370,18 +332,6 @@ export default function Planos() {
                     {prePago && (
                       <p className="text-center text-xs text-white/60">Sem renovação automática — nada a cancelar.</p>
                     )}
-                    {(isTrial || !prePago) && billing?.assinatura?.plano_slug === plano.slug && billing.assinatura.modalidade === 'recorrente' && !loadingBilling && !erroAoConsultarCobranca && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full rounded-full text-white/70 hover:bg-white/10 hover:text-destructive"
-                        onClick={() => setShowCancelDialog(true)}
-                        disabled={cancelMutation.isPending}
-                      >
-                        <XCircle className="h-3.5 w-3.5 mr-1.5" />
-                        {cancelMutation.isPending ? 'Cancelando...' : isTrial ? 'Cancelar teste grátis' : 'Cancelar assinatura'}
-                      </Button>
-                    )}
                   </>
                 ) : (
                   <>
@@ -429,48 +379,6 @@ export default function Planos() {
         </div>
       </div>
 
-      {/* Cancel Subscription Dialog */}
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-destructive" />
-              {isTrial ? 'Cancelar teste grátis?' : 'Cancelar assinatura?'}
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div><CancelamentoPlanoResumo isTrial={isTrial} trialEnd={trialEnd} /></div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-2">
-            <Label htmlFor="cancel-reason" className="text-sm">
-              Motivo do cancelamento (opcional, ajuda a melhorar)
-            </Label>
-            <Textarea
-              id="cancel-reason"
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              maxLength={500}
-              placeholder="Ex.: encontrei outra solução, custo, não atendeu necessidade..."
-              rows={3}
-            />
-            <p className="text-xs text-muted-foreground">{cancelReason.length}/500</p>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-full" disabled={cancelMutation.isPending}>
-              Manter assinatura
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => cancelMutation.mutate(cancelReason)}
-              disabled={cancelMutation.isPending}
-              className="rounded-full bg-destructive hover:bg-destructive/90"
-            >
-              {cancelMutation.isPending ? 'Cancelando...' : 'Confirmar cancelamento'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

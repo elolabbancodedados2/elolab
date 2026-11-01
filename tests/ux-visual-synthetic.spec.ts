@@ -4,8 +4,10 @@ import { installSyntheticClinic } from './helpers/syntheticClinic';
 
 // Mês corrente (ou seguinte) no texto do app, para os testes não dependerem do dia em que rodam.
 function rotuloMes(deslocamento: number, separador: string) {
-  const hoje = new Date();
-  const alvo = new Date(hoje.getFullYear(), hoje.getMonth() + deslocamento, 1);
+  // O app calcula o mês em São Paulo; o runner do CI roda em UTC e vira o mês três horas antes.
+  const [ano, mesAtual] = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' })
+    .format(new Date()).split('-').map(Number);
+  const alvo = new Date(ano, mesAtual - 1 + deslocamento, 1);
   const mes = alvo.toLocaleDateString('pt-BR', { month: 'long' });
   return new RegExp(`${mes}${separador}${alvo.getFullYear()}`, 'i');
 }
@@ -398,7 +400,7 @@ test('admin dashboard puts the agenda and clinic priorities ahead of monthly ind
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('admin dashboard pauses partial metrics on an agenda error and recovers on retry', async ({ page }, testInfo) => {
+test('admin dashboard keeps the other areas visible on an agenda error and recovers on retry', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'admin', receptionPopulated: true });
   let allowAgendaRequests = false;
   await page.route('**/rest/v1/agendamentos?*', route => {
@@ -408,15 +410,18 @@ test('admin dashboard pauses partial metrics on an agenda error and recovers on 
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/dashboard');
-  const error = page.getByRole('alert').filter({ hasText: 'Não foi possível carregar o dashboard' });
-  await expect(error).toBeVisible();
-  await expect(error.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
-  await expect(page.getByText('Não conseguimos carregar estas informações agora. Tente novamente em instantes.')).toHaveCount(0);
+  await expect(page.locator('[data-testid="inicio-painel"]')).toBeVisible();
+  const agenda = page.getByRole('region', { name: 'Agenda de hoje' });
+  await expect(agenda.getByText('Não foi possível carregar esta área.')).toBeVisible();
+  // As outras áreas continuam na tela.
+  await expect(page.getByRole('region', { name: 'Na sala de espera' })).not.toContainText('Não foi possível carregar');
+  await expect(page.getByRole('region', { name: 'Recebimentos' })).toBeVisible();
+  await expect(page.getByText('Não foi possível carregar o dashboard')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('admin-dashboard-error-1280.png'), animations: 'disabled' });
 
   allowAgendaRequests = true;
-  await error.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.locator('[data-testid="inicio-painel"]')).toBeVisible();
+  await agenda.getByRole('button', { name: 'Tentar de novo' }).click();
+  await expect(agenda.getByText('Não foi possível carregar esta área.')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Agenda de hoje' })).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
@@ -465,6 +470,7 @@ test('reception preserves the return decision when finalizing an old visit fails
   await finalizationPage.getByText('30 dias', { exact: true }).click();
   await expect(finalizationPage.getByText(/Retorno previsto:/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-finalization-retry-1280.png'), animations: 'disabled' });
+  await finalizationPage.getByRole('checkbox', { name: 'Finalizar mesmo sem evolução' }).check();
   await finalizationPage.getByRole('button', { name: 'Confirmar finalização' }).click();
   await expect(page.getByText('Não foi possível finalizar o atendimento')).toBeVisible();
   await expect(finalizationPage.getByRole('radio', { name: '30 dias' })).toBeChecked();
@@ -856,7 +862,7 @@ test('Agenda restores date and view through its URL and browser history', async 
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect(page.getByText('NÃ£o conseguimos carregar estas informaÃ§Ãµes agora. Tente novamente em instantes.')).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByText('Não conseguimos carregar estas informações agora. Tente novamente em instantes.')).toBeHidden({ timeout: 10_000 });
   await page.screenshot({ path: testInfo.outputPath('agenda-url-state-mobile.png'), fullPage: true, animations: 'disabled' });
 });
 
@@ -934,7 +940,7 @@ test('agenda keeps a conflicting clinician slot unsaved and explains the conflic
   await expect(page.getByText(/Este médico já tem consulta neste horário/)).toBeVisible();
   await expect(dialog).toBeVisible();
   expect(appointmentInsertCount).toBe(0);
-  await expect(page.getByText(/Este mÃ©dico jÃ¡ tem consulta neste horÃ¡rio/)).toBeHidden();
+  await expect(page.getByText(/Este médico já tem consulta neste horário/)).toBeHidden();
   agendaReadFails = true;
   await dialog.getByRole('button', { name: 'Agendar consulta', exact: true }).click();
   await expect(page.getByText(/Não foi possível conferir os horários da agenda/)).toBeVisible();
@@ -1182,6 +1188,8 @@ test('finance role sees only the report tabs and exports allowed for its profile
 });
 
 test('financial reports chart populated synthetic payments and expenses', async ({ page }, testInfo) => {
+  // O relógio acompanha o "today" dos dados sintéticos: os pagamentos são de 1 e 2 dias antes.
+  await page.clock.install({ time: new Date('2026-10-29T10:00:00-03:00') });
   const synthetic = await installSyntheticClinic(page, {
     platformAdmin: false,
     accountsPopulated: true,
@@ -1467,6 +1475,9 @@ test('doctor starts a called appointment and opens the same patient in a new pro
 });
 
 test('doctor reopens the prontuario already linked to an active queue appointment', async ({ page }, testInfo) => {
+  // Long journey (queue, prontuario, lab states, exam request); 30 s is too tight
+  // when several workers share the dev server.
+  test.setTimeout(90_000);
   const appOrigin = new URL(String(testInfo.project.use.baseURL)).origin;
   await installSyntheticClinic(page, { appOrigin, platformAdmin: false, role: 'medico', queuePopulated: true });
   const appointmentId = '00000000-0000-4000-9000-000000000012';
@@ -1478,6 +1489,10 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   const requestedLabResultFilters: string[] = [];
   let labReadsBeforeHistoryAudit = 0;
   let labResultMode: 'loading' | 'success' | 'empty' | 'error' = 'success';
+  // Lab reads in 'loading' mode are held until the test sees the loading state,
+  // instead of relying on a fixed delay being long enough to observe it.
+  let labLoadingGate: Promise<void> = Promise.resolve();
+  let releaseLabLoading = () => {};
   const syntheticExames: Array<Record<string, unknown>> = [];
   const syntheticColetas: Array<Record<string, unknown>> = [];
   const coletaInsertPayloads: Array<Record<string, unknown>> = [];
@@ -1540,15 +1555,16 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
     const requestUrl = new URL(route.request().url());
     requestedLabResultFilters.push(requestUrl.searchParams.toString());
     if (!historyAccesses.includes('historico')) labReadsBeforeHistoryAudit += 1;
-    if (labResultMode === 'loading') await new Promise(resolve => setTimeout(resolve, 500));
-    if (labResultMode === 'error') {
+    const mode = labResultMode;
+    if (mode === 'loading') await labLoadingGate;
+    if (mode === 'error') {
       await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'SYNTHETIC_FAILURE', message: 'Falha simulada na leitura do laboratório' }) });
       return;
     }
     const authorizedRelease = requestUrl.searchParams.get('liberado') === 'eq.true'
       && requestUrl.searchParams.get('clinica_id') === 'eq.00000000-0000-4000-8000-000000000002'
       && requestUrl.searchParams.get('paciente_id') === `eq.${patientId}`;
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authorizedRelease && labResultMode !== 'empty' ? [{
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authorizedRelease && mode !== 'empty' ? [{
       id: 'synthetic-result-release-1', parametro: 'Hemoglobina', resultado: '13,8', unidade: 'g/dL',
       critico: false, numero_versao: 1, data_liberacao: '2026-10-29T10:30:00-03:00',
       valor_referencia_min: 12, valor_referencia_max: 16, valor_referencia_texto: null, coleta_id: 'synthetic-collection-release-1',
@@ -1623,7 +1639,7 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await expect(page.getByText('13,8 g/dL')).toBeVisible();
   await expect(page.getByText('Amostra QA-1042')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Abrir laudo' })).toHaveAttribute('href', '/laudos-lab?coleta=synthetic-collection-release-1');
-  expect(requestedLabResultFilters.some(filters => filters.includes('liberado=eq.true') && filters.includes(`paciente_id=eq.${patientId}`) && filters.includes('clinica_id=eq.00000000-0000-4000-8000-000000000002'))).toBe(true);
+  await expect.poll(() => requestedLabResultFilters.some(filters => filters.includes('liberado=eq.true') && filters.includes(`paciente_id=eq.${patientId}`) && filters.includes('clinica_id=eq.00000000-0000-4000-8000-000000000002'))).toBe(true);
   expect(labReadsBeforeHistoryAudit).toBe(0);
   const releasedResult = page.getByRole('listitem').filter({ hasText: 'Hemoglobina' });
   await releasedResult.scrollIntoViewIfNeeded();
@@ -1635,10 +1651,12 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('prontuario-resultados-laboratorio-liberados-375.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 1280, height: 800 });
+  labLoadingGate = new Promise<void>(resolve => { releaseLabLoading = resolve; });
   labResultMode = 'loading';
   await page.getByRole('tab', { name: 'Evoluções' }).click();
   await page.getByRole('tab', { name: 'Solicitações' }).click();
   await expect(page.getByRole('status', { name: 'Carregando registros relacionados' })).toBeVisible();
+  releaseLabLoading();
   await expect(page.getByText('Hemoglobina', { exact: true })).toBeVisible();
   labResultMode = 'empty';
   await page.getByRole('tab', { name: 'Evoluções' }).click();
@@ -1654,9 +1672,10 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await page.getByRole('tab', { name: 'Evoluções' }).click();
   await page.getByRole('button', { name: /Abrir evolução de/ }).click();
   await expect(dialog).toBeVisible();
+  // The access RPCs fire asynchronously after the evolution opens.
+  await expect.poll(() => historyAccesses.at(-1)).toBe('prontuario');
   expect(historyAccesses).toContain('historico');
   expect(historyAccesses).toContain('prontuario');
-  expect(historyAccesses.at(-1)).toBe('prontuario');
   await page.screenshot({ path: testInfo.outputPath('fila-atendimento-prontuario-existente-1280.png'), animations: 'disabled' });
 
   await dialog.getByRole('button', { name: 'Solicitar Exame' }).click();
@@ -2299,6 +2318,7 @@ test('reception check-in keeps context through queue triage and applies the clin
   await expect(prontuarioWorkspace.getByText('Ana Souza', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(startPayload).toEqual({ p_agendamento_id: appointmentId, p_fila_id: queueId });
+  await expect(prontuarioWorkspace.getByRole('button', { name: 'Salvar e finalizar' })).toBeVisible();
   const faixaTriagem = prontuarioWorkspace.getByRole('button', { name: /^Triagem \d{2}:\d{2}: PA 120\/80 mmHg/ });
   await expect(faixaTriagem).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('reception-queue-clinical-handoff-1280.png'), animations: 'disabled' });
@@ -2318,7 +2338,11 @@ test('reception check-in keeps context through queue triage and applies the clin
   await expect(finalizationMain.getByRole('heading', { name: 'Finalizar atendimento' })).toBeVisible();
   await finalizationMain.getByText('30 dias', { exact: true }).click();
   await expect(finalizationMain.getByText(/Retorno previsto:/)).toBeVisible();
+  // A evolução foi descartada no prontuário: a finalização avisa e pede confirmação explícita.
+  await expect(finalizationMain.getByText('Nenhuma evolução registrada para este atendimento.')).toBeVisible();
+  await expect(finalizationMain.getByRole('button', { name: 'Confirmar finalização' })).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath('reception-queue-finalization-1280.png'), fullPage: true, animations: 'disabled' });
+  await finalizationMain.getByRole('checkbox', { name: 'Finalizar mesmo sem evolução' }).check();
   await finalizationMain.getByRole('button', { name: 'Confirmar finalização' }).click();
 
   await expect(page).toHaveURL('/fila');
@@ -2624,17 +2648,23 @@ test('LGPD export is audited before download and fails closed when audit insert 
   // Failure path: audit registration fails; patient data export must stop before
   // any downloadable result can be produced.
   auditMode = 'failure';
-  const noDownload = Promise.race([
-    page.waitForEvent('download', { timeout: 1000 }).then(() => false).catch(() => true),
-  ]);
+  const downloadsDuringFailure: string[] = [];
+  const recordDownload = (download: { suggestedFilename(): string }) => { downloadsDuringFailure.push(download.suggestedFilename()); };
+  page.on('download', recordDownload);
   await main.getByRole('button', { name: 'Exportar' }).click();
   const exportDialog = page.getByTestId('lgpd-export-page');
   await expect(exportDialog).toBeVisible();
   await page.locator('#main-content').getByRole('button', { name: 'Gerar arquivo JSON' }).click();
-  expect(await noDownload).toBe(true);
+  // Wait for the audit attempt itself instead of a fixed download window: on a
+  // slow run the window could close before the export even started.
+  await expect.poll(() => auditWrites.filter(write => write.method === 'POST').length, { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect(page.getByText(/Não foi possível registrar o pedido de exportação; o arquivo não foi gerado/)).toBeVisible();
+  await expect(page.locator('#main-content').getByRole('button', { name: 'Gerar arquivo JSON' })).toBeEnabled();
+  page.off('download', recordDownload);
+  expect(downloadsDuringFailure).toEqual([]);
   expect(exportedPatientReads).toEqual(['*']); // only the patient row lookup precedes audit registration
   expect(bulkPatientDataReads).toEqual([]);
-  expect(auditWrites.some(write => write.method === 'POST')).toBe(true);
+  expect(auditWrites.filter(write => write.method === 'PATCH')).toEqual([]);
 
   // A new page uses the success audit stub, proving both the request record
   // and fulfilled state are written before the JSON download is emitted.
@@ -3481,9 +3511,9 @@ test('room workspace preserves occupancy safety and readable status filters', as
     if (viewport.width === 1280) {
       await main.getByRole('button', { name: 'Nova Sala / Leito' }).click();
       const colorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
-      await expect(colorPicker.getByRole('button')).toHaveCount(4);
+      await expect(colorPicker.getByRole('button')).toHaveCount(5);
       await expect(colorPicker.getByRole('button', { name: /roxo/i })).toHaveCount(0);
-      await expect(colorPicker.getByRole('button', { name: 'Selecionar cor Azul primário' })).toHaveAttribute('aria-pressed', 'true');
+      await expect(colorPicker.getByRole('button', { name: 'Selecionar cor Grafite' })).toHaveAttribute('aria-pressed', 'true');
       const cyan = colorPicker.getByRole('button', { name: 'Selecionar cor Ciano' });
       await cyan.click();
       await expect(cyan).toHaveAttribute('aria-pressed', 'true');
@@ -3493,7 +3523,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
       await main.getByTestId('room-card-00000000-0000-4000-9000-000000000203').getByRole('button', { name: 'Editar sala Sala de Exames' }).click();
       const savedColorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(savedColorPicker.getByText('Cor salva')).toBeVisible();
-      await expect(savedColorPicker.getByRole('button')).toHaveCount(4);
+      await expect(savedColorPicker.getByRole('button')).toHaveCount(5);
       await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
     }
     if (viewport.width < 500) {
@@ -4094,7 +4124,10 @@ test('finance does not report a zero margin when there is no revenue at desktop 
 });
 
 test('finance reconciles populated received revenue with its synthetic payment ledger on desktop', async ({ page }, testInfo) => {
-  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true });
+  // Dia 15 fixo: os pagamentos sintéticos de 1 e 2 dias antes não podem cair no mês anterior.
+  const today = `${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).format(new Date())}-15`;
+  await page.clock.install({ time: new Date(`${today}T10:00:00-03:00`) });
+  const synthetic = await installSyntheticClinic(page, { platformAdmin: false, accountsPopulated: true, today });
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport);
@@ -4104,7 +4137,7 @@ test('finance reconciles populated received revenue with its synthetic payment l
     await expect(main.getByRole('heading', { name: 'Painel Financeiro' })).toBeVisible();
     const revenueCard = main.getByText('Entradas recebidas', { exact: true }).first().locator('xpath=../..');
     await expect(revenueCard).toContainText(/R\$\s*720/);
-    await expect(main.getByText('Sem receita para calcular no perÃ­odo', { exact: true })).toHaveCount(0);
+    await expect(main.getByText('Sem receita para calcular no período', { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`finance-populated-${viewport.width}.png`), animations: 'disabled' });
   }

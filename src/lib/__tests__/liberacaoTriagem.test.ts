@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
+import { aguardaTriagemAntesDoInicio, passouPelaTriagem } from '@/lib/liberacaoTriagem';
 
 /**
  * Os mesmos cenários que `supabase/verificacoes/trava-triagem.sql` exercita no
@@ -44,5 +44,25 @@ describe('passouPelaTriagem', () => {
 
   it('agendamento não carregado não trava quem já tem triagem', () => {
     expect(passouPelaTriagem(AG, undefined, feitas, true)).toBe(true);
+  });
+});
+
+describe('aguardaTriagemAntesDoInicio', () => {
+  it('não bloqueia quando a clínica não exige triagem', () => {
+    expect(aguardaTriagemAntesDoInicio({ status: 'confirmado', exige_triagem: true }, false)).toBe(false);
+  });
+
+  it('bloqueia o início direto da Agenda antes do check-in', () => {
+    expect(aguardaTriagemAntesDoInicio({ status: 'agendado', exige_triagem: true }, true)).toBe(true);
+    expect(aguardaTriagemAntesDoInicio({ status: 'confirmado' }, true)).toBe(true);
+  });
+
+  it('respeita isenção e liberação sem triagem', () => {
+    expect(aguardaTriagemAntesDoInicio({ status: 'confirmado', exige_triagem: false }, true)).toBe(false);
+    expect(aguardaTriagemAntesDoInicio({ status: 'confirmado', liberado_sem_triagem: true }, true)).toBe(false);
+  });
+
+  it('não decide depois do check-in, quando a triagem já pode existir', () => {
+    expect(aguardaTriagemAntesDoInicio({ status: 'aguardando', exige_triagem: true }, true)).toBe(false);
   });
 });

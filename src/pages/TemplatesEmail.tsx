@@ -826,7 +826,7 @@ function CategoriaPill({ ativo, onClick, children }: { ativo: boolean; onClick: 
         'h-8 rounded-full border px-3 text-xs transition-colors',
         ativo
           ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-          : 'border-border/60 bg-card text-muted-foreground hover:border-[#9CC7EC]',
+          : 'border-border/60 bg-card text-muted-foreground hover:border-foreground/25',
       )}
     >
       {children}

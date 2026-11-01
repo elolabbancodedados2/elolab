@@ -63,7 +63,7 @@ export default function IndicadoresProdutividade() {
                   'h-8 rounded-full border px-3 text-xs font-medium transition-colors',
                   period === pill.value
                     ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-                    : 'border-border/60 bg-card text-muted-foreground hover:border-[#9CC7EC] hover:text-foreground',
+                    : 'border-border/60 bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                 )}
               >
                 {pill.label}

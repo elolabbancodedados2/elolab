@@ -10,7 +10,8 @@ const CRITICAL_TABLES = [
   { table: 'pacientes', queryKeys: ['pacientes'] },
   { table: 'estoque', queryKeys: ['estoque'] },
   { table: 'lancamentos', queryKeys: ['lancamentos'] },
-  { table: 'notification_queue', queryKeys: ['notifications'] },
+  // 'notification-queue' e 'central-notificacoes' alimentam o sino da Navbar.
+  { table: 'notification_queue', queryKeys: ['notifications', 'notification-queue', 'central-notificacoes'] },
   // Tarefas alimentam três caches distintos: lista, fila pessoal e contador do dashboard.
   { table: 'tarefas', queryKeys: ['tarefas', 'minha-fila-tarefas', 'minhas-tarefas-pendentes', 'central-notificacoes'] },
 ] as const;

@@ -206,7 +206,7 @@ export default function PlatformBackups() {
           <CardTitle>Histórico operacional</CardTitle>
           <div className="flex items-center gap-2">
             {[['Todos', false], [`Com erro (${logsComErro})`, true]].map(([label, value]) => (
-              <button key={String(value)} type="button" aria-pressed={somenteErros === value} onClick={() => setSomenteErros(value as boolean)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', somenteErros === value ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card hover:border-[#9CC7EC]')}>{label}</button>
+              <button key={String(value)} type="button" aria-pressed={somenteErros === value} onClick={() => setSomenteErros(value as boolean)} className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', somenteErros === value ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card hover:border-foreground/25')}>{label}</button>
             ))}
           </div>
         </CardHeader>

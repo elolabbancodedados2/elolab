@@ -1,9 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, CalendarCheck2, CalendarDays, Check, Clock3, Loader2, Stethoscope, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarCheck2, CalendarDays, Check, Clock3, FileText, Loader2, Stethoscope, UserRound } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,16 @@ type AppointmentContext = {
 
 const RETORNO_OPCOES = [7, 15, 30, 60, 90, 180] as const;
 const ROTAS_DE_RETORNO = ['/fila', '/recepcao', '/agenda'];
+const STATUS_ROTULO: Record<string, string> = {
+  em_atendimento: 'Em atendimento',
+  finalizado: 'Já finalizado',
+  atendimento_finalizado: 'Já finalizado',
+  aguardando: 'Aguardando',
+  confirmado: 'Confirmado',
+  agendado: 'Agendado',
+  faltou: 'Faltou',
+  cancelado: 'Cancelado',
+};
 
 function relacaoUnica<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
@@ -62,6 +72,7 @@ export default function FinalizarAtendimento() {
   const origem = searchParams.get('origem') ?? 'fila';
   const [retornoSelecionado, setRetornoSelecionado] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [semEvolucaoConfirmado, setSemEvolucaoConfirmado] = useState(false);
   const submitLock = useRef(false);
   const paginaConcluida = useRef(false);
   const navigationState = location.state as { returnTo?: unknown } | null;
@@ -77,6 +88,7 @@ export default function FinalizarAtendimento() {
 
   useEffect(() => {
     setRetornoSelecionado('');
+    setSemEvolucaoConfirmado(false);
     paginaConcluida.current = false;
   }, [agendamentoId]);
 
@@ -117,6 +129,53 @@ export default function FinalizarAtendimento() {
     },
   });
 
+  // Só médico e admin leem prontuários; para os demais perfis o aviso não aparece.
+  const podeVerEvolucao = Boolean(profile?.roles?.some(role => role === 'medico' || role === 'admin'));
+  const evolucaoQuery = useQuery({
+    queryKey: ['atendimento-finalizacao-evolucao', clinicaId, agendamentoId],
+    enabled: Boolean(clinicaId && agendamentoId && podeVerEvolucao),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('id, assinado')
+        .eq('clinica_id', clinicaId!)
+        .eq('agendamento_id', agendamentoId)
+        .limit(5);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const evolucoes = evolucaoQuery.data;
+
+  // Retorno já registrado no prontuário para este atendimento: a finalização
+  // não cria outro (o RPC reaproveita o retorno com o mesmo agendamento).
+  const retornoQuery = useQuery({
+    queryKey: ['atendimento-finalizacao-retorno', clinicaId, agendamentoId],
+    enabled: Boolean(clinicaId && agendamentoId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('retornos')
+        .select('id, data_retorno_prevista')
+        .eq('clinica_id', clinicaId!)
+        .eq('agendamento_id', agendamentoId)
+        .neq('status', 'cancelado')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null; // perfil sem leitura de retornos: segue como antes
+      return data;
+    },
+  });
+  const retornoExistente = retornoQuery.data ?? null;
+  const dataRetornoExistente = retornoExistente?.data_retorno_prevista && parseDateOnly(retornoExistente.data_retorno_prevista)
+    ? formatWithDatePreference(parseDateOnly(retornoExistente.data_retorno_prevista)!, 'dd/MM/yyyy', { locale: ptBR })
+    : null;
+  useEffect(() => {
+    if (retornoExistente) setRetornoSelecionado(atual => atual || 'sem-retorno');
+  }, [retornoExistente]);
+  const semEvolucao = podeVerEvolucao && !!evolucoes && evolucoes.length === 0;
+  const evolucaoEmRascunho = podeVerEvolucao && !!evolucoes?.length && !evolucoes.some(e => e.assinado);
+
   const appointment = appointmentQuery.data;
   const patient = relacaoUnica(appointment?.pacientes);
   const doctor = relacaoUnica(appointment?.medicos);
@@ -131,6 +190,7 @@ export default function FinalizarAtendimento() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitLock.current || !appointment || !clinicaId || !retornoSelecionado) return;
+    if (semEvolucao && !semEvolucaoConfirmado) return;
     if (appointment.status !== 'em_atendimento') {
       toast.error('Este atendimento mudou de estado', { description: 'Atualize a fila e confira o registro antes de tentar novamente.' });
       return;
@@ -161,6 +221,26 @@ export default function FinalizarAtendimento() {
         return;
       }
 
+      // Esta consulta era o retorno de outra? Dá baixa no retorno, que antes
+      // ficava "agendado" para sempre. Falha aqui não desfaz a finalização.
+      const avisos: string[] = [];
+      try {
+        const { data: retornosDestaConsulta, error: erroRetornos } = await supabase
+          .from('retornos')
+          .select('id')
+          .eq('clinica_id', clinicaId)
+          .eq('agendamento_retorno_id', appointment.id)
+          .not('status', 'in', '(realizado,cancelado)');
+        if (erroRetornos) throw erroRetornos;
+        for (const retorno of retornosDestaConsulta ?? []) {
+          const { error: erroBaixa } = await (supabase as any).rpc('marcar_retorno_realizado_atomico', { p_retorno_id: retorno.id });
+          if (erroBaixa) throw erroBaixa;
+          result.actions.push('Retorno marcado como realizado');
+        }
+      } catch {
+        avisos.push('O retorno ligado a esta consulta não foi baixado; marque-o em Retornos.');
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['agendamentos'] }),
         queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] }),
@@ -168,10 +248,11 @@ export default function FinalizarAtendimento() {
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] }),
         queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['retornos'] }),
       ]);
       paginaConcluida.current = true;
       const toastOptions = {
-        description: result.actions.join(' • '),
+        description: [...result.actions, ...avisos].join(' • '),
         ...(origem === 'fila'
           ? { duration: 8000, action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') } }
           : {}),
@@ -240,7 +321,7 @@ export default function FinalizarAtendimento() {
                     <p className="mt-1 text-sm text-muted-foreground">Confirme o registro antes de concluir.</p>
                   </div>
                   <Badge variant={appointment.status === 'em_atendimento' ? 'default' : 'secondary'}>
-                    {appointment.status === 'em_atendimento' ? 'Em atendimento' : 'Já finalizado'}
+                    {STATUS_ROTULO[appointment.status] ?? appointment.status}
                   </Badge>
                 </div>
               </CardHeader>
@@ -271,6 +352,12 @@ export default function FinalizarAtendimento() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-5">
+                  {retornoExistente && (
+                    <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                      <span className="font-medium">Retorno já registrado{dataRetornoExistente ? ` para ${dataRetornoExistente}` : ''}.</span>{' '}
+                      <span className="text-muted-foreground">A finalização não cria outro.</span>
+                    </p>
+                  )}
                   <fieldset disabled={salvando}>
                     <legend className="mb-3 text-sm font-medium">Escolha o prazo ou marque sem retorno</legend>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -306,13 +393,40 @@ export default function FinalizarAtendimento() {
                     )}
                   </div>
 
+                  {semEvolucao && statusFinalizavel && (
+                    <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-3 text-sm">
+                      <p className="flex items-start gap-2 font-medium text-foreground">
+                        <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                        Nenhuma evolução registrada para este atendimento.
+                      </p>
+                      <Link
+                        to={`/prontuarios/atendimento?paciente=${appointment.paciente_id}&agendamento=${appointment.id}`}
+                        className="inline-block font-medium underline underline-offset-2"
+                      >
+                        Abrir o prontuário
+                      </Link>
+                      <label className="flex min-h-11 cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-foreground"
+                          checked={semEvolucaoConfirmado}
+                          onChange={event => setSemEvolucaoConfirmado(event.target.checked)}
+                        />
+                        Finalizar mesmo sem evolução
+                      </label>
+                    </div>
+                  )}
+                  {evolucaoEmRascunho && statusFinalizavel && (
+                    <p className="text-xs leading-5 text-muted-foreground">A evolução deste atendimento ainda não foi assinada.</p>
+                  )}
+
                   {!queueQuery.data && !queueQuery.isLoading && (
                     <p className="text-xs leading-5 text-muted-foreground">Este atendimento não tem uma entrada ativa na fila; a finalização será registrada no agendamento.</p>
                   )}
 
                   <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 -mx-4 flex flex-col-reverse gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-0">
                     <Button type="button" variant="outline" onClick={() => navigate(returnTo)} disabled={salvando}>Voltar</Button>
-                    <Button type="submit" disabled={!retornoSelecionado || salvando || !statusFinalizavel}>
+                    <Button type="submit" disabled={!retornoSelecionado || salvando || !statusFinalizavel || (semEvolucao && !semEvolucaoConfirmado)}>
                       {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                       {salvando ? 'Finalizando…' : 'Confirmar finalização'}
                     </Button>

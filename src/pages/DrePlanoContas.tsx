@@ -33,6 +33,7 @@ import {
   chaveCategoria,
   dreParaCsv,
   montarDre,
+  montarEventosCompetencia,
   montarEventosRealizados,
   rotuloCategoria,
   type ContaPlano,
@@ -92,6 +93,7 @@ export default function DrePlanoContas() {
   const [searchParams, setSearchParams] = useSearchParams();
   const competencia = parseFinanceMonth(searchParams.get('mes')) ?? currentFinanceMonth();
   const aba = parseAba(searchParams.get('aba'));
+  const regime = searchParams.get('regime') === 'competencia' ? 'competencia' : 'caixa';
 
   const atualizarParam = (chave: string, valor: string) => setSearchParams(atual => {
     const proximo = new URLSearchParams(atual);
@@ -134,7 +136,7 @@ export default function DrePlanoContas() {
     queryKey: ['dre-lancamentos', clinicaId],
     enabled: !!clinicaId,
     queryFn: () => buscarEmBlocos<LancamentoRealizavel>(() => supabase.from('lancamentos')
-      .select('id,tipo,categoria,status,valor,valor_pago,data,data_pagamento')
+      .select('id,tipo,categoria,status,valor,valor_pago,desconto,acrescimo,competencia,data,data_pagamento')
       .eq('clinica_id', clinicaId!)
       .in('tipo', ['receita', 'despesa'])
       .order('id')),
@@ -165,14 +167,16 @@ export default function DrePlanoContas() {
   const pagamentos = useMemo(() => pagamentosQuery.data ?? [], [pagamentosQuery.data]);
 
   const dre = useMemo(() => {
-    const eventos = montarEventosRealizados(pagamentos, lancamentos, inicio, fimExclusivo);
+    const eventos = regime === 'competencia'
+      ? montarEventosCompetencia(lancamentos)
+      : montarEventosRealizados(pagamentos, lancamentos, inicio, fimExclusivo);
     return montarDre({
       contas,
       vinculos,
       eventosMes: eventos.filter(e => e.data.slice(0, 7) === mes),
       eventosMesAnterior: eventos.filter(e => e.data.slice(0, 7) === mesAnterior),
     });
-  }, [pagamentos, lancamentos, inicio, fimExclusivo, contas, vinculos, mes, mesAnterior]);
+  }, [regime, pagamentos, lancamentos, inicio, fimExclusivo, contas, vinculos, mes, mesAnterior]);
 
   const invalidarPlano = async () => {
     await Promise.all([
@@ -200,7 +204,7 @@ export default function DrePlanoContas() {
   const exportar = () => {
     downloadStringAsFile({
       content: BOM_UTF8 + dreParaCsv(dre, mes, mesAnterior),
-      filename: `dre-gerencial-${mes}.csv`,
+      filename: regime === 'competencia' ? `dre-competencia-${mes}.csv` : `dre-gerencial-${mes}.csv`,
       mimeType: 'text/csv;charset=utf-8',
     });
   };
@@ -255,7 +259,9 @@ export default function DrePlanoContas() {
       <PageHeader
         title="DRE e plano de contas"
         icon={<FileSpreadsheet />}
-        description="Resultado gerencial do mês pelos valores pagos, organizado pelo plano de contas da clínica."
+        description={regime === 'competencia'
+          ? 'Resultado do mês por competência: lançamentos do mês a que pertencem, pagos ou não, organizados pelo plano de contas.'
+          : 'Resultado gerencial do mês pelos valores pagos, organizado pelo plano de contas da clínica.'}
         actions={(
           <>
             <Button variant="outline" asChild className="rounded-full">
@@ -279,6 +285,16 @@ export default function DrePlanoContas() {
         </TabsList>
 
         <TabsContent value="dre" className="space-y-4">
+          {!semPlano && (
+            <div role="group" aria-label="Regime do DRE" className="flex flex-wrap items-center gap-2">
+              {([['caixa', 'Por caixa (pago)'], ['competencia', 'Por competência']] as const).map(([valor, rotulo]) => (
+                <button key={valor} type="button" aria-pressed={regime === valor} onClick={() => atualizarParam('regime', valor)}
+                  className={cn('h-8 rounded-full border px-3 text-xs font-medium transition-colors', regime === valor ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          )}
           {semPlano ? estadoSemPlano : (
             <AbaDre
               dre={dre}

@@ -186,13 +186,19 @@ export const ROTULO_SITUACAO_PEDIDO: Record<SituacaoPedidoCompra, string> = {
   cancelado: 'Cancelado',
 };
 
-/** Itens em estoque baixo (no mínimo ou abaixo) com a quantidade sugerida para repor. */
+/**
+ * Itens que chegaram ao ponto de pedido (ou ao mínimo, quando não há ponto de
+ * pedido) com a quantidade sugerida para repor. Itens de `emCompra` (já em
+ * cotação aberta ou pedido emitido e não recebido) ficam de fora para não
+ * duplicar a compra.
+ */
 export function itensParaCotar<T extends {
   id: string; nome: string; quantidade: number; quantidade_minima?: number | null;
   quantidade_maxima?: number | null; ponto_pedido?: number | null; unidade?: string | null;
-}>(estoque: T[]) {
+}>(estoque: T[], emCompra: ReadonlySet<string> = new Set()) {
   return estoque
-    .filter(p => Number(p.quantidade) <= Number(p.quantidade_minima || 0))
+    .filter(p => !emCompra.has(p.id))
+    .filter(p => Number(p.quantidade) <= Math.max(Number(p.ponto_pedido || 0), Number(p.quantidade_minima || 0)))
     .map(p => {
       const alvo = Number(p.quantidade_maxima || 0) > 0
         ? Number(p.quantidade_maxima)
@@ -204,6 +210,31 @@ export function itensParaCotar<T extends {
         quantidade: Math.max(1, Math.round(alvo - Number(p.quantidade))),
       };
     });
+}
+
+/** Dados iniciais da conta a pagar gerada a partir de um pedido de compra recebido. */
+export interface ContaPagarInicial {
+  categoria: string;
+  descricao: string;
+  valor: number;
+  fornecedor: string;
+  numero_documento: string;
+}
+
+export function numeroPedidoCompra(id: string) {
+  return id.replace(/-/g, '').slice(0, 8).toUpperCase();
+}
+
+export function contaPagarDoPedido(pedido: { id: string; total: number | string; fornecedores?: { nome: string } | null }): ContaPagarInicial {
+  const numero = numeroPedidoCompra(pedido.id);
+  const fornecedor = pedido.fornecedores?.nome?.trim() ?? '';
+  return {
+    categoria: 'fornecedores',
+    descricao: `Pedido de compra nº ${numero}${fornecedor ? ` — ${fornecedor}` : ''}`,
+    valor: arredondarMoeda(Number(pedido.total) || 0),
+    fornecedor,
+    numero_documento: `PC-${numero}`,
+  };
 }
 
 export function normalizarCnpj(valor: string) {

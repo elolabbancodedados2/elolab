@@ -23,6 +23,8 @@ import { formatWithDatePreference } from '@/lib/datePreference';
 type Related<T> = T | T[] | null;
 type ReturnContext = {
   prontuarioId: string | null;
+  /** Atendimento da evolução: a finalização reconhece o retorno e não cria outro. */
+  agendamentoId: string | null;
   pacienteId: string;
   medicoId: string;
   dataProntuario: string | null;
@@ -85,7 +87,7 @@ export default function NovoRetornoProntuarioPage() {
         await registrarAcessoProntuario(prontuarioId, 'visualizacao');
         let query = supabase
           .from('prontuarios')
-          .select('id,paciente_id,medico_id,data,assinado,pacientes(nome,nome_social),medicos(nome,crm)')
+          .select('id,paciente_id,medico_id,agendamento_id,data,assinado,pacientes(nome,nome_social),medicos(nome,crm)')
           .eq('id', prontuarioId)
           .eq('clinica_id', clinicId);
         if (isMedicoOnly && currentMedicoId) query = query.eq('medico_id', currentMedicoId);
@@ -106,6 +108,7 @@ export default function NovoRetornoProntuarioPage() {
         if (!doctor) throw new Error('O profissional responsável não está disponível para a clínica ativa.');
         return {
           prontuarioId: data.id,
+          agendamentoId: data.agendamento_id ?? null,
           pacienteId: data.paciente_id,
           medicoId: doctor.id,
           dataProntuario: data.data,
@@ -134,6 +137,7 @@ export default function NovoRetornoProntuarioPage() {
 
       return {
         prontuarioId: null,
+        agendamentoId: null,
         pacienteId: patient.id,
         medicoId: doctor.id,
         dataProntuario: null,
@@ -183,6 +187,7 @@ export default function NovoRetornoProntuarioPage() {
       const { error } = await supabase.from('retornos').insert({
         paciente_id: context.pacienteId,
         prontuario_id: context.prontuarioId,
+        agendamento_id: context.agendamentoId,
         medico_id: context.medicoId,
         data_retorno_prevista: dateOnly,
         tipo_retorno: returnType,

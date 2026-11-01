@@ -19,9 +19,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { appointmentStartHasPassed, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { appointmentEndMinutes } from '@/lib/agendaTime';
 import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
+import { datasDaRecorrencia, FREQUENCIAS_RECORRENCIA, MAX_OCORRENCIAS, type FrequenciaRecorrencia } from '@/lib/recorrenciaAgenda';
 import { describeAppointmentConflict } from '@/lib/agendaConflictMessage';
 import { APPOINTMENT_CANCELLATION_REASONS, appointmentCancellationReasonLabel, isAppointmentCancellationReason } from '@/lib/appointmentCancellation';
 
@@ -51,6 +52,12 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
   const [initialSnapshot, setInitialSnapshot] = useState('{}');
   const completed = useRef(false);
   const [foraExpediente, setForaExpediente] = useState<string | null>(null);
+  const [dataPassada, setDataPassada] = useState(false);
+  // `saving` é estado e só muda no próximo render: dois cliques seguidos
+  // passavam pela guarda e gravavam a mesma consulta duas vezes.
+  const salvandoRef = useRef(false);
+  const dataPassadaConfirmada = useRef(false);
+  useEffect(() => { dataPassadaConfirmada.current = false; }, [form.data, form.hora_inicio]);
 
   useEffect(() => {
     if (open) {
@@ -65,6 +72,8 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         sala_id: initial?.sala_id || '',
         observacoes: initial?.observacoes || '',
         send_whatsapp: false,
+        repetir: 'nao' as FrequenciaRecorrencia,
+        ocorrencias: 4,
       };
       setForm(value);
       setInitialSnapshot(JSON.stringify(value));
@@ -129,6 +138,16 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
   };
 
   const handleSave = async (confirmouForaExpediente = false) => {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
+    try {
+      await salvarConsulta(confirmouForaExpediente);
+    } finally {
+      salvandoRef.current = false;
+    }
+  };
+
+  const salvarConsulta = async (confirmouForaExpediente: boolean) => {
     if (!form.paciente_id) { toast.error('Selecione um paciente'); setTab('paciente'); return; }
     if (!form.medico_id) { toast.error('Selecione um médico'); setTab('consulta'); return; }
     if (!form.hora_inicio) { toast.error('Informe o horário'); setTab('consulta'); return; }
@@ -176,6 +195,14 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
       }
 
       const novoFim = novoFimInformado ?? novoInicio + DURACAO_PADRAO;
+
+      // Marcar no passado é raro (registro retroativo) e quase sempre engano
+      // de data. Não bloqueia, mas pede confirmação, como o expediente.
+      const mudouHorario = !editing || form.data !== initial?.data || form.hora_inicio?.slice(0, 5) !== String(initial?.hora_inicio || '').slice(0, 5);
+      if (mudouHorario && !dataPassadaConfirmada.current && appointmentStartHasPassed(form.data, form.hora_inicio)) {
+        setDataPassada(true);
+        setTab('consulta'); setSaving(false); return;
+      }
 
       if (novoFim <= novoInicio || novoFim >= 24 * 60) {
         toast.error(novoFim >= 24 * 60 ? 'A consulta precisa terminar antes da meia-noite.' : 'O horário de término deve ser após o início.');
@@ -365,6 +392,37 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
       if (result.error) throw result.error;
 
       toast.success(editing ? 'Consulta atualizada' : 'Consulta agendada');
+
+      // Consulta recorrente: a primeira já foi gravada com todas as checagens.
+      // As seguintes respeitam bloqueios e a constraint de sobreposição do
+      // banco; o que não couber é listado, sem desfazer o que foi marcado.
+      const datasSeguintes = !editing && !initial?._waiting_id ? datasDaRecorrencia(form.data, form.repetir, form.ocorrencias) : [];
+      if (datasSeguintes.length) {
+        const puladas: string[] = [];
+        let criadas = 0;
+        const { data: bloqueiosSerie } = await (supabase.from('bloqueios_agenda' as any)
+          .select('data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro')
+          .eq('medico_id', form.medico_id)
+          .lte('data_inicio', datasSeguintes[datasSeguintes.length - 1])
+          .gte('data_fim', datasSeguintes[0]) as any);
+        for (const data of datasSeguintes) {
+          const bloqueada = ((bloqueiosSerie as any[]) || []).some((b: any) => b.data_inicio <= data && b.data_fim >= data && (
+            b.dia_inteiro || ((toMin(b.hora_inicio) ?? 0) < novoFim && (toMin(b.hora_fim) ?? 0) > novoInicio)
+          ));
+          if (bloqueada) { puladas.push(data); continue; }
+          const { error: erroSerie } = await (supabase.from('agendamentos').insert({ ...payloadToSave, data, status: 'agendado' }) as any);
+          if (erroSerie) puladas.push(data); else criadas += 1;
+        }
+        const formatar = (d: string) => d.split('-').reverse().slice(0, 2).join('/');
+        if (puladas.length) {
+          toast.warning(`${criadas} repetição(ões) marcada(s); ${puladas.length} ficou(aram) de fora`, {
+            description: `Horário ocupado ou bloqueado em ${puladas.map(formatar).join(', ')}. Marque essas datas manualmente.`,
+            duration: 12000,
+          });
+        } else {
+          toast.success(`${criadas} repetição(ões) marcada(s)`, { description: datasSeguintes.map(formatar).join(', ') });
+        }
+      }
 
       // O lembrete é secundário: a consulta já está marcada e não deve ser
       // desfeita se o WhatsApp falhar. Mas a falha era engolida com
@@ -636,6 +694,31 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                 <Label htmlFor="appointment-notes">{['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Nome do exame *' : 'Observações'}</Label>
                 <Textarea id="appointment-notes" rows={3} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} placeholder={['exame', 'exames'].includes(String(form.tipo || '').toLocaleLowerCase('pt-BR')) ? 'Ex.: Hemograma completo ou 40301630 - Hemograma' : 'Motivo, sintomas, orientações...'} />
               </div>
+              {!editing && !initial?._waiting_id && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="appointment-repeat">Repetir</Label>
+                    <Select value={form.repetir || 'nao'} onValueChange={(v) => setForm({ ...form, repetir: v as FrequenciaRecorrencia })}>
+                      <SelectTrigger id="appointment-repeat"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FREQUENCIAS_RECORRENCIA.map(f => <SelectItem key={f.valor} value={f.valor}>{f.rotulo}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {form.repetir && form.repetir !== 'nao' && (
+                    <div>
+                      <Label htmlFor="appointment-occurrences">Total de consultas (até {MAX_OCORRENCIAS})</Label>
+                      <Input id="appointment-occurrences" type="number" min={2} max={MAX_OCORRENCIAS} value={form.ocorrencias}
+                        onChange={(e) => setForm({ ...form, ocorrencias: Math.min(MAX_OCORRENCIAS, Math.max(2, Number(e.target.value) || 2)) })} />
+                    </div>
+                  )}
+                  {form.repetir && form.repetir !== 'nao' && (
+                    <p className="text-xs text-muted-foreground sm:col-span-2">
+                      Também em {datasDaRecorrencia(form.data, form.repetir, form.ocorrencias).map(d => d.split('-').reverse().slice(0, 2).join('/')).join(', ')}. Horários ocupados ou bloqueados ficam de fora e são avisados.
+                    </p>
+                  )}
+                </div>
+              )}
               {!editing && (
                 <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 p-4">
                   <div className="min-w-0">
@@ -679,6 +762,18 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
           </div>
         </footer>
       </div>
+      <AlertDialog open={dataPassada} onOpenChange={(o) => !o && setDataPassada(false)}>
+        <AlertDialogContent data-elo-font-preview="agenda">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Data e horário já passaram</AlertDialogTitle>
+            <AlertDialogDescription>A consulta ficaria marcada para {form.data ? form.data.split('-').reverse().join('/') : 'uma data'} às {String(form.hora_inicio || '').slice(0, 5)}, antes de agora. Confira a data ou confirme se é um registro retroativo.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Corrigir a data</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setDataPassada(false); dataPassadaConfirmada.current = true; void handleSave(); }}>Agendar mesmo assim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={!!foraExpediente} onOpenChange={(o) => !o && setForaExpediente(null)}>
         <AlertDialogContent data-elo-font-preview="agenda">
           <AlertDialogHeader>

@@ -61,4 +61,20 @@ describe('CobrancaInadimplentes', () => {
     expect(content).not.toContain('"Ana"');
     expect(content).toContain('"Mais de 90 dias"');
   });
+
+  it('agrupa os títulos vencidos por paciente com o total devido', () => {
+    estado.data = [
+      { id: 'a', paciente_id: 'p1', descricao: 'Consulta', valor: 100, valor_pago: 0, desconto: 0, acrescimo: 0, status: 'pendente', data_vencimento: '2026-10-14', pacientes: { nome: 'Ana', telefone: '11999990000' } },
+      { id: 'b', paciente_id: 'p1', descricao: 'Exame', valor: 250, valor_pago: 50, desconto: 0, acrescimo: 0, status: 'parcial', data_vencimento: '2026-09-01', pacientes: { nome: 'Ana', telefone: '11999990000' } },
+      { id: 'c', paciente_id: 'p2', descricao: 'Exame', valor: 80, valor_pago: 0, desconto: 0, acrescimo: 0, status: 'atrasado', data_vencimento: '2026-10-01', pacientes: { nome: 'Bruno' } },
+    ];
+    renderizar();
+
+    fireEvent.click(screen.getByRole('button', { name: /Por paciente · 2/ }));
+    const linhaAna = screen.getByRole('row', { name: /Ana/ });
+    expect(linhaAna).toHaveTextContent('2');
+    expect(linhaAna).toHaveTextContent(/R\$\s300,00/);
+    expect(linhaAna).toHaveTextContent('53 dias');
+    expect(screen.getByRole('link', { name: 'Contatar Ana via WhatsApp' })).toBeInTheDocument();
+  });
 });

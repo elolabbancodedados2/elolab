@@ -3,7 +3,7 @@ import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Search, FileText, Plus, Save, CalendarCheck, FileDown, History, Loader2, RefreshCw,
+  Search, FileText, Plus, Save, CheckCircle2, CalendarCheck, FileDown, History, Loader2, RefreshCw,
   Heart, Thermometer, Activity, Scale, Ruler, Droplets,
   Stethoscope, Brain, Bone, Eye as EyeIcon, Pill, Paperclip,
   ClipboardList, AlertTriangle, User, Clock, ChevronDown, ChevronRight,
@@ -83,6 +83,12 @@ interface RascunhoNaFila {
   assinado: boolean | null;
   pacientes?: { nome?: string | null; nome_social?: string | null } | Array<{ nome?: string | null; nome_social?: string | null }> | null;
   [key: string]: unknown;
+}
+
+// Telas do fluxo do dia para onde o prontuário pode devolver o usuário.
+const ROTAS_OPERACIONAIS = ['/fila', '/recepcao', '/agenda'];
+function rotaOperacional(valor: unknown): valor is string {
+  return typeof valor === 'string' && ROTAS_OPERACIONAIS.some(rota => valor === rota || valor.startsWith(`${rota}?`));
 }
 
 interface ContextoAgendamentoProntuario {
@@ -665,7 +671,7 @@ function RelatedRecords({ pacienteId, clinicaId, acessoAutorizado, erroAutorizac
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {badge && <Badge className={`text-xs px-1.5 py-0 rounded-full ${badgeClass}`}>{badge}</Badge>}
         {href && (
-          <Link to={href} className="h-7 px-2 rounded-full text-xs text-primary border border-border hover:bg-[#EEF4FA] flex items-center gap-1 transition-colors">
+          <Link to={href} className="h-7 px-2 rounded-full text-xs text-primary border border-border hover:bg-secondary flex items-center gap-1 transition-colors">
             <ExternalLink className="h-3 w-3" />Abrir
           </Link>
         )}
@@ -1018,7 +1024,7 @@ export default function Prontuarios() {
       if (telaProntuario === 'anexo-portal' && routeAnexoId) params.set('anexo', routeAnexoId);
     }
     const routeState = location.state as { returnTo?: unknown } | null;
-    const returnTo = isEvolucaoWorkspace && typeof routeState?.returnTo === 'string'
+    const returnTo = (isEvolucaoWorkspace || rotaOperacional(routeState?.returnTo)) && typeof routeState?.returnTo === 'string'
       ? routeState.returnTo
       : `/prontuarios?paciente=${encodeURIComponent(pacienteId)}`;
     navigate(`/prontuarios/atendimento?${params.toString()}`, { state: { returnTo, ...(contexto ? { contextoAgendamento: contexto } : {}) } });
@@ -1387,8 +1393,20 @@ export default function Prontuarios() {
   useEffect(() => {
     if (isProntuarioOpen || routeOpenedRef.current || !routeAgendamentoId || selectedPacienteId !== routePacienteId
       || !selectedPaciente || pacienteSelecionadoQuery.isLoading || pacienteSelecionadoQuery.isError
-      || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos) return;
+      || loadingProntuarios || loadingMedicos || erroProntuarios || erroMedicos
+      || (historicoAuditadoPacienteId !== routePacienteId && !erroHistorico)) return;
     if (!user?.clinica_id) return;
+    // A lista de prontuários só é buscada depois da auditoria do histórico; até
+    // lá a query fica desabilitada (sem "loading") e a lista vazia levaria a
+    // criar uma evolução duplicada para um agendamento que já tem prontuário.
+    if (erroHistorico) {
+      routeOpenedRef.current = true;
+      toast.error('Não foi possível confirmar a autorização de leitura', {
+        description: 'O atendimento não foi aberto. Tente novamente após confirmar o acesso ao histórico.',
+      });
+      navigate(`/prontuarios?paciente=${encodeURIComponent(routePacienteId || '')}`, { replace: true });
+      return;
+    }
 
     // O atalho vem da URL e pode estar desatualizado ou alterado. Confirme no
     // servidor que o agendamento pertence ao paciente e à clínica antes de
@@ -1450,6 +1468,8 @@ export default function Prontuarios() {
     loadingMedicos,
     erroProntuarios,
     erroMedicos,
+    historicoAuditadoPacienteId,
+    erroHistorico,
     pacienteProntuarios,
     handleNovoProntuario,
     user?.clinica_id,
@@ -1833,6 +1853,31 @@ export default function Prontuarios() {
     params.set('paciente', selectedPaciente.id);
     navigateAfterEvolucao(`/prontuarios/retornos/novo?${params.toString()}`);
   };
+  // Salva a evolução e segue para a finalização do atendimento ligado a ela,
+  // sem o médico precisar voltar à Fila.
+  const handleSalvarEFinalizar = async () => {
+    const agendamentoId = currentProntuario.agendamento_id as string | null;
+    if (salvandoProntuario || !agendamentoId) return;
+    const versaoAntesDeSalvar = changeVersionRef.current;
+    setSalvandoProntuario(true);
+    try {
+      const id = await performSave(true);
+      if (!id) return;
+      if (changeVersionRef.current !== versaoAntesDeSalvar) {
+        toast.warning('O prontuário foi salvo, mas houve novas alterações.', {
+          description: 'Revise e salve novamente antes de finalizar.',
+        });
+        return;
+      }
+      const routeState = location.state as { returnTo?: unknown } | null;
+      const voltarPara = rotaOperacional(routeState?.returnTo) ? routeState.returnTo : '/fila';
+      const origem = voltarPara.startsWith('/recepcao') ? 'recepcao' : voltarPara.startsWith('/agenda') ? 'agenda' : 'fila';
+      navigationAllowedRef.current = true;
+      navigate(`/atendimentos/${encodeURIComponent(agendamentoId)}/finalizar?origem=${origem}`, { state: { returnTo: voltarPara } });
+    } finally {
+      setSalvandoProntuario(false);
+    }
+  };
   const handleSave = async () => {
     if (salvandoProntuario) return;
     const versaoAntesDeSalvar = changeVersionRef.current;
@@ -1968,7 +2013,7 @@ export default function Prontuarios() {
   // ─── Exam solicitation ───
   const handleSolicitarExame = () => {
     if (!currentProntuario.id || !medicoId || !selectedPacienteId) {
-      toast.error('N?o foi poss?vel identificar o paciente, o m?dico ou salvar a evolu??o antes de solicitar exames.');
+      toast.error('Não foi possível identificar o paciente, o médico ou salvar a evolução antes de solicitar exames.');
       return;
     }
     const params = new URLSearchParams({
@@ -2317,7 +2362,7 @@ export default function Prontuarios() {
                               key={draft.id}
                               type="button"
                               variant="ghost"
-                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border bg-white px-2.5 py-2 text-left hover:border-[#9CC7EC] hover:bg-[#EEF4FA]"
+                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border bg-white px-2.5 py-2 text-left hover:border-foreground/25 hover:bg-secondary"
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 requestPatientContextChange(draft.paciente_id, 'picker');
@@ -2827,6 +2872,7 @@ export default function Prontuarios() {
               {!isReadOnly && (
                 <AtalhosDocumentos
                   pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
+                  prontuarioId={currentProntuario.id ?? null}
                   onReceita={() => changeProntuarioSection('prescricao')}
                 />
               )}
@@ -3293,6 +3339,9 @@ export default function Prontuarios() {
                   <TestTube className="h-3.5 w-3.5" />Solicitar Exame
                 </Button>
                 <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="rounded-xl text-xs">Cancelar</Button>
+                {!isReadOnly && currentProntuario.agendamento_id && (
+                  <Button variant="outline" onClick={() => { void handleSalvarEFinalizar(); }} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />Salvar e finalizar</Button>
+                )}
                 {!isReadOnly && (
                   <Button onClick={handleSave} size="sm" className="gap-1.5 rounded-xl text-xs" disabled={salvandoProntuario}><Save className="h-3.5 w-3.5" />Salvar Prontuário</Button>
                 )}

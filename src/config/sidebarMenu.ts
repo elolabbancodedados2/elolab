@@ -23,7 +23,6 @@ import {
   BotMessageSquare,
   ActivitySquare,
   ListChecks,
-  Inbox,
   TestTubes,
   BookMarked,
   MonitorSmartphone,
@@ -89,7 +88,6 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
       { label: 'Tarefas', icon: ListChecks, href: '/tarefas', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
-      { label: 'Minha fila', icon: Inbox, href: '/minha-fila', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
     ],
   },
   {
@@ -113,6 +111,7 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Cadastro e histórico', icon: Users, href: '/pacientes', roles: ['admin', 'recepcao', 'enfermagem', 'medico'] },
       { label: 'Convênios', icon: Building2, href: '/convenios', roles: ['admin', 'recepcao', 'financeiro'] },
       { label: 'Acesso ao portal do paciente', icon: UsersRound, href: '/portal-pacientes', roles: ['admin'] },
+      { label: 'Privacidade (LGPD)', icon: Shield, href: '/lgpd-pacientes', roles: ['admin'] },
     ],
   },
   {
@@ -161,9 +160,7 @@ export const menuGroups: MenuGroup[] = [
     icon: Building2,
     items: [
       { label: 'Médicos e funcionários', icon: UsersRound, href: '/equipe', roles: ['admin'], exact: true },
-      { label: 'Convites e acessos', icon: UserCog, href: '/equipe?aba=convites', roles: ['admin'] },
       { label: 'Estoque', icon: PackageSearch, href: '/estoque', roles: ['admin', 'enfermagem'] },
-      { label: 'Itens com baixo estoque', icon: PackageSearch, href: '/estoque?alerta=critico', roles: ['admin', 'enfermagem'] },
       { label: 'Compras', icon: ShoppingCart, href: '/compras', roles: ['admin', 'enfermagem', 'financeiro'] },
       { label: 'Higienização de salas', icon: ClipboardCheck, href: '/higiene-salas', roles: ['admin', 'recepcao', 'enfermagem'] },
       { label: 'Patrimônio e manutenção', icon: Wrench, href: '/patrimonio-equipamentos', roles: ['admin', 'recepcao', 'enfermagem'] },
@@ -186,9 +183,7 @@ export const menuGroups: MenuGroup[] = [
     roles: ['admin', 'financeiro', 'recepcao', 'enfermagem', 'medico'],
     items: [
       { label: 'Indicadores de produtividade', icon: ActivitySquare, href: '/indicadores', roles: ['admin', 'recepcao', 'enfermagem', 'financeiro', 'medico'] },
-      { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', exact: true, roles: ['admin', 'financeiro'] },
-      { label: 'Indicadores da clínica', icon: ActivitySquare, href: '/analytics', roles: ['admin'] },
-      { label: 'Relatórios salvos', icon: FileBarChart, href: '/relatorios/salvos', roles: ['admin', 'financeiro'] },
+      { label: 'Relatórios', icon: FileBarChart, href: '/relatorios', roles: ['admin', 'financeiro'] },
       { label: 'Risco de faltas', icon: ActivitySquare, href: '/analise-preditiva', roles: ['admin', 'recepcao'] },
     ],
   },
@@ -199,9 +194,9 @@ export const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Dados da clínica', icon: Building2, href: '/configuracoes', roles: ['admin'], exact: true },
       { label: 'Horários e agenda online', icon: CalendarRange, href: '/configuracoes?tab=horarios', roles: ['admin'] },
-      { label: 'Notificações', icon: Bell, href: '/configuracoes?tab=notificacoes', roles: ['admin'] },
       { label: 'Integrações disponíveis', icon: Settings2, href: '/configuracoes?tab=integracoes', roles: ['admin'] },
       { label: 'Interoperabilidade FHIR', icon: FileText, href: '/interoperabilidade', roles: ['admin', 'medico'] },
+      { label: 'Configurações avançadas', icon: Settings2, href: '/configuracoes-avancadas', roles: ['admin'] },
       { label: 'Plano e assinatura', icon: CreditCard, href: '/planos', roles: ['admin'] },
     ],
   },
@@ -273,6 +268,19 @@ export const menuGroups: MenuGroup[] = [
       { label: 'Integrações de clientes', icon: Settings2, href: '/admin/integracoes', superAdminOnly: true },
       { label: 'Operação do serviço', icon: Gauge, href: '/admin/operacoes', superAdminOnly: true },
       { label: 'Relatórios agendados', icon: FileBarChart, href: '/admin/relatorios-agendados', superAdminOnly: true },
+    ],
+  },
+  {
+    label: 'Infraestrutura',
+    icon: Wrench,
+    roles: ['admin'],
+    superAdminOnly: true,
+    items: [
+      { label: 'Erros e registros', icon: ActivitySquare, href: '/admin/erros', superAdminOnly: true },
+      { label: 'Filas e webhooks', icon: ListChecks, href: '/admin/filas', superAdminOnly: true },
+      { label: 'Consumo e cotas', icon: Gauge, href: '/admin/consumo', superAdminOnly: true },
+      { label: 'Backups', icon: ShieldCheck, href: '/admin/backups', superAdminOnly: true },
+      { label: 'Domínios', icon: Building2, href: '/admin/dominios', superAdminOnly: true },
     ],
   },
 ];

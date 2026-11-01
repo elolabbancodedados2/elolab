@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { proximaOcorrencia, projetarFluxoCaixa, type LancamentoProjecao } from '../projecaoFluxoCaixa';
+import { lotesTissComoRecebiveis, proximaOcorrencia, projetarFluxoCaixa, type LancamentoProjecao } from '../projecaoFluxoCaixa';
 
 const conta = (extra: Partial<LancamentoProjecao>): LancamentoProjecao => ({
   id: 'x', tipo: 'receita', status: 'pendente', valor: 100, valor_pago: 0, desconto: 0, acrescimo: 0,
@@ -48,11 +48,53 @@ describe('projeção do fluxo de caixa', () => {
     expect(r[1]).toMatchObject({ realizadoEntradas: 0, saldoMes: -200, saldoAcumulado: 379.9 });
   });
 
+  it('não soma sangria nem suprimento ao realizado, por serem transferências internas', () => {
+    const semTransferencias = projetarFluxoCaixa(lancamentos, [{ tipo: 'receita', valor: 500, data: '2026-10-02' }], { hoje, meses: 1, cenario: 'realista' });
+    const comTransferencias = projetarFluxoCaixa(lancamentos, [
+      { tipo: 'receita', valor: 500, data: '2026-10-02' },
+      { tipo: 'sangria', valor: 300, data: '2026-10-02' },
+      { tipo: 'suprimento', valor: 50, data: '2026-10-03' },
+    ], { hoje, meses: 1, cenario: 'realista' });
+    expect(comTransferencias).toEqual(semTransferencias);
+    expect(comTransferencias[0]).toMatchObject({ realizadoEntradas: 500, realizadoSaidas: 0 });
+  });
+
   it('não projeta recorrência que já gerou a próxima conta', () => {
     const r = projetarFluxoCaixa([
       conta({ id: 'a', tipo: 'despesa', status: 'pago', valor: 80, data_vencimento: '2026-10-05', recorrente: true, frequencia_recorrencia: 'mensal' }),
       conta({ id: 'b', tipo: 'despesa', valor: 80, data_vencimento: '2026-11-05', recorrente: true, frequencia_recorrencia: 'mensal', recorrencia_origem_id: 'a' }),
     ], [], { hoje, meses: 2, cenario: 'realista' });
     expect(r[1]).toMatchObject({ previstoSaidas: 80, recorrenteSaidas: 0 });
+  });
+});
+
+describe('lotesTissComoRecebiveis', () => {
+  it('projeta o saldo do lote enviado no prazo de retorno do convênio', () => {
+    const [recebivel] = lotesTissComoRecebiveis([{
+      id: 'l1', status: 'enviado', valor_apresentado: 1000, valor_pago: 0,
+      enviado_em: '2026-10-20T13:00:00Z', convenios: { prazo_retorno: 45 },
+    }]);
+    expect(recebivel).toMatchObject({ tipo: 'receita', valor: 1000, data_vencimento: '2026-12-04' });
+  });
+
+  it('usa 30 dias sem prazo e desconta o que já foi pago', () => {
+    const [recebivel] = lotesTissComoRecebiveis([{
+      id: 'l2', status: 'pago_parcial', valor_apresentado: 1000, valor_pago: 600, enviado_em: '2026-10-01', convenios: null,
+    }]);
+    expect(recebivel).toMatchObject({ valor: 400, data_vencimento: '2026-10-31' });
+  });
+
+  it('ignora rascunho, pago e lote sem saldo', () => {
+    expect(lotesTissComoRecebiveis([
+      { id: 'a', status: 'rascunho', valor_apresentado: 100, valor_pago: 0, enviado_em: null },
+      { id: 'b', status: 'pago', valor_apresentado: 100, valor_pago: 100, enviado_em: '2026-10-01' },
+      { id: 'c', status: 'processando', valor_apresentado: 100, valor_pago: 100, enviado_em: '2026-10-01' },
+    ])).toEqual([]);
+  });
+
+  it('entra como receita prevista na projeção', () => {
+    const lancamentos = lotesTissComoRecebiveis([{ id: 'l3', status: 'enviado', valor_apresentado: 500, valor_pago: 0, enviado_em: '2026-11-01', convenios: { prazo_retorno: 30 } }]);
+    const [, dezembro] = projetarFluxoCaixa(lancamentos, [], { hoje: '2026-11-01', meses: 3, cenario: 'realista' });
+    expect(dezembro.previstoEntradas).toBe(500);
   });
 });

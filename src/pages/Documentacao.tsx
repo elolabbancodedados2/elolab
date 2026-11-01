@@ -864,7 +864,7 @@ export default function Documentacao() {
                             >
                               <span className={cn(
                                 'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                                sIdx === 0 ? 'bg-gradient-primary text-white' : 'bg-[#EEF4FA] text-primary'
+                                sIdx === 0 ? 'bg-gradient-primary text-white' : 'bg-secondary text-primary'
                               )}>
                                 {sIdx + 1}
                               </span>

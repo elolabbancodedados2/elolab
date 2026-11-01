@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { daysBetweenDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, Beaker, CheckCircle2, ClipboardCheck, Cog, Loader2, Plus, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
@@ -115,8 +116,10 @@ export function GestaoLaboratorioPanel() {
   });
   const setor = (id: string | null) => (setoresQuery.data ?? []).find((item) => item.id === id)?.nome ?? 'Sem setor';
   const equipamento = (id: string | null) => (equipamentosQuery.data ?? []).find((item) => item.id === id)?.nome ?? '—';
-  const expirado = (date: string | null) => !!date && date < new Date().toISOString().slice(0, 10);
-  const vencendo = (date: string | null) => !!date && !expirado(date) && date <= new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  // Validade é data de calendário: comparar com o dia de São Paulo, não com o dia UTC.
+  const hojeClinica = todaySaoPauloDateOnly();
+  const expirado = (date: string | null) => !!date && date < hojeClinica;
+  const vencendo = (date: string | null) => !!date && !expirado(date) && daysBetweenDateOnly(hojeClinica, date) <= 30;
 
   const erro = [setoresQuery, equipamentosQuery, lotesQuery, qualidadeQuery].find((query) => query.isError);
   if (!profile?.clinica_id) return <ErrorState title="Clínica não identificada" description="A gestão laboratorial só pode abrir com uma clínica ativa." />;

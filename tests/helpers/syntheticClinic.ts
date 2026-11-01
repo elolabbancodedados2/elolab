@@ -42,7 +42,8 @@ function base64Url(value: string) {
 }
 
 // Testes que adiantam o relógio da página (page.clock) não podem cair no login por sessão vencida.
-const SESSION_SECONDS = 2 * 24 * 3600;
+// Validade longa: vários testes fixam o relógio do navegador semanas à frente (dia 15 do mês).
+const SESSION_SECONDS = 365 * 24 * 3600;
 
 function syntheticSession(options: SyntheticClinicOptions = {}) {
   const now = Math.floor(Date.now() / 1000);

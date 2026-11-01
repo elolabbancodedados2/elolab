@@ -160,7 +160,7 @@ describe('check-in usa a transicao atomica do banco', () => {
     expect(result.message).toContain('fila');
   });
 
-  it('mant?m a prioridade da triagem ao entrar pela RPC', async () => {
+  it('mantém a prioridade da triagem ao entrar pela RPC', async () => {
     mockAtual = criarSupabaseMock({
       'fila_atendimento.select': { data: [], error: null },
       'rpc.realizar_checkin': {

@@ -145,7 +145,7 @@ export default function PortalPacientesClinica() {
             </div>
           )}
 
-          <div className="flex gap-3 rounded-xl border border-border bg-[#EEF4FA] p-4 text-sm text-muted-foreground">
+          <div className="flex gap-3 rounded-xl border border-border bg-secondary p-4 text-sm text-muted-foreground">
             <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p>Compartilhe este link somente com o paciente ou responsável autorizado. O endereço contém uma credencial individual de acesso.</p>
           </div>
