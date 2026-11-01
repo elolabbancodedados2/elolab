@@ -75,6 +75,8 @@ const Convenios = lazy(() => import("@/pages/Convenios"));
 const ContasReceber = lazy(() => import("@/pages/ContasReceber"));
 const ContaReceberDetalhesPage = lazy(() => import("@/pages/ContaReceberDetalhesPage"));
 const ContaReceberEstorno = lazy(() => import("@/pages/ContaReceberEstorno"));
+const EstornarVendaPdvPage = lazy(() => import("@/pages/EstornarVendaPdvPage"));
+const CorrigirStatusAgendamentoPage = lazy(() => import("@/pages/CorrigirStatusAgendamentoPage"));
 const ContasPagar = lazy(() => import("@/pages/ContasPagar"));
 const HistoricoLancamentoPage = lazy(() => import("@/pages/HistoricoLancamentoPage"));
 const ConvidarFuncionario = lazy(() => import("@/pages/ConvidarFuncionario"));
@@ -321,6 +323,7 @@ function AppRoutes() {
                           <Route path="/agenda/bloqueios" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="manage-blocks" /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/bloqueios/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><BloqueioAgendaPage key="create-block" creationPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/nova" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
+                          <Route path="/agenda/:agendamentoId/corrigir-status" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><CorrigirStatusAgendamentoPage /></SupabaseProtectedRoute>} />
                           <Route path="/agenda/:appointmentId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'enfermagem', 'medico']}><AppointmentPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/:prontuarioId/adendos/novo" element={<SupabaseProtectedRoute allowedRoles={['medico']}><NovoAdendoProntuarioPage /></SupabaseProtectedRoute>} />
                           <Route path="/prontuarios/:prontuarioId/anexos/novo" element={<SupabaseProtectedRoute allowedRoles={['admin', 'medico']}><NovoAnexoProntuarioPage /></SupabaseProtectedRoute>} />
@@ -449,6 +452,7 @@ function AppRoutes() {
                           <Route path="/recepcao/caixa/reabrir" element={<SupabaseProtectedRoute allowedRoles={['admin', 'financeiro']}><ReabrirCaixaPage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/historico/:caixaId" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CaixaHistoricoDetalhePage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/lancamentos/:lancamentoId/editar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><EditarLancamentoCaixaPage /></SupabaseProtectedRoute>} />
+                          <Route path="/recepcao/caixa/vendas/:lancamentoId/estornar" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><EstornarVendaPdvPage /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/sangria" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="sangria" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/suprimento" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="suprimento" /></SupabaseProtectedRoute>} />
                           <Route path="/recepcao/caixa/despesa" element={<SupabaseProtectedRoute allowedRoles={['admin', 'recepcao', 'financeiro']}><CashOperationPage operation="despesa" /></SupabaseProtectedRoute>} />

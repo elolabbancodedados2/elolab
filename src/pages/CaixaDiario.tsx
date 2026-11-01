@@ -17,7 +17,7 @@ import {
   TrendingUp, TrendingDown, Banknote, CreditCard, QrCode, Wallet, ArrowDownToLine,
   ArrowUpFromLine, FileText, History, DollarSign, Receipt, ChevronRight, CalendarDays,
   BarChart3, Eye, ShoppingBag, ShoppingCart, CheckCircle2, FlaskConical,
-  User, X, FileSpreadsheet, Scale, RefreshCw,
+  User, X, FileSpreadsheet, Scale, RefreshCw, Undo2,
 } from 'lucide-react';
 import { printReceiptPdf, downloadReceiptPdf, type ReceiptData } from '@/lib/pdfReceipt';
 import {
@@ -233,6 +233,19 @@ export default function CaixaDiario() {
     refetchInterval: 15_000,
   });
   const lancamentos = lancamentosData?.movimentos ?? SEM_LANCAMENTOS;
+  // Vendas do PDV (sem linha em pagamentos) só podem ser desfeitas pelo estorno próprio.
+  const idsReceitaCaixa = lancamentos.filter(l => l.tipo === 'receita' && l.categoria === 'receita_caixa').map(l => l.id);
+  const { data: vendasPdv } = useQuery({
+    queryKey: ['vendas-pdv-caixa', profile?.clinica_id, idsReceitaCaixa],
+    enabled: idsReceitaCaixa.length > 0,
+    staleTime: 15_000,
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('vendas_pdv_do_caixa', { p_lancamento_ids: idsReceitaCaixa });
+      if (error) throw error;
+      return new Map(((data ?? []) as Array<{ lancamento_id: string; estornado_em: string | null }>).map(v => [v.lancamento_id, v.estornado_em]));
+    },
+  });
   const lancamentosExcederamLimite = Boolean(lancamentosData?.excedeuLimite);
 
   // Histórico de caixas anteriores
@@ -781,6 +794,14 @@ export default function CaixaDiario() {
                                           title="Download" onClick={() => downloadReceiptPdf(buildReceiptData(l))}>
                                           <Download className="h-3.5 w-3.5" />
                                         </Button>
+                                        {vendasPdv?.has(l.id) && (vendasPdv.get(l.id) ? (
+                                          <Badge variant="outline" className="rounded-full text-xs font-normal text-muted-foreground">Estornada</Badge>
+                                        ) : (
+                                          <Button variant="ghost" size="icon" aria-label="Estornar venda" title="Estornar venda" className="h-9 w-9 rounded-full text-destructive hover:text-destructive"
+                                            onClick={() => navigate(`/recepcao/caixa/vendas/${l.id}/estornar`, { state: { returnTo: '/caixa-diario' } })}>
+                                            <Undo2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        ))}
                                       </>
                                     )}
                                     {l.tipo !== 'receita' && !ehMovimentoDoCaixa(l) && (() => {

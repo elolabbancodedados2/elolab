@@ -329,7 +329,7 @@ export default function Encaminhamentos({ creationPage = false }: { creationPage
       : pacienteSelecionadoQuery.isLoading ? <p role="status">Carregando paciente…</p>
       : !selectedPaciente ? <p role="alert">Paciente indisponível. Volte ao histórico para selecionar outra ficha.</p>
       : <><dl className="grid gap-4 border-b pb-5 sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">Paciente</dt><dd className="font-medium">{selectedPaciente.nome_social || selectedPaciente.nome}</dd></div><div><dt className="text-xs text-muted-foreground">Médico de origem</dt><dd className="font-medium">{getMedicoNome(medicoId)}</dd></div></dl>
-        <EncaminhamentoMedico creationPage pacienteId={selectedPaciente.id} pacienteNome={selectedPaciente.nome_social || selectedPaciente.nome} medicoOrigemId={medicoId} encaminhamentos={[]} onNew={() => {}} onView={() => {}} onBack={leaveTask} onEncaminhamentoCriado={() => { void queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] }); leaveTask(); }} />
+        <EncaminhamentoMedico creationPage pacienteId={selectedPaciente.id} prontuarioId={params.get('prontuario') && params.get('paciente') === selectedPaciente.id ? params.get('prontuario')! : undefined} agendamentoId={params.get('paciente') === selectedPaciente.id ? params.get('agendamento') : null} pacienteNome={selectedPaciente.nome_social || selectedPaciente.nome} medicoOrigemId={medicoId} encaminhamentos={[]} onNew={() => {}} onView={() => {}} onBack={leaveTask} onEncaminhamentoCriado={() => { void queryClient.invalidateQueries({ queryKey: ['encaminhamentos'] }); leaveTask(); }} />
       </>}
   </section>;
 
