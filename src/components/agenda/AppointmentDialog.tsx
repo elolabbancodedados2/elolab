@@ -19,7 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { mensagemDeErro } from '@/lib/erros';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { appointmentStartHasPassed, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { appointmentEndMinutes } from '@/lib/agendaTime';
 import { appointmentPayloadForSave } from '@/lib/agendaAppointmentPayload';
 import { describeAppointmentConflict } from '@/lib/agendaConflictMessage';
@@ -51,6 +51,12 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
   const [initialSnapshot, setInitialSnapshot] = useState('{}');
   const completed = useRef(false);
   const [foraExpediente, setForaExpediente] = useState<string | null>(null);
+  const [dataPassada, setDataPassada] = useState(false);
+  // `saving` é estado e só muda no próximo render: dois cliques seguidos
+  // passavam pela guarda e gravavam a mesma consulta duas vezes.
+  const salvandoRef = useRef(false);
+  const dataPassadaConfirmada = useRef(false);
+  useEffect(() => { dataPassadaConfirmada.current = false; }, [form.data, form.hora_inicio]);
 
   useEffect(() => {
     if (open) {
@@ -129,6 +135,16 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
   };
 
   const handleSave = async (confirmouForaExpediente = false) => {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
+    try {
+      await salvarConsulta(confirmouForaExpediente);
+    } finally {
+      salvandoRef.current = false;
+    }
+  };
+
+  const salvarConsulta = async (confirmouForaExpediente: boolean) => {
     if (!form.paciente_id) { toast.error('Selecione um paciente'); setTab('paciente'); return; }
     if (!form.medico_id) { toast.error('Selecione um médico'); setTab('consulta'); return; }
     if (!form.hora_inicio) { toast.error('Informe o horário'); setTab('consulta'); return; }
@@ -176,6 +192,14 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
       }
 
       const novoFim = novoFimInformado ?? novoInicio + DURACAO_PADRAO;
+
+      // Marcar no passado é raro (registro retroativo) e quase sempre engano
+      // de data. Não bloqueia, mas pede confirmação, como o expediente.
+      const mudouHorario = !editing || form.data !== initial?.data || form.hora_inicio?.slice(0, 5) !== String(initial?.hora_inicio || '').slice(0, 5);
+      if (mudouHorario && !dataPassadaConfirmada.current && appointmentStartHasPassed(form.data, form.hora_inicio)) {
+        setDataPassada(true);
+        setTab('consulta'); setSaving(false); return;
+      }
 
       if (novoFim <= novoInicio || novoFim >= 24 * 60) {
         toast.error(novoFim >= 24 * 60 ? 'A consulta precisa terminar antes da meia-noite.' : 'O horário de término deve ser após o início.');
@@ -679,6 +703,18 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
           </div>
         </footer>
       </div>
+      <AlertDialog open={dataPassada} onOpenChange={(o) => !o && setDataPassada(false)}>
+        <AlertDialogContent data-elo-font-preview="agenda">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Data e horário já passaram</AlertDialogTitle>
+            <AlertDialogDescription>A consulta ficaria marcada para {form.data ? form.data.split('-').reverse().join('/') : 'uma data'} às {String(form.hora_inicio || '').slice(0, 5)}, antes de agora. Confira a data ou confirme se é um registro retroativo.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Corrigir a data</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setDataPassada(false); dataPassadaConfirmada.current = true; void handleSave(); }}>Agendar mesmo assim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={!!foraExpediente} onOpenChange={(o) => !o && setForaExpediente(null)}>
         <AlertDialogContent data-elo-font-preview="agenda">
           <AlertDialogHeader>
