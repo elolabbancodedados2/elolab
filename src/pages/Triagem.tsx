@@ -668,7 +668,7 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
           filaAtualizada = true;
         } catch (error) {
           const detalhe = error instanceof Error ? error.message : 'Erro desconhecido';
-          avisosComplementares.push(`A fila não foi atualizada (${detalhe}). Verifique a Fila de Atendimento.`);
+          avisosComplementares.push(`A fila não foi atualizada (${detalhe}). Verifique a fila de atendimento.`);
         }
 
         // Auto-notify doctor for urgent cases. A falha no aviso não desfaz a

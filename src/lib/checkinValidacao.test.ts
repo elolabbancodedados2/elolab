@@ -31,7 +31,7 @@ describe('validação do check-in', () => {
     expect(primeiraFalhaCheckin(validarCheckin({ ...base, agendamento: { ...base.agendamento, data: '2026-10-23' } })))
       .toBe('O agendamento não é de hoje.');
     expect(primeiraFalhaCheckin(validarCheckin({ ...base, agendamento: { ...base.agendamento, status: 'cancelado' } })))
-      .toBe('O agendamento está cancelado e não aceita check-in.');
+      .toBe('O agendamento está como “cancelado” e não aceita check-in.');
     expect(primeiraFalhaCheckin(validarCheckin({ ...base, agendamento: { ...base.agendamento, status: 'em_atendimento' } })))
       .toBe('O atendimento já foi iniciado.');
   });

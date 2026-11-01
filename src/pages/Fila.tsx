@@ -6,6 +6,7 @@ import { formatCurrency } from '@/lib/formatters';
 import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
 import { generateFilaShiftHandoff } from '@/lib/filaShiftHandoff';
 import { filaRemovalReasonLabel } from '@/lib/filaRemoval';
+import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 import { forwardRef, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -633,7 +634,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
       // O Painel TV é o único dispositivo que anuncia chamadas; evita duas
       // vozes simultâneas em recepção e sala de espera.
       refresh();
-      toast.success(statusEsperado === 'chamado' ? '📢 Paciente chamado novamente!' : '📢 Paciente chamado!');
+      toast.success(statusEsperado === 'chamado' ? 'Paciente chamado novamente' : 'Paciente chamado');
       return;
     }
 
@@ -657,7 +658,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
       } else if (ag?.paciente_id) {
         toast.info('Atendimento iniciado. O médico responsável deve abrir o prontuário.');
       } else {
-        toast.success('▶ Atendimento iniciado', { description: result.actions.join(' • ') });
+        toast.success('Atendimento iniciado', { description: result.actions.join(' • ') });
       }
       return;
     }
@@ -819,6 +820,26 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     abrirPassagem();
   }, [creationPage, handoffRequested, loadingFila, loadingAgendamentos, filaQuery.isError, agendamentosQuery.isError, abrirPassagem]);
 
+  // "Chamar próximo": o primeiro aguardando na ordem de prioridade da fila.
+  const proximoAChamar = filaAtiva.find(item => item.status === 'aguardando') ?? null;
+  const podeChamarProximo = Boolean(proximoAChamar) && busyQueueId === null && !filaQuery.isError && !agendamentosQuery.isError;
+  const chamarProximo = () => {
+    if (!proximoAChamar || busyQueueId !== null) return;
+    void updateStatus(proximoAChamar.id, 'chamado', proximoAChamar.agendamento_id);
+  };
+  const chamarProximoRef = useRef(chamarProximo);
+  chamarProximoRef.current = chamarProximo;
+  useEffect(() => {
+    if (creationPage) return;
+    const aoTeclar = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.key.toLowerCase() !== 'p') return;
+      event.preventDefault();
+      chamarProximoRef.current();
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [creationPage]);
+
   if (isMedicoOnly && loadingCurrentMedico) return <ListSkeleton items={4} />;
   if (isMedicoOnly && currentMedicoError) {
     return <ErrorState title="Não foi possível identificar seu vínculo médico" error={currentMedicoError} onRetry={() => void refetchCurrentMedico()} />;
@@ -934,7 +955,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
-        title="Fila de Atendimento"
+        title="Fila de atendimento"
         description={`${format(parseDateOnly(today)!, "EEEE, dd 'de' MMMM", { locale: ptBR })} · Atualiza automaticamente`}
         icon={<Users />}
         actions={
@@ -995,6 +1016,16 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
             </Button>
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar fila" title="Atualizar fila">
               <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 shrink-0 gap-2 rounded-full px-3 sm:px-4"
+              onClick={chamarProximo}
+              disabled={!podeChamarProximo}
+              aria-keyshortcuts="Alt+P"
+              title={proximoAChamar ? `Chamar ${getPacienteNome(proximoAChamar.agendamento_id)} (Alt+P)` : 'Ninguém aguardando chamada'}
+            >
+              <Bell aria-hidden="true" className="h-4 w-4" /> Chamar próximo
             </Button>
             <Button className="h-10 shrink-0 gap-2 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90 sm:px-4" onClick={() => navigate('/fila/adicionar')} disabled={filaQuery.isError || agendamentosQuery.isError}>
               <UserPlus aria-hidden="true" className="h-4 w-4" /> Adicionar<span className="hidden sm:inline"> à fila</span>
@@ -1114,7 +1145,9 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                 onAbrirProntuario={(() => {
                   const ag = agendamentos.find(a => a.id === item.agendamento_id);
                   return ag?.paciente_id && hasAnyRole(['admin', 'medico'])
-                    ? () => navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${item.agendamento_id}`)
+                    ? () => navigate(`/prontuarios?paciente=${ag.paciente_id}&agendamento=${item.agendamento_id}`, {
+                      state: { returnTo: `${location.pathname}${location.search}` },
+                    })
                     : undefined;
                 })()}
               />
@@ -1150,7 +1183,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                     <p className="truncate text-sm font-medium">{getPacienteNome(item.agendamento_id)}</p>
                     <p className="text-xs text-muted-foreground">
                       {dataAgendamento ? format(new Date(`${dataAgendamento}T12:00:00`), 'dd/MM/yyyy') : 'Agendamento sem data'}
-                      {' · Agenda: '}{statusAgendamentoNaFila(item) ?? 'indisponível'}
+                      {' · Agenda: '}{statusAgendamentoNaFila(item) ? formatAppointmentStatus(String(statusAgendamentoNaFila(item))) : 'indisponível'}
                       {' · Fila: '}{STATUS_CONFIG[item.status as keyof typeof STATUS_CONFIG]?.label ?? item.status}
                     </p>
                   </div>
@@ -1241,12 +1274,13 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                   </Badge>
                   {item.cobranca_estado !== 'pendente' && hasAnyRole([...PERFIS_LIBERACAO_EXCEPCIONAL]) && (
                     <Button
-                      size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
+                      size="sm" variant="outline" className="min-h-11 gap-1.5 px-3 text-xs"
+                      aria-label={`Liberar ${getPacienteNome(item.agendamento_id)} sem pagamento`}
                       onClick={() => navigate(`/fila/${encodeURIComponent(item.agendamento_id)}/liberacao/pagamento`, {
                         state: { returnTo: `${location.pathname}${location.search}`, patientName: getPacienteNome(item.agendamento_id) },
                       })}
                     >
-                      <LockOpen className="h-3 w-3" /> Liberar
+                      <LockOpen aria-hidden="true" className="h-3.5 w-3.5" /> Liberar sem pagamento
                     </Button>
                   )}
                 </div>
@@ -1281,12 +1315,13 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
                   <EsperaIndicador desde={item.horario_chegada} agora={now} className="text-xs" />
                   {hasAnyRole([...PERFIS_LIBERACAO_EXCEPCIONAL]) && (
                     <Button
-                      size="sm" variant="outline" className="h-6 gap-1 px-2 text-[10px]"
+                      size="sm" variant="outline" className="min-h-11 gap-1.5 px-3 text-xs"
+                      aria-label={`Liberar ${getPacienteNome(item.agendamento_id)} sem triagem`}
                       onClick={() => navigate(`/fila/${encodeURIComponent(item.agendamento_id)}/liberacao/triagem`, {
                         state: { returnTo: `${location.pathname}${location.search}`, patientName: getPacienteNome(item.agendamento_id) },
                       })}
                     >
-                      <LockOpen className="h-3 w-3" /> Liberar
+                      <LockOpen aria-hidden="true" className="h-3.5 w-3.5" /> Liberar sem triagem
                     </Button>
                   )}
                 </div>

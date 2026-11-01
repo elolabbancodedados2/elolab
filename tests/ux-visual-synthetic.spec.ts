@@ -1295,7 +1295,7 @@ test('queue presents the full care journey and keeps patients readable at deskto
     await page.setViewportSize(viewport);
     await page.goto('/fila');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Fila de atendimento' })).toBeVisible();
     await expect(main.getByRole('heading', { name: 'Jornada dos atendimentos' })).toBeVisible();
     await expect(main.locator('#fila-etapa-aguardando')).toContainText('2');
     await expect(main.locator('#fila-etapa-triagem')).toContainText('1');
@@ -3709,7 +3709,7 @@ test('queue check-in opens its own page and keeps the check-in validation visibl
   await page.goto('/fila');
 
   const main = page.locator('#main-content');
-  await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+  await expect(main.getByRole('heading', { name: 'Fila de atendimento' })).toBeVisible();
   await main.getByRole('button', { name: 'Adicionar à fila' }).click();
 
   await expect(page).toHaveURL('/fila/adicionar');
