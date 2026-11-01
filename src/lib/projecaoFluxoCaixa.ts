@@ -115,3 +115,43 @@ export function projetarFluxoCaixa(
     };
   });
 }
+
+export interface LoteTissProjecao {
+  id: string;
+  status: string;
+  valor_apresentado: number | null;
+  valor_pago: number | null;
+  enviado_em: string | null;
+  competencia?: string | null;
+  convenios?: { prazo_retorno?: number | null } | null;
+}
+
+const LOTE_A_RECEBER = ['enviado', 'processando', 'pago_parcial'];
+
+/**
+ * Lote TISS enviado ainda não vira lançamento: a receita só nasce quando o
+ * retorno é conciliado. Para a projeção não esquecer esse dinheiro, o saldo
+ * do lote entra como receita prevista na data do envio + prazo de retorno do
+ * convênio (30 dias quando não informado).
+ */
+export function lotesTissComoRecebiveis(lotes: ReadonlyArray<LoteTissProjecao>): LancamentoProjecao[] {
+  return lotes.flatMap((lote) => {
+    if (!LOTE_A_RECEBER.includes(lote.status)) return [];
+    const saldo = Number(lote.valor_apresentado || 0) - Number(lote.valor_pago || 0);
+    const base = (lote.enviado_em || lote.competencia || '').slice(0, 10);
+    if (saldo <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(base)) return [];
+    const prazo = Number(lote.convenios?.prazo_retorno);
+    const dias = Number.isFinite(prazo) && prazo >= 0 ? prazo : 30;
+    const [ano, mes, dia] = base.split('-').map(Number);
+    const vencimento = isoUtc(new Date(Date.UTC(ano, mes - 1, dia + dias)));
+    return [{
+      id: `lote-tiss-${lote.id}`,
+      tipo: 'receita',
+      status: 'pendente',
+      valor: saldo,
+      valor_pago: 0,
+      data: base,
+      data_vencimento: vencimento,
+    }];
+  });
+}
