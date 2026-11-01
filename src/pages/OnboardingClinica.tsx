@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, CalendarCheck, Check, Clock3, LayoutDashboard, MessageCircle,
@@ -12,19 +11,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ErrorState';
-import { supabase } from '@/integrations/supabase/client';
+import { useClinicOnboardingOverview, type ClinicOnboardingStepKey as StepKey } from '@/hooks/useClinicOnboarding';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useUserPlan } from '@/hooks/useSubscriptionPlan';
-
-type StepKey = 'team' | 'schedule' | 'services' | 'whatsapp' | 'appointment';
-type ApiStep = { key: StepKey; complete: boolean; count: number };
-type Overview = {
-  completed_steps: number;
-  total_steps: number;
-  progress: number;
-  completed_at: string | null;
-  steps: ApiStep[];
-};
 
 const definitions = {
   team: {
@@ -55,18 +44,9 @@ const definitions = {
 } satisfies Record<StepKey, { title: string; description: string; action: string; href: string; icon: typeof UsersRound }>;
 
 export default function OnboardingClinica() {
-  const { user, profile, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
+  const { profile, isLoading: authLoading, refreshProfile } = useSupabaseAuth();
   const { hasFeature, isLoading: planLoading } = useUserPlan();
-  const query = useQuery({
-    queryKey: ['clinic-onboarding', user?.id ?? null, profile?.clinica_id ?? null],
-    enabled: !!user && !!profile?.clinica_id,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('clinic_onboarding_overview');
-      if (error) throw error;
-      return data as Overview;
-    },
-    staleTime: 0,
-  });
+  const query = useClinicOnboardingOverview();
 
   if (authLoading || planLoading || (!!profile?.clinica_id && query.isLoading)) {
     return <div className="space-y-5" role="status" aria-live="polite" aria-busy="true" aria-label="Carregando onboarding">

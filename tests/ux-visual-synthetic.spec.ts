@@ -400,7 +400,7 @@ test('admin dashboard puts the agenda and clinic priorities ahead of monthly ind
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 
-test('admin dashboard pauses partial metrics on an agenda error and recovers on retry', async ({ page }, testInfo) => {
+test('admin dashboard keeps the other areas visible on an agenda error and recovers on retry', async ({ page }, testInfo) => {
   const synthetic = await installSyntheticClinic(page, { platformAdmin: false, role: 'admin', receptionPopulated: true });
   let allowAgendaRequests = false;
   await page.route('**/rest/v1/agendamentos?*', route => {
@@ -410,15 +410,18 @@ test('admin dashboard pauses partial metrics on an agenda error and recovers on 
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/dashboard');
-  const error = page.getByRole('alert').filter({ hasText: 'Não foi possível carregar o dashboard' });
-  await expect(error).toBeVisible();
-  await expect(error.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
-  await expect(page.getByText('Não conseguimos carregar estas informações agora. Tente novamente em instantes.')).toHaveCount(0);
+  await expect(page.locator('[data-testid="inicio-painel"]')).toBeVisible();
+  const agenda = page.getByRole('region', { name: 'Agenda de hoje' });
+  await expect(agenda.getByText('Não foi possível carregar esta área.')).toBeVisible();
+  // As outras áreas continuam na tela.
+  await expect(page.getByRole('region', { name: 'Na sala de espera' })).not.toContainText('Não foi possível carregar');
+  await expect(page.getByRole('region', { name: 'Recebimentos' })).toBeVisible();
+  await expect(page.getByText('Não foi possível carregar o dashboard')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('admin-dashboard-error-1280.png'), animations: 'disabled' });
 
   allowAgendaRequests = true;
-  await error.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.locator('[data-testid="inicio-painel"]')).toBeVisible();
+  await agenda.getByRole('button', { name: 'Tentar de novo' }).click();
+  await expect(agenda.getByText('Não foi possível carregar esta área.')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Agenda de hoje' })).toBeVisible();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

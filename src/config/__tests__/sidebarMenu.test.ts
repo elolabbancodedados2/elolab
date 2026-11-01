@@ -94,6 +94,36 @@ describe('menu do administrador de clínica', () => {
   });
 });
 
+describe('telas sem caminho pelo menu', () => {
+  const hrefs = (gs: ReturnType<typeof getFilteredMenuGroups>) => gs.flatMap((g) => g.items.map((i) => i.href));
+
+  it('o administrador da clínica alcança privacidade e configurações avançadas', () => {
+    const admin = getFilteredMenuGroups(['admin'], true, false, true);
+    expect(itens(admin, 'Pacientes')).toContain('/lgpd-pacientes');
+    expect(itens(admin, 'Configurações')).toContain('/configuracoes-avancadas');
+  });
+
+  it('privacidade e configurações avançadas ficam só com o administrador', () => {
+    for (const papel of ['recepcao', 'enfermagem', 'medico', 'financeiro'] as const) {
+      const todos = hrefs(getFilteredMenuGroups([papel], false, false, true));
+      expect(todos).not.toContain('/lgpd-pacientes');
+      expect(todos).not.toContain('/configuracoes-avancadas');
+    }
+  });
+
+  it('não leva mais à aba de notificações, que só apontava para Automações', () => {
+    expect(hrefs(getFilteredMenuGroups(['admin'], true, false, true))).not.toContain('/configuracoes?tab=notificacoes');
+  });
+
+  it('o dono da plataforma alcança infraestrutura; o admin da clínica não', () => {
+    const rotas = ['/admin/erros', '/admin/filas', '/admin/consumo', '/admin/backups', '/admin/dominios'];
+    const dono = getFilteredMenuGroups([], false, true, false, 'platform');
+    expect(itens(dono, 'Infraestrutura')).toEqual(rotas);
+    const adminClinica = hrefs(getFilteredMenuGroups(['admin'], true, false, true));
+    for (const rota of rotas) expect(adminClinica).not.toContain(rota);
+  });
+});
+
 describe('modos de navegação da plataforma', () => {
   it('no modo App, mostra os módulos clínicos e oculta os grupos da plataforma', () => {
     const grupos = getFilteredMenuGroups(['admin'], true, true, true, 'app');
