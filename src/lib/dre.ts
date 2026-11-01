@@ -102,6 +102,10 @@ export interface LancamentoRealizavel {
   valor_pago?: number | string | null;
   data: string;
   data_pagamento: string | null;
+  data_vencimento?: string | null;
+  competencia?: string | null;
+  desconto?: number | string | null;
+  acrescimo?: number | string | null;
 }
 
 export interface PagamentoRealizado {
@@ -439,4 +443,24 @@ export function dreParaCsv(dre: Dre, competencia: string, competenciaAnterior: s
       { valor: dre.valorSemConta, anterior: null, variacao: null, margem: null }));
   }
   return [cabecalho, ...linhas].join('\r\n');
+}
+
+const FORA_DA_COMPETENCIA = new Set(['cancelado', 'estornado']);
+
+/**
+ * Eventos por competência: cada lançamento entra no mês a que pertence
+ * (`competencia`, ou a data de emissão quando não informada), pelo valor
+ * líquido de desconto e acréscimo, pago ou não. Cancelados e estornados ficam
+ * de fora. É a visão do resultado econômico; a de caixa continua sendo a
+ * de `montarEventosRealizados`.
+ */
+export function montarEventosCompetencia(lancamentos: ReadonlyArray<LancamentoRealizavel>): EventoRealizado[] {
+  return lancamentos.flatMap(l => {
+    if (l.tipo !== 'receita' && l.tipo !== 'despesa') return [];
+    if (FORA_DA_COMPETENCIA.has(String(l.status ?? ''))) return [];
+    const mes = /^\d{4}-\d{2}/.exec(l.competencia ?? '')?.[0] ?? l.data?.slice(0, 7);
+    if (!mes) return [];
+    const valor = (Number(l.valor) || 0) - (Number(l.desconto) || 0) + (Number(l.acrescimo) || 0);
+    return [{ id: `${l.id}:competencia`, lancamentoId: l.id, tipo: l.tipo, categoria: l.categoria || 'outros', data: `${mes}-01`, valor }];
+  });
 }

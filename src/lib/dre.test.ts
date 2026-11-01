@@ -6,6 +6,7 @@ import {
   dreParaCsv,
   margemSobreReceitaLiquida,
   montarDre,
+  montarEventosCompetencia,
   montarEventosRealizados,
   variacaoPercentual,
   type ContaPlano,
@@ -189,5 +190,20 @@ describe('árvore do plano', () => {
       conta('p', '1', 'receita', 'receita_bruta'),
     ]);
     expect(arvore.map(n => [n.conta.codigo, n.nivel])).toEqual([['1', 0], ['1.1', 1], ['9', 0]]);
+  });
+});
+
+describe('montarEventosCompetencia', () => {
+  it('lança no mês de competência pelo valor líquido, pago ou não, sem cancelados', () => {
+    const eventos = montarEventosCompetencia([
+      { id: 'a', tipo: 'receita', categoria: 'consulta', status: 'pendente', valor: 200, desconto: 20, acrescimo: 5, data: '2026-11-03', data_pagamento: null, competencia: '2026-10' },
+      { id: 'b', tipo: 'despesa', categoria: null, status: 'pago', valor: 50, data: '2026-10-15', data_pagamento: '2026-11-02', competencia: null },
+      { id: 'c', tipo: 'receita', categoria: 'consulta', status: 'cancelado', valor: 999, data: '2026-10-10', data_pagamento: null },
+      { id: 'd', tipo: 'sangria', categoria: 'sangria', status: 'pago', valor: 10, data: '2026-10-10', data_pagamento: null },
+    ]);
+    expect(eventos).toEqual([
+      { id: 'a:competencia', lancamentoId: 'a', tipo: 'receita', categoria: 'consulta', data: '2026-10-01', valor: 185 },
+      { id: 'b:competencia', lancamentoId: 'b', tipo: 'despesa', categoria: 'outros', data: '2026-10-01', valor: 50 },
+    ]);
   });
 });
