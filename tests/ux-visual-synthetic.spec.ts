@@ -4,8 +4,10 @@ import { installSyntheticClinic } from './helpers/syntheticClinic';
 
 // Mês corrente (ou seguinte) no texto do app, para os testes não dependerem do dia em que rodam.
 function rotuloMes(deslocamento: number, separador: string) {
-  const hoje = new Date();
-  const alvo = new Date(hoje.getFullYear(), hoje.getMonth() + deslocamento, 1);
+  // O app calcula o mês em São Paulo; o runner do CI roda em UTC e vira o mês três horas antes.
+  const [ano, mesAtual] = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' })
+    .format(new Date()).split('-').map(Number);
+  const alvo = new Date(ano, mesAtual - 1 + deslocamento, 1);
   const mes = alvo.toLocaleDateString('pt-BR', { month: 'long' });
   return new RegExp(`${mes}${separador}${alvo.getFullYear()}`, 'i');
 }
