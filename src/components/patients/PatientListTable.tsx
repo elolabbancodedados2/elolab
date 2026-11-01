@@ -1,7 +1,10 @@
 import { memo, useEffect, useState } from 'react';
-import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power, MessageCircle } from 'lucide-react';
+import { Eye, Edit, Trash2, Link, Unlink, Phone, Mail, AlertTriangle, ChevronLeft, ChevronRight, Power, MoreHorizontal } from 'lucide-react';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { cpfMascarado, nomesDoPaciente, sexoPorExtenso, situacaoCarteirinha } from '@/lib/pacienteFicha';
+import { WhatsAppModelosMenu } from './WhatsAppModelosMenu';
 import { ActionableEmptyState } from '@/components/ActionableEmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -35,12 +38,13 @@ function useTelaLarga() {
   return larga;
 }
 
-function patientSexLabel(value: string | null | undefined) {
-  const normalized = value?.trim().toLocaleLowerCase('pt-BR');
-  if (normalized === 'm' || normalized === 'masculino') return { label: 'M', accessible: 'Masculino' };
-  if (normalized === 'f' || normalized === 'feminino') return { label: 'F', accessible: 'Feminino' };
-  if (normalized === 'o' || normalized === 'outro') return { label: 'O', accessible: 'Outro' };
-  return { label: 'N/I', accessible: 'Sexo não informado' };
+interface AcaoPaciente {
+  chave: string;
+  rotulo: string;
+  nomeAcessivel: string;
+  icone: typeof Eye;
+  destrutiva?: boolean;
+  executar: () => void;
 }
 
 interface PatientListTableProps {
@@ -71,13 +75,25 @@ interface PatientListTableProps {
   podeGerarLinkPortal?: boolean;
   getConvenioNome: (id: string | null) => string;
   calcularIdade: (data: string | null) => number;
+  /** O saldo no painel lateral só aparece para quem vê o financeiro. */
+  podeVerFinanceiro?: boolean;
 }
 
 export const PatientListTable = memo(function PatientListTable({
   pacientes, totalPacientes, totalPacientesCarregado, hasFiltrosAtivos = false, onLimparFiltros, onCreate, onView, onEdit, onDelete, onGeneratePortalLink, onRevokePortalLinks,
   podeGerarLinkPortal = true, podeExcluirPaciente = false, podeEditarPaciente = true, onChangeStatus, getConvenioNome, calcularIdade,
-  pagina, hasMore, isLoading = false, hasError = false, onPaginaChange,
+  pagina, hasMore, isLoading = false, hasError = false, onPaginaChange, podeVerFinanceiro = false,
 }: PatientListTableProps) {
+  // Ordem de importância: no celular só as duas primeiras viram botão; o resto vai para "Mais".
+  const acoesDoPaciente = (paciente: any): AcaoPaciente[] => [
+    ...(podeEditarPaciente ? [{ chave: 'editar', rotulo: 'Editar', nomeAcessivel: `Editar ${paciente.nome}`, icone: Edit, executar: () => onEdit(paciente) }] : []),
+    ...(podeGerarLinkPortal && paciente.ativo !== false ? [
+      { chave: 'portal', rotulo: 'Link do portal', nomeAcessivel: `Gerar link do portal para ${paciente.nome}`, icone: Link, executar: () => onGeneratePortalLink(paciente.id, paciente.nome) },
+      { chave: 'revogar', rotulo: 'Revogar portal', nomeAcessivel: `Revogar links do portal de ${paciente.nome}`, icone: Unlink, destrutiva: true, executar: () => onRevokePortalLinks(paciente.id, paciente.nome) },
+    ] : []),
+    ...(podeEditarPaciente && onChangeStatus ? [{ chave: 'status', rotulo: paciente.ativo === false ? 'Reativar' : 'Inativar', nomeAcessivel: `${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`, icone: Power, executar: () => onChangeStatus(paciente) }] : []),
+    ...(podeExcluirPaciente ? [{ chave: 'excluir', rotulo: 'Excluir', nomeAcessivel: `Excluir ${paciente.nome}`, icone: Trash2, destrutiva: true, executar: () => onDelete(paciente) }] : []),
+  ];
   const tamanhoPagina = 50;
   // Fichas é o padrão do protótipo aprovado em 30/10/2026; a lista em tabela continua disponível.
   const [modo, setModo] = useState<ModoLista>(lerModo);
@@ -140,53 +156,56 @@ export const PatientListTable = memo(function PatientListTable({
         ) : pacientesVisiveis.map((paciente) => {
           const idade = calcularIdade(paciente.data_nascimento);
           const contatoAusente = describeMissingPatientContacts(paciente);
+          const nomes = nomesDoPaciente(paciente);
+          const carteira = paciente.convenio_id ? situacaoCarteirinha(paciente.validade_carteira) : null;
+          const temWhatsApp = Boolean(linkWhatsApp(paciente.telefone, 'x'));
+          const acoes = acoesDoPaciente(paciente);
+          const visiveis = acoes.slice(0, temWhatsApp ? 1 : 2);
+          const noMenu = acoes.slice(visiveis.length);
           return (
             <article key={paciente.id} className={cn('p-4 lg:rounded-xl lg:border lg:border-border lg:bg-card lg:shadow-xs', selecionado?.id === paciente.id && 'lg:border-foreground lg:ring-1 lg:ring-foreground')}>
               <button type="button" aria-pressed={comPainel ? selecionado?.id === paciente.id : undefined} className="flex min-h-11 w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => (comPainel ? setSelecionadoId(paciente.id) : onView(paciente))} onDoubleClick={() => comPainel && onView(paciente)}>
                 <PatientPhoto pacienteId={paciente.id} pacienteNome={paciente.nome} currentPhotoUrl={paciente.foto_url} size="sm" editable={false} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{paciente.nome}</span>
+                  <span className="block truncate font-medium">{nomes.principal}</span>
+                  {nomes.registro && <span className="block truncate text-xs text-muted-foreground">Registro: {nomes.registro}</span>}
                   <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {paciente.ativo === false && <Badge variant="secondary" className="text-[10px]">Inativo</Badge>}
-                    {paciente.data_nascimento && <span>{Number.isFinite(idade) && idade >= 0 ? `${idade} anos` : 'Nascimento inválido'}</span>}
+                    {paciente.data_nascimento && <span>{Number.isFinite(idade) && idade >= 0 ? `${idade} ${idade === 1 ? 'ano' : 'anos'}` : 'Nascimento inválido'}</span>}
+                    {sexoPorExtenso(paciente.sexo) && <span>{sexoPorExtenso(paciente.sexo)}</span>}
                     <Badge variant="outline" className="max-w-full truncate text-[10px]">{getConvenioNome(paciente.convenio_id)}</Badge>
                   </span>
+                  {carteira && <span className={cn('mt-1.5 flex items-center gap-1.5 text-xs font-medium', carteira.nivel === 'vencida' ? 'text-destructive' : 'text-warning-foreground')}><AlertTriangle aria-hidden="true" className="h-3 w-3" />{carteira.texto}</span>}
                   {paciente.telefone && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{paciente.telefone}</span>}
                   {contatoAusente && <span className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground"><AlertTriangle aria-hidden="true" className="h-3 w-3" />{contatoAusente}</span>}
                 </span>
                 <Eye className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               </button>
               {paciente.alergias?.length > 0 && <AllergyAlert alergias={paciente.alergias} compact className="mt-2" />}
-              <div data-testid="patient-mobile-actions" className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 lg:gap-1.5" onClick={(e) => e.stopPropagation()}>
-                {(() => {
-                  const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
-                  return whatsapp ? (
-                    <Button asChild variant="outline" className="h-11 lg:h-8 w-full min-w-0 gap-1 rounded-full border-primary/30 px-2 text-xs text-primary">
-                      <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /> WhatsApp</a>
-                    </Button>
-                  ) : null;
-                })()}
-                {podeGerarLinkPortal && paciente.ativo !== false && (
-                  <Button variant="outline" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Gerar link do portal para ${paciente.nome}`}>
-                    <Link className="h-4 w-4" /> Portal
+              <div data-testid="patient-mobile-actions" className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2 lg:gap-1.5" onClick={(e) => e.stopPropagation()}>
+                {temWhatsApp && <WhatsAppModelosMenu paciente={paciente} className="h-11 w-full min-w-0 px-2 text-xs lg:h-9" />}
+                {visiveis.map(acao => (
+                  <Button key={acao.chave} variant="outline" onClick={acao.executar} className={cn('h-11 w-full min-w-0 gap-1 px-2 text-xs lg:h-9', acao.destrutiva && 'text-destructive')} aria-label={acao.nomeAcessivel}>
+                    <acao.icone aria-hidden="true" className="h-4 w-4" /> {acao.rotulo}
                   </Button>
-                )}
-                {podeGerarLinkPortal && paciente.ativo !== false && (
-                  <Button variant="outline" onClick={() => onRevokePortalLinks(paciente.id, paciente.nome)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Revogar links do portal de ${paciente.nome}`}>
-                    <Unlink className="h-4 w-4" /> Revogar
-                  </Button>
-                )}
-                {podeEditarPaciente && <Button variant="outline" onClick={() => onEdit(paciente)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`Editar ${paciente.nome}`}>
-                  <Edit className="h-4 w-4" /> Editar
-                </Button>}
-                {podeEditarPaciente && onChangeStatus && <Button variant="outline" onClick={() => onChangeStatus(paciente)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs" aria-label={`${paciente.ativo === false ? 'Reativar' : 'Inativar'} ${paciente.nome}`}>
-                  <Power className="h-4 w-4" /> {paciente.ativo === false ? 'Reativar' : 'Inativar'}
-                </Button>}
-                {podeExcluirPaciente && (
-                  <Button variant="outline" onClick={() => onDelete(paciente)} className="h-11 lg:h-8 w-full min-w-0 gap-1 px-2 text-xs text-destructive" aria-label={`Excluir ${paciente.nome}`}>
-                    <Trash2 className="h-4 w-4" /> Excluir
-                  </Button>
-                )}
+                ))}
+                {visiveis.length + (temWhatsApp ? 1 : 0) < 2 && <span aria-hidden="true" />}
+                {noMenu.length > 0 ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-11 w-11 lg:h-9 lg:w-9" aria-label={`Mais ações para ${paciente.nome}`}>
+                        <MoreHorizontal aria-hidden="true" className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {noMenu.map(acao => (
+                        <DropdownMenuItem key={acao.chave} onSelect={acao.executar} className={cn('min-h-11 gap-2', acao.destrutiva && 'text-destructive focus:text-destructive')} aria-label={acao.nomeAcessivel}>
+                          <acao.icone aria-hidden="true" className="h-4 w-4" />{acao.rotulo}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : <span aria-hidden="true" />}
               </div>
             </article>
           );
@@ -198,6 +217,7 @@ export const PatientListTable = memo(function PatientListTable({
           idade={calcularIdade(selecionado.data_nascimento)}
           convenio={getConvenioNome(selecionado.convenio_id)}
           podeEditar={podeEditarPaciente}
+          podeVerFinanceiro={podeVerFinanceiro}
           onView={onView}
           onEdit={onEdit}
         />
@@ -251,13 +271,12 @@ export const PatientListTable = memo(function PatientListTable({
                         editable={false}
                       />
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{paciente.nome}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <p className="font-medium truncate">{nomesDoPaciente(paciente).principal}</p>
+                        {nomesDoPaciente(paciente).registro && <p className="truncate text-xs text-muted-foreground">Registro: {nomesDoPaciente(paciente).registro}</p>}
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
                           {paciente.ativo === false && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Inativo</Badge>}
-                          {paciente.sexo && (() => {
-                            const sex = patientSexLabel(paciente.sexo);
-                            return <Badge variant="outline" aria-label={sex.accessible} title={sex.accessible} className="px-1.5 py-0 text-[10px]">{sex.label}</Badge>;
-                          })()}
+                          {sexoPorExtenso(paciente.sexo) && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">{sexoPorExtenso(paciente.sexo)}</Badge>}
+                          {paciente.convenio_id && situacaoCarteirinha(paciente.validade_carteira)?.nivel === 'vencida' && <Badge variant="outline" className="border-destructive/30 px-1.5 py-0 text-[10px] text-destructive">Carteirinha vencida</Badge>}
                           {paciente.data_nascimento && Number.isFinite(idade) && idade >= 0 && idade < 18 && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Menor</Badge>}
                         </div>
                         {paciente.alergias && paciente.alergias.length > 0 && (
@@ -266,7 +285,7 @@ export const PatientListTable = memo(function PatientListTable({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden whitespace-nowrap text-sm md:table-cell">{paciente.cpf || '—'}</TableCell>
+                  <TableCell className="hidden whitespace-nowrap text-sm tabular-nums md:table-cell">{cpfMascarado(paciente.cpf) || '—'}</TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <div className="space-y-0.5 text-sm">
                       {paciente.telefone && (
@@ -303,14 +322,7 @@ export const PatientListTable = memo(function PatientListTable({
                       <Button variant="ghost" size="icon" onClick={() => onView(paciente)} title="Ver detalhes" aria-label={`Ver detalhes de ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-primary/10 hover:text-primary">
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {(() => {
-                        const whatsapp = linkWhatsApp(paciente.telefone, `Olá, ${String(paciente.nome_social || paciente.nome || '').split(' ')[0]}! Aqui é da clínica.`);
-                        return whatsapp ? (
-                          <Button asChild variant="ghost" size="icon" title="Chamar no WhatsApp" className="h-11 w-11 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
-                            <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${paciente.nome} no WhatsApp`}><MessageCircle className="h-4 w-4" /></a>
-                          </Button>
-                        ) : null;
-                      })()}
+                      <WhatsAppModelosMenu paciente={paciente} rotulo="" className="h-11 w-14 gap-0.5 border-0 px-1" />
                       {podeGerarLinkPortal && paciente.ativo !== false && (
                         <Button variant="ghost" size="icon" onClick={() => onGeneratePortalLink(paciente.id, paciente.nome)} title="Link do portal" aria-label={`Gerar link do portal para ${paciente.nome}`} className="h-11 w-11 rounded-full hover:bg-primary/10 hover:text-primary">
                           <Link className="h-4 w-4" />
