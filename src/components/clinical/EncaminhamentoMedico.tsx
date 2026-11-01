@@ -73,6 +73,8 @@ interface EncaminhamentoMedicoProps {
   pacienteId: string;
   pacienteNome: string;
   prontuarioId?: string;
+  /** Consulta em que o encaminhamento foi feito. */
+  agendamentoId?: string | null;
   medicoOrigemId: string;
   encaminhamentos: Encaminhamento[];
   onEncaminhamentoCriado: () => void;
@@ -112,6 +114,7 @@ export function EncaminhamentoMedico({
   pacienteId,
   pacienteNome,
   prontuarioId,
+  agendamentoId,
   medicoOrigemId,
   encaminhamentos,
   onEncaminhamentoCriado,
@@ -216,6 +219,7 @@ export function EncaminhamentoMedico({
           clinica_id: profile.clinica_id,
           paciente_id: pacienteId,
           prontuario_id: prontuarioId || null,
+          ...(agendamentoId ? { agendamento_id: agendamentoId } : {}),
           medico_origem_id: medicoOrigemId,
           medico_destino_id: formData.medico_destino_id || null,
           especialidade_destino: formData.especialidade_destino,
@@ -229,7 +233,7 @@ export function EncaminhamentoMedico({
           informacoes_adicionais: formData.informacoes_adicionais.trim() || null,
           status: 'pendente',
           data_encaminhamento: todaySaoPauloDateOnly(),
-        });
+        } as any);
 
       if (error) throw error;
 

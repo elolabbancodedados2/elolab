@@ -8,6 +8,8 @@ interface Props {
   pacienteId: string;
   /** Evolução já salva: o pedido de exame nasce ligado a ela. */
   prontuarioId?: string | null;
+  /** Atendimento em curso: atestado e encaminhamento ficam ligados a ele. */
+  agendamentoId?: string | null;
   onReceita: () => void;
 }
 
@@ -16,11 +18,12 @@ function digitando(alvo: EventTarget | null) {
   return alvo.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName);
 }
 
-export function AtalhosDocumentos({ pacienteId, prontuarioId, onReceita }: Props) {
+export function AtalhosDocumentos({ pacienteId, prontuarioId, agendamentoId, onReceita }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const primeiro = useRef<HTMLButtonElement>(null);
   const paciente = encodeURIComponent(pacienteId);
+  const vinculo = agendamentoId ? `&agendamento=${encodeURIComponent(agendamentoId)}` : '';
   const abrir = (destino: string) => navigate(destino, { state: { returnTo: `${location.pathname}${location.search}` } });
 
   useEffect(() => {
@@ -45,10 +48,10 @@ export function AtalhosDocumentos({ pacienteId, prontuarioId, onReceita }: Props
       <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/exames/nova?paciente=${paciente}${prontuarioId ? `&prontuario=${encodeURIComponent(prontuarioId)}` : ''}`)}>
         <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" /> Pedido de exame
       </Button>
-      <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/documentos-clinicos/novo-atestado?paciente=${paciente}`)}>
+      <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/documentos-clinicos/novo-atestado?paciente=${paciente}${vinculo}`)}>
         <FileCheck aria-hidden="true" className="h-3.5 w-3.5" /> Atestado
       </Button>
-      <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/documentos-clinicos/novo-encaminhamento?paciente=${paciente}`)}>
+      <Button type="button" variant="outline" className={botao} onClick={() => abrir(`/documentos-clinicos/novo-encaminhamento?paciente=${paciente}${vinculo}${prontuarioId ? `&prontuario=${encodeURIComponent(prontuarioId)}` : ''}`)}>
         <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /> Encaminhamento
       </Button>
     </div>

@@ -40,7 +40,7 @@ type PayableAccount = {
   recorrente: boolean | null;
   frequencia_recorrencia: string | null;
 };
-type PaymentDraft = { forma_pagamento: PaymentMethod; observacoes: string; valor: string };
+type PaymentDraft = { forma_pagamento: PaymentMethod; observacoes: string; valor: string; data_pagamento: string };
 type PaymentRouteState = { returnTo?: unknown; restoreSearchTerm?: unknown; idempotencyKey?: unknown };
 
 const paymentMethods: { value: PaymentMethod; label: string }[] = [
@@ -106,6 +106,7 @@ export default function ContaPagarPagamentoPage() {
       forma_pagamento: account.forma_pagamento || 'pix',
       observacoes: '',
       valor: remaining.toFixed(2).replace('.', ','),
+      data_pagamento: todaySaoPauloDateOnly(),
     };
     setDraft(initial);
     setInitialDraft(initial);
@@ -114,8 +115,14 @@ export default function ContaPagarPagamentoPage() {
   const dirty = Boolean(draft && initialDraft && (
     draft.forma_pagamento !== initialDraft.forma_pagamento ||
     draft.observacoes.trim() !== initialDraft.observacoes.trim() ||
-    draft.valor.trim() !== initialDraft.valor.trim()
+    draft.valor.trim() !== initialDraft.valor.trim() ||
+    draft.data_pagamento !== initialDraft.data_pagamento
   ));
+  const hoje = todaySaoPauloDateOnly();
+  // Pago antes de hoje, fora do dinheiro: não passa pelo caixa do dia.
+  const pagamentoAnterior = Boolean(draft && draft.data_pagamento && draft.data_pagamento < hoje);
+  const dataInvalida = Boolean(draft && (!draft.data_pagamento || draft.data_pagamento > hoje
+    || (pagamentoAnterior && draft.forma_pagamento === 'dinheiro')));
   const parsedValue = draft ? parseMoney(draft.valor) : null;
   const invalidValue = parsedValue === null || parsedValue <= 0
     || Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) > 1e-7
@@ -154,6 +161,7 @@ export default function ContaPagarPagamentoPage() {
     event.preventDefault();
     if (submitLock.current || !clinicId || !account || !draft || !canPay) return;
     if (invalidValue || parsedValue === null) { setSubmitError('Informe um pagamento válido, maior que zero e dentro do saldo em aberto.'); return; }
+    if (dataInvalida) { setSubmitError('Confira a data: não pode ser futura, e pagamento em dinheiro só com a data de hoje.'); return; }
     submitLock.current = true;
     setIsSubmitting(true);
     let rpcStarted = false;
@@ -174,14 +182,23 @@ export default function ContaPagarPagamentoPage() {
       const paymentMethod = draft.forma_pagamento === 'cartao_credito' ? 'credito'
         : draft.forma_pagamento === 'cartao_debito' ? 'debito' : draft.forma_pagamento;
       rpcStarted = true;
-      const { data, error } = await supabase.rpc('registrar_pagamento', {
-        p_lancamento_id: lancamentoId,
-        p_pagamentos: [{ forma_pagamento: paymentMethod, valor: parsedValue, parcelas: 1 }],
-        p_desconto: Number(fresh.desconto || 0),
-        p_acrescimo: Number(fresh.acrescimo || 0),
-        p_chave_idempotencia: idempotencyKey.current,
-        p_observacoes: draft.observacoes.trim() || null,
-      });
+      const { data, error } = pagamentoAnterior
+        ? await (supabase as any).rpc('registrar_pagamento_despesa_em_data', {
+          p_lancamento_id: lancamentoId,
+          p_valor: parsedValue,
+          p_forma_pagamento: paymentMethod,
+          p_data_pagamento: draft.data_pagamento,
+          p_observacoes: draft.observacoes.trim() || null,
+          p_chave_idempotencia: idempotencyKey.current,
+        })
+        : await supabase.rpc('registrar_pagamento', {
+          p_lancamento_id: lancamentoId,
+          p_pagamentos: [{ forma_pagamento: paymentMethod, valor: parsedValue, parcelas: 1 }],
+          p_desconto: Number(fresh.desconto || 0),
+          p_acrescimo: Number(fresh.acrescimo || 0),
+          p_chave_idempotencia: idempotencyKey.current,
+          p_observacoes: draft.observacoes.trim() || null,
+        });
       if (error) {
         const rpcError = error as { status?: number; code?: string };
         const status = Number(rpcError.status);
@@ -244,7 +261,7 @@ export default function ContaPagarPagamentoPage() {
       {account.recorrente && <p className="mx-6 mb-5 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">Despesa recorrente. Quando este pagamento quitar o saldo, o sistema poderá programar a próxima ocorrência.</p>}
     </Card>
     <Card>
-      <CardHeader><CardTitle className="text-base">Dados do pagamento realizado</CardTitle><p className="text-sm text-muted-foreground">O registro atualiza o financeiro após validar o caixa aberto de hoje.</p></CardHeader>
+      <CardHeader><CardTitle className="text-base">Dados do pagamento realizado</CardTitle><p className="text-sm text-muted-foreground">Com a data de hoje, o registro passa pelo caixa aberto. Pagamentos de dias anteriores por Pix, transferência, boleto ou cartão entram direto no financeiro, na data informada.</p></CardHeader>
       <CardContent>
         <form className="space-y-5" onSubmit={confirmPayment}>
           <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm text-foreground">Este registro é feito no EloLab; nenhuma transferência bancária será iniciada pelo sistema.</div>
@@ -252,11 +269,12 @@ export default function ContaPagarPagamentoPage() {
             <div className="space-y-2"><Label htmlFor="payable-payment-value">Valor deste pagamento (R$)</Label><Input id="payable-payment-value" type="text" inputMode="decimal" value={draft.valor} onChange={event => { setDraft(current => current ? { ...current, valor: event.target.value } : current); setSubmitError(''); }} disabled={isSubmitting || paymentUncertain} aria-describedby="payable-payment-value-help" aria-invalid={Boolean(draft.valor.trim()) && invalidValue} required /><p id="payable-payment-value-help" className="text-xs text-muted-foreground">Até {currency(remaining)} disponíveis; informe no máximo duas casas decimais.</p></div>
             <div className="space-y-2"><Label htmlFor="payable-payment-method">Forma de pagamento</Label><Select value={draft.forma_pagamento} onValueChange={value => { setDraft(current => current ? { ...current, forma_pagamento: value as PaymentMethod } : current); setSubmitError(''); }} disabled={isSubmitting || paymentUncertain}><SelectTrigger id="payable-payment-method" className="min-h-11"><SelectValue /></SelectTrigger><SelectContent>{paymentMethods.map(method => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}</SelectContent></Select></div>
           </div>
+          <div className="space-y-2 sm:max-w-xs"><Label htmlFor="payable-payment-date">Data do pagamento</Label><Input id="payable-payment-date" type="date" max={hoje} value={draft.data_pagamento} onChange={event => { setDraft(current => current ? { ...current, data_pagamento: event.target.value } : current); setSubmitError(''); }} disabled={isSubmitting || paymentUncertain} aria-invalid={dataInvalida} aria-describedby="payable-payment-date-help" /><p id="payable-payment-date-help" className={dataInvalida ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>{dataInvalida ? (draft.forma_pagamento === 'dinheiro' && pagamentoAnterior ? 'Dinheiro só pode ser registrado com a data de hoje, no caixa do dia.' : 'A data não pode ser futura.') : pagamentoAnterior ? 'Pagamento de dia anterior: não passa pelo caixa de hoje.' : 'Hoje: o pagamento entra no caixa do dia.'}</p></div>
           <div className="space-y-2"><Label htmlFor="payable-payment-notes">Observações (opcional)</Label><Input id="payable-payment-notes" value={draft.observacoes} maxLength={500} placeholder="Referência ou observação do pagamento" onChange={event => { setDraft(current => current ? { ...current, observacoes: event.target.value } : current); setSubmitError(''); }} disabled={isSubmitting || paymentUncertain} /></div>
           {invalidValue && Boolean(draft.valor.trim()) && <p role="alert" className="text-sm text-destructive">O valor precisa ser positivo e não pode ultrapassar o saldo.</p>}
           {submitError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p>{submitError}</p>{submitError.toLowerCase().includes('caixa fechado') && <p className="mt-1 text-xs">Abra o Caixa Diário e volte para registrar o pagamento.</p>}{paymentUncertain && <p className="mt-1 text-xs">A tentativa permanece bloqueada até uma nova confirmação com a mesma chave.</p>}</div>}
           <Separator />
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting || paymentUncertain}>Cancelar</Button><Button type="submit" disabled={isSubmitting || invalidValue} className="gap-2">{isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{isSubmitting ? 'Registrando…' : paymentUncertain ? 'Confirmar novamente' : 'Confirmar pagamento'}</Button></div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={returnToList} disabled={isSubmitting || paymentUncertain}>Cancelar</Button><Button type="submit" disabled={isSubmitting || invalidValue || dataInvalida} className="gap-2">{isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{isSubmitting ? 'Registrando…' : paymentUncertain ? 'Confirmar novamente' : 'Confirmar pagamento'}</Button></div>
         </form>
       </CardContent>
     </Card>

@@ -2873,6 +2873,7 @@ export default function Prontuarios() {
                 <AtalhosDocumentos
                   pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
                   prontuarioId={currentProntuario.id ?? null}
+                  agendamentoId={currentProntuario.agendamento_id ?? null}
                   onReceita={() => changeProntuarioSection('prescricao')}
                 />
               )}

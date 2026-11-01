@@ -133,6 +133,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
   // Deep-link: /documentos-clinicos?tab=atestados&paciente=<id> abre a lista já filtrada pelo paciente.
   const [searchParams, setSearchParams] = useSearchParams();
   const pacienteFiltroId = searchParams.get('paciente');
+  const agendamentoOrigemId = creationPage ? searchParams.get('agendamento') : null;
   const limparPacienteFiltro = () => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
     next.delete('paciente');
@@ -419,7 +420,9 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
         motivo,
         observacoes: observacoesProcessadas || null,
         modelo_atestado_id: selectedTemplateId,
-      });
+        // Emitido a partir do atendimento: fica ligado à consulta de origem.
+        ...(agendamentoOrigemId && formData.paciente_id === pacienteFiltroId ? { agendamento_id: agendamentoOrigemId } : {}),
+      } as any);
 
       if (error) throw error;
 

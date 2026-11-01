@@ -476,6 +476,14 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
             })}
           >Finalizar</ContextMenuItem>
         )}
+        {['faltou', 'em_atendimento'].includes(agendamento.status) && (
+          <ContextMenuItem
+            disabled={ocupado}
+            onSelect={() => navigate(`/agenda/${agendamento.id}/corrigir-status`, {
+              state: { returnTo: `${location.pathname}${location.search}` },
+            })}
+          >{agendamento.status === 'faltou' ? 'Desfazer falta' : 'Voltar para a fila (iniciado por engano)'}</ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem disabled={ocupado || !['agendado', 'confirmado', 'aguardando'].includes(agendamento.status)} onSelect={() => setStatus('faltou')} className="text-warning-foreground"><Ban className="mr-2 h-4 w-4" /> Marcar faltou</ContextMenuItem>
         <ContextMenuSeparator />
