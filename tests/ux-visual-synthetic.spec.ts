@@ -2888,11 +2888,15 @@ test('lab reports keep critical results clear and block release before technical
     await expect(totalIndicator).toHaveAttribute('aria-pressed', 'true');
     await page.screenshot({ path: testInfo.outputPath(`laudos-lista-${viewport.width}.png`), animations: 'disabled' });
 
-    const reportRow = main.getByRole('row').filter({ hasText: 'QA-LAUDO-001' });
+    // Abaixo de 768px a lista vira fichas (listitem) com o botão "Ver laudo".
+    const reportRow = viewport.width >= 768
+      ? main.getByRole('row').filter({ hasText: 'QA-LAUDO-001' })
+      : main.getByRole('listitem').filter({ hasText: 'QA-LAUDO-001' });
+    const verLaudo = reportRow.getByRole('button', { name: /^Ver laudo$/i });
     await reportRow.scrollIntoViewIfNeeded();
-    await expect(reportRow.getByRole('button', { name: 'Ver Laudo' })).toBeVisible();
+    await expect(verLaudo).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`laudos-linha-${viewport.width}.png`), animations: 'disabled' });
-    await reportRow.getByRole('button', { name: 'Ver Laudo' }).click();
+    await verLaudo.click();
     const dialog = page.getByRole('main');
     await expect(dialog.getByRole('heading', { name: /Laudo — QA-LAUDO-001/ })).toBeVisible();
     if (viewport.width < 768) {
@@ -3381,7 +3385,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         await expect(page.getByRole('dialog')).not.toBeVisible();
       }
       if (path === '/precos-servicos?tab=tipos') {
-        await expect(main.getByRole('heading', { name: 'Tipos & Preços de Consulta', exact: true })).toBeVisible();
+        await expect(main.getByRole('heading', { level: 1, name: 'Preços e serviços', exact: true })).toBeVisible();
         const addType = main.getByRole('button', { name: 'Novo Tipo', exact: false });
         await expect(addType).toHaveCount(1);
         await expect(addType).toBeVisible();
@@ -4044,8 +4048,13 @@ test('reception first fold keeps a filled synthetic queue visible at desktop wid
   expect(firstPatientBounds).not.toBeNull();
   expect(firstCheckinBounds).not.toBeNull();
   expect(mobileNavigationBounds).not.toBeNull();
-  expect(firstPatientBounds!.y + firstPatientBounds!.height).toBeLessThanOrEqual(844);
-  expect(firstCheckinBounds!.y + firstCheckinBounds!.height).toBeLessThanOrEqual(mobileNavigationBounds!.y);
+  expect(firstPatientBounds!.y + firstPatientBounds!.height).toBeLessThanOrEqual(mobileNavigationBounds!.y);
+  // O lote 1 acrescentou atalhos e etapas acima da fila: o check-in fica logo abaixo da dobra,
+  // mas precisa ficar alcançável sem ser coberto pela navegação inferior.
+  await firstCheckin.scrollIntoViewIfNeeded();
+  const firstCheckinAfterScroll = await firstCheckin.boundingBox();
+  expect(firstCheckinBounds).not.toBeNull();
+  expect(firstCheckinAfterScroll!.y + firstCheckinAfterScroll!.height).toBeLessThanOrEqual(mobileNavigationBounds!.y);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('recepcao-fila-preenchida-390.png'), animations: 'disabled' });
 
