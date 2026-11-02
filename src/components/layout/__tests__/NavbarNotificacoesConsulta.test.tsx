@@ -33,7 +33,6 @@ vi.mock('@/contexts/SupabaseAuthContext', () => ({
     isAdmin: () => false,
   }),
 }));
-vi.mock('@/hooks/useRealtimeNotifications', () => ({ useRealtimeNotifications: () => ({ notifications: [], unreadCount: 0 }) }));
 vi.mock('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: (options: QueryOptions) => {
