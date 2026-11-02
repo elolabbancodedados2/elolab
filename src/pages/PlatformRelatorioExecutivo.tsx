@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { formatCsvCell } from '@/lib/csv';
 
 type Report = {
   generated_at: string;
@@ -26,11 +27,6 @@ type Report = {
 
 const moeda = (value: number) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function csvCell(value: unknown) {
-  const raw = String(value ?? '');
-  const safe = /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
 
 export default function PlatformRelatorioExecutivo() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,7 +58,7 @@ export default function PlatformRelatorioExecutivo() {
       [], ['Clínica', 'Plano', 'Receita mensal', 'Pacientes', 'Agendamentos', 'Dias sem uso'],
       ...d.top_clients.map((c) => [c.clinica_nome, c.plano_nome, c.plano_valor, c.total_pacientes, c.total_agendamentos, c.dias_sem_uso]),
     ];
-    const blob = new Blob([`\ufeff${rows.map((row) => row.map(csvCell).join(';')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([`\ufeff${rows.map((row) => row.map(formatCsvCell).join(';')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `relatorio-executivo-${d.days}d-${new Date().toISOString().slice(0, 10)}.csv`;

@@ -1,13 +1,5 @@
 import type { AuditEntry } from "@/lib/auditTrail";
-
-function escapeCsvCell(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const str = String(value);
-  // Escape quotes by doubling them; wrap if contains comma/quote/newline
-  const escaped = str.replace(/"/g, '""');
-  if (/[\n\r,"]/g.test(str)) return `"${escaped}"`;
-  return escaped;
-}
+import { formatCsvCell } from "@/lib/csv";
 
 export function auditEntriesToCsv(entries: AuditEntry[]): string {
   const headers = [
@@ -37,7 +29,7 @@ export function auditEntriesToCsv(entries: AuditEntry[]): string {
       changesSummary,
     ];
 
-    return row.map(escapeCsvCell).join(",");
+    return row.map(formatCsvCell).join(",");
   });
 
   return [headers.join(","), ...lines].join("\n");
