@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Loader2, Lock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, Loader2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
@@ -16,8 +16,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { calcularSaldoGaveta, calcularTotaisCaixa, totaisPorFormaForaDaGaveta, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
-import { diferencaEmReais, mesmoValor } from '@/lib/dinheiro';
+import { calcularSaldoGaveta, calcularTotaisCaixa, CEDULAS_E_MOEDAS, somarContagemCedulas, totaisPorFormaForaDaGaveta, validarResultadoRpcCaixa } from '@/lib/caixaDiario';
+import { diferencaEmReais, formatarCampoReais, mesmoValor, parseMoneyInput } from '@/lib/dinheiro';
+import { abrirJanelaDeImpressao, montarRelatorioCaixaHtml, textoDiferenca } from '@/lib/relatorioCaixa';
+import { calcularSaldoPagamento } from '@/lib/pagamentoDividido';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { mensagemDeErro } from '@/lib/erros';
@@ -46,15 +50,21 @@ function moeda(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-function parseValorContado(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact) return null;
-  const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
-  const formatoDecimal = /^\d+(?:\.\d{1,2})?$/;
-  if (!formatoBrasileiro.test(compact) && !formatoDecimal.test(compact)) return null;
-  const normalizado = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
-  const parsed = Number(normalizado);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+const parseValorContado = parseMoneyInput;
+
+function rotuloCedula(valor: number): string {
+  return valor >= 2 ? `R$ ${valor}` : valor === 1 ? 'R$ 1 (moeda)' : `${Math.round(valor * 100)} centavos`;
+}
+
+interface CobrancaEmAberto {
+  id: string;
+  descricao: string;
+  valor: number;
+  valor_pago: number | null;
+  desconto: number | null;
+  acrescimo: number | null;
+  status: string;
+  pacientes?: { nome: string } | null;
 }
 
 function limparEstadoLocalCaixa(userId?: string | null, clinicId?: string | null): boolean {
@@ -66,6 +76,8 @@ function limparEstadoLocalCaixa(userId?: string | null, clinicId?: string | null
   }
   return success;
 }
+
+class EsperadoMudou extends Error {}
 
 export default function FecharCaixaPage() {
   const { caixaId = '' } = useParams();
@@ -82,7 +94,14 @@ export default function FecharCaixaPage() {
   const [countedAmount, setCountedAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [contarPorCedula, setContarPorCedula] = useState(false);
+  const [cedulas, setCedulas] = useState<Record<string, string>>({});
+  const [imprimirAoFechar, setImprimirAoFechar] = useState(true);
+  const [fechamentoCego, setFechamentoCego] = useState(false);
+  const [conferenciaRevelada, setConferenciaRevelada] = useState(false);
+  const [avisoEsperado, setAvisoEsperado] = useState('');
   const navigationAllowed = useRef(false);
+  const janelaRelatorio = useRef<Window | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setToday(todaySaoPauloDateOnly()), 60_000);
@@ -118,7 +137,28 @@ export default function FecharCaixaPage() {
         exceededLimit: rows.length > LIMITE_BUSCA_EM_BLOCOS,
       };
     },
+    // Recebimentos continuam entrando enquanto a gaveta é contada.
+    refetchInterval: 15_000,
   });
+
+  // Cobranças do dia ainda em aberto: fechar sem olhar para elas deixava
+  // paciente atendido sem pagamento registrado.
+  const cobrancasQuery = useQuery({
+    queryKey: ['cash-closing-open-charges', profile?.clinica_id ?? null, cashQuery.data?.data],
+    enabled: Boolean(profile?.clinica_id && cashQuery.data?.aberto),
+    meta: { suppressGlobalErrorToast: true },
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<CobrancaEmAberto[]> => {
+      const { data, error } = await (supabase as any).from('lancamentos')
+        .select('id, descricao, valor, valor_pago, desconto, acrescimo, status, pacientes(nome)')
+        .eq('clinica_id', profile!.clinica_id!).eq('tipo', 'receita').eq('data', cashQuery.data!.data)
+        .in('status', ['pendente', 'parcial']).order('created_at', { ascending: true }).limit(50);
+      if (error) throw error;
+      return (data ?? []) as CobrancaEmAberto[];
+    },
+  });
+  const cobrancasEmAberto = (cobrancasQuery.data ?? []).filter(c => calcularSaldoPagamento(Number(c.valor), Number(c.desconto || 0), Number(c.acrescimo || 0), Number(c.valor_pago || 0)) > 0);
+  const totalEmAberto = cobrancasEmAberto.reduce((soma, c) => soma + calcularSaldoPagamento(Number(c.valor), Number(c.desconto || 0), Number(c.acrescimo || 0), Number(c.valor_pago || 0)), 0);
 
   const cash = cashQuery.data;
   const movements = movementsQuery.data?.movements ?? [];
@@ -126,7 +166,9 @@ export default function FecharCaixaPage() {
   const expectedDrawer = cash ? calcularSaldoGaveta(Number(cash.valor_abertura), movements) : 0;
   const totals = cash ? calcularTotaisCaixa(Number(cash.valor_abertura), movements) : null;
   const outrasFormas = totaisPorFormaForaDaGaveta(movements);
-  const countedValue = parseValorContado(countedAmount);
+  const totalCedulas = somarContagemCedulas(Object.fromEntries(Object.entries(cedulas).map(([k, v]) => [k, v.trim() === '' ? 0 : Number(v)])));
+  const countedValue = contarPorCedula ? totalCedulas : parseValorContado(countedAmount);
+  const mostrarConferencia = !fechamentoCego || conferenciaRevelada;
   const hasDifference = countedValue !== null && !mesmoValor(countedValue, expectedDrawer);
   const reasonRequired = hasDifference && notes.trim().length < 5;
 
@@ -142,6 +184,15 @@ export default function FecharCaixaPage() {
       if (hasDifference && notes.trim().length < 5) {
         throw new Error('Descreva a diferença entre o valor contado e o saldo esperado (mínimo 5 caracteres).');
       }
+      // O esperado na tela pode ter ficado para trás (um Pix virou dinheiro,
+      // entrou um recebimento): confere de novo antes de gravar.
+      const atualizado = await movementsQuery.refetch();
+      if (atualizado.error || !atualizado.data) throw new Error('Não foi possível conferir os movimentos mais recentes. Tente novamente.');
+      if (atualizado.data.exceededLimit) throw new Error('Confira todos os movimentos do período antes de fechar o caixa.');
+      const esperadoAgora = calcularSaldoGaveta(Number(cash.valor_abertura), atualizado.data.movements);
+      if (!mesmoValor(esperadoAgora, expectedDrawer)) {
+        throw new EsperadoMudou(`O dinheiro esperado mudou de ${moeda(expectedDrawer)} para ${moeda(esperadoAgora)} enquanto a gaveta era contada. Confira os valores e confirme de novo.`);
+      }
       const { data, error } = await supabase.rpc('fechar_caixa_diario', {
         p_caixa_id: cash.id,
         p_valor_contado: countedValue,
@@ -149,9 +200,18 @@ export default function FecharCaixaPage() {
       });
       if (error) throw error;
       validarResultadoRpcCaixa(data);
-      return { caixa: cash, valor: countedValue };
+      return { caixa: cash, valor: countedValue, movimentos: atualizado.data.movements };
     },
-    onSuccess: async ({ caixa }) => {
+    onSuccess: async ({ caixa, valor, movimentos }) => {
+      if (janelaRelatorio.current) {
+        const corpo = montarRelatorioCaixaHtml({
+          caixa: { ...caixa, aberto: false, valor_fechamento: valor, operador_fechamento: profile?.nome ?? null, observacoes: notes.trim() || null },
+          movimentos,
+          emitidoPor: profile?.nome,
+        });
+        abrirJanelaDeImpressao(`Fechamento de caixa ${caixa.data}`, corpo, janelaRelatorio.current);
+        janelaRelatorio.current = null;
+      }
       const localStateCleared = caixa.data !== today || limparEstadoLocalCaixa(profile?.id, profile?.clinica_id);
       toast.success('Caixa fechado com sucesso.');
       if (!localStateCleared) toast.warning('O caixa foi fechado, mas a Recepção pode exibir o estado anterior até atualizar. Recarregue a tela da Recepção.');
@@ -169,7 +229,14 @@ export default function FecharCaixaPage() {
       navigate(returnTo, { replace: true, state: { cashTab: returnTab } });
     },
     onError: async error => {
-      setSubmitError(mensagemDeErro(error));
+      janelaRelatorio.current?.close();
+      janelaRelatorio.current = null;
+      if (error instanceof EsperadoMudou) {
+        setAvisoEsperado(error.message);
+        setSubmitError('');
+      } else {
+        setSubmitError(mensagemDeErro(error));
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['cash-closing-record', profile?.clinica_id ?? null, caixaId] }),
         queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] }),
@@ -179,7 +246,7 @@ export default function FecharCaixaPage() {
     },
   });
 
-  const hasUnsavedChanges = countedAmount.trim().length > 0 || notes.trim().length > 0;
+  const hasUnsavedChanges = countedAmount.trim().length > 0 || notes.trim().length > 0 || Object.values(cedulas).some(v => v.trim() !== '');
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     hasUnsavedChanges && !closeMutation.isPending && !navigationAllowed.current &&
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
@@ -197,8 +264,18 @@ export default function FecharCaixaPage() {
   const readError = cashQuery.error || movementsQuery.error;
   const canClose = Boolean(
     cash?.aberto && !busy && !readError && !exceededLimit && countedValue !== null &&
-    Number.isFinite(countedValue) && countedValue >= 0 && !reasonRequired && !closeMutation.isPending,
+    Number.isFinite(countedValue) && countedValue >= 0 && !reasonRequired && !closeMutation.isPending && mostrarConferencia,
   );
+
+  const confirmarFechamento = () => {
+    setAvisoEsperado('');
+    // A janela precisa abrir no clique; o relatório é escrito nela depois que o servidor confirmar.
+    if (imprimirAoFechar) {
+      janelaRelatorio.current = window.open('', '_blank', 'width=900,height=1000');
+      if (!janelaRelatorio.current) toast.warning('O navegador bloqueou a janela do relatório. O caixa será fechado; imprima depois pelo histórico.');
+    }
+    closeMutation.mutate();
+  };
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
@@ -254,10 +331,18 @@ export default function FecharCaixaPage() {
                 <CardTitle>Conferência do numerário</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">Compare o dinheiro físico com os movimentos em dinheiro do período.</p>
               </div>
-              <Badge variant="outline" className="w-fit border-warning/40 bg-warning/5 text-warning-foreground">Aberto</Badge>
+              <Badge variant="outline" className="w-fit gap-1.5"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-success" />Aberto</Badge>
             </CardHeader>
             <CardContent className="space-y-5">
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-4 sm:grid-cols-3">
+              <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-border p-3">
+                <div>
+                  <Label htmlFor="cash-blind-closing" className="text-sm font-medium">Fechamento cego</Label>
+                  <p className="text-xs text-muted-foreground">Esconde o valor esperado até a contagem ser informada.</p>
+                </div>
+                <Switch id="cash-blind-closing" checked={fechamentoCego} onCheckedChange={value => { setFechamentoCego(value); setConferenciaRevelada(false); }} disabled={closeMutation.isPending} />
+              </div>
+
+              {mostrarConferencia ? <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-4 sm:grid-cols-3">
                 {[
                   { label: 'Abertura', value: Number(cash.valor_abertura) },
                   { label: 'Receitas', value: totals?.receita ?? 0 },
@@ -271,39 +356,97 @@ export default function FecharCaixaPage() {
                     <dd className={item.emphasized ? 'mt-1 text-lg font-semibold tabular-nums text-foreground' : 'mt-1 font-medium tabular-nums text-foreground'}>{moeda(item.value)}</dd>
                   </div>
                 ))}
-              </dl>
+              </dl> : <p role="status" className="rounded-md border border-border bg-secondary p-3 text-sm text-muted-foreground">Conte o dinheiro da gaveta e informe o total. O esperado aparece depois da contagem.</p>}
+
+              {avisoEsperado && (
+                <div role="alert" className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
+                  <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
+                  <span>{avisoEsperado}</span>
+                </div>
+              )}
 
               <div className="space-y-2">
-                <Label htmlFor="cash-counted-amount">Dinheiro contado na gaveta (R$) <span className="text-destructive">*</span></Label>
-                <Input
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label htmlFor={contarPorCedula ? undefined : 'cash-counted-amount'}>Dinheiro contado na gaveta (R$) <span className="text-destructive">*</span></Label>
+                  <Button type="button" variant="ghost" size="sm" className="min-h-11" onClick={() => {
+                    if (contarPorCedula) setCountedAmount(formatarCampoReais(totalCedulas));
+                    setContarPorCedula(!contarPorCedula);
+                    setConferenciaRevelada(false);
+                  }} disabled={closeMutation.isPending}>
+                    {contarPorCedula ? 'Digitar o total' : 'Contar por cédula'}
+                  </Button>
+                </div>
+                {contarPorCedula ? (
+                  <fieldset className="space-y-2">
+                    <legend className="sr-only">Quantidade de cada cédula e moeda</legend>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {CEDULAS_E_MOEDAS.map(valor => (
+                        <div key={valor} className="space-y-1">
+                          <Label htmlFor={`cash-note-${valor}`} className="text-xs font-normal text-muted-foreground">{rotuloCedula(valor)}</Label>
+                          <Input id={`cash-note-${valor}`} type="text" inputMode="numeric" pattern="[0-9]*" placeholder="0" className="h-11"
+                            value={cedulas[String(valor)] ?? ''} disabled={closeMutation.isPending}
+                            onChange={event => { const v = event.target.value.replace(/\D/g, '').slice(0, 5); setCedulas(atual => ({ ...atual, [String(valor)]: v })); setSubmitError(''); setConferenciaRevelada(false); }} />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-sm">Total contado: <span className="font-semibold tabular-nums">{moeda(totalCedulas)}</span></p>
+                  </fieldset>
+                ) : <Input
                   id="cash-counted-amount"
                   type="text"
                   inputMode="decimal"
                   autoComplete="off"
                   placeholder="0,00"
                   value={countedAmount}
-                  onChange={event => { setCountedAmount(event.target.value); setSubmitError(''); }}
+                  onChange={event => { setCountedAmount(event.target.value); setSubmitError(''); setConferenciaRevelada(false); }}
                   disabled={closeMutation.isPending}
                   aria-invalid={countedAmount.trim().length > 0 && countedValue === null}
                   aria-describedby="cash-counted-help"
-                />
+                />}
+                {fechamentoCego && !conferenciaRevelada && (
+                  <Button type="button" variant="outline" className="min-h-11 gap-2" disabled={countedValue === null || closeMutation.isPending} onClick={() => setConferenciaRevelada(true)}>
+                    <Eye aria-hidden="true" className="h-4 w-4" />Conferir com o esperado
+                  </Button>
+                )}
                 <p id="cash-counted-help" className="text-xs text-muted-foreground">Informe o total físico contado; digite 0 se a gaveta estiver vazia.</p>
-                {countedAmount.trim().length > 0 && countedValue === null && <p role="alert" className="text-xs text-destructive">Informe um valor válido com até duas casas decimais.</p>}
+                {!contarPorCedula && countedAmount.trim().length > 0 && countedValue === null && <p role="alert" className="text-xs text-destructive">Informe um valor válido com até duas casas decimais.</p>}
               </div>
 
-              {countedValue !== null && (() => {
+              {countedValue !== null && mostrarConferencia && (() => {
                 const balanced = mesmoValor(countedValue, expectedDrawer);
+                const diferenca = diferencaEmReais(countedValue, expectedDrawer);
                 return (
-                  <section aria-live="polite" className={balanced ? 'rounded-md border border-success/30 bg-success/5 p-3' : 'rounded-md border border-destructive/30 bg-destructive/5 p-3'}>
+                  <section aria-live="polite" className={balanced ? 'rounded-md border border-border bg-card p-3' : 'rounded-md border border-destructive/30 bg-destructive/5 p-3'}>
                     <p className="text-xs text-muted-foreground">{balanced ? 'Conferência' : 'Diferença'}</p>
-                    <p className={balanced ? 'mt-1 text-lg font-semibold tabular-nums text-success' : 'mt-1 text-lg font-semibold tabular-nums text-destructive'}>
-                      {balanced ? <CheckCircle2 className="mr-1 inline h-4 w-4" aria-hidden="true" /> : null}{moeda(diferencaEmReais(countedValue, expectedDrawer))}
+                    <p className={balanced ? 'mt-1 text-lg font-semibold tabular-nums text-foreground' : 'mt-1 text-lg font-semibold tabular-nums text-destructive'}>
+                      {balanced ? <CheckCircle2 className="mr-1 inline h-4 w-4 text-success" aria-hidden="true" /> : null}{balanced ? 'Bateu com o esperado' : textoDiferenca(diferenca)}
                     </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Contado {moeda(countedValue)} · esperado {moeda(expectedDrawer)}</p>
                   </section>
                 );
               })()}
 
-              {outrasFormas.length > 0 && (
+              {cobrancasEmAberto.length > 0 && (
+                <section aria-labelledby="cash-open-charges-title" className="space-y-2 rounded-md border border-warning/40 bg-warning/5 p-3">
+                  <div>
+                    <h3 id="cash-open-charges-title" className="text-sm font-semibold text-foreground">{cobrancasEmAberto.length} cobrança{cobrancasEmAberto.length === 1 ? '' : 's'} de hoje em aberto · {moeda(totalEmAberto)}</h3>
+                    <p className="text-xs text-muted-foreground">Receba ou confira antes de fechar. Fechar o caixa não cancela estas cobranças.</p>
+                  </div>
+                  <ul className="divide-y divide-border/60 text-sm">
+                    {cobrancasEmAberto.slice(0, 8).map(c => (
+                      <li key={c.id} className="flex items-center justify-between gap-3 py-1.5">
+                        <span className="min-w-0 truncate">{c.pacientes?.nome || c.descricao}</span>
+                        <span className="shrink-0 tabular-nums">{moeda(calcularSaldoPagamento(Number(c.valor), Number(c.desconto || 0), Number(c.acrescimo || 0), Number(c.valor_pago || 0)))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {cobrancasEmAberto.length > 8 && <p className="text-xs text-muted-foreground">E mais {cobrancasEmAberto.length - 8}.</p>}
+                  <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => navigate('/recepcao')}>Abrir a recepção</Button>
+                </section>
+              )}
+              {cobrancasQuery.isError && <p role="status" className="text-xs text-muted-foreground">Não foi possível conferir as cobranças em aberto de hoje.</p>}
+
+              {outrasFormas.length > 0 && mostrarConferencia && (
                 <section aria-labelledby="cash-other-methods-title" className="space-y-2 rounded-md border border-border p-3">
                   <div>
                     <h3 id="cash-other-methods-title" className="text-sm font-semibold text-foreground">Outras formas do período</h3>
@@ -350,10 +493,15 @@ export default function FecharCaixaPage() {
 
               {submitError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Não foi possível fechar o caixa. {submitError}</div>}
 
+              <div className="flex min-h-11 items-center gap-2">
+                <Checkbox id="cash-print-on-close" checked={imprimirAoFechar} onCheckedChange={value => setImprimirAoFechar(value === true)} disabled={closeMutation.isPending} />
+                <Label htmlFor="cash-print-on-close" className="font-normal">Imprimir o relatório de fechamento</Label>
+              </div>
+
               <Separator />
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <Button variant="outline" onClick={voltar} disabled={closeMutation.isPending}>Cancelar</Button>
-                <Button variant="destructive" onClick={() => closeMutation.mutate()} disabled={!canClose} className="gap-2">
+                <Button variant="destructive" onClick={confirmarFechamento} disabled={!canClose} className="gap-2">
                   {closeMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                   {closeMutation.isPending ? 'Fechando caixa…' : 'Confirmar fechamento'}
                 </Button>

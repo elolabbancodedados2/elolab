@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { memo, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, RefreshCw, Loader2, RotateCcw, XCircle, Search, Printer, FlaskConical,
@@ -28,6 +28,8 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { dadosTransicaoColeta } from '@/lib/mapaColetaWorkflow';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
+import { agruparPorPaciente } from '@/lib/mapaColetaOrdem';
+import { contagem } from '@/lib/plural';
 
 const TUBOS = [
   { color: 'bg-purple-500', label: 'EDTA (Roxo)', nome: 'Roxo', volume: '4mL' },
@@ -105,6 +107,191 @@ const SEM_SETOR = '__sem_setor__';
 
 const aguardaColeta = (item: any) => item.status === 'pendente' || item.status === 'recoleta';
 
+type AcoesColeta = {
+  alternarSelecao: (id: string) => void;
+  abrirDetalhe: (id: string) => void;
+  coletar: (id: string) => void;
+  encaminharAnalise: (id: string) => void;
+  recoleta: (id: string) => void;
+  cancelar: (id: string) => void;
+  reimprimir: (id: string) => void;
+};
+
+type PropsColeta = {
+  item: any;
+  idx: number;
+  showActions: boolean;
+  selecionado: boolean;
+  processando: boolean;
+  bulkProcessing: boolean;
+  eProxima: boolean;
+  now: Date;
+  acoes: AcoesColeta;
+};
+
+const StatusBadge = memo(function StatusBadge({ status }: { status: string }) {
+  if (status === 'coletado') return <Badge variant="outline" className="rounded-full border-border bg-secondary text-foreground">Coletado</Badge>;
+  if (status === 'em_analise') return <Badge variant="outline" className="rounded-full border-border bg-secondary text-foreground">Em análise</Badge>;
+  if (status === 'recoleta') return <Badge variant="outline" className="gap-1 rounded-full border-warning/40 bg-warning/10 text-warning-foreground"><RotateCcw aria-hidden="true" className="h-3 w-3" />Recoleta</Badge>;
+  if (status === 'rejeitada') return <Badge className="rounded-full border-transparent bg-destructive text-destructive-foreground hover:bg-destructive">Rejeitada</Badge>;
+  return <Badge variant="outline" className="rounded-full border-border bg-card text-foreground">Pendente</Badge>;
+});
+
+function TempoEspera({ item, now }: { item: any; now: Date }) {
+  const desdeSLA = slaTimestamp(item);
+  if (item.status === 'coletado' && item.created_at && item.data_coleta) {
+    return (
+      <span className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground" title="Tempo até a coleta ser registrada">
+        <Timer aria-hidden="true" className="h-3 w-3" />{waitTimeLabel(item.created_at, new Date(item.data_coleta))}
+      </span>
+    );
+  }
+  if (!desdeSLA) return <span className="text-xs text-muted-foreground">—</span>;
+  return (
+    <span className={cn('flex items-center gap-1 text-xs tabular-nums', waitTimeColor(desdeSLA, now))}>
+      <Timer aria-hidden="true" className="h-3 w-3" />{waitTimeLabel(desdeSLA, now)}
+    </span>
+  );
+}
+
+function BotoesColeta({ item, showActions, processando, bulkProcessing, acoes }: Pick<PropsColeta, 'item' | 'showActions' | 'processando' | 'bulkProcessing' | 'acoes'>) {
+  return (
+    <>
+      {showActions && aguardaColeta(item) && (
+        <Button size="sm" className="min-h-11 gap-1 rounded-full bg-primary px-4 text-xs text-primary-foreground hover:bg-primary/90" disabled={processando || bulkProcessing} onClick={() => acoes.coletar(item.id)}>
+          {processando ? <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="h-3 w-3" />}
+          {processando ? 'Salvando…' : 'Coletar'}
+        </Button>
+      )}
+      {item.status === 'coletado' && (
+        <>
+          <Button size="sm" className="min-h-11 gap-1 rounded-full bg-primary px-4 text-xs text-primary-foreground shadow-sm hover:bg-primary/90" disabled={processando || bulkProcessing} onClick={() => acoes.encaminharAnalise(item.id)}>
+            {processando ? <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> : <ArrowRight aria-hidden="true" className="h-3 w-3" />}
+            {processando ? 'Salvando…' : 'Análise'}
+          </Button>
+          <Button variant="outline" size="icon" className="h-11 w-11 rounded-full text-warning-foreground" aria-label={`Solicitar recoleta ${item.codigo_amostra || ''}`} title="Solicitar recoleta" disabled={processando || bulkProcessing} onClick={() => acoes.recoleta(item.id)}>
+            {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+          </Button>
+        </>
+      )}
+      <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label={`Reimprimir etiqueta ${item.codigo_amostra || ''}`} title="Reimprimir etiqueta" onClick={() => acoes.reimprimir(item.id)}>
+        <Printer className="h-3.5 w-3.5" />
+      </Button>
+      {aguardaColeta(item) && (
+        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full text-destructive hover:text-destructive" aria-label={`Cancelar coleta ${item.codigo_amostra || ''}`} title="Cancelar coleta" disabled={processando || bulkProcessing} onClick={() => acoes.cancelar(item.id)}>
+          {processando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+        </Button>
+      )}
+    </>
+  );
+}
+
+const CabecalhoTabela = memo(function CabecalhoTabela({ total, selecionados, label, bulkProcessing, onToggleAll }: { total: number; selecionados: number; label: string; bulkProcessing: boolean; onToggleAll: () => void }) {
+  const todos = total > 0 && selecionados === total;
+  return (
+    <thead>
+      <tr className="border-b border-border/60 bg-muted/30">
+        <th className="w-8 px-3 py-2.5"><Checkbox checked={todos ? true : selecionados > 0 ? 'indeterminate' : false} disabled={bulkProcessing} aria-label={`Selecionar todas as coletas: ${label}`} onCheckedChange={onToggleAll} /></th>
+        <th className="w-8 px-2 py-2.5 text-xs font-medium text-muted-foreground">#</th>
+        <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Código</th>
+        <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Paciente</th>
+        <th className="hidden px-3 py-2.5 text-left text-xs font-medium text-muted-foreground lg:table-cell">Convênio</th>
+        <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Tubo</th>
+        <th className="hidden px-3 py-2.5 text-left text-xs font-medium text-muted-foreground lg:table-cell">Exame</th>
+        <th className="hidden px-3 py-2.5 text-center text-xs font-medium text-muted-foreground xl:table-cell">Jejum</th>
+        <th className="px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">Espera / coleta</th>
+        <th className="px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">Status</th>
+        <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">Ações</th>
+      </tr>
+    </thead>
+  );
+});
+
+const LinhaColeta = memo(function LinhaColeta({ item, idx, showActions, selecionado, processando, bulkProcessing, eProxima, now, acoes }: PropsColeta) {
+  const age = calcAge(item.pacientes?.data_nascimento);
+  const sexo = sexoPaciente(item.pacientes?.sexo);
+  const convenio = item.pacientes?.convenios?.nome ?? 'Particular';
+  const isUrgent = item.urgente;
+  return (
+    <tr className={cn('border-b border-border/50 transition-colors last:border-0 hover:bg-muted/50', eProxima && 'bg-muted/30')}>
+      <td className="px-3 py-2">
+        <Checkbox checked={selecionado} disabled={bulkProcessing || processando} aria-label={`Selecionar coleta ${item.codigo_amostra || ''} de ${nomePaciente(item.pacientes)}`} onCheckedChange={() => acoes.alternarSelecao(item.id)} />
+      </td>
+      <td className="px-2 py-2">
+        <span className={cn('inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums', eProxima ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground')}>{idx + 1}</span>
+      </td>
+      <td className="px-3 py-2">
+        <button type="button" aria-label={`Ver detalhes da coleta ${item.codigo_amostra || ''}`} className="min-h-11 font-mono text-xs font-semibold text-foreground underline-offset-2 hover:underline" onClick={() => acoes.abrirDetalhe(item.id)}>
+          {item.codigo_amostra}
+        </button>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          {isUrgent && <Zap aria-label="Urgente" className="h-3.5 w-3.5 flex-shrink-0 text-warning-foreground" />}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-sm font-medium">
+              <span className="truncate">{nomePaciente(item.pacientes)}</span>
+              {eProxima && <Badge className="rounded-full border-transparent bg-primary text-xs text-primary-foreground hover:bg-primary">Próxima</Badge>}
+            </div>
+            <p className="text-xs text-muted-foreground">{age !== null ? `${age} anos` : 'Idade não informada'} · {sexo}{item.pacientes?.cpf ? ` · ${item.pacientes.cpf}` : ''}</p>
+          </div>
+        </div>
+      </td>
+      <td className="hidden px-3 py-2 text-xs text-muted-foreground lg:table-cell">{convenio}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <div aria-hidden="true" className={cn('h-5 w-3 flex-shrink-0 rounded-sm', tuboColor(item.tubo))} />
+          <span className="text-xs">{tuboNome(item.tubo)}</span>
+        </div>
+      </td>
+      <td className="hidden px-3 py-2 text-xs lg:table-cell">{item.exames?.tipo_exame ?? <span className="text-muted-foreground">—</span>}</td>
+      <td className="hidden px-3 py-2 text-center xl:table-cell">
+        {item.jejum_necessario ? (
+          <Badge variant="outline" className="gap-0.5 rounded-full text-xs"><Droplets aria-hidden="true" className="h-2.5 w-2.5" />{item.jejum_horas ?? '?'}h</Badge>
+        ) : <span className="text-xs text-muted-foreground">—</span>}
+      </td>
+      <td className="px-3 py-2"><div className="flex justify-center"><TempoEspera item={item} now={now} /></div></td>
+      <td className="px-3 py-2 text-center"><StatusBadge status={item.status} /></td>
+      <td className="px-3 py-2 text-right">
+        <div className="flex items-center justify-end gap-1">
+          <BotoesColeta item={item} showActions={showActions} processando={processando} bulkProcessing={bulkProcessing} acoes={acoes} />
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+/** Ficha do celular: a faixa lateral tem a cor do tubo. */
+const FichaColeta = memo(function FichaColeta({ item, showActions, selecionado, processando, bulkProcessing, eProxima, now, acoes }: PropsColeta) {
+  const age = calcAge(item.pacientes?.data_nascimento);
+  return (
+    <li className={cn('flex overflow-hidden rounded-xl border bg-card', eProxima ? 'border-foreground/40' : 'border-border/60', item.urgente && 'border-warning/50')}>
+      <span aria-hidden="true" className={cn('w-2 shrink-0', tuboColor(item.tubo))} />
+      <div className="min-w-0 flex-1 space-y-2 p-3">
+        <div className="flex items-start gap-2">
+          <Checkbox className="mt-1" checked={selecionado} disabled={bulkProcessing || processando} aria-label={`Selecionar coleta ${item.codigo_amostra || ''} de ${nomePaciente(item.pacientes)}`} onCheckedChange={() => acoes.alternarSelecao(item.id)} />
+          <div className="min-w-0 flex-1">
+            <p className="break-words font-medium">{nomePaciente(item.pacientes)}</p>
+            <p className="text-xs text-muted-foreground">{age !== null ? `${age} anos` : 'Idade não informada'} · {sexoPaciente(item.pacientes?.sexo)} · {item.pacientes?.convenios?.nome ?? 'Particular'}</p>
+          </div>
+          <StatusBadge status={item.status} />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <button type="button" aria-label={`Ver detalhes da coleta ${item.codigo_amostra || ''}`} className="min-h-11 font-mono font-semibold underline-offset-2 hover:underline" onClick={() => acoes.abrirDetalhe(item.id)}>{item.codigo_amostra}</button>
+          <span>{tuboNome(item.tubo)}</span>
+          {item.exames?.tipo_exame && <span className="break-words">{item.exames.tipo_exame}</span>}
+          {item.jejum_necessario && <span className="inline-flex items-center gap-1"><Droplets aria-hidden="true" className="h-3 w-3" />Jejum {item.jejum_horas ?? '?'}h</span>}
+          {item.urgente && <span className="inline-flex items-center gap-1 font-medium text-warning-foreground"><Zap aria-hidden="true" className="h-3 w-3" />Urgente</span>}
+          <TempoEspera item={item} now={now} />
+        </div>
+        <div className="flex flex-wrap items-center gap-1">
+          <BotoesColeta item={item} showActions={showActions} processando={processando} bulkProcessing={bulkProcessing} acoes={acoes} />
+        </div>
+      </div>
+    </li>
+  );
+});
+
 export default function MapaColeta() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -114,6 +301,10 @@ export default function MapaColeta() {
   const { profile, hasAnyRole } = useSupabaseAuth();
   const [itens, setItens] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [agruparPaciente, setAgruparPaciente] = useState(false);
+  const [codigoBipado, setCodigoBipado] = useState('');
+  const carregouRef = useRef(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [search, setSearch] = useState(filters?.search ?? '');
   const [tuboFiltro, setTuboFiltro] = useState(filters?.tuboFiltro ?? 'Todos');
@@ -146,7 +337,8 @@ export default function MapaColeta() {
       setLoadError(new Error('Clínica não identificada.'));
       return;
     }
-    setLoading(true);
+    // Depois da primeira carga, atualiza sem esconder a lista (não pisca a cada evento).
+    if (carregouRef.current) setRefreshing(true); else setLoading(true);
     try {
       const pagina = 500;
       const novasColetas: any[] = [];
@@ -182,6 +374,7 @@ export default function MapaColeta() {
       }
       if (requestId !== fetchRequestRef.current || activeClinicRef.current !== clinicId) return;
       setItens(novasColetas);
+      carregouRef.current = true;
       setSelected(prev => new Set([...prev].filter(id => novasColetas.some(item => item.id === id))));
       setLoadError(null);
     } catch (error) {
@@ -191,6 +384,7 @@ export default function MapaColeta() {
     } finally {
       if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) {
         setLoading(false);
+        setRefreshing(false);
       }
     }
   }, [profile?.clinica_id]);
@@ -201,14 +395,21 @@ export default function MapaColeta() {
     fetchRequestRef.current += 1;
     setItens([]);
     setSelected(new Set());
+    carregouRef.current = false;
     setLoading(true);
     setLoadError(null);
     void fetchColetas();
     if (!clinicId) return () => { activeClinicRef.current = null; fetchRequestRef.current += 1; };
+    let timer: number | undefined;
+    const agendarRecarga = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void fetchColetas(); }, 400);
+    };
     const channel = supabase.channel(canalUnico('mapa-coleta-rt'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchColetas)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, agendarRecarga)
       .subscribe();
     return () => {
+      window.clearTimeout(timer);
       if (activeClinicRef.current === clinicId) activeClinicRef.current = null;
       fetchRequestRef.current += 1;
       supabase.removeChannel(channel);
@@ -267,8 +468,8 @@ export default function MapaColeta() {
         if (error || !data) failedIds.push(id);
         else ok++;
       }
-      if (failedIds.length) toast.warning(`${ok} coleta(s) registrada(s); ${failedIds.length} não foram atualizadas.`, { description: 'As amostras que falharam continuam selecionadas para conferência.' });
-      else if (ok) toast.success(`${ok} coleta(s) registrada(s)`);
+      if (failedIds.length) toast.warning(`${contagem(ok, 'coleta registrada', 'coletas registradas')}; ${contagem(failedIds.length, 'não foi atualizada', 'não foram atualizadas')}.`, { description: 'As amostras que falharam continuam selecionadas para conferência.' });
+      else if (ok) toast.success(contagem(ok, 'coleta registrada', 'coletas registradas'));
       else toast.info('Nenhuma amostra selecionada está pendente de coleta.');
       setSelected(new Set(failedIds));
       await fetchColetas();
@@ -287,9 +488,8 @@ export default function MapaColeta() {
 
   const handleEncaminharAnalise = (id: string) => transitionStatus(id, ['coletado'], 'em_analise', 'Enviado para análise');
 
-  const handleBulkPrint = () => {
-    if (selected.size === 0) { toast.error('Selecione ao menos uma coleta'); return; }
-    const selectedItems = itens.filter(i => selected.has(i.id));
+  const imprimirEtiquetas = (selectedItems: any[]) => {
+    if (selectedItems.length === 0) { toast.error('Selecione ao menos uma coleta'); return; }
     const w = window.open('', '_blank');
     if (!w) {
       toast.error('O navegador bloqueou a janela de impressão. Permita pop-ups para gerar as etiquetas.');
@@ -298,22 +498,28 @@ export default function MapaColeta() {
     const labels = selectedItems.map(item => sampleLabelHtml({
       codigoAmostra: item.codigo_amostra,
       tubo: item.tubo ?? item.tipo_amostra ?? '',
+      paciente: nomePaciente(item.pacientes),
+      nascimento: item.pacientes?.data_nascimento ?? null,
+      dataColeta: dataHoraClinica(item.data_coleta ? new Date(item.data_coleta) : new Date()),
+      exames: item.exames?.tipo_exame ? [item.exames.tipo_exame] : [],
     })).join('');
     w.document.write(`<html><head><meta charset="utf-8"><title>Etiquetas de amostras</title><style>
         body{font-family:Arial,sans-serif;font-size:12px}
-        .label{box-sizing:border-box;width:58mm;min-height:30mm;border:1px dashed #999;padding:3mm;margin:2mm 0;page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm}
+        .label{box-sizing:border-box;width:58mm;min-height:30mm;border:1px dashed #999;padding:3mm;margin:2mm 0;page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm}
+        .patient{font-size:10px;font-weight:bold;text-align:center}
         .sample-code{font-family:monospace;font-size:16px;font-weight:bold;letter-spacing:2px}
         .barcode svg{display:block;width:48mm;height:12mm}
-        .tube{font-size:10px}
+        .tube,.meta{font-size:9px;text-align:center}
         .barcode-error{font-size:9px;color:#900}
         @media print{.no-print{display:none}}</style></head><body>
         <button class="no-print" id="imprimir-mapa">Imprimir</button>
-        <h3 class="no-print">${selected.size} etiqueta(s)</h3>
+        <h3 class="no-print">${contagem(selectedItems.length, 'etiqueta')}</h3>
         ${labels}</body></html>`);
     w.document.close();
     w.document.getElementById('imprimir-mapa')?.addEventListener('click', () => w.print());
-    toast.success(`${selected.size} etiqueta(s) gerada(s)`);
+    toast.success(contagem(selectedItems.length, 'etiqueta gerada', 'etiquetas geradas'));
   };
+  const handleBulkPrint = () => imprimirEtiquetas(itens.filter(i => selected.has(i.id)));
 
   // ─── Derived data ────────────────────────────────────────
   const hoje = todaySaoPauloDateOnly(now);
@@ -448,144 +654,42 @@ export default function MapaColeta() {
 
 
 
-  const StatusBadge = ({ status }: { status: string }) => {
-    if (status === 'coletado') return <Badge variant="outline" className="rounded-full border-success/30 bg-success/10 text-success">Coletado</Badge>;
-    if (status === 'em_analise') return <Badge variant="outline" className="rounded-full border-info/30 bg-info/10 text-info">Em análise</Badge>;
-    if (status === 'recoleta') return <Badge variant="outline" className="gap-1 rounded-full border-destructive/30 bg-destructive/10 text-destructive"><RotateCcw aria-hidden="true" className="h-3 w-3" />Recoleta</Badge>;
-    if (status === 'rejeitada') return <Badge className="rounded-full border-transparent bg-destructive text-destructive-foreground hover:bg-destructive">Rejeitada</Badge>;
-    return <Badge variant="outline" className="rounded-full border-warning/40 bg-warning/10 text-warning-foreground">Pendente</Badge>;
+  // Ações estáveis: as linhas memorizadas não re-renderizam a cada atualização.
+  const acoesRef = useRef<AcoesColeta | null>(null);
+  acoesRef.current = {
+    alternarSelecao: toggleSelect,
+    abrirDetalhe: setDetailId,
+    coletar: (id) => { void handleColetar(id); },
+    encaminharAnalise: (id) => { void handleEncaminharAnalise(id); },
+    recoleta: handleRecoleta,
+    cancelar: setCancelarId,
+    reimprimir: (id) => imprimirEtiquetas(itens.filter(item => item.id === id)),
   };
+  const acoes = useMemo<AcoesColeta>(() => ({
+    alternarSelecao: (id) => acoesRef.current?.alternarSelecao(id),
+    abrirDetalhe: (id) => acoesRef.current?.abrirDetalhe(id),
+    coletar: (id) => acoesRef.current?.coletar(id),
+    encaminharAnalise: (id) => acoesRef.current?.encaminharAnalise(id),
+    recoleta: (id) => acoesRef.current?.recoleta(id),
+    cancelar: (id) => acoesRef.current?.cancelar(id),
+    reimprimir: (id) => acoesRef.current?.reimprimir(id),
+  }), []);
 
-  const ColetaRow = ({ item, idx, showActions = true }: { item: any; idx: number; showActions?: boolean }) => {
-    const age = calcAge(item.pacientes?.data_nascimento);
-    const sexo = sexoPaciente(item.pacientes?.sexo);
-    const convenio = (item.pacientes as any)?.convenios?.nome ?? 'Particular';
-    const isUrgent = item.urgente;
-    const desdeSLA = slaTimestamp(item);
-    const isSLABreach = desdeSLA && differenceInMinutes(now, new Date(desdeSLA)) > SLA_CRITICAL;
-    const eProxima = proximaColeta?.id === item.id;
-    const processando = processingIds.has(item.id);
-
-    return (
-      <tr className={cn(
-        'border-b border-border/50 transition-colors last:border-0 hover:bg-muted/50',
-        eProxima && 'bg-muted/30',
-        isUrgent && 'bg-warning/5',
-        isSLABreach && !isUrgent && 'bg-warning/5',
-      )}>
-        <td className="px-3 py-2">
-          <Checkbox
-            checked={selected.has(item.id)}
-            disabled={bulkProcessing || processando}
-            aria-label={`Selecionar coleta ${item.codigo_amostra || ''} de ${nomePaciente(item.pacientes)}`}
-            onCheckedChange={() => toggleSelect(item.id)}
-          />
-        </td>
-        <td className="px-2 py-2">
-          <span className={cn(
-            'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold tabular-nums',
-            eProxima ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-          )}>
-            {idx + 1}
-          </span>
-        </td>
-        <td className="px-3 py-2">
-          <button type="button" aria-label={`Ver detalhes da coleta ${item.codigo_amostra || ''}`} className="font-mono text-xs font-semibold text-primary hover:underline" onClick={() => setDetailId(item.id)}>
-            {item.codigo_amostra}
-          </button>
-        </td>
-        <td className="px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            {isUrgent && <Zap aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 text-warning-foreground" />}
-            <div className="min-w-0">
-              <div className={cn('flex items-center gap-1.5 text-sm font-medium', isUrgent && 'text-warning-foreground')}>
-                <span className="truncate">{nomePaciente(item.pacientes)}</span>
-                {eProxima && <Badge className="rounded-full border-transparent bg-primary text-[9px] text-primary-foreground hover:bg-primary">Próxima</Badge>}
-              </div>
-              <p className="text-[11px] text-muted-foreground">{age !== null ? `${age}a` : '?'} · {sexo}{item.pacientes?.cpf ? ` · ${item.pacientes.cpf}` : ''}</p>
-            </div>
-          </div>
-        </td>
-        <td className="hidden px-3 py-2 text-xs text-muted-foreground md:table-cell">{convenio}</td>
-        <td className="px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            <div aria-hidden="true" className={cn('h-5 w-3 flex-shrink-0 rounded-sm', tuboColor(item.tubo))} />
-            <span className="text-xs">{tuboNome(item.tubo)}</span>
-          </div>
-        </td>
-        <td className="hidden px-3 py-2 text-xs lg:table-cell">{item.exames?.tipo_exame ?? <span className="text-muted-foreground">—</span>}</td>
-        <td className="hidden px-3 py-2 text-center md:table-cell">
-          {item.jejum_necessario ? (
-            <Badge variant="outline" className="gap-0.5 rounded-full text-[10px]"><Droplets aria-hidden="true" className="h-2.5 w-2.5" />{item.jejum_horas ?? '?'}h</Badge>
-          ) : <span className="text-[10px] text-muted-foreground">—</span>}
-        </td>
-        <td className="hidden px-3 py-2 text-center sm:table-cell">
-          {item.status === 'coletado' && item.created_at && item.data_coleta ? (
-            <span className="flex items-center justify-center gap-1 text-xs tabular-nums text-muted-foreground" title="Tempo até a coleta ser registrada">
-              <Timer aria-hidden="true" className="h-3 w-3" />{waitTimeLabel(item.created_at, new Date(item.data_coleta))}
-            </span>
-          ) : desdeSLA ? (
-            <span className={cn('flex items-center justify-center gap-1 text-xs tabular-nums', waitTimeColor(desdeSLA, now))}>
-              <Timer aria-hidden="true" className="h-3 w-3" />{waitTimeLabel(desdeSLA, now)}
-            </span>
-          ) : '—'}
-        </td>
-        <td className="px-3 py-2 text-center"><StatusBadge status={item.status} /></td>
-        <td className="px-3 py-2 text-right">
-          <div className="flex items-center justify-end gap-1">
-            {showActions && aguardaColeta(item) && (
-              <Button size="sm" className="h-9 gap-1 rounded-full bg-primary px-4 text-xs text-primary-foreground hover:bg-primary/90" disabled={processando || bulkProcessing} onClick={() => handleColetar(item.id)}>
-                {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                {processando ? 'Salvando…' : 'Coletar'}
-              </Button>
-            )}
-            {item.status === 'coletado' && (
-              <>
-                <Button size="sm" className="h-9 gap-1 rounded-full bg-primary px-4 text-xs text-primary-foreground shadow-sm hover:bg-primary/90" disabled={processando || bulkProcessing} onClick={() => handleEncaminharAnalise(item.id)}>
-                  {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
-                  {processando ? 'Salvando…' : 'Análise'}
-                </Button>
-                <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-warning-foreground" aria-label={`Solicitar recoleta ${item.codigo_amostra || ''}`} title="Solicitar recoleta" disabled={processando || bulkProcessing} onClick={() => handleRecoleta(item.id)}>
-                  {processando ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                </Button>
-              </>
-            )}
-            {aguardaColeta(item) && (
-              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-destructive hover:text-destructive" aria-label={`Cancelar coleta ${item.codigo_amostra || ''}`} title="Cancelar coleta" disabled={processando || bulkProcessing} onClick={() => setCancelarId(item.id)}>
-                {processando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-              </Button>
-            )}
-          </div>
-        </td>
-      </tr>
-    );
+  // 40: leitor de código de barras digita o código e envia Enter.
+  const biparAmostra = (lido: string) => {
+    const codigo = lido.trim().toUpperCase();
+    setCodigoBipado('');
+    if (!codigo) return;
+    const item = itens.find(i => String(i.codigo_amostra ?? '').toUpperCase() === codigo);
+    if (!item) { toast.error(`Amostra ${codigo} não está no mapa de coleta.`); return; }
+    setTuboFiltro('Todos'); setFiltroRapido('todos'); setSetorFiltro('todos'); setSearch(codigo);
+    setSelected(prev => new Set(prev).add(item.id));
+    toast.success(`Amostra ${codigo} localizada e selecionada`, { description: nomePaciente(item.pacientes) });
   };
 
   if (loadError) {
     return <ErrorState title="Não foi possível atualizar o mapa de coleta" description="Os dados anteriores foram ocultados para evitar registrar coleta com status desatualizado." error={loadError} onRetry={() => void fetchColetas()} />;
   }
-
-  const TableHead = ({ items, label }: { items: any[]; label: string }) => {
-    const selectedCount = items.filter(item => selected.has(item.id)).length;
-    const allSelected = items.length > 0 && selectedCount === items.length;
-    return (
-    <thead>
-      <tr className="border-b border-border/60 bg-muted/30">
-        <th className="w-8 px-3 py-2.5"><Checkbox checked={allSelected ? true : selectedCount > 0 ? 'indeterminate' : false} disabled={bulkProcessing} aria-label={`Selecionar todas as coletas: ${label}`} onCheckedChange={() => toggleAll(items)} /></th>
-        <th className="w-8 px-2 py-2.5 text-xs font-medium text-muted-foreground">#</th>
-        <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Código</th>
-        <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Paciente</th>
-        <th className="hidden px-3 py-2.5 text-left text-xs font-medium text-muted-foreground md:table-cell">Convênio</th>
-        <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Tubo</th>
-        <th className="hidden px-3 py-2.5 text-left text-xs font-medium text-muted-foreground lg:table-cell">Exame</th>
-        <th className="hidden px-3 py-2.5 text-center text-xs font-medium text-muted-foreground md:table-cell">Jejum</th>
-        <th className="hidden px-3 py-2.5 text-center text-xs font-medium text-muted-foreground sm:table-cell">Espera / coleta</th>
-        <th className="px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">Status</th>
-        <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">Ações</th>
-      </tr>
-    </thead>
-    );
-  };
 
   const descricao = itens.length > 0
     ? `${coletasHoje} coleta${coletasHoje === 1 ? '' : 's'} hoje · ${aguardandoTotal} pendente${aguardandoTotal === 1 ? '' : 's'} · ${emAndamento} em andamento · ${concluidasHoje} concluída${concluidasHoje === 1 ? '' : 's'}`
@@ -620,7 +724,7 @@ export default function MapaColeta() {
               </Button>
             )}
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" disabled={loading} onClick={() => void fetchColetas()} aria-label="Atualizar mapa de coleta" title="Atualizar mapa de coleta">
-              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+              <RefreshCw className={cn('h-4 w-4', (loading || refreshing) && 'animate-spin')} />
             </Button>
           </>
         }
@@ -636,7 +740,7 @@ export default function MapaColeta() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-destructive">
-              {slaBreaches.length} coleta(s) excedendo SLA de {SLA_CRITICAL}min
+              {contagem(slaBreaches.length, 'coleta')} além do SLA de {SLA_CRITICAL} min
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {slaBreaches.slice(0, 3).map(i => `${nomePaciente(i.pacientes)} (${waitTimeLabel(slaTimestamp(i) || i.created_at, now)})`).join(' · ')}
@@ -784,9 +888,9 @@ export default function MapaColeta() {
             </SelectContent>
           </Select>
           {selected.size > 0 && (
-            <Badge variant="outline" className="h-8 gap-1 rounded-full border-border text-xs text-primary">
-              {selected.size} selecionado(s)
-              <button type="button" aria-label="Limpar seleção de coletas" className="ml-1 hover:text-destructive" onClick={() => setSelected(new Set())}>✕</button>
+            <Badge variant="outline" className="h-8 gap-1 rounded-full border-border text-xs text-foreground">
+              {contagem(selected.size, 'selecionada', 'selecionadas')}
+              <button type="button" aria-label="Limpar seleção de coletas" className="relative ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full hover:text-destructive after:absolute after:-inset-2.5 after:content-['']" onClick={() => setSelected(new Set())}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
             </Badge>
           )}
           {temFiltro && (
@@ -794,10 +898,21 @@ export default function MapaColeta() {
               <X aria-hidden="true" className="h-3.5 w-3.5" /> Limpar filtros
             </Button>
           )}
+          <div className="flex min-h-11 items-center gap-2">
+            <Checkbox id="mapa-agrupar-paciente" checked={agruparPaciente} onCheckedChange={(v) => setAgruparPaciente(v === true)} />
+            <Label htmlFor="mapa-agrupar-paciente" className="text-sm">Agrupar por paciente (ordem dos tubos)</Label>
+          </div>
           <p className="ml-auto text-xs text-muted-foreground" aria-live="polite">
-            {filtrado.length} de {itens.length} coleta{itens.length === 1 ? '' : 's'}
+            {filtrado.length} de {itens.length} coleta{itens.length === 1 ? '' : 's'}{refreshing ? ' · atualizando…' : ''}
           </p>
         </div>
+        <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); biparAmostra(codigoBipado); }}>
+          <div className="min-w-0 flex-1 space-y-1 sm:max-w-xs">
+            <Label htmlFor="mapa-bipar-amostra" className="text-xs">Bipar amostra</Label>
+            <Input id="mapa-bipar-amostra" value={codigoBipado} onChange={(event) => setCodigoBipado(event.target.value)} placeholder="Leia o código de barras do tubo" autoComplete="off" className="h-11 font-mono uppercase" />
+          </div>
+          <Button type="submit" variant="outline" className="min-h-11 rounded-full" disabled={!codigoBipado.trim()}>Localizar</Button>
+        </form>
 
         {setores.length > 0 && (
           <div role="group" aria-label="Filtrar por sala ou setor" className="flex flex-wrap items-center gap-1.5">
@@ -827,12 +942,26 @@ export default function MapaColeta() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16" role="status" aria-label="Carregando coletas"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+        <div className="flex justify-center py-16" role="status" aria-label="Carregando coletas"><Loader2 className="h-8 w-8 animate-spin text-foreground" /></div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-6" aria-busy={refreshing}>
           {grupos.map(grupo => {
             const pendentesGrupo = grupo.itens.filter(aguardaColeta).length;
             const idGrupo = `coletas-setor-${grupo.chave.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+            const blocos = agruparPaciente
+              ? agruparPorPaciente(grupo.itens).map(paciente => ({ chave: paciente.chave, titulo: paciente.nome, itens: paciente.itens }))
+              : [{ chave: 'todos', titulo: '', itens: grupo.itens }];
+            const selecionadosGrupo = grupo.itens.filter(item => selected.has(item.id)).length;
+            const propsDe = (item: any, idx: number): PropsColeta => ({
+              item, idx, showActions: item.status !== 'rejeitada', selecionado: selected.has(item.id),
+              processando: processingIds.has(item.id), bulkProcessing, eProxima: proximaColeta?.id === item.id, now, acoes,
+            });
+            let contador = 0;
+            const linhas: Array<{ tipo: 'paciente'; chave: string; titulo: string; total: number } | { tipo: 'item'; item: any; idx: number }> = [];
+            for (const bloco of blocos) {
+              if (bloco.titulo) linhas.push({ tipo: 'paciente', chave: bloco.chave, titulo: bloco.titulo, total: bloco.itens.length });
+              for (const item of bloco.itens) linhas.push({ tipo: 'item', item, idx: contador++ });
+            }
             return (
               <section key={grupo.chave} aria-labelledby={idGrupo} className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -840,17 +969,26 @@ export default function MapaColeta() {
                     <DoorOpen className="h-4 w-4" />
                   </span>
                   <h2 id={idGrupo} className="text-base font-semibold text-foreground">{grupo.nome}</h2>
-                  <Badge variant="outline" className="h-5 rounded-full border-border bg-white text-xs tabular-nums text-primary">{grupo.itens.length}</Badge>
+                  <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-foreground">{grupo.itens.length}</Badge>
                   <span className="text-xs text-muted-foreground">
                     {pendentesGrupo > 0 ? `${pendentesGrupo} aguardando coleta` : 'nenhuma pendente'}
                   </span>
                 </div>
-                <Card className="rounded-2xl border-border/60 shadow-xs">
+                <ul className="space-y-2 md:hidden" aria-label={`Coletas: ${grupo.nome}`}>
+                  {linhas.map(linha => linha.tipo === 'paciente'
+                    ? <li key={`p-${linha.chave}`} className="pt-1 text-sm font-semibold">{linha.titulo} · {contagem(linha.total, 'tubo')} na ordem de coleta</li>
+                    : <FichaColeta key={linha.item.id} {...propsDe(linha.item, linha.idx)} />)}
+                </ul>
+                <Card className="hidden rounded-2xl border-border/60 shadow-xs md:block">
                   <CardContent className="p-3">
                     <div className="overflow-x-auto overflow-y-hidden rounded-xl border border-border/60">
                       <table className="w-full text-sm">
-                        <TableHead items={grupo.itens} label={grupo.nome.toLowerCase()} />
-                        <tbody>{grupo.itens.map((item, idx) => <ColetaRow key={item.id} item={item} idx={idx} showActions={item.status !== 'rejeitada'} />)}</tbody>
+                        <CabecalhoTabela total={grupo.itens.length} selecionados={selecionadosGrupo} label={grupo.nome.toLowerCase()} bulkProcessing={bulkProcessing} onToggleAll={() => toggleAll(grupo.itens)} />
+                        <tbody>
+                          {linhas.map(linha => linha.tipo === 'paciente'
+                            ? <tr key={`p-${linha.chave}`} className="border-b border-border/50 bg-secondary/60"><th scope="rowgroup" colSpan={11} className="px-3 py-2 text-left text-xs font-semibold">{linha.titulo} · {contagem(linha.total, 'tubo')} na ordem de coleta</th></tr>
+                            : <LinhaColeta key={linha.item.id} {...propsDe(linha.item, linha.idx)} />)}
+                        </tbody>
                       </table>
                     </div>
                   </CardContent>

@@ -98,10 +98,12 @@ export default function PatientStatusPage() {
     setSaving(true);
     try {
       const result = await setPatientActiveStatus(patient.id, !isActive, reason as PatientStatusReason);
+      // Todas as telas que mostram o status do paciente: lista, ficha aberta,
+      // indicadores, combobox de busca e as tarefas que leem a ficha.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['busca-pacientes'] }),
-        queryClient.invalidateQueries({ queryKey: ['pacientes-lista-detalhes'] }),
-      ]);
+        'busca-pacientes', 'pacientes-lista-detalhes', 'paciente-lista-selecionado', 'paciente-deep-link',
+        'pacientes-estatisticas', 'patient-status-context', 'patient-portal-link-context', 'pacientes',
+      ].map(chave => queryClient.invalidateQueries({ queryKey: [chave] })));
       completed.current = true;
       if (result.alterado) {
         toast.success(result.ativo ? 'Paciente reativado.' : 'Paciente inativado.', {

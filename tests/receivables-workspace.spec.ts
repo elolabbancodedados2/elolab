@@ -27,17 +27,19 @@ test('receivables prioritize collection, show remaining balance and due urgency'
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/contas?tab=receber');
   const main = page.locator('#main-content');
-  const hero = main.locator('[class*="order-2"]').filter({ hasText: 'Receita vencida há mais tempo' });
+  const hero = main.locator('.overflow-hidden.rounded-xl').filter({ hasText: 'Receita vencida há mais tempo' });
   await expect(hero.getByText('Saldo a receber', { exact: true }).locator('..')).toContainText(/550,00/);
-  const chartHeading = main.getByRole('heading', { name: 'Receita por Categoria' });
+  const chartHeading = main.getByRole('heading', { name: 'Receita por categoria' });
   expect((await hero.boundingBox())!.y).toBeLessThan((await chartHeading.boundingBox())!.y);
   await page.screenshot({ path: testInfo.outputPath('receivables-mobile-summary.png'), animations: 'disabled' });
 
-  const conta = main.getByRole('row').filter({ hasText: descricao });
+  // No celular as receitas viram fichas (listitem) em vez de linhas de tabela.
+  const conta = main.getByRole('list', { name: 'Receitas' }).getByRole('listitem').filter({ hasText: descricao });
   const vencimento = new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric',
   }).format(dateOffset(-5));
-  await expect(conta.getByText(new RegExp(`Vencimento ${vencimento} · Atrasada há 5 dias`))).toBeVisible();
+  await expect(conta.getByText(vencimento, { exact: true })).toBeVisible();
+  await expect(conta.getByText('Atrasada há 5 dias', { exact: true })).toBeVisible();
 
   const overdueSummary = main.getByRole('button', { name: /Vencidas \/ em atraso/ });
   await overdueSummary.focus();
@@ -51,7 +53,7 @@ test('receivables prioritize collection, show remaining balance and due urgency'
   await page.screenshot({ path: testInfo.outputPath('receivables-mobile-urgency.png'), fullPage: true, animations: 'disabled' });
   await conta.getByRole('button', { name: 'Receber saldo' }).click();
   await expect(page).toHaveURL(/\/contas\/receber\/[^/]+\/recebimento$/);
-  await expect(page.getByRole('heading', { name: 'Confirmar Recebimento' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Confirmar recebimento' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('#contas-receber-valor-parcial')).toHaveValue('550,00');
   await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
@@ -134,11 +136,11 @@ test('receiving partial amount lives on its own page and keeps idempotent retry 
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/contas?tab=receber');
-  const conta = page.getByRole('row').filter({ hasText: 'Procedimento ambulatorial' });
+  const conta = page.getByRole('list', { name: 'Receitas' }).getByRole('listitem').filter({ hasText: 'Procedimento ambulatorial' });
   await conta.getByRole('button', { name: 'Receber saldo' }).click();
 
   await expect(page).toHaveURL('/contas/receber/00000000-0000-4000-9000-000000000041/recebimento');
-  await expect(page.getByRole('heading', { name: 'Confirmar Recebimento' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Confirmar recebimento' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).not.toContainText('00000000-0000-4000-9000-000000000041');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -270,7 +272,7 @@ test('new receivable opens as a page, survives reload, and restores list context
   await search.fill('Procedimento ambulatorial');
   await page.getByRole('combobox', { name: 'Filtrar por categoria' }).click();
   await page.getByRole('option', { name: 'Procedimento', exact: true }).click();
-  await page.getByRole('button', { name: 'Nova Receita', exact: true }).click();
+  await page.getByRole('button', { name: 'Nova receita', exact: true }).click();
 
   await expect(page).toHaveURL('/contas/receber/nova');
   await expect(page.getByRole('heading', { name: 'Nova receita', exact: true })).toBeVisible();
@@ -312,24 +314,27 @@ test('receivable creation keeps the selected patient and draft after an error', 
     return route.fulfill({ status: 201, json: [] });
   });
   await page.goto('/contas?tab=receber&status=aberto&mes=2026-10');
-  await page.getByRole('button', { name: 'Nova Receita', exact: true }).click();
+  await page.getByRole('button', { name: 'Nova receita', exact: true }).click();
   await page.getByRole('combobox', { name: 'Paciente (opcional)' }).click();
   await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo QA');
   await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
-  await page.getByLabel('Descrição da receita').fill('Consulta de avaliação sintética');
-  await page.getByLabel('Valor da receita em reais').fill('184,75');
-  await page.getByLabel('Vencimento da receita').fill('2026-11-20');
+  await page.getByLabel('Descrição *', { exact: true }).fill('Consulta de avaliação sintética');
+  await page.getByLabel('Valor total *', { exact: true }).fill('184,75');
+  await page.getByLabel('Vencimento', { exact: true }).fill('2026-11-20');
 
   await page.getByRole('button', { name: 'Salvar receita', exact: true }).click();
   await expect(page.getByText('Falha sintética ao cadastrar receita', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Descrição da receita')).toHaveValue('Consulta de avaliação sintética');
+  await expect(page.getByLabel('Descrição *', { exact: true })).toHaveValue('Consulta de avaliação sintética');
   await expect(page.getByRole('combobox', { name: 'Paciente (opcional)' })).toContainText('Pessoa Exemplo QA');
   await expect(page).toHaveURL('/contas/receber/nova');
 
   await page.getByRole('button', { name: 'Salvar receita', exact: true }).click();
   await expect(page).toHaveURL('/contas?tab=receber&status=aberto&mes=2026-10');
   expect(payloads).toHaveLength(2);
-  expect(payloads[1]).toMatchObject({
+  // O cadastro envia uma lista (uma linha por parcela); à vista é uma linha só.
+  const created = [payloads[1]].flat() as Record<string, unknown>[];
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({
     tipo: 'receita',
     clinica_id: '00000000-0000-4000-8000-000000000002',
     paciente_id: '00000000-0000-4000-8000-000000000004',
@@ -344,14 +349,14 @@ test('receivable creation keeps the selected patient and draft after an error', 
 test('receivable page protects and discards unsaved form without writing', async ({ page }) => {
   const synthetic = await installSyntheticClinic(page, { today: TODAY, platformAdmin: false });
   await page.goto('/contas/receber/nova');
-  await page.getByLabel('Descrição da receita').fill('Rascunho de receita QA');
+  await page.getByLabel('Descrição *', { exact: true }).fill('Rascunho de receita QA');
 
   await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
   const discard = page.getByRole('alertdialog');
   await expect(discard).toContainText('Alterações não salvas');
   await discard.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(page).toHaveURL('/contas/receber/nova');
-  await expect(page.getByLabel('Descrição da receita')).toHaveValue('Rascunho de receita QA');
+  await expect(page.getByLabel('Descrição *', { exact: true })).toHaveValue('Rascunho de receita QA');
 
   await page.getByRole('button', { name: 'Voltar às contas a receber' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();

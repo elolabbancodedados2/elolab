@@ -8,6 +8,7 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseData';
 import { supabase } from '@/integrations/supabase/client';
 import { medicamentosParaLinhas, textoParaMedicamentos } from '@/lib/templatesPrescricao';
 import { mensagemDeErro } from '@/lib/erros';
+import { legendaVariaveisAtestado } from '@/lib/variaveisAtestado';
 import { PageHeader } from '@/components/PageHeader';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { ErrorState } from '@/components/ErrorState';
@@ -325,11 +326,11 @@ function Editor({ kind }: { kind: 'prescription' | 'certificate' }) {
                 id="certificate-template-content" required
                 value={certificateForm.conteudo || ''}
                 onChange={(e) => setCertificateForm({ ...certificateForm, conteudo: e.target.value })}
-                placeholder="Texto do atestado... Use {{paciente}}, {{data}}, {{medico}} como variáveis"
+                placeholder="Texto do atestado... Use {{nome_paciente}}, {{data_emissao}}, {{medico_nome}} como variáveis"
                 rows={6}
               />
               <p className="text-xs text-muted-foreground">
-                Variáveis disponíveis: {"{{paciente}}"}, {"{{data}}"}, {"{{medico}}"}, {"{{crm}}"}, {"{{dias}}"}
+                Variáveis disponíveis: {legendaVariaveisAtestado()}
               </p>
             </div>
           </div>

@@ -8,7 +8,7 @@ describe('summarizeRoomOccupancy', () => {
       capacity: 4,
       available: 2,
       overCapacity: false,
-      label: '2 vínculos ativos · capacidade 4',
+      label: '2 pacientes · capacidade 4',
     });
   });
 
@@ -18,7 +18,7 @@ describe('summarizeRoomOccupancy', () => {
       capacity: 2,
       available: 0,
       overCapacity: true,
-      label: '3 vínculos ativos · capacidade 2 · acima da capacidade',
+      label: '3 pacientes · capacidade 2 · acima da capacidade',
     });
   });
 
@@ -28,7 +28,11 @@ describe('summarizeRoomOccupancy', () => {
       capacity: 1,
       available: 1,
       overCapacity: false,
-      label: '0 vínculos ativos · capacidade 1',
+      label: '0 pacientes · capacidade 1',
     });
+  });
+
+  it('usa o singular para um paciente', () => {
+    expect(summarizeRoomOccupancy(1, 1).label).toBe('1 paciente · capacidade 1');
   });
 });

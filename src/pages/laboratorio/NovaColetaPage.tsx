@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { mensagemDeErro } from '@/lib/erros';
+import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { PacienteCombobox } from '@/components/patients/PacienteCombobox';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
@@ -137,6 +138,25 @@ function NovaColetaWorkspace() {
     },
   });
 
+  // 36: lote escolhido entre os disponíveis (saldo e validade); texto livre só como alternativa.
+  const [loteId, setLoteId] = useState('');
+  const [loteManual, setLoteManual] = useState(false);
+  const lotesQuery = useQuery({
+    queryKey: ['lab-lotes-coleta', profile?.clinica_id],
+    enabled: !!profile?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('laboratorio_lotes_insumos')
+        .select('id, nome, lote, validade, quantidade, unidade')
+        .eq('clinica_id', profile!.clinica_id!).eq('status', 'disponivel').gt('quantidade', 0)
+        .order('validade', { ascending: true }).limit(200);
+      if (error) throw error;
+      const hoje = todaySaoPauloDateOnly();
+      return ((data ?? []) as Array<{ id: string; nome: string; lote: string; validade: string | null; quantidade: number; unidade: string | null }>)
+        .filter(item => !item.validade || item.validade >= hoje);
+    },
+  });
+  const textoDoLote = (item: { nome: string; lote: string }) => `${item.nome} · lote ${item.lote}`;
+
   const examesPendentesQuery = useQuery({
     queryKey: ['exames-pendentes-lab', profile?.clinica_id, user?.id, newColetaForm.paciente_id],
     queryFn: async () => {
@@ -174,8 +194,19 @@ function NovaColetaWorkspace() {
       const payload = { ...form, clinica_id: profile.clinica_id };
       const { error } = await supabase.from('coletas_laboratorio').insert(payload);
       if (error) throw error;
+      // Baixa de uma unidade do lote usado. A coleta já está salva: falha aqui só avisa.
+      const lote = (lotesQuery.data ?? []).find(item => item.id === loteId);
+      if (lote) {
+        const restante = Math.max(0, Number(lote.quantidade) - 1);
+        const { data: baixa, error: erroBaixa } = await (supabase as any).from('laboratorio_lotes_insumos')
+          .update({ quantidade: restante, ...(restante === 0 ? { status: 'esgotado' } : {}) })
+          .eq('id', lote.id).eq('clinica_id', profile.clinica_id).eq('quantidade', lote.quantidade).select('id').maybeSingle();
+        if (erroBaixa || !baixa) toast.warning('Coleta registrada, mas a baixa do lote não foi feita.', { description: erroBaixa ? mensagemDeErro(erroBaixa) : 'O saldo mudou; confira em Gestão do laboratório.' });
+      }
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab-lotes-coleta', profile?.clinica_id] });
+      queryClient.invalidateQueries({ queryKey: ['lab-gestao-lotes', profile?.clinica_id] });
       queryClient.invalidateQueries({ queryKey: ['coletas-laboratorio', profile?.clinica_id] });
       queryClient.invalidateQueries({ queryKey: ['exames-pendentes-lab', profile?.clinica_id] });
       toast.success('Coleta registrada com sucesso!');
@@ -249,7 +280,7 @@ function NovaColetaWorkspace() {
               volume_ml: newColetaForm.volume_ml ? parseFloat(newColetaForm.volume_ml) : null,
               condicao_amostra: newColetaForm.condicao_amostra.length > 0 ? newColetaForm.condicao_amostra : null,
               sitio_coleta: newColetaForm.sitio_coleta && newColetaForm.sitio_coleta !== '__none__' ? newColetaForm.sitio_coleta : null,
-              lote_insumo: newColetaForm.lote_insumo || null,
+              lote_insumo: newColetaForm.lote_insumo.trim() || null,
               finalidade: newColetaForm.finalidade || 'diagnostico',
               indicacao_clinica: newColetaForm.indicacao_clinica || null,
               categoria_exame: newColetaForm.categoria_exame || null,
@@ -291,10 +322,34 @@ function NovaColetaWorkspace() {
               </h2>
               <p className="text-xs text-muted-foreground">Código gerado automaticamente ao salvar.</p>
               <div className="space-y-1.5">
-                <Label htmlFor="coleta-lote_insumo" className="text-xs">Lote do Insumo (tubo/agulha)</Label>
-                <Input id="coleta-lote_insumo" aria-label="Lote do insumo" value={newColetaForm.lote_insumo}
-                  onChange={e => setNewColetaForm(p => ({ ...p, lote_insumo: e.target.value }))}
-                  placeholder="Ex: LOT-2026-03-ABC123" />
+                <Label htmlFor="coleta-lote_escolha" className="text-xs">Lote do insumo (tubo ou agulha)</Label>
+                <Select
+                  value={loteId || (loteManual ? '__outro__' : '__none__')}
+                  disabled={lotesQuery.isLoading}
+                  onValueChange={value => {
+                    if (value === '__none__') { setLoteId(''); setLoteManual(false); setNewColetaForm(p => ({ ...p, lote_insumo: '' })); return; }
+                    if (value === '__outro__') { setLoteId(''); setLoteManual(true); setNewColetaForm(p => ({ ...p, lote_insumo: '' })); return; }
+                    const lote = (lotesQuery.data ?? []).find(item => item.id === value);
+                    setLoteId(value);
+                    setLoteManual(false);
+                    setNewColetaForm(p => ({ ...p, lote_insumo: lote ? textoDoLote(lote) : '' }));
+                  }}
+                >
+                  <SelectTrigger id="coleta-lote_escolha"><SelectValue placeholder={lotesQuery.isLoading ? 'Carregando lotes…' : 'Selecione o lote'} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Não informado</SelectItem>
+                    {(lotesQuery.data ?? []).map(item => (
+                      <SelectItem key={item.id} value={item.id}>{textoDoLote(item)} · saldo {item.quantidade}{item.unidade ? ` ${item.unidade}` : ''}{item.validade ? ` · val. ${item.validade.split('-').reverse().join('/')}` : ''}</SelectItem>
+                    ))}
+                    <SelectItem value="__outro__">Outro lote (digitar)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {lotesQuery.isError && <p className="text-xs text-muted-foreground">Não foi possível carregar os lotes; digite o lote abaixo.</p>}
+                {!loteId && (loteManual || lotesQuery.isError) && (
+                  <Input id="coleta-lote_insumo" aria-label="Lote do insumo digitado" value={newColetaForm.lote_insumo}
+                    onChange={e => setNewColetaForm(p => ({ ...p, lote_insumo: e.target.value }))}
+                    placeholder="Ex: LOT-2026-03-ABC123" />
+                )}
               </div>
             </div>
 

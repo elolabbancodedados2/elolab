@@ -18,7 +18,8 @@ test('receivable details open as a page, show payments and audit history, and re
   await page.goto('/contas?tab=receber&status=aberto&mes=2026-10');
   const main = page.locator('#main-content');
   await main.getByRole('textbox', { name: 'Buscar contas a receber' }).fill('Procedimento ambulatorial');
-  const row = main.getByRole('row').filter({ hasText: 'Procedimento ambulatorial de complexidade intermediária' });
+  // No celular as receitas viram fichas (listitem) em vez de linhas de tabela.
+  const row = main.getByRole('list', { name: 'Receitas' }).getByRole('listitem').filter({ hasText: 'Procedimento ambulatorial de complexidade intermediária' });
   const accountReadPromise = page.waitForRequest(request => {
     const url = new URL(request.url());
     return request.method() === 'GET' && url.pathname === '/rest/v1/lancamentos'

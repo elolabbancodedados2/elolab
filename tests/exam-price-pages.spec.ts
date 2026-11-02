@@ -106,7 +106,7 @@ test('agreement price keeps optimistic version and returns to its filtered tab',
     return route.fulfill(writes === 1 ? { status: 400, json: { message: 'Falha sintética de preço' } } : { json: [{ id, updated_at: version }] });
   });
   await page.goto('/precos-servicos');
-  await page.getByRole('tab', { name: 'Por Convênio', exact: true }).click();
+  await page.getByRole('tab', { name: 'Por convênio', exact: true }).click();
   await page.getByLabel('Buscar exame ou código TUSS').fill('Hemograma');
   await page.getByRole('button', { name: `Editar preço de ${internal.nome}`, exact: true }).click();
   await page.getByLabel('Valor Tabela (R$) *').fill('60');
@@ -114,8 +114,8 @@ test('agreement price keeps optimistic version and returns to its filtered tab',
   await expect(page.getByText('Falha sintética de preço', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Valor Tabela (R$) *')).toHaveValue('60');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
-  await expect(page).toHaveURL('/precos-servicos');
-  await expect(page.getByRole('tab', { name: 'Por Convênio', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL('/precos-servicos?sub=convenio');
+  await expect(page.getByRole('tab', { name: 'Por convênio', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('Buscar exame ou código TUSS')).toHaveValue('Hemograma');
   expect(writes).toBe(2);
 });
@@ -149,8 +149,8 @@ test('new particular price preserves other rows and returns to the price table t
     return route.fulfill({ json: [{ id: 'config-qa' }] });
   });
   await page.goto('/precos-servicos');
-  await page.getByRole('tab', { name: 'Tabela de Preços', exact: true }).click();
-  await page.getByRole('button', { name: 'Novo Exame', exact: true }).click();
+  await page.getByRole('tab', { name: 'Tabela de preços', exact: true }).click();
+  await page.getByRole('button', { name: 'Novo exame', exact: true }).click();
   await expect(page).toHaveURL('/precos-servicos/exames/particular/novo');
   await page.getByRole('combobox', { name: 'Nome do exame' }).click();
   await page.getByPlaceholder('Buscar ou digitar nome do exame...').fill('Novo exame QA');
@@ -159,7 +159,7 @@ test('new particular price preserves other rows and returns to the price table t
   await page.getByLabel('Valor Particular (R$) *').fill('75');
   await page.getByRole('button', { name: 'Cadastrar Exame', exact: true }).click();
   await expect(page).toHaveURL('/precos-servicos');
-  await expect(page.getByRole('tab', { name: 'Tabela de Preços', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Tabela de preços', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(writes).toBe(1);
 });
 

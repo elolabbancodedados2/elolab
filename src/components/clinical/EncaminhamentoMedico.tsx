@@ -39,6 +39,8 @@ import { ErrorState } from '@/components/ErrorState';
 import { mensagemDeErro } from '@/lib/erros';
 import { Cid10Search } from './Cid10Search';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import { combinarEspecialidades, rascunhoDaEvolucao } from '@/lib/encaminhamentoEvolucao';
 
 interface Encaminhamento {
   id: string;
@@ -65,6 +67,7 @@ interface Encaminhamento {
 
 interface Medico {
   id: string;
+  nome: string | null;
   crm: string;
   especialidade: string | null;
 }
@@ -104,10 +107,10 @@ const ESPECIALIDADES = [
 ];
 
 const URGENCIAS = [
-  { value: 'eletivo', label: 'Eletivo', color: 'bg-blue-100 text-blue-800' },
-  { value: 'normal', label: 'Normal', color: 'bg-green-100 text-green-800' },
-  { value: 'urgente', label: 'Urgente', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'emergencia', label: 'Emergência', color: 'bg-red-100 text-red-800' },
+  { value: 'eletivo', label: 'Eletivo', color: 'border-border bg-muted text-muted-foreground' },
+  { value: 'normal', label: 'Normal', color: 'border-border bg-secondary text-foreground' },
+  { value: 'urgente', label: 'Urgente', color: 'border-warning/40 bg-warning/10 text-warning-foreground' },
+  { value: 'emergencia', label: 'Emergência', color: 'border-destructive/30 bg-destructive/10 text-destructive' },
 ];
 
 export function EncaminhamentoMedico({
@@ -159,10 +162,10 @@ export function EncaminhamentoMedico({
       setMedicosError(null);
       const { data, error } = await supabase
         .from('medicos')
-        .select('id, crm, especialidade')
+        .select('id, nome, crm, especialidade')
         .eq('clinica_id', profile.clinica_id)
         .eq('ativo', true)
-        .order('crm');
+        .order('nome');
 
       if (!active) return;
       if (error) {
@@ -276,9 +279,9 @@ export function EncaminhamentoMedico({
       case 'pendente':
         return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>;
       case 'em_andamento':
-        return <Badge className="bg-blue-100 text-blue-800"><Send className="h-3 w-3 mr-1" />Em Andamento</Badge>;
+        return <Badge variant="outline" className="border-border bg-muted text-foreground"><Send className="h-3 w-3 mr-1" />Em Andamento</Badge>;
       case 'concluido':
-        return <Badge className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Concluído</Badge>;
+        return <Badge variant="outline" className="border-border bg-secondary text-foreground"><CheckCircle className="h-3 w-3 mr-1" />Concluído</Badge>;
       case 'cancelado':
         return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Cancelado</Badge>;
       default:
@@ -289,6 +292,52 @@ export function EncaminhamentoMedico({
   const getUrgenciaBadge = (urgencia: string | null) => {
     const config = URGENCIAS.find(u => u.value === urgencia) || URGENCIAS[1];
     return <Badge className={config.color}>{config.label}</Badge>;
+  };
+
+  // Especialidades da lista padrão mais as cadastradas nos médicos da clínica.
+  const especialidades = combinarEspecialidades(ESPECIALIDADES, medicos.map(medico => medico.especialidade));
+
+  // Preenche motivo, hipótese e tratamento com a evolução de origem, sem
+  // apagar o que já foi digitado. A leitura passa pela autorização auditada
+  // do histórico, como no restante do prontuário.
+  const [preenchendo, setPreenchendo] = useState(false);
+  const preencherComEvolucao = async () => {
+    if (!prontuarioId || !profile?.clinica_id || preenchendo) return;
+    setPreenchendo(true);
+    try {
+      await autorizarLeituraHistoricoPaciente(pacienteId);
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('queixa_principal, historia_doenca_atual, hipotese_diagnostica, diagnostico_principal, conduta, plano_terapeutico, medicamentos_em_uso')
+        .eq('id', prontuarioId)
+        .eq('paciente_id', pacienteId)
+        .eq('clinica_id', profile.clinica_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast({ title: 'Evolução indisponível', description: 'Não encontramos a evolução de origem para este paciente.', variant: 'destructive' });
+        return;
+      }
+      const rascunho = rascunhoDaEvolucao(data);
+      const camposVazios = (Object.keys(rascunho) as Array<keyof typeof rascunho>)
+        .filter(campo => rascunho[campo] && !String(formData[campo] ?? '').trim());
+      const preenchidos = camposVazios.length;
+      setFormData(atual => {
+        const proximo = { ...atual };
+        camposVazios.forEach(campo => {
+          if (!String(proximo[campo] ?? '').trim()) proximo[campo] = rascunho[campo]!;
+        });
+        return proximo;
+      });
+      toast({
+        title: preenchidos > 0 ? 'Dados da evolução copiados' : 'Nada para copiar',
+        description: preenchidos > 0 ? 'Revise motivo, hipótese e tratamento antes de criar o encaminhamento.' : 'Os campos já estavam preenchidos ou a evolução está vazia.',
+      });
+    } catch (error) {
+      toast({ title: 'Não foi possível ler a evolução', description: mensagemDeErro(error), variant: 'destructive' });
+    } finally {
+      setPreenchendo(false);
+    }
   };
 
   const referenciasEnviadas = encaminhamentos.filter(e => e.medico_origem_id === medicoOrigemId);
@@ -382,11 +431,11 @@ export function EncaminhamentoMedico({
                         </div>
                       </div>
                       {enc.contra_referencia && (
-                        <div className="mt-3 p-2 bg-green-50 rounded border border-green-200">
-                          <p className="text-xs font-medium text-green-800">
-                            Contra-referência ({enc.data_contra_referencia && format(parseDateOnly(enc.data_contra_referencia)!, 'dd/MM/yyyy')}):
+                        <div className="mt-3 rounded-lg border border-border bg-secondary p-2">
+                          <p className="text-xs font-medium text-foreground">
+                            Contra-referência{enc.data_contra_referencia ? ` (${format(parseDateOnly(enc.data_contra_referencia)!, 'dd/MM/yyyy')})` : ''}:
                           </p>
-                          <p className="text-sm text-green-700 mt-1">
+                          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
                             {enc.contra_referencia}
                           </p>
                         </div>
@@ -432,7 +481,7 @@ export function EncaminhamentoMedico({
                           )}
                         </div>
                       </div>
-                      {enc.contra_referencia && <p className="mt-3 rounded border border-green-200 bg-green-50 p-2 text-sm text-green-700">Contra-referência: {enc.contra_referencia}</p>}
+                      {enc.contra_referencia && <p className="mt-3 whitespace-pre-wrap break-words rounded-lg border border-border bg-secondary p-2 text-sm text-foreground">Contra-referência: {enc.contra_referencia}</p>}
                     </div>
                   ))}
                 </div>
@@ -444,6 +493,14 @@ export function EncaminhamentoMedico({
 
       {creationPage && <section className="space-y-6">
         <UnsavedChangesGuard dirty={dirty} busy={loading} completed={completed} />
+          {prontuarioId && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3">
+              <p className="text-sm text-muted-foreground">Encaminhamento a partir de uma evolução.</p>
+              <Button type="button" variant="outline" className="min-h-11 gap-1.5 sm:min-h-9" onClick={() => { void preencherComEvolucao(); }} disabled={preenchendo || loading}>
+                <FileCheck aria-hidden="true" className="h-4 w-4" />{preenchendo ? 'Copiando…' : 'Preencher com a evolução'}
+              </Button>
+            </div>
+          )}
           <fieldset disabled={loading} className="min-w-0 space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -456,7 +513,7 @@ export function EncaminhamentoMedico({
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ESPECIALIDADES.map((esp) => (
+                    {especialidades.map((esp) => (
                       <SelectItem key={esp} value={esp}>{esp}</SelectItem>
                     ))}
                   </SelectContent>
@@ -505,7 +562,7 @@ export function EncaminhamentoMedico({
                       m.especialidade?.toLowerCase().includes(formData.especialidade_destino.toLowerCase()))
                     .map((med) => (
                       <SelectItem key={med.id} value={med.id}>
-                        CRM {med.crm} - {med.especialidade}
+                        {med.nome ? `${med.nome} — ` : ''}CRM {med.crm}{med.especialidade ? ` · ${med.especialidade}` : ''}
                       </SelectItem>
                     ))}
                 </SelectContent>

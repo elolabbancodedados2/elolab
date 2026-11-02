@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ArrowLeft, Shield, Search, FileJson, AlertTriangle, Users, LifeBuoy, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Shield, Search, FileJson, AlertTriangle, Users, LifeBuoy, CheckCircle2, FileText, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useBuscaPacientes } from '@/hooks/useBuscaPacientes';
@@ -22,6 +22,10 @@ import { ESCOPOS_EXPORTACAO_LGPD, concluirExportacaoLgpd, exportPatientData, typ
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { formatDateTimePreference } from '@/lib/formatters';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
+import { prazoLegalLgpd } from '@/lib/lgpdPrazo';
+import { gerarExportacaoLgpdPDF } from '@/lib/pdfPacientes';
+import { downloadPDF } from '@/lib/pdfGenerator';
+import { cn } from '@/lib/utils';
 
 type PacienteLGPD = { id: string; nome: string; cpf: string | null; email: string | null };
 type PedidoPendente = { id: string; protocolo: string | null; requested_at: string; escopo: string[] | null; pacientes: { nome: string } | null };
@@ -58,6 +62,9 @@ export default function LgpdPacientes() {
   const [escopo, setEscopo] = useState<EscopoExportacaoLgpd[]>(TODOS_ESCOPOS);
   const [pedidoConclusao, setPedidoConclusao] = useState<PedidoPendente | null>(null);
   const [evidencia, setEvidencia] = useState('');
+  // O último pacote gerado fica só na memória desta tela, para a versão em PDF.
+  const [exportacaoRecente, setExportacaoRecente] = useState<{ titular: string; protocolo: string | null; dados: Record<string, unknown> } | null>(null);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const pendentes = useQuery({
     queryKey: ['lgpd-exportacoes-pendentes', profile?.clinica_id ?? null],
@@ -159,6 +166,7 @@ export default function LgpdPacientes() {
       URL.revokeObjectURL(url);
       concluido.current = true;
       setPacienteEscopo(null);
+      setExportacaoRecente({ titular: paciente.nome, protocolo, dados: data as unknown as Record<string, unknown> });
       voltarParaLista();
       toast.success(`JSON de ${paciente.nome} preparado${protocolo ? ` · protocolo ${protocolo}` : ''}`, { description: 'O pedido segue pendente até a clínica confirmar a entrega ao titular abaixo.' });
       void pendentes.refetch();
@@ -167,6 +175,19 @@ export default function LgpdPacientes() {
       toast.error(err instanceof Error ? err.message : 'Erro ao exportar dados');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const baixarPdfLegivel = async () => {
+    if (!exportacaoRecente || gerandoPdf) return;
+    setGerandoPdf(true);
+    try {
+      const doc = await gerarExportacaoLgpdPDF(exportacaoRecente.titular, exportacaoRecente.protocolo, exportacaoRecente.dados);
+      downloadPDF(doc, `lgpd-relatorio-${exportacaoRecente.protocolo ?? exportacaoRecente.titular.replace(/\s+/g, '_')}.pdf`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível gerar o PDF.');
+    } finally {
+      setGerandoPdf(false);
     }
   };
 
@@ -290,6 +311,11 @@ export default function LgpdPacientes() {
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Solicitado em</p>
                 <p className="mt-1 text-sm text-foreground">{formatDateTimePreference(pedidoConclusao.requested_at)}</p>
+                {prazoLegalLgpd(pedidoConclusao.requested_at) && (
+                  <p className={cn('mt-1 text-xs font-medium', prazoLegalLgpd(pedidoConclusao.requested_at)?.situacao === 'vencido' ? 'text-destructive' : 'text-muted-foreground')}>
+                    {prazoLegalLgpd(pedidoConclusao.requested_at)?.texto}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Escopo registrado</p>
@@ -335,7 +361,7 @@ export default function LgpdPacientes() {
             <Button asChild variant="outline" className="gap-2 rounded-full">
               <Link to="/pacientes"><Users aria-hidden="true" className="h-4 w-4" /> Pacientes</Link>
             </Button>
-            <Button asChild className="gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button asChild className="h-11 gap-2 rounded-full">
               <Link to="/suporte"><LifeBuoy aria-hidden="true" className="h-4 w-4" /> Solicitar análise ao suporte</Link>
             </Button>
           </>
@@ -349,6 +375,23 @@ export default function LgpdPacientes() {
           <span className="mt-2 block font-medium">A exclusão de dados não pode ser concluída por esta tela neste momento. Solicite análise ao suporte antes de confirmar o atendimento ao titular.</span>
         </AlertDescription>
       </Alert>
+
+      {exportacaoRecente && (
+        <div role="status" className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm">
+            <p className="font-medium">Versão legível para o titular</p>
+            <p className="text-muted-foreground">PDF com os dados de {exportacaoRecente.titular}{exportacaoRecente.protocolo ? ` · protocolo ${exportacaoRecente.protocolo}` : ''}. Entregue junto com o JSON.</p>
+          </div>
+          <div className="flex gap-2">
+            <LoadingButton className="h-11 gap-2" onClick={() => void baixarPdfLegivel()} isLoading={gerandoPdf} loadingText="Gerando PDF...">
+              <FileText aria-hidden="true" className="h-4 w-4" />Baixar PDF
+            </LoadingButton>
+            <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Descartar a versão em PDF" onClick={() => setExportacaoRecente(null)}>
+              <X aria-hidden="true" className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Card aria-busy={isLoading || isDebouncing} className="rounded-2xl border-border/60 shadow-xs">
         <CardHeader>
@@ -380,7 +423,7 @@ export default function LgpdPacientes() {
                 <p className="max-w-sm text-sm text-muted-foreground">
                   Nenhum paciente cadastrado ainda. Cadastre uma ficha antes de atender uma solicitação do titular.
                 </p>
-                <Button asChild className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+                <Button asChild className="h-11 rounded-full">
                   <Link to="/pacientes">Ir para Pacientes</Link>
                 </Button>
               </div>
@@ -428,26 +471,34 @@ export default function LgpdPacientes() {
       <Card>
         <CardHeader>
           <CardTitle>Exportações aguardando entrega</CardTitle>
-          <CardDescription>Confirme quando o arquivo chegar ao titular. A confirmação fica na trilha de auditoria.</CardDescription>
+          <CardDescription>Confirme quando o arquivo chegar ao titular. A LGPD (art. 19, II) dá até 15 dias a partir do pedido. A confirmação fica na trilha de auditoria.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {pendentes.isLoading && <ListSkeleton items={2} />}
           {pendentes.error && <ErrorState compact error={pendentes.error} onRetry={() => { void pendentes.refetch(); }} />}
           {pendentes.data?.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma exportação pendente.</p>}
-          {pendentes.data?.map(pedido => (
-            <div key={pedido.id} className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+          {pendentes.data?.map(pedido => {
+            const prazo = prazoLegalLgpd(pedido.requested_at);
+            return (
+            <div key={pedido.id} className={cn('flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between', prazo?.situacao === 'vencido' ? 'border-destructive/40' : 'border-border/60')}>
               <div className="min-w-0 text-sm">
                 <p className="font-medium">{pedido.protocolo ?? 'Sem protocolo'} · {pedido.pacientes?.nome ?? 'Paciente'}</p>
                 <p className="text-xs text-muted-foreground">
                   Pedido em {formatDateTimePreference(pedido.requested_at)} · {(pedido.escopo ?? TODOS_ESCOPOS).map(rotuloEscopo).join(', ')}
                 </p>
+                {prazo && (
+                  <p className={cn('mt-1 text-xs font-medium', prazo.situacao === 'vencido' ? 'text-destructive' : prazo.situacao === 'vence_em_breve' ? 'text-warning-foreground' : 'text-muted-foreground')}>
+                    {prazo.texto}
+                  </p>
+                )}
               </div>
-              <Button size="sm" className="h-9 shrink-0 rounded-lg bg-primary text-xs text-primary-foreground hover:bg-primary/90" onClick={() => abrirEntrega(pedido)}>
+              <Button size="sm" className="h-11 shrink-0 rounded-lg bg-primary text-xs text-primary-foreground hover:bg-primary/90" onClick={() => abrirEntrega(pedido)}>
                 <CheckCircle2 className="mr-1 h-4 w-4" />
                 Confirmar entrega
               </Button>
             </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
 

@@ -103,6 +103,15 @@ export default function ConsentimentoLGPDTaskPage({ task }: { task: Task }) {
       toast({ title: 'Atenção', description: 'Selecione pelo menos um tipo de consentimento.', variant: 'destructive' });
       return;
     }
+    // O asterisco não era só visual: sem o tratamento de dados aceito, os
+    // demais consentimentos não têm base. Só exige se ainda não estiver aceito.
+    if (statusFor(consentimentos, 'tratamento_dados') !== 'aceito' && !aceites.tratamento_dados) {
+      const descricao = 'Marque "Tratamento de Dados Pessoais": ele é obrigatório para registrar os demais consentimentos.';
+      setSaveError(descricao);
+      toast({ title: 'Consentimento obrigatório', description: descricao, variant: 'destructive' });
+      document.getElementById('tratamento_dados')?.focus();
+      return;
+    }
     if (submitLock.current || !clinicId || !patientQuery.data) return;
 
     submitLock.current = true;

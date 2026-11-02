@@ -40,8 +40,30 @@ export function barcode39Svg(value: string): string | null {
   return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Código de barras da amostra ${label}" viewBox="0 0 ${width} ${BAR_HEIGHT}" width="${width}" height="${BAR_HEIGHT}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${bars.join('')}</g></svg>`;
 }
 
-export function sampleLabelHtml({ codigoAmostra, tubo }: { codigoAmostra: string; tubo: string }): string {
+export interface DadosEtiqueta {
+  codigoAmostra: string;
+  tubo: string;
+  /** Identificação do paciente (dois identificadores: nome e nascimento). */
+  paciente?: string | null;
+  /** yyyy-MM-dd */
+  nascimento?: string | null;
+  /** Data e hora já formatadas no fuso da clínica. */
+  dataColeta?: string | null;
+  exames?: string[];
+}
+
+const dataBr = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+};
+
+export function sampleLabelHtml({ codigoAmostra, tubo, paciente, nascimento, dataColeta, exames }: DadosEtiqueta): string {
   const code = codigoAmostra.trim().toUpperCase();
   const barcode = barcode39Svg(code);
-  return `<div class="label"><div class="sample-code">${escapeHtml(code)}</div>${barcode ? `<div class="barcode">${barcode}</div>` : '<div class="barcode-error">Código sem formato compatível para barras</div>'}<div class="tube">Tubo: ${escapeHtml(tubo || 'Não informado')}</div></div>`;
+  const linhaPaciente = paciente?.trim()
+    ? `<div class="patient">${escapeHtml(paciente.trim())}${nascimento ? ` · Nasc. ${escapeHtml(dataBr(nascimento))}` : ''}</div>`
+    : '';
+  const linhaColeta = dataColeta ? `<div class="meta">Coleta: ${escapeHtml(dataColeta)}</div>` : '';
+  const listaExames = exames?.filter(Boolean).length ? `<div class="meta">${escapeHtml(exames.filter(Boolean).join(', '))}</div>` : '';
+  return `<div class="label">${linhaPaciente}<div class="sample-code">${escapeHtml(code)}</div>${barcode ? `<div class="barcode">${barcode}</div>` : '<div class="barcode-error">Código sem formato compatível para barras</div>'}<div class="tube">Tubo: ${escapeHtml(tubo || 'Não informado')}</div>${linhaColeta}${listaExames}</div>`;
 }

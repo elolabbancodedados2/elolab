@@ -55,7 +55,7 @@ for (const width of [1440, 768, 390]) {
     await expect(page).toHaveURL(historyUrl);
     await page.getByRole('button', { name: 'Ver encaminhamento de Pessoa Exemplo QA', exact: true }).click();
     await expect(page).toHaveURL(`/encaminhamentos/${id}`);
-    await expect(page.getByRole('heading', { name: 'Detalhes do Encaminhamento', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Detalhes do encaminhamento', exact: true })).toBeVisible();
     await expect(page.getByText('Exames sintéticos', { exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath(`referral-detail-${width}.png`) });
     await page.getByLabel('Texto da contra-referência').fill('Retorno sintético preservado.');
@@ -145,7 +145,7 @@ test('unrelated physician can read but cannot change referral', async ({ page },
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), role: 'medico', platformAdmin: false, prontuarioPopulated: true });
   await mockDetail(page, { ...record, medico_origem_id: '00000000-0000-4000-8000-000000000099' });
   await page.goto(`/encaminhamentos/${id}`);
-  await expect(page.getByRole('heading', { name: 'Detalhes do Encaminhamento', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Detalhes do encaminhamento', exact: true })).toBeVisible();
   await expect(page.getByLabel('Texto da contra-referência')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Cancelar Encaminhamento', exact: true })).toHaveCount(0);
 });
@@ -165,14 +165,20 @@ test('patient panel opens creation and returns preserving selected patient and s
   await page.goto(historyUrl);
   const search = page.getByRole('textbox', { name: 'Buscar encaminhamentos por paciente, CPF, especialidade ou motivo', exact: true });
   await search.fill('Cardiologia');
-  await page.getByRole('button', { name: /^Pessoa Exemplo QA/ }).click();
-  await page.getByRole('button', { name: 'Novo Encaminhamento', exact: true }).click();
+  // A lista lateral de pacientes virou um filtro por paciente na própria lista.
+  const patientFilter = page.locator('#encaminhamentos-filtro-paciente');
+  await patientFilter.click();
+  await page.getByPlaceholder('Buscar paciente...').fill('Pessoa Exemplo QA');
+  await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
+  await expect(patientFilter).toContainText('Pessoa Exemplo QA');
+  await page.getByRole('button', { name: 'Novo encaminhamento', exact: true }).click();
   await expect(page).toHaveURL(createUrl);
   await expect(page.getByLabel('Motivo do Encaminhamento *', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Voltar aos encaminhamentos', exact: true }).click();
   await expect(search).toHaveValue('Cardiologia');
-  await expect(page.getByRole('button', { name: /^Pessoa Exemplo QA/ })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Ver encaminhamento para Cardiologia', exact: true }).click();
+  await expect(patientFilter).toContainText('Pessoa Exemplo QA');
+  // Na lista única a ação nomeia o paciente; a busca por "Cardiologia" já deixa só este encaminhamento.
+  await page.getByRole('button', { name: 'Ver encaminhamento de Pessoa Exemplo QA', exact: true }).click();
   await expect(page).toHaveURL(`/encaminhamentos/${id}`);
 });
 

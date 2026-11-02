@@ -86,7 +86,8 @@ export function relatorioFaturamentoCompetencia(
       recebido: emCentavos(l.valor_pago),
       glosado: glosa.glosado,
       recuperado: glosa.recuperado,
-      aReceber: Math.max(0, emCentavos(l.valor_apresentado) - emCentavos(l.valor_pago)),
+      // Glosa cheia: o recuperado em recurso entra como receita própria, fora do valor pago do lote.
+      aReceber: Math.max(0, emCentavos(l.valor_apresentado) - emCentavos(l.valor_pago) - glosa.glosado),
     };
     for (const alvo of [linha, total]) {
       alvo.lotes += 1;
@@ -117,7 +118,7 @@ export function csvFaturamentoCompetencia(
     ['Competência', `${mesBr(filtros.competenciaInicial)} a ${mesBr(filtros.competenciaFinal)}`],
     ['Convênio', convenioNome],
     ['Situação', SITUACOES_FATURAMENTO[filtros.situacao].label],
-    ['Glosas', 'Somadas exceto canceladas; a receber = apresentado - recebido'],
+    ['Glosas', 'Somadas exceto canceladas; a receber = apresentado - recebido - glosado'],
     [],
     ['Competência', 'Convênio', 'Lotes', 'Guias', 'Apresentado', 'Recebido', 'Glosado', 'Recuperado', 'A receber'],
     ...relatorio.linhas.map((l) => [mesBr(l.competencia), l.convenio, l.lotes, l.guias, ...CAMPOS.map((c) => reais(l[c]))]),
@@ -131,4 +132,55 @@ export function csvFaturamentoCompetencia(
     linhas.push([l.numero_lote, l.convenio_nome, mesBr(l.competencia.slice(0, 7)), l.status.replace(/_/g, ' '), l.quantidade_guias, reais(Number(l.valor_apresentado)), reais(Number(l.valor_pago))]);
   }
   return linhas.map((linha) => linha.map(formatCsvCell).join(';')).join('\r\n');
+}
+
+export interface GlosaAnalise extends GlosaFaturamento { codigo_glosa?: string | null; motivo?: string | null }
+export interface LinhaAnaliseGlosa {
+  convenio: string;
+  codigo: string;
+  motivo: string;
+  quantidade: number;
+  glosado: number;
+  recuperado: number;
+  perdido: number;
+}
+
+/**
+ * Glosas dos lotes do relatório agrupadas por convênio e código do motivo,
+ * da maior perda para a menor. Canceladas ficam de fora, como nos totais.
+ */
+export function analiseGlosasPorMotivo(
+  lotesIncluidos: ReadonlyArray<LoteFaturamento>,
+  glosas: ReadonlyArray<GlosaAnalise>,
+): LinhaAnaliseGlosa[] {
+  const convenioDoLote = new Map(lotesIncluidos.map((l) => [l.id, l.convenio_nome]));
+  const grupos = new Map<string, { convenio: string; codigo: string; motivo: string; quantidade: number; glosado: number; recuperado: number }>();
+  for (const g of glosas) {
+    if (g.status === 'cancelada') continue;
+    const convenio = convenioDoLote.get(g.lote_id);
+    if (!convenio) continue;
+    const codigo = (g.codigo_glosa ?? '').trim() || 'Sem código';
+    const chave = `${convenio}|${codigo}`;
+    const atual = grupos.get(chave) ?? { convenio, codigo, motivo: (g.motivo ?? '').trim(), quantidade: 0, glosado: 0, recuperado: 0 };
+    atual.quantidade += 1;
+    atual.glosado += emCentavos(g.valor_glosado);
+    atual.recuperado += emCentavos(g.valor_recuperado);
+    if (!atual.motivo && g.motivo) atual.motivo = g.motivo.trim();
+    grupos.set(chave, atual);
+  }
+  return [...grupos.values()]
+    .map((g) => ({ ...g, glosado: g.glosado / 100, recuperado: g.recuperado / 100, perdido: Math.max(0, g.glosado - g.recuperado) / 100 }))
+    .sort((a, b) => b.perdido - a.perdido || a.convenio.localeCompare(b.convenio, 'pt-BR') || a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true }));
+}
+
+export function csvAnaliseGlosas(linhas: ReadonlyArray<LinhaAnaliseGlosa>, filtros: FiltrosFaturamento, convenioNome: string): string {
+  const tabela: unknown[][] = [
+    ['Análise de glosas por convênio e motivo'],
+    ['Competência', `${mesBr(filtros.competenciaInicial)} a ${mesBr(filtros.competenciaFinal)}`],
+    ['Convênio', convenioNome],
+    [],
+    ['Convênio', 'Código', 'Motivo', 'Glosas', 'Glosado', 'Recuperado', 'Perdido'],
+    ...linhas.map((l) => [l.convenio, l.codigo, l.motivo, l.quantidade, reais(l.glosado), reais(l.recuperado), reais(l.perdido)]),
+  ];
+  return tabela.map((linha) => linha.map(formatCsvCell).join(';')).join('\r\n');
 }

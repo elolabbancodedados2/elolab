@@ -23,6 +23,13 @@ describe('proximaVagaLivre', () => {
     expect(proximaVagaLivre({ ...base, agendamentos })).toEqual({ data: '2026-11-02', hora_inicio: '08:00' });
   });
 
+  it('respeita o período pedido sem perder o alinhamento do expediente', () => {
+    const jornada = [{ dia_semana: 1, hora_inicio: '08:10:00', hora_fim: '18:00:00' }];
+    expect(proximaVagaLivre({ ...base, jornada, janela: [12 * 60, 18 * 60] })).toEqual({ data: '2026-11-02', hora_inicio: '12:10' });
+    // Expediente só de manhã e pedido à tarde: segue para a próxima segunda.
+    expect(proximaVagaLivre({ ...base, janela: [12 * 60, 18 * 60] })).toBeNull();
+  });
+
   it('não sugere horário que já passou hoje', () => {
     expect(proximaVagaLivre({ ...base, agoraMinutos: 9 * 60 + 5 })).toEqual({ data: '2026-11-02', hora_inicio: '09:15' });
   });

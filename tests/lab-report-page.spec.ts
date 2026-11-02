@@ -45,7 +45,8 @@ for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 960 });
     await page.goto('/laudos-lab');
     await page.getByPlaceholder('Nome, CPF, código ou exame...').fill('QA-LAUDO-001');
-    await page.getByRole('button', { name: 'Ver Laudo', exact: true }).click();
+    // Tabela no desktop ("Ver Laudo") e fichas no celular ("Ver laudo").
+    await page.getByRole('button', { name: /^Ver laudo$/i }).click();
     await expect(page).toHaveURL(`/laudos-lab/${id}`);
     await expect(page.getByRole('heading', { name: 'Laudo — QA-LAUDO-001', exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);

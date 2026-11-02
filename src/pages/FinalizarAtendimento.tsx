@@ -16,6 +16,8 @@ import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { toast } from 'sonner';
 import { formatWithDatePreference } from '@/lib/datePreference';
 import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
+import { buscarNomeClinica, imprimirDeclaracaoComparecimento } from '@/lib/documentosRecepcao';
+import { horaSP } from '@/lib/caixaFormatacao';
 
 type PatientSummary = {
   nome: string | null;
@@ -123,7 +125,7 @@ export default function FinalizarAtendimento() {
     queryFn: async () => {
       let query = supabase
         .from('fila_atendimento')
-        .select('id, agendamento_id, clinica_id, status, created_at')
+        .select('id, agendamento_id, clinica_id, status, created_at, horario_chegada')
         .eq('clinica_id', clinicaId!)
         .eq('agendamento_id', agendamentoId)
         .neq('status', 'finalizado')
@@ -141,6 +143,8 @@ export default function FinalizarAtendimento() {
 
   // Só médico e admin leem prontuários; para os demais perfis o aviso não aparece.
   const podeVerEvolucao = Boolean(profile?.roles?.some(role => role === 'medico' || role === 'admin'));
+  // O atalho para o Caixa só aparece para quem tem acesso a ele.
+  const podeAbrirCaixa = Boolean(profile?.roles?.some(role => role === 'admin' || role === 'recepcao' || role === 'financeiro'));
   const evolucaoQuery = useQuery({
     queryKey: ['atendimento-finalizacao-evolucao', clinicaId, agendamentoId],
     enabled: Boolean(clinicaId && agendamentoId && podeVerEvolucao),
@@ -266,8 +270,8 @@ export default function FinalizarAtendimento() {
       paginaConcluida.current = true;
       const toastOptions = {
         description: [...result.actions, ...avisos].join(' • '),
-        ...(origem === 'fila'
-          ? { duration: 8000, action: { label: 'Abrir Caixa', onClick: () => navigate('/caixa') } }
+        ...(origem === 'fila' && podeAbrirCaixa
+          ? { duration: 8000, action: { label: 'Abrir caixa', onClick: () => navigate('/caixa') } }
           : {}),
       };
       toast.success(`Atendimento finalizado — ${nomePaciente}`, toastOptions);
@@ -285,6 +289,28 @@ export default function FinalizarAtendimento() {
   const carregando = appointmentQuery.isLoading || queueQuery.isLoading;
   const erro = appointmentQuery.error ?? queueQuery.error;
   const statusFinalizavel = appointment?.status === 'em_atendimento';
+  const [gerandoDeclaracao, setGerandoDeclaracao] = useState(false);
+  const emitirDeclaracao = async () => {
+    if (!appointment) return;
+    setGerandoDeclaracao(true);
+    try {
+      const chegada = (queueQuery.data as { horario_chegada?: string | null } | null | undefined)?.horario_chegada;
+      const aberta = await imprimirDeclaracaoComparecimento({
+        nomeCivil: patient?.nome || nomePaciente,
+        nomeSocial: patient?.nome_social,
+        data: appointment.data || todaySaoPauloDateOnly(),
+        horaChegada: chegada ? horaSP(chegada) : appointment.hora_inicio?.slice(0, 5) ?? null,
+        horaSaida: horaSP(new Date()),
+        clinicaNome: await buscarNomeClinica(clinicaId),
+        profissional: doctor?.nome ?? null,
+      });
+      if (!aberta) toast.error('O navegador bloqueou a nova aba. Permita pop-ups para imprimir a declaração.');
+    } catch (error) {
+      toast.error('Não foi possível gerar a declaração', { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setGerandoDeclaracao(false);
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 pb-24 sm:pb-8">
@@ -294,9 +320,17 @@ export default function FinalizarAtendimento() {
         description="Revise os dados e registre se o paciente precisa retornar. A cobrança e o encerramento são processados juntos."
         icon={<CalendarCheck2 />}
         actions={(
-          <Button type="button" variant="outline" onClick={() => navigate(returnTo)}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
-          </Button>
+          <>
+            {appointment && (
+              <Button type="button" variant="outline" onClick={() => { void emitirDeclaracao(); }} disabled={gerandoDeclaracao}>
+                {gerandoDeclaracao ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <FileText aria-hidden="true" className="mr-2 h-4 w-4" />}
+                Declaração de comparecimento
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => navigate(returnTo)}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+            </Button>
+          </>
         )}
       />
 
@@ -414,6 +448,7 @@ export default function FinalizarAtendimento() {
                       </p>
                       <Link
                         to={`/prontuarios/atendimento?paciente=${appointment.paciente_id}&agendamento=${appointment.id}`}
+                        state={{ returnTo: `${location.pathname}${location.search}` }}
                         className="inline-block font-medium underline underline-offset-2"
                       >
                         Abrir o prontuário

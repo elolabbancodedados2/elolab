@@ -152,7 +152,7 @@ test('salva a evolução alterada como rascunho antes de abrir o agendamento', a
   await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await selectResponsibleDoctor(page);
-  await page.getByLabel('Queixa principal').fill('Queixa sintética revisada antes do retorno');
+  await page.getByRole('textbox', { name: 'Queixa principal' }).fill('Queixa sintética revisada antes do retorno');
   await page.getByRole('button', { name: /Agendar Retorno/ }).click();
 
   await expect(page).toHaveURL(`/prontuarios/${newRecordId}/retornos/novo?medico=${doctor}`);
@@ -201,16 +201,16 @@ test('evolução é criada na página dedicada e salva com paciente e autoria co
   await expect(page.getByRole('heading', { name: 'Nova evolução', exact: true })).toBeVisible();
   await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
 
-  await expect(page.getByRole('button', { name: 'Salvar Prontuário', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Salvar prontuário', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
   await page.screenshot({ path: info.outputPath('new-clinical-note-mobile.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   await selectResponsibleDoctor(page);
-  await page.getByLabel('Queixa principal').fill('Dor de cabeça sintética em avaliação');
+  await page.getByRole('textbox', { name: 'Queixa principal' }).fill('Dor de cabeça sintética em avaliação');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: info.outputPath('new-clinical-note-desktop.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Salvar Prontuário', exact: true }).click();
+  await page.getByRole('button', { name: 'Salvar prontuário', exact: true }).click();
 
   await expect(page).toHaveURL(`/prontuarios?paciente=${patient}`);
   expect(creates).toHaveLength(1);
@@ -232,7 +232,9 @@ test('relatório de alta usa uma página própria e volta ao mesmo contexto clí
   await page.goto(`/prontuarios?paciente=${patient}&prontuario=${recordId}&secao=conduta`);
   await expect(page.getByRole('heading', { name: 'Evolução clínica', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Alta', exact: true }).click();
+  // No celular as ações secundárias da evolução ficam no menu "Mais".
+  await page.getByRole('button', { name: 'Mais', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Relatório de alta' }).click();
   await expect(page).toHaveURL(/\/prontuarios\/atendimento\?.*tela=relatorio-alta/);
   await expect(page.getByRole('heading', { name: 'Relatório de alta', exact: true })).toBeVisible();
   await expect(page.getByTestId('clinical-discharge-report')).toBeVisible();
@@ -312,14 +314,14 @@ test('protege a evolução não salva ao voltar e preserva o texto ao cancelar o
   await page.getByRole('button', { name: 'Novo Atendimento', exact: true }).first().click();
   await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
   await selectResponsibleDoctor(page);
-  await page.getByLabel('Queixa principal').fill('Texto clínico que precisa permanecer');
+  await page.getByRole('textbox', { name: 'Queixa principal' }).fill('Texto clínico que precisa permanecer');
 
   await page.getByRole('navigation', { name: 'Menu principal' }).getByRole('link', { name: 'Agenda', exact: true }).click();
   const discardDialog = page.getByRole('alertdialog');
   await expect(discardDialog).toContainText('Alterações não salvas');
   await discardDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
-  await expect(page.getByLabel('Queixa principal')).toHaveValue('Texto clínico que precisa permanecer');
+  await expect(page.getByRole('textbox', { name: 'Queixa principal' })).toHaveValue('Texto clínico que precisa permanecer');
 
   await page.getByRole('button', { name: 'Voltar aos prontuários' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar', exact: true }).click();
