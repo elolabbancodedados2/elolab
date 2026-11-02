@@ -21,4 +21,10 @@ describe('acesso a recursos do plano', () => {
     expect(canAccessPlanFeature({ plano_slug: 'elolab-max', status: 'ativa' }, 'agente_ia')).toBe(false);
     expect(canAccessPlanFeature(null, 'agente_ia', true)).toBe(true);
   });
+
+  it('libera exames e automações para a equipe sem assinatura própria', () => {
+    expect(canAccessPlanFeature(null, 'exames')).toBe(true);
+    expect(canAccessPlanFeature(null, 'automacoes')).toBe(true);
+    expect(canAccessPlanFeature(null, 'agente_ia')).toBe(false);
+  });
 });
