@@ -24,6 +24,6 @@ export function summarizeRoomOccupancy(occupiedCount: number, configuredCapacity
     capacity,
     available: Math.max(0, capacity - occupied),
     overCapacity,
-    label: `${occupied} vínculos ativos · capacidade ${capacity}${overCapacity ? ' · acima da capacidade' : ''}`,
+    label: `${occupied} ${occupied === 1 ? 'paciente' : 'pacientes'} · capacidade ${capacity}${overCapacity ? ' · acima da capacidade' : ''}`,
   };
 }

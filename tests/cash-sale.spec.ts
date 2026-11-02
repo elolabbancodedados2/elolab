@@ -63,6 +63,7 @@ test('sale lives on its own page and retries a committed sale with the same idem
   await page.getByRole('tab', { name: 'Consultas' }).click();
   await page.getByRole('button', { name: /Consulta geral QA/ }).click();
   await page.getByLabel('Desconto (R$)').fill('5,00');
+  await page.getByLabel('Motivo do desconto').fill('Cortesia QA');
   await page.getByRole('button', { name: 'PIX', exact: true }).click();
   await page.getByRole('button', { name: 'Voltar ao caixa' }).click();
   const discard = page.getByRole('alertdialog');
@@ -92,7 +93,7 @@ test('sale lives on its own page and retries a committed sale with the same idem
   await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({
-    p_descricao: 'Consulta geral QA', p_valor_cobrado: 85, p_valor_pago: 80,
+    p_descricao: 'Consulta geral QA · Desconto: Cortesia QA', p_valor_cobrado: 85, p_valor_pago: 80,
     p_forma_pagamento: 'pix', p_produtos: [], p_exames: [],
   });
   expect(payloads[1]).toMatchObject(payloads[0]);
@@ -114,10 +115,10 @@ test('exam sales require a patient and product quantities respect stock', async 
   await expect(page.getByRole('button', { name: 'Finalizar venda' })).toBeDisabled();
   await expect(page.getByText('Selecione um paciente para registrar exames vendidos.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Remover item da venda' }).click();
+  await page.getByRole('button', { name: 'Remover Hemograma QA da venda' }).click();
   await page.getByRole('tab', { name: 'Produtos' }).click();
   await page.getByRole('button', { name: /Máscara QA/ }).click();
-  await expect(page.getByRole('button', { name: 'Aumentar quantidade' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Aumentar quantidade de Máscara QA' })).toBeDisabled();
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });
 

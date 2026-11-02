@@ -133,7 +133,8 @@ test('stock history handles empty and failed reads without an overlay', async ({
     const params = new URL(route.request().url()).searchParams;
     expect(params.get('clinica_id')).toBe(`eq.${clinic}`);
     expect(params.get('item_id')).toBe(`eq.${id}`);
-    expect(params.get('limit')).toBe('50');
+    // Página de 50 movimentações; a 51ª só indica que existe mais histórico para carregar.
+    expect(params.get('limit')).toBe('51');
     return route.fulfill(fail ? { status: 400, json: { message: 'Falha sintética do histórico' } } : { json: [] });
   });
   await page.goto(`/estoque/${id}/historico`);

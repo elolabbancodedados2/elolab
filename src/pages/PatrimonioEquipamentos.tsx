@@ -17,6 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { mensagemDeErro } from '@/lib/erros';
+import { somarDias } from '@/lib/pedidoCompraDocumento';
+import { ordenarOrdensDoAtivo, rotuloAuditoria, situacaoGarantia } from '@/lib/patrimonioOperacao';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -73,6 +77,11 @@ export default function PatrimonioEquipamentos() {
   const [statusFilter, setStatusFilter] = useState<'todos' | Asset['status']>('todos');
   const [categoryFilter, setCategoryFilter] = useState('todas');
   const [indicador, setIndicador] = useState<'todos' | Indicador>('todos');
+  const [ordensExpandidas, setOrdensExpandidas] = useState<Record<string, boolean>>({});
+  const [proximoPrazo, setProximoPrazo] = useState<Record<string, string>>({});
+  const [cancelarOrdem, setCancelarOrdem] = useState<Order | null>(null);
+  const [aposentarAtivo, setAposentarAtivo] = useState<Asset | null>(null);
+  const [concluindo, setConcluindo] = useState<string | null>(null);
   const assetFormRef = useRef<HTMLDivElement>(null);
   const orderFormRef = useRef<HTMLDivElement>(null);
 
@@ -175,19 +184,49 @@ export default function PatrimonioEquipamentos() {
     return result;
   };
   const refresh = () => client.invalidateQueries({ queryKey: ['clinic-equipment', profile?.clinica_id] });
-  const operation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error(error.message || 'Operação não concluída') });
+  const operation = useMutation({ mutationFn: invoke, onSuccess: () => void refresh(), onError: (error) => toast.error('Operação não concluída.', { description: mensagemDeErro(error) }) });
+
+  /**
+   * Conclui a OS e já agenda o próximo prazo: calibração atualiza a data do
+   * ativo; preventiva abre a próxima ordem com o prazo informado.
+   */
+  const prazoSugerido = (order: Order, asset: Asset) => (order.kind === 'calibration'
+    ? somarDias(hoje, 365)
+    : order.kind === 'preventive' && asset.maintenance_interval_days ? somarDias(hoje, asset.maintenance_interval_days) : '');
+  const concluirOrdem = async (order: Order, asset: Asset) => {
+    const nota = (completionNotes[order.id] || '').trim();
+    const proximo = proximoPrazo[order.id] ?? prazoSugerido(order, asset);
+    setConcluindo(order.id);
+    try {
+      await invoke({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'completed', completion_note: nota } });
+      if (proximo && order.kind === 'calibration') {
+        await invoke({ action: 'update_asset', asset_id: asset.id, expected_updated_at: asset.updated_at, patch: { calibration_due: proximo } });
+        toast.success('Ordem concluída e próxima calibração agendada.');
+      } else if (proximo && order.kind === 'preventive') {
+        await invoke({ action: 'create_order', order: { asset_id: asset.id, kind: 'preventive', title: `Preventiva — ${asset.name}`.slice(0, 160), description: '', due_on: proximo, assigned_to: order.assigned_to, priority: 'normal' } });
+        toast.success('Ordem concluída e próxima preventiva aberta.');
+      } else {
+        toast.success('Ordem concluída.');
+      }
+    } catch (error) {
+      toast.error('Não foi possível concluir tudo.', { description: `${mensagemDeErro(error)} Confira a ordem e o próximo prazo.` });
+    } finally {
+      setConcluindo(null);
+      void refresh();
+    }
+  };
   const createAsset = useMutation({
     mutationFn: () => invoke({ action: 'create_asset', asset: { ...assetForm, room_id: assetForm.room_id || null,
       maintenance_interval_days: assetForm.maintenance_interval_days ? Number(assetForm.maintenance_interval_days) : null,
       acquired_on: assetForm.acquired_on || null, warranty_until: assetForm.warranty_until || null,
       calibration_due: assetForm.calibration_due || null, responsible_user_id: assetForm.responsible_user_id || null } }),
     onSuccess: () => { toast.success('Equipamento cadastrado'); setAssetForm((form) => ({ ...form, name: '', serial_number: '', asset_tag: '' })); void refresh(); },
-    onError: (error) => toast.error(error.message || 'Não foi possível cadastrar o equipamento'),
+    onError: (error) => toast.error('Não foi possível cadastrar o equipamento.', { description: mensagemDeErro(error) }),
   });
   const createOrder = useMutation({
     mutationFn: () => invoke({ action: 'create_order', order: { ...orderForm, due_on: orderForm.due_on || null, assigned_to: orderForm.assigned_to || null } }),
     onSuccess: () => { toast.success('Ordem de serviço aberta'); setOrderForm((form) => ({ ...form, title: '', description: '', due_on: '' })); void refresh(); },
-    onError: (error) => toast.error(error.message || 'Não foi possível abrir a ordem'),
+    onError: (error) => toast.error('Não foi possível abrir a ordem.', { description: mensagemDeErro(error) }),
   });
 
   const uploadDocument = async (asset: Asset, file: File) => {
@@ -235,7 +274,8 @@ export default function PatrimonioEquipamentos() {
     : 'Ativos clínicos e da infraestrutura, ordens de serviço, calibrações e documentos.';
 
   if (query.isLoading) return <main className="space-y-5"><PageHeader title="Patrimônio e manutenção" description="Ativos, calibrações, ordens de serviço e documentos" icon={<Wrench />} /><Card className="h-40 animate-pulse rounded-2xl" /></main>;
-  if (query.error) return <ErrorState title="Não foi possível carregar o patrimônio" description="Nenhuma alteração será feita até confirmar o estado atual dos equipamentos." error={query.error} onRetry={() => void query.refetch()} />;
+  // Com dados na tela, uma falha de atualização vira aviso; sem dados, a tela pausa.
+  if (query.error && !query.data) return <ErrorState title="Não foi possível carregar o patrimônio" description="Nenhuma alteração será feita até confirmar o estado atual dos equipamentos." error={query.error} onRetry={() => void query.refetch()} />;
 
   const indicadores: { key: Indicador; icon: typeof Wrench; label: string; value: number; caption: string; color: string }[] = [
     { key: 'vencida', icon: AlertTriangle, label: 'Manutenção vencida', value: stats.vencida, caption: 'calibração ou ordem atrasada', color: 'text-destructive' },
@@ -264,6 +304,13 @@ export default function PatrimonioEquipamentos() {
         </Button>}
       </>}
     />
+
+    {query.error && (
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
+        <span className="text-sm text-muted-foreground">Não foi possível atualizar o patrimônio. Os dados podem estar desatualizados; atualize antes de alterar um equipamento.</span>
+        <Button size="sm" variant="outline" onClick={() => void query.refetch()}>Tentar novamente</Button>
+      </div>
+    )}
 
     <section role="group" aria-label="Situação do patrimônio" className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -329,29 +376,29 @@ export default function PatrimonioEquipamentos() {
 
     {data.canManageAssets && showAssetForm && <div ref={assetFormRef} id="equipment-asset-form"><Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-lg">Cadastrar ativo da clínica</CardTitle><CardDescription>Cadastro geral de patrimônio. Analisadores permanecem cadastrados no painel do laboratório.</CardDescription></div><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" aria-label="Fechar cadastro" onClick={() => setShowAssetForm(false)}><X className="h-4 w-4" /></Button></div></CardHeader><CardContent><form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" onSubmit={(event) => { event.preventDefault(); createAsset.mutate(); }}>
       <div className="space-y-1"><Label htmlFor="asset-name">Nome *</Label><Input id="asset-name" required maxLength={160} value={assetForm.name} onChange={(event) => setAssetForm({ ...assetForm, name: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Categoria</Label><Select value={assetForm.category} onValueChange={(category) => setAssetForm({ ...assetForm, category })}><SelectTrigger aria-label="Categoria"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(CATEGORIES).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1"><Label>Sala / localização</Label><Select value={assetForm.room_id || '__none__'} onValueChange={(room_id) => setAssetForm({ ...assetForm, room_id: room_id === '__none__' ? '' : room_id })}><SelectTrigger aria-label="Sala / localização"><SelectValue placeholder="Sem sala fixa" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem sala fixa</SelectItem>{data.rooms.map((room) => <SelectItem key={room.id} value={room.id}>{room.nome}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1"><Label>Patrimônio</Label><Input aria-label="Patrimônio" maxLength={80} value={assetForm.asset_tag} onChange={(event) => setAssetForm({ ...assetForm, asset_tag: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Fabricante</Label><Input maxLength={120} value={assetForm.manufacturer} onChange={(event) => setAssetForm({ ...assetForm, manufacturer: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Modelo</Label><Input maxLength={120} value={assetForm.model} onChange={(event) => setAssetForm({ ...assetForm, model: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Número de série</Label><Input maxLength={120} value={assetForm.serial_number} onChange={(event) => setAssetForm({ ...assetForm, serial_number: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Responsável</Label><Select value={assetForm.responsible_user_id || '__none__'} onValueChange={(responsible_user_id) => setAssetForm({ ...assetForm, responsible_user_id: responsible_user_id === '__none__' ? '' : responsible_user_id })}><SelectTrigger aria-label="Responsável pelo ativo"><SelectValue placeholder="Sem responsável" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem responsável</SelectItem>{data.profiles.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1"><Label>Adquirido em</Label><Input type="date" value={assetForm.acquired_on} onChange={(event) => setAssetForm({ ...assetForm, acquired_on: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Garantia até</Label><Input type="date" value={assetForm.warranty_until} onChange={(event) => setAssetForm({ ...assetForm, warranty_until: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Calibração até</Label><Input aria-label="Calibração até" type="date" value={assetForm.calibration_due} onChange={(event) => setAssetForm({ ...assetForm, calibration_due: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Manutenção a cada (dias)</Label><Input type="number" min="1" max="3650" value={assetForm.maintenance_interval_days} onChange={(event) => setAssetForm({ ...assetForm, maintenance_interval_days: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-category">Categoria</Label><Select value={assetForm.category} onValueChange={(category) => setAssetForm({ ...assetForm, category })}><SelectTrigger id="asset-category" aria-label="Categoria"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(CATEGORIES).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1"><Label htmlFor="asset-room">Sala / localização</Label><Select value={assetForm.room_id || '__none__'} onValueChange={(room_id) => setAssetForm({ ...assetForm, room_id: room_id === '__none__' ? '' : room_id })}><SelectTrigger id="asset-room" aria-label="Sala / localização"><SelectValue placeholder="Sem sala fixa" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem sala fixa</SelectItem>{data.rooms.map((room) => <SelectItem key={room.id} value={room.id}>{room.nome}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1"><Label htmlFor="asset-tag">Patrimônio</Label><Input id="asset-tag" aria-label="Patrimônio" maxLength={80} value={assetForm.asset_tag} onChange={(event) => setAssetForm({ ...assetForm, asset_tag: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-manufacturer">Fabricante</Label><Input id="asset-manufacturer" maxLength={120} value={assetForm.manufacturer} onChange={(event) => setAssetForm({ ...assetForm, manufacturer: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-model">Modelo</Label><Input id="asset-model" maxLength={120} value={assetForm.model} onChange={(event) => setAssetForm({ ...assetForm, model: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-serial">Número de série</Label><Input id="asset-serial" maxLength={120} value={assetForm.serial_number} onChange={(event) => setAssetForm({ ...assetForm, serial_number: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-responsible">Responsável</Label><Select value={assetForm.responsible_user_id || '__none__'} onValueChange={(responsible_user_id) => setAssetForm({ ...assetForm, responsible_user_id: responsible_user_id === '__none__' ? '' : responsible_user_id })}><SelectTrigger id="asset-responsible" aria-label="Responsável pelo ativo"><SelectValue placeholder="Sem responsável" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem responsável</SelectItem>{data.profiles.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1"><Label htmlFor="asset-acquired">Adquirido em</Label><Input id="asset-acquired" type="date" value={assetForm.acquired_on} onChange={(event) => setAssetForm({ ...assetForm, acquired_on: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-warranty">Garantia até</Label><Input id="asset-warranty" type="date" value={assetForm.warranty_until} onChange={(event) => setAssetForm({ ...assetForm, warranty_until: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-calibration">Calibração até</Label><Input id="asset-calibration" aria-label="Calibração até" type="date" value={assetForm.calibration_due} onChange={(event) => setAssetForm({ ...assetForm, calibration_due: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="asset-interval">Manutenção a cada (dias)</Label><Input id="asset-interval" type="number" min="1" max="3650" value={assetForm.maintenance_interval_days} onChange={(event) => setAssetForm({ ...assetForm, maintenance_interval_days: event.target.value })} /></div>
       <label className="flex items-center gap-2 text-sm sm:col-span-2"><Checkbox checked={assetForm.block_room_when_unavailable} onCheckedChange={(checked) => setAssetForm({ ...assetForm, block_room_when_unavailable: checked === true })} />Bloquear disponibilidade da sala se este equipamento ficar indisponível</label>
       <div className="flex items-end"><Button type="submit" className="rounded-full bg-primary text-primary-foreground" disabled={createAsset.isPending || !assetForm.name.trim()}>{createAsset.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Cadastrar ativo</Button></div>
     </form></CardContent></Card></div>}
 
     {data.canOpenOrders && showOrderForm && <div ref={orderFormRef} id="equipment-order-form"><Card className="rounded-2xl border-border/60 shadow-xs"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-lg">Abrir ordem de serviço</CardTitle><CardDescription>Registre manutenção preventiva, corretiva, inspeção ou calibração com prazo e responsável. A equipe autorizada atualiza e conclui a ordem.</CardDescription></div><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" aria-label="Fechar ordem de serviço" onClick={() => setShowOrderForm(false)}><X className="h-4 w-4" /></Button></div></CardHeader><CardContent><form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" onSubmit={(event) => { event.preventDefault(); createOrder.mutate(); }}>
-      <div className="space-y-1"><Label>Equipamento *</Label><Select value={orderForm.asset_id} onValueChange={(asset_id) => setOrderForm({ ...orderForm, asset_id })}><SelectTrigger aria-label="Equipamento da ordem"><SelectValue placeholder="Selecionar ativo" /></SelectTrigger><SelectContent>{data.assets.filter((asset) => asset.status !== 'retired').map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.name}{asset.asset_tag ? ` · ${asset.asset_tag}` : ''}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1"><Label>Tipo</Label><Select value={orderForm.kind} onValueChange={(kind) => setOrderForm({ ...orderForm, kind })}><SelectTrigger aria-label="Tipo de ordem"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(ORDER_KINDS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1"><Label>Título *</Label><Input aria-label="Título da ordem *" required minLength={3} maxLength={160} value={orderForm.title} onChange={(event) => setOrderForm({ ...orderForm, title: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Prioridade</Label><Select value={orderForm.priority} onValueChange={(priority) => setOrderForm({ ...orderForm, priority })}><SelectTrigger aria-label="Prioridade da ordem"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(PRIORIDADES).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1"><Label>Prazo</Label><Input type="date" value={orderForm.due_on} onChange={(event) => setOrderForm({ ...orderForm, due_on: event.target.value })} /></div>
-      <div className="space-y-1"><Label>Responsável</Label><Select value={orderForm.assigned_to || '__none__'} onValueChange={(assigned_to) => setOrderForm({ ...orderForm, assigned_to: assigned_to === '__none__' ? '' : assigned_to })}><SelectTrigger aria-label="Responsável pela ordem"><SelectValue placeholder="A definir" /></SelectTrigger><SelectContent><SelectItem value="__none__">A definir</SelectItem>{data.profiles.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1 sm:col-span-2"><Label>Descrição</Label><Textarea maxLength={2000} rows={2} value={orderForm.description} onChange={(event) => setOrderForm({ ...orderForm, description: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="order-asset">Equipamento *</Label><Select value={orderForm.asset_id} onValueChange={(asset_id) => setOrderForm({ ...orderForm, asset_id })}><SelectTrigger id="order-asset" aria-label="Equipamento da ordem"><SelectValue placeholder="Selecionar ativo" /></SelectTrigger><SelectContent>{data.assets.filter((asset) => asset.status !== 'retired').map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.name}{asset.asset_tag ? ` · ${asset.asset_tag}` : ''}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1"><Label htmlFor="order-kind">Tipo</Label><Select value={orderForm.kind} onValueChange={(kind) => setOrderForm({ ...orderForm, kind })}><SelectTrigger id="order-kind" aria-label="Tipo de ordem"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(ORDER_KINDS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1"><Label htmlFor="order-title">Título *</Label><Input id="order-title" aria-label="Título da ordem *" required minLength={3} maxLength={160} value={orderForm.title} onChange={(event) => setOrderForm({ ...orderForm, title: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="order-priority">Prioridade</Label><Select value={orderForm.priority} onValueChange={(priority) => setOrderForm({ ...orderForm, priority })}><SelectTrigger id="order-priority" aria-label="Prioridade da ordem"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(PRIORIDADES).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1"><Label htmlFor="order-due">Prazo</Label><Input id="order-due" type="date" value={orderForm.due_on} onChange={(event) => setOrderForm({ ...orderForm, due_on: event.target.value })} /></div>
+      <div className="space-y-1"><Label htmlFor="order-assigned">Responsável</Label><Select value={orderForm.assigned_to || '__none__'} onValueChange={(assigned_to) => setOrderForm({ ...orderForm, assigned_to: assigned_to === '__none__' ? '' : assigned_to })}><SelectTrigger id="order-assigned" aria-label="Responsável pela ordem"><SelectValue placeholder="A definir" /></SelectTrigger><SelectContent><SelectItem value="__none__">A definir</SelectItem>{data.profiles.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-1 sm:col-span-2"><Label htmlFor="order-description">Descrição</Label><Textarea id="order-description" maxLength={2000} rows={2} value={orderForm.description} onChange={(event) => setOrderForm({ ...orderForm, description: event.target.value })} /></div>
       <div className="flex items-end"><Button type="submit" className="rounded-full bg-primary text-primary-foreground" disabled={createOrder.isPending || !orderForm.asset_id || orderForm.title.trim().length < 3}>{createOrder.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Abrir ordem</Button></div>
     </form></CardContent></Card></div>}
 
@@ -399,6 +446,10 @@ export default function PatrimonioEquipamentos() {
           const podeAgir = data.canMaintain && asset.status !== 'retired';
           const calibrationExpired = Boolean(asset.calibration_due && asset.calibration_due.slice(0, 10) < hoje);
           const dueSoon = Boolean(asset.calibration_due && !calibrationExpired && diasEntre(hoje, asset.calibration_due) <= 30);
+          const garantia = situacaoGarantia(asset.warranty_until, hoje);
+          const ordensOrdenadas = ordenarOrdensDoAtivo(orders);
+          const verTodas = ordensExpandidas[asset.id] ?? false;
+          const ordensVisiveis = verTodas ? ordensOrdenadas : ordensOrdenadas.slice(0, 5);
           return <Card key={asset.id} className={cn('overflow-hidden rounded-2xl border-border/60 shadow-xs transition-all duration-200',
             prazo.urgencia === 'vencida' && 'border-destructive/30 ',
             prazo.urgencia === 'em30' && 'border-warning/40',
@@ -416,20 +467,21 @@ export default function PatrimonioEquipamentos() {
               <Badge variant="outline" className={cn('shrink-0 rounded-full', STATUS_BADGE[asset.status])}>{STATUSES[asset.status]}</Badge>
             </div></CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-2 text-muted-foreground"><p>Série: {asset.serial_number || '—'}</p><p>Modelo: {asset.model || '—'}</p><p>Responsável: {profilesById.get(asset.responsible_user_id || '') || 'A definir'}</p><p>Garantia: {fmt(asset.warranty_until)}</p><p className={cn(dueSoon && 'font-medium text-warning-foreground', calibrationExpired && 'font-medium text-destructive')}><CalendarClock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />Calibração: {fmt(asset.calibration_due)} {calibrationExpired ? <span className="text-destructive">· vencida</span> : dueSoon && '· vence em breve'}</p><p>Manutenção: {asset.maintenance_interval_days ? `a cada ${asset.maintenance_interval_days} dias` : 'sem periodicidade'}</p></div>
+              <div className="grid grid-cols-2 gap-2 text-muted-foreground"><p>Série: {asset.serial_number || '—'}</p><p>Modelo: {asset.model || '—'}</p><p>Responsável: {profilesById.get(asset.responsible_user_id || '') || 'A definir'}</p><p className={cn(garantia.tipo === 'termina' && 'font-medium text-warning-foreground')}>Garantia: {fmt(asset.warranty_until)}{garantia.tipo === 'vigente' && <Badge variant="outline" className="ml-1 rounded-full border-border bg-secondary text-[10px] text-foreground">Na garantia</Badge>}{garantia.tipo === 'termina' && ` · termina em ${plural(garantia.dias, 'dia', 'dias')}`}</p><p className={cn(dueSoon && 'font-medium text-warning-foreground', calibrationExpired && 'font-medium text-destructive')}><CalendarClock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />Calibração: {fmt(asset.calibration_due)} {calibrationExpired ? <span className="text-destructive">· vencida</span> : dueSoon && '· vence em breve'}</p><p>Manutenção: {asset.maintenance_interval_days ? `a cada ${asset.maintenance_interval_days} dias` : 'sem periodicidade'}</p></div>
               {asset.block_room_when_unavailable && <p className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 p-2 text-warning-foreground"><ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />A sala fica bloqueada se este equipamento estiver fora de operação.</p>}
               {(podeAgir || (data.canOpenOrders && asset.status !== 'retired')) && <div className="flex flex-wrap gap-2">
                 {podeAgir && asset.status !== 'active' && <Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'active' })}>Marcar em operação</Button>}
                 {podeAgir && asset.status === 'active' && <><Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'maintenance' })}>Enviar para manutenção</Button><Button size="sm" variant="outline" className="h-9 rounded-full text-xs" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'unavailable' })}>Marcar indisponível</Button></>}
                 {data.canOpenOrders && asset.status !== 'retired' && <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => abrirOrdemPara(asset.id)}><ClipboardList aria-hidden="true" className="h-3.5 w-3.5" />Abrir OS</Button>}
-                {podeAgir && data.canManageAssets && <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:text-destructive" disabled={operation.isPending} onClick={() => patchAsset(asset, { status: 'retired' })}>Aposentar</Button>}
+                {podeAgir && data.canManageAssets && <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs text-destructive hover:text-destructive" disabled={operation.isPending} onClick={() => setAposentarAtivo(asset)}>Aposentar</Button>}
               </div>}
               {podeAgir && <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); const date = calibrationDates[asset.id] ?? asset.calibration_due ?? ''; patchAsset(asset, { calibration_due: date || null }); }}><div className="space-y-1"><Label htmlFor={`calibration-${asset.id}`}>Próxima calibração</Label><Input id={`calibration-${asset.id}`} className="h-9 rounded-full" type="date" value={calibrationDates[asset.id] ?? asset.calibration_due ?? ''} onChange={(event) => setCalibrationDates({ ...calibrationDates, [asset.id]: event.target.value })} /></div><Button size="sm" type="submit" variant="outline" className="h-9 rounded-full text-xs" disabled={operation.isPending}>Atualizar prazo</Button></form>}
               {docs.length > 0 && <div className="space-y-1"><p className="font-medium">Documentos</p>{docs.map((doc) => <div key={doc.id} className="flex items-center justify-between gap-2"><span className="truncate">{doc.file_name} · {(doc.byte_size / 1024).toFixed(0)} KB</span><Button size="sm" variant="link" className="h-auto p-0 text-primary" onClick={() => void openDocument(doc.id)}>Abrir</Button></div>)}</div>}
               {podeAgir && <Label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs hover:border-primary/50"><FileUp aria-hidden="true" className="h-4 w-4" />Anexar PDF ou imagem<input className="sr-only" type="file" accept="application/pdf,image/png,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadDocument(asset, file); event.currentTarget.value = ''; }} /></Label>}
-              {orders.length > 0 && <div className="space-y-2 border-t pt-3"><p className="font-medium">Ordens de serviço</p>{orders.slice(0, 5).map((order) => {
+              {garantia.tipo === 'termina' && <p role="status" className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 p-2 text-xs text-warning-foreground"><AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" />A garantia termina em {plural(garantia.dias, 'dia', 'dias')} ({fmt(asset.warranty_until)}). Programe a revisão enquanto está coberta.</p>}
+              {orders.length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center justify-between gap-2"><p className="font-medium">Ordens de serviço</p>{ordensOrdenadas.length > 5 && <Button size="sm" variant="ghost" className="h-9 rounded-full text-xs" aria-expanded={verTodas} onClick={() => setOrdensExpandidas((atual) => ({ ...atual, [asset.id]: !verTodas }))}>{verTodas ? 'Mostrar menos' : `Ver todas (${ordensOrdenadas.length})`}</Button>}</div>{ordensVisiveis.map((order) => {
                 const atrasada = Boolean(order.due_on && (order.status === 'open' || order.status === 'in_progress') && order.due_on.slice(0, 10) < hoje);
-                return <div key={order.id} className={cn('rounded-xl border border-border/60 p-3', atrasada && 'border-destructive/30 bg-destructive/5')}><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{order.title} · {ORDER_KINDS[order.kind]}</span><Badge variant="outline" className={cn('rounded-full', ORDER_BADGE[order.status])}>{ORDER_STATUS[order.status]}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{PRIORIDADES[order.priority] ?? order.priority.toUpperCase()} · prazo <span className={cn(atrasada && 'font-medium text-destructive')}>{fmt(order.due_on)}{atrasada && ' (atrasada)'}</span> · {profilesById.get(order.assigned_to || '') || 'Sem responsável'}</p>{order.description && <p className="mt-1 text-xs">{order.description}</p>}{order.status === 'open' && data.canMaintain && <Button size="sm" className="mt-2 h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'in_progress' } })}>Iniciar serviço</Button>}{order.status === 'in_progress' && data.canMaintain && <div className="mt-2 flex gap-2"><Input className="h-9 rounded-full" aria-label={`Serviço executado em ${order.title}`} placeholder="Serviço executado *" maxLength={2000} value={completionNotes[order.id] || ''} onChange={(event) => setCompletionNotes({ ...completionNotes, [order.id]: event.target.value })} /><Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={(completionNotes[order.id] || '').trim().length < 3 || operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'completed', completion_note: completionNotes[order.id] } })}>Concluir</Button></div>}{order.completion_note && <p className="mt-1 rounded-lg bg-muted p-2 text-xs">Concluído: {order.completion_note}</p>}</div>;
+                return <div key={order.id} className={cn('rounded-xl border border-border/60 p-3', atrasada && 'border-destructive/30 bg-destructive/5')}><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{order.title} · {ORDER_KINDS[order.kind]}</span><Badge variant="outline" className={cn('rounded-full', ORDER_BADGE[order.status])}>{ORDER_STATUS[order.status]}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{PRIORIDADES[order.priority] ?? order.priority.toUpperCase()} · prazo <span className={cn(atrasada && 'font-medium text-destructive')}>{fmt(order.due_on)}{atrasada && ' (atrasada)'}</span> · {profilesById.get(order.assigned_to || '') || 'Sem responsável'}</p>{order.description && <p className="mt-1 text-xs">{order.description}</p>}{order.status === 'open' && data.canMaintain && <Button size="sm" className="mt-2 h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={operation.isPending} onClick={() => operation.mutate({ action: 'update_order', work_order_id: order.id, expected_updated_at: order.updated_at, patch: { status: 'in_progress' } })}>Iniciar serviço</Button>}{order.status === 'in_progress' && data.canMaintain && <div className="mt-2 space-y-2"><div className="flex flex-wrap gap-2"><Input className="h-9 min-w-0 flex-1 rounded-full" aria-label={`Serviço executado em ${order.title}`} placeholder="Serviço executado *" maxLength={2000} value={completionNotes[order.id] || ''} onChange={(event) => setCompletionNotes({ ...completionNotes, [order.id]: event.target.value })} />{(order.kind === 'calibration' || order.kind === 'preventive') && <div className="flex items-center gap-1.5"><Label htmlFor={`next-due-${order.id}`} className="text-xs">{order.kind === 'calibration' ? 'Próxima calibração' : 'Próxima preventiva'}</Label><Input id={`next-due-${order.id}`} type="date" className="h-9 w-40 rounded-full" min={hoje} value={proximoPrazo[order.id] ?? prazoSugerido(order, asset)} onChange={(event) => setProximoPrazo({ ...proximoPrazo, [order.id]: event.target.value })} /></div>}<Button size="sm" className="h-9 rounded-full bg-primary text-xs text-primary-foreground" disabled={(completionNotes[order.id] || '').trim().length < 3 || operation.isPending || concluindo !== null} onClick={() => void concluirOrdem(order, asset)}>{concluindo === order.id && <Loader2 aria-hidden="true" className="mr-1.5 h-3.5 w-3.5 animate-spin" />}Concluir</Button></div>{(order.kind === 'calibration' || order.kind === 'preventive') && <p className="text-[11px] text-muted-foreground">{order.kind === 'calibration' ? 'Ao concluir, a data informada vira a próxima calibração do equipamento.' : 'Ao concluir, uma nova preventiva é aberta com o prazo informado. Deixe em branco para não abrir.'}</p>}</div>}{(order.status === 'open' || order.status === 'in_progress') && data.canMaintain && <Button size="sm" variant="ghost" className="mt-2 h-9 rounded-full text-xs text-muted-foreground" disabled={operation.isPending} onClick={() => setCancelarOrdem(order)}>Cancelar OS</Button>}{order.completion_note && <p className="mt-1 rounded-lg bg-muted p-2 text-xs">Concluído: {order.completion_note}</p>}</div>;
               })}</div>}
             </CardContent>
           </Card>;
@@ -443,9 +495,17 @@ export default function PatrimonioEquipamentos() {
         <h2 id="equipment-history-heading" className="text-base font-semibold text-foreground">Histórico de auditoria</h2>
         {data.audit.length > 0 && <Badge variant="outline" className="h-5 rounded-full border-border bg-card text-xs tabular-nums text-primary">{Math.min(data.audit.length, 25)}</Badge>}
       </div>
+      <ConfirmDialog open={!!cancelarOrdem} onOpenChange={(aberto) => { if (!aberto) setCancelarOrdem(null); }} title="Cancelar ordem de serviço"
+        description={`A ordem "${cancelarOrdem?.title ?? ''}" deixa de valer e sai das pendências do equipamento. Esta ação não pode ser desfeita.`}
+        confirmLabel="Cancelar OS" variant="destructive" isLoading={operation.isPending} closeOnConfirm={false}
+        onConfirm={() => cancelarOrdem && operation.mutate({ action: 'update_order', work_order_id: cancelarOrdem.id, expected_updated_at: cancelarOrdem.updated_at, patch: { status: 'cancelled' } }, { onSuccess: () => { toast.success('Ordem cancelada.'); setCancelarOrdem(null); } })} />
+      <ConfirmDialog open={!!aposentarAtivo} onOpenChange={(aberto) => { if (!aberto) setAposentarAtivo(null); }} title="Aposentar equipamento"
+        description={`${aposentarAtivo?.name ?? 'O equipamento'} sai de operação de vez e deixa de receber ordens e prazos. Conclua ou cancele as ordens abertas antes.`}
+        confirmLabel="Aposentar" variant="destructive" isLoading={operation.isPending} closeOnConfirm={false}
+        onConfirm={() => aposentarAtivo && operation.mutate({ action: 'update_asset', asset_id: aposentarAtivo.id, expected_updated_at: aposentarAtivo.updated_at, patch: { status: 'retired' } }, { onSuccess: () => { toast.success('Equipamento aposentado.'); setAposentarAtivo(null); } })} />
       {data.audit.length === 0
         ? <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="p-5 text-sm text-muted-foreground">Cadastros, alterações, ordens e documentos serão registrados aqui.</CardContent></Card>
-        : <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="divide-y divide-border/60 p-0">{data.audit.slice(0, 25).map((event) => <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span>{event.action.replace(/_/g, ' ')} · {event.asset_id ? assetById.get(event.asset_id)?.name || 'Ativo arquivado' : event.work_order_id ? 'Ordem de serviço' : 'Documento'}</span><span className="text-muted-foreground">{profilesById.get(event.actor_id || '') || 'Equipe'} · {new Date(event.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span></div>)}</CardContent></Card>}
+        : <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="divide-y divide-border/60 p-0">{data.audit.slice(0, 25).map((event) => <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span>{rotuloAuditoria(event.action, event.details, { status: STATUSES, ordem: ORDER_STATUS })} · {event.asset_id ? assetById.get(event.asset_id)?.name || 'Ativo arquivado' : event.work_order_id ? 'Ordem de serviço' : 'Documento'}</span><span className="text-muted-foreground">{profilesById.get(event.actor_id || '') || 'Equipe'} · {new Date(event.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span></div>)}</CardContent></Card>}
     </section>
   </main>;
 }
