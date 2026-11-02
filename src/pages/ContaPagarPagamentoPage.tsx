@@ -1,3 +1,4 @@
+import { formatCurrency as currency } from '@/lib/formatters';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -59,7 +60,6 @@ function parseMoney(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const openBalance = (account: PayableAccount) => Math.max(0,
   Number(account.valor || 0) - Number(account.desconto || 0) + Number(account.acrescimo || 0) - Number(account.valor_pago || 0));
 

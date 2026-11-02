@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -287,7 +288,6 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
 
   const ABC_COLORS = { A: 'hsl(var(--destructive))', B: 'hsl(var(--warning))', C: 'hsl(var(--success))' };
 
-  const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const formatCategoria = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
   const openTask = (path: string) => navigate(path, { state: { stockReturn: location.pathname + location.search, stockFilters: { search: searchTerm, category: filterCategoria, alert: filterAlerta, tab: activeTab } } });

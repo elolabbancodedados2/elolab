@@ -1,3 +1,4 @@
+import { formatCurrency as moeda } from '@/lib/formatters';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,7 +54,6 @@ const SEM_PAI = '__sem_pai__';
 const FUSO = 'America/Sao_Paulo';
 const BOM_UTF8 = String.fromCharCode(0xfeff);
 
-const moeda = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const percentual = (v: number | null, comSinal = false) => {
   if (v === null) return '—';
   const texto = `${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;

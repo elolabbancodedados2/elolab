@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -336,7 +337,6 @@ export default function ContasPagar() {
       })[0] ?? null;
   }, [monthFilteredContas]);
 
-  const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   const exportarExcel = async () => {
     try {

@@ -1,3 +1,4 @@
+import { formatCurrency as fmt } from '@/lib/formatters';
 import { salvarConfigClinica } from '@/lib/configClinica';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -276,7 +277,6 @@ function ExameCombobox({ value, onChange }: { value: string; onChange: (nome: st
   );
 }
 
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const parseMoney = (value: string | number) => {
   if (typeof value === 'number') return value;
   const parsed = Number(String(value).replace(',', '.'));
