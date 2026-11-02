@@ -1,6 +1,6 @@
 import { salvarConfigClinica } from '@/lib/configClinica';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -113,8 +113,9 @@ const CATALOGO_EXAMES: { nome: string; tuss: string }[] = [
   { nome: 'PSA Livre', tuss: '40316130' },
   { nome: 'CEA', tuss: '40316122' },
   { nome: 'CA 125', tuss: '40316378' },
-  { nome: 'CA 19-9', tuss: '40316378' },
-  { nome: 'CA 15-3', tuss: '40316378' },
+  // CA 19-9 e CA 15-3 repetiam o código do CA 125; ficam sem TUSS até a conferência na tabela vigente.
+  { nome: 'CA 19-9', tuss: '' },
+  { nome: 'CA 15-3', tuss: '' },
   { nome: 'AFP', tuss: '40316068' },
   { nome: 'CA 72-4', tuss: '' },
   { nome: 'Urina Tipo I (EAS)', tuss: '' },
@@ -460,10 +461,10 @@ function PrecosInternos({ task }: { task?: PriceTask }) {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
+          <Input aria-label="Buscar exame particular por nome ou TUSS" placeholder="Buscar exame..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 rounded-full pl-9" />
         </div>
-        <Button onClick={() => navigation.open('/precos-servicos/exames/particular/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
-          <Plus className="h-4 w-4" /> Novo Exame
+        <Button onClick={() => navigation.open('/precos-servicos/exames/particular/novo')} className="min-h-11 gap-1.5 rounded-full">
+          <Plus className="h-4 w-4" /> Novo exame
         </Button>
       </div>
 
@@ -518,8 +519,8 @@ function PrecosInternos({ task }: { task?: PriceTask }) {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button aria-label={`Editar preço de ${p.nome}`} size="icon" variant="ghost" className="rounded-full" onClick={() => openEdit(originalIdx)}><Edit className="h-3 w-3" /></Button>
-                          <Button aria-label={`Excluir preço de ${p.nome}`} size="icon" variant="ghost" className="rounded-full text-destructive" disabled={isSaving} onClick={() => setPrecoParaExcluir({ idx: originalIdx, nome: p.nome })}><Trash2 className="h-3 w-3" /></Button>
+                          <Button aria-label={`Editar preço de ${p.nome}`} size="icon" variant="ghost" className="h-11 w-11 rounded-full" onClick={() => openEdit(originalIdx)}><Edit className="h-4 w-4" /></Button>
+                          <Button aria-label={`Excluir preço de ${p.nome}`} size="icon" variant="ghost" className="h-11 w-11 rounded-full text-destructive" disabled={isSaving} onClick={() => setPrecoParaExcluir({ idx: originalIdx, nome: p.nome })}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -651,7 +652,8 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
   const conveniosQuery = useQuery({
     queryKey: ['convenios-precos', profile?.clinica_id ?? null],
     queryFn: async () => {
-      let query = supabase.from('convenios').select('id, nome, codigo').eq('ativo', true).order('nome');
+      // Inclui os inativos: um preço antigo de convênio inativo precisa continuar editável.
+      let query = supabase.from('convenios').select('id, nome, codigo, ativo').order('nome');
       if (profile?.clinica_id) query = query.eq('clinica_id', profile.clinica_id);
       const { data, error } = await query;
       if (error) throw error;
@@ -660,6 +662,11 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
     enabled: !!profile?.clinica_id,
   });
   const convenios = conveniosQuery.data ?? [];
+  const nomeConvenio = (c: any) => c.ativo === false ? `${c.nome} (inativo)` : c.nome;
+  const invalidarPrecos = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['precos-exames'] }),
+    queryClient.invalidateQueries({ queryKey: ['precos-exames-convenio'] }),
+  ]);
 
   const precosQuery = useQuery({
     queryKey: ['precos-exames', profile?.clinica_id],
@@ -714,7 +721,7 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['precos-exames'] });
+      void invalidarPrecos();
       toast.success(editing ? 'Preço atualizado!' : 'Preço cadastrado!');
       completed.current = true;
       navigation.leave();
@@ -731,8 +738,8 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
       if (!data || data.length === 0) throw new Error('Sem permissão para excluir.');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['precos-exames'] });
-      toast.success('Removido');
+      void invalidarPrecos();
+      toast.success('Preço removido.');
       setPrecoParaExcluir(null);
     },
     onError: (e: any) => toast.error(e?.message || 'Erro ao remover'),
@@ -786,17 +793,17 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 rounded-full pl-9 focus-visible:ring-primary" />
+          <Input aria-label="Buscar exame ou código TUSS" placeholder="Buscar exame ou TUSS..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 rounded-full pl-9" />
         </div>
         <Select value={filterConvenio} onValueChange={setFilterConvenio}>
-          <SelectTrigger aria-label="Filtrar por convênio" className="h-10 w-[200px] rounded-full"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Filtrar por convênio" className="h-11 w-full rounded-full sm:w-[200px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os convênios</SelectItem>
-            {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+            {convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{nomeConvenio(c)}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button onClick={() => navigation.open('/precos-servicos/exames/convenios/novo')} className="gap-1.5 rounded-full bg-gradient-primary text-white shadow-[0_4px_12px_rgba(16,17,19,0.06)] hover:brightness-110">
-          <Plus className="h-4 w-4" /> Novo Preço
+        <Button onClick={() => navigation.open('/precos-servicos/exames/convenios/novo')} className="min-h-11 gap-1.5 rounded-full">
+          <Plus className="h-4 w-4" /> Novo preço
         </Button>
       </div>
 
@@ -809,13 +816,13 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
               <TableRow>
                 <TableHead>Convênio</TableHead>
                 <TableHead>Exame</TableHead>
-                <TableHead>TUSS</TableHead>
-                <TableHead className="text-right">Tabela</TableHead>
-                <TableHead className="text-right">Filme</TableHead>
-                <TableHead className="text-right">Custo</TableHead>
-                <TableHead className="text-right">Repasse</TableHead>
+                <TableHead className="hidden sm:table-cell">TUSS</TableHead>
+                <TableHead className="hidden text-right md:table-cell">Tabela</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Filme</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Custo</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Repasse</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
+                <TableHead className="w-[96px]"><span className="sr-only">Ações</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -837,18 +844,18 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
               ) : (
                 filtered?.map((p: any) => (
                   <TableRow key={p.id}>
-                    <TableCell><Badge variant="outline" className="gap-1 rounded-full"><Building2 className="h-3 w-3" />{p.convenios?.nome}</Badge></TableCell>
-                    <TableCell className="font-medium">{p.tipo_exame}</TableCell>
-                    <TableCell className="font-mono text-xs">{p.codigo_tuss || '—'}</TableCell>
-                    <TableCell className="text-right">{fmt(p.valor_tabela)}</TableCell>
-                    <TableCell className="text-right">{fmt(p.valor_filme || 0)}</TableCell>
-                    <TableCell className="text-right">{fmt(p.valor_custo || 0)}</TableCell>
-                    <TableCell className="text-right">{fmt(p.valor_repasse || 0)}</TableCell>
+                    <TableCell><Badge variant="outline" className="gap-1 rounded-full"><Building2 className="h-3 w-3" />{p.convenios?.nome}{convenios.find((c: any) => c.id === p.convenio_id)?.ativo === false && ' (inativo)'}</Badge></TableCell>
+                    <TableCell className="font-medium">{p.tipo_exame}<span className="block font-mono text-xs text-muted-foreground sm:hidden">{p.codigo_tuss || ''}</span></TableCell>
+                    <TableCell className="hidden font-mono text-xs sm:table-cell">{p.codigo_tuss || '—'}</TableCell>
+                    <TableCell className="hidden text-right md:table-cell">{fmt(p.valor_tabela)}</TableCell>
+                    <TableCell className="hidden text-right lg:table-cell">{fmt(p.valor_filme || 0)}</TableCell>
+                    <TableCell className="hidden text-right lg:table-cell">{fmt(p.valor_custo || 0)}</TableCell>
+                    <TableCell className="hidden text-right lg:table-cell">{fmt(p.valor_repasse || 0)}</TableCell>
                     <TableCell className="text-right font-semibold">{fmt(p.valor_total || p.valor_tabela)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" className="rounded-full" onClick={() => openEdit(p)}><Edit className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="rounded-full text-destructive" aria-label={`Remover preço de ${p.tipo_exame}`} onClick={() => setPrecoParaExcluir(p)}><Trash2 className="h-3 w-3" /></Button>
+                        <Button aria-label={`Editar preço de ${p.tipo_exame}`} size="icon" variant="ghost" className="h-11 w-11 rounded-full" onClick={() => openEdit(p)}><Edit className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" className="h-11 w-11 rounded-full text-destructive" aria-label={`Remover preço de ${p.tipo_exame}`} onClick={() => setPrecoParaExcluir(p)}><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -874,7 +881,7 @@ function PrecosConvenio({ task }: { task?: PriceTask }) {
               <Label htmlFor="preco-exame-convenio">Convênio *</Label>
               <Select value={form.convenio_id} onValueChange={(v) => setForm(p => ({ ...p, convenio_id: v }))}>
                 <SelectTrigger id="preco-exame-convenio" aria-label="Convênio"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>{convenios?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
+                <SelectContent>{convenios?.filter((c: any) => c.ativo !== false || c.id === form.convenio_id).map((c: any) => <SelectItem key={c.id} value={c.id}>{nomeConvenio(c)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -952,32 +959,36 @@ function usePrecosExamesCounts() {
   };
 }
 
-export default function PrecosExames({ task }: { task?: PriceTask }) {
+export default function PrecosExames({ task, embedded = false }: { task?: PriceTask; embedded?: boolean }) {
   const location = useLocation();
   if (task) return <div className="pb-24 lg:pb-8" key={location.pathname + location.search}>{task.startsWith('particular') ? <PrecosInternos task={task} /> : <PrecosConvenio task={task} />}</div>;
-  return <PrecosExamesList />;
+  return <PrecosExamesList embedded={embedded} />;
 }
 
-function PrecosExamesList() {
+function PrecosExamesList({ embedded }: { embedded: boolean }) {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const counts = usePrecosExamesCounts();
   const description = `${counts.particular} exame(s) particular(es) · ${counts.convenio} preço(s) de convênio`;
+  // A subaba fica na URL (?sub=) para o voltar do navegador e o link compartilhado abrirem no mesmo lugar.
+  const sub = searchParams.get('sub') === 'convenio' || (!searchParams.get('sub') && location.state?.examPriceTab === 'convenio') ? 'convenio' : 'particular';
+  const mudarSub = (valor: string) => { const next = new URLSearchParams(searchParams); next.set('sub', valor); setSearchParams(next, { replace: true }); };
 
   return (
     <div className="space-y-6 pb-8">
-      <PageHeader
-        title="Tabela de Preços de Exames"
+      {embedded ? <p className="text-sm text-muted-foreground">{description}</p> : <PageHeader
+        title="Tabela de preços de exames"
         description={description}
         icon={<DollarSign />}
-      />
+      />}
 
-      <Tabs defaultValue={location.state?.examPriceTab === 'convenio' ? 'convenio' : 'particular'} className="space-y-4">
+      <Tabs value={sub} onValueChange={mudarSub} className="space-y-4">
         <TabsList className="rounded-xl border border-border/60 bg-secondary p-1 text-muted-foreground">
           <TabsTrigger value="particular" className="gap-1.5 rounded-lg">
-            <Stethoscope className="h-3.5 w-3.5" /> Particular / Interno
+            <Stethoscope className="h-3.5 w-3.5" /> Particular / interno
           </TabsTrigger>
           <TabsTrigger value="convenio" className="gap-1.5 rounded-lg">
-            <Building2 className="h-3.5 w-3.5" /> Por Convênio
+            <Building2 className="h-3.5 w-3.5" /> Por convênio
           </TabsTrigger>
         </TabsList>
 

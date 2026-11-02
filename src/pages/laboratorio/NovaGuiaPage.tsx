@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
-import { formatCPF, validateCPF } from '@/lib/formatters';
+import { formatCPF, formatPhone, validateCPF } from '@/lib/formatters';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { PageHeader } from '@/components/PageHeader';
@@ -103,7 +103,7 @@ function NovaGuiaWorkspace() {
         }
       }
     } catch (e: any) {
-      toast.error(e.message || 'Erro no upload');
+      toast.error('Não foi possível enviar o anexo', { description: mensagemDeErro(e) });
     } finally {
       setUploading(false);
     }
@@ -165,7 +165,7 @@ function NovaGuiaWorkspace() {
       void queryClient.invalidateQueries({ queryKey: ['guias_externas'] });
       back();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar');
+      toast.error('Não foi possível registrar a guia', { description: mensagemDeErro(e) });
     } finally {
       saveLock.current = false;
       setSaving(false);
@@ -187,14 +187,14 @@ function NovaGuiaWorkspace() {
               <div><Label htmlFor="guia-paciente-cpf">CPF</Label><Input id="guia-paciente-cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.paciente_cpf} onChange={(e) => setForm({ ...form, paciente_cpf: formatCPF(e.target.value) })} /></div>
               <div><Label htmlFor="guia-paciente-nascimento">Data nascimento</Label><Input id="guia-paciente-nascimento" type="date" value={form.paciente_nascimento} onChange={(e) => setForm({ ...form, paciente_nascimento: e.target.value })} /></div>
             </div>
-            <div><Label htmlFor="guia-paciente-telefone">Telefone</Label><Input id="guia-paciente-telefone" value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: e.target.value })} /></div>
+            <div><Label htmlFor="guia-paciente-telefone">Telefone</Label><Input id="guia-paciente-telefone" type="tel" inputMode="tel" autoComplete="tel" placeholder="(00) 00000-0000" maxLength={15} value={form.paciente_telefone} onChange={(e) => setForm({ ...form, paciente_telefone: formatPhone(e.target.value) })} /></div>
           </section>
 
           <section aria-label="Médico solicitante" className="min-w-0 space-y-3"><h2 className="border-b pb-2 text-base font-semibold">Médico solicitante</h2>
             <div><Label htmlFor="guia-medico-nome">Nome do médico solicitante</Label><Input id="guia-medico-nome" value={form.medico_externo_nome} onChange={(e) => setForm({ ...form, medico_externo_nome: e.target.value })} /></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2"><Label htmlFor="guia-medico-crm">CRM</Label><Input id="guia-medico-crm" value={form.medico_externo_crm} onChange={(e) => setForm({ ...form, medico_externo_crm: e.target.value })} /></div>
-              <div><Label htmlFor="guia-medico-uf">UF</Label><Input id="guia-medico-uf" value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.toUpperCase() })} /></div>
+              <div><Label htmlFor="guia-medico-uf">UF</Label><Input id="guia-medico-uf" className="uppercase" maxLength={2} autoComplete="off" value={form.medico_externo_uf} onChange={(e) => setForm({ ...form, medico_externo_uf: e.target.value.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase() })} /></div>
             </div>
             <div><Label htmlFor="guia-medico-especialidade">Especialidade</Label><Input id="guia-medico-especialidade" value={form.medico_externo_especialidade} onChange={(e) => setForm({ ...form, medico_externo_especialidade: e.target.value })} /></div>
           </section>

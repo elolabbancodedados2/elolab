@@ -18,6 +18,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
 import { horaSP } from '@/lib/caixaFormatacao';
+import { emCentavos, parseMoneyInput } from '@/lib/dinheiro';
+import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
+import { calcularSaldoGaveta, type MovimentoCaixa } from '@/lib/caixaDiario';
 import { formatWithDatePreference } from '@/lib/datePreference';
 import { ehMovimentoDoCaixa, origemExternaDoMovimento } from '@/lib/origemMovimentoCaixa';
 
@@ -37,15 +40,7 @@ type CashMovement = {
 type Draft = { descricao: string; valor: string; forma_pagamento: PaymentMethod };
 type ReturnState = { returnTo?: unknown; cashTab?: unknown; cashSearchTerm?: unknown; cashTipoFiltro?: unknown };
 
-function parseMoney(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact) return null;
-  const br = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
-  const decimal = /^\d+(?:\.\d{1,2})?$/;
-  if (!br.test(compact) && !decimal.test(compact)) return null;
-  const parsed = Number(compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+const parseMoney = parseMoneyInput;
 
 function money(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -54,9 +49,11 @@ function money(value: number) {
 const movementLabels: Record<MovementType, string> = {
   receita: 'Receita', despesa: 'Despesa', sangria: 'Sangria', suprimento: 'Suprimento',
 };
-const paymentLabels: Record<PaymentMethod, string> = {
-  dinheiro: 'Dinheiro', pix: 'PIX', credito: 'Crédito', debito: 'Débito', cartao_credito: 'Crédito', cartao_debito: 'Débito', cheque: 'Cheque', transferencia: 'Transferência',
+// Uma opção por forma; "cartao_credito"/"cartao_debito" antigos viram credito/debito ao editar.
+const paymentLabels: Partial<Record<PaymentMethod, string>> = {
+  dinheiro: 'Dinheiro', pix: 'PIX', credito: 'Crédito', debito: 'Débito', cheque: 'Cheque', transferencia: 'Transferência',
 };
+const formaNormalizada = (forma: PaymentMethod): PaymentMethod => forma === 'cartao_credito' ? 'credito' : forma === 'cartao_debito' ? 'debito' : forma;
 
 export default function EditarLancamentoCaixaPage() {
   const { lancamentoId = '' } = useParams();
@@ -97,7 +94,9 @@ export default function EditarLancamentoCaixaPage() {
 
   useEffect(() => {
     if (!movement || !isEditable || draft) return;
-    const initial = { descricao: movement.descricao || '', valor: String(movement.valor ?? ''), forma_pagamento: movement.forma_pagamento };
+    // Sangria e suprimento são sempre em dinheiro: mexem na gaveta, não no Pix.
+    const forma = movement.tipo === 'sangria' || movement.tipo === 'suprimento' ? 'dinheiro' : formaNormalizada(movement.forma_pagamento);
+    const initial = { descricao: movement.descricao || '', valor: String(movement.valor ?? '').replace('.', ','), forma_pagamento: forma };
     setDraft(initial);
     setInitialDraft(initial);
   }, [movement, isEditable, draft]);
@@ -109,6 +108,30 @@ export default function EditarLancamentoCaixaPage() {
   ));
   const parsedValue = draft ? parseMoney(draft.valor) : null;
   const invalidValue = parsedValue === null || parsedValue <= 0 || Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) > 1e-7;
+  const formaFixa = movement?.tipo === 'sangria' || movement?.tipo === 'suprimento';
+
+  // Saldo da gaveta sem esta sangria: a retirada editada não pode passar dele.
+  const ehSangria = movement?.tipo === 'sangria' && isEditable;
+  const saldoQuery = useQuery({
+    queryKey: ['cash-movement-edit-drawer', clinicId, today, lancamentoId],
+    enabled: Boolean(ehSangria && clinicId),
+    meta: { suppressGlobalErrorToast: true },
+    queryFn: async () => {
+      const { data: caixa, error } = await supabase.from('caixa_diario').select('valor_abertura')
+        .eq('data', today).eq('clinica_id', clinicId!).maybeSingle();
+      if (error) throw error;
+      const linhas = await buscarEmBlocos<MovimentoCaixa & { id: string }>(
+        () => supabase.rpc('movimentos_caixa_diario', { p_data: today })
+          .order('created_at', { ascending: true }).order('id', { ascending: true }),
+        { teto: LIMITE_BUSCA_EM_BLOCOS + 1 },
+      );
+      if (linhas.length > LIMITE_BUSCA_EM_BLOCOS) return null;
+      return calcularSaldoGaveta(Number(caixa?.valor_abertura ?? 0), linhas.filter(l => l.id !== lancamentoId));
+    },
+  });
+  const saldoSemEsta = typeof saldoQuery.data === 'number' ? saldoQuery.data : null;
+  const sangriaAcimaDoSaldo = ehSangria && parsedValue !== null && saldoSemEsta !== null && emCentavos(parsedValue) > emCentavos(saldoSemEsta);
+  const saldoIndisponivel = ehSangria && !saldoQuery.isLoading && saldoSemEsta === null;
 
   const saveMutation = useMutation({
     mutationFn: async (payload: { id: string; descricao: string; valor: number; forma_pagamento: PaymentMethod }) => {
@@ -133,7 +156,7 @@ export default function EditarLancamentoCaixaPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] }),
         queryClient.invalidateQueries({ queryKey: ['cash-movement-edit-record', clinicId, today, lancamentoId] }),
       ]);
       navigationAllowed.current = true;
@@ -179,8 +202,10 @@ export default function EditarLancamentoCaixaPage() {
                   if (!draft.descricao.trim()) { setSubmitError('Informe a descrição do lançamento.'); return; }
                   if (invalidValue) { setSubmitError('Informe um valor maior que zero, com no máximo duas casas decimais.'); return; }
                   if (!dirty) { setSubmitError('Nenhuma alteração para salvar.'); return; }
+                  if (sangriaAcimaDoSaldo) { setSubmitError('A retirada é maior que o dinheiro disponível na gaveta.'); return; }
+                  if (ehSangria && saldoSemEsta === null) { setSubmitError('Não foi possível conferir o saldo da gaveta. Tente novamente.'); return; }
                   setSubmitError('');
-                  saveMutation.mutate({ id: movement.id, descricao: draft.descricao.trim(), valor: parsedValue!, forma_pagamento: draft.forma_pagamento });
+                  saveMutation.mutate({ id: movement.id, descricao: draft.descricao.trim(), valor: parsedValue!, forma_pagamento: formaFixa ? 'dinheiro' : draft.forma_pagamento });
                 }}>
                   <dl className="grid gap-3 border-b border-border pb-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div><dt className="text-xs text-muted-foreground">Data</dt><dd className="mt-1 font-medium">{formatWithDatePreference(new Date(`${movement.data}T12:00:00`), 'dd/MM/yyyy')}</dd></div>
@@ -189,12 +214,12 @@ export default function EditarLancamentoCaixaPage() {
                     <div><dt className="text-xs text-muted-foreground">Categoria</dt><dd className="mt-1 font-medium">{movement.categoria || 'Não informada'}</dd></div>
                   </dl>
                   <div className="space-y-2"><Label htmlFor="cash-movement-description">Descrição</Label><Input id="cash-movement-description" value={draft.descricao} maxLength={200} onChange={event => { setDraft(current => current ? { ...current, descricao: event.target.value } : current); setSubmitError(''); }} required autoComplete="off" /></div>
-                  <div className="space-y-2"><Label htmlFor="cash-movement-value">Valor (R$)</Label><Input id="cash-movement-value" type="text" inputMode="decimal" value={draft.valor} aria-describedby="cash-movement-value-help" aria-invalid={Boolean(draft.valor.trim()) && invalidValue} onChange={event => { setDraft(current => current ? { ...current, valor: event.target.value } : current); setSubmitError(''); }} required /><p id="cash-movement-value-help" className="text-xs text-muted-foreground">Valor maior que zero, com até duas casas decimais.</p>{Boolean(draft.valor.trim()) && invalidValue && <p role="alert" className="text-xs text-destructive">Informe um valor válido em reais.</p>}</div>
-                  <div className="space-y-2"><Label htmlFor="cash-movement-method">Forma de pagamento</Label><Select value={draft.forma_pagamento} onValueChange={value => { setDraft(current => current ? { ...current, forma_pagamento: value as PaymentMethod } : current); setSubmitError(''); }}><SelectTrigger id="cash-movement-method"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(paymentLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label htmlFor="cash-movement-value">Valor (R$)</Label><Input id="cash-movement-value" type="text" inputMode="decimal" value={draft.valor} aria-describedby="cash-movement-value-help" aria-invalid={Boolean(draft.valor.trim()) && invalidValue} onChange={event => { setDraft(current => current ? { ...current, valor: event.target.value } : current); setSubmitError(''); }} required /><p id="cash-movement-value-help" className="text-xs text-muted-foreground">Valor maior que zero, com até duas casas decimais.</p>{Boolean(draft.valor.trim()) && invalidValue && <p role="alert" className="text-xs text-destructive">Informe um valor válido em reais.</p>}{ehSangria && saldoSemEsta !== null && <p className="text-xs text-muted-foreground">Disponível na gaveta para esta retirada: <span className="font-medium tabular-nums text-foreground">{money(saldoSemEsta)}</span></p>}{sangriaAcimaDoSaldo && <p role="alert" className="text-xs text-destructive">A retirada é maior que o dinheiro disponível na gaveta.</p>}{saldoIndisponivel && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"><span>Não foi possível conferir o saldo da gaveta.</span><Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => void saldoQuery.refetch()}>Tentar novamente</Button></div>}</div>
+                  {formaFixa ? <div className="space-y-1"><p className="text-sm font-medium">Forma de pagamento</p><p className="text-sm text-muted-foreground">Dinheiro — {movementLabels[movement.tipo].toLowerCase()} sempre movimenta a gaveta.</p></div> : <div className="space-y-2"><Label htmlFor="cash-movement-method">Forma de pagamento</Label><Select value={draft.forma_pagamento} onValueChange={value => { setDraft(current => current ? { ...current, forma_pagamento: value as PaymentMethod } : current); setSubmitError(''); }}><SelectTrigger id="cash-movement-method"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(paymentLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>}
                   <p className="text-xs text-muted-foreground">Tipo, categoria e data são mantidos. A alteração fica no mesmo lançamento e não cria uma movimentação nova.</p>
                   {submitError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Não foi possível salvar. {submitError}</div>}
                   <Separator />
-                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={back} disabled={saveMutation.isPending}>Cancelar</Button><Button type="submit" disabled={!dirty || invalidValue || !draft.descricao.trim() || saveMutation.isPending} className="gap-2">{saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}{saveMutation.isPending ? 'Salvando…' : 'Salvar alterações'}</Button></div>
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={back} disabled={saveMutation.isPending}>Cancelar</Button><Button type="submit" disabled={!dirty || invalidValue || !draft.descricao.trim() || saveMutation.isPending || sangriaAcimaDoSaldo || (ehSangria && saldoSemEsta === null)} className="gap-2">{saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}{saveMutation.isPending ? 'Salvando…' : 'Salvar alterações'}</Button></div>
                 </form>
               </CardContent>
             </Card>}

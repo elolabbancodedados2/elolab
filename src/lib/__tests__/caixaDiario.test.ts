@@ -83,3 +83,12 @@ describe('totaisPorFormaForaDaGaveta', () => {
     ]);
   });
 });
+
+describe('somarContagemCedulas', () => {
+  it('soma cédulas e moedas em centavos, ignorando quantidades inválidas', async () => {
+    const { somarContagemCedulas } = await import('@/lib/caixaDiario');
+    expect(somarContagemCedulas({ '50': 3, '0.25': 4, '0.1': 3 })).toBe(151.3);
+    expect(somarContagemCedulas({ '100': -1, '20': 1.5, '10': 'x' as unknown as number })).toBe(0);
+    expect(somarContagemCedulas({})).toBe(0);
+  });
+});

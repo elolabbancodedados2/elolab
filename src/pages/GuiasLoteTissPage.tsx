@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileStack, Loader2, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileStack, Loader2, Plus, Printer, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
@@ -21,6 +21,8 @@ import { buscarDadosBasicosPacientes } from '@/lib/patientBasicData';
 import { bloqueiaEnvio, validarLoteTiss, type AutorizacaoValidacao, type GuiaLote, type PendenciaLote } from '@/lib/tissLoteValidacao';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { mensagemDeErro } from '@/lib/erros';
+import { formatarCompetencia, formatarDataCurta, rotuloStatusAutorizacao, rotuloStatusLote } from '@/lib/tissStatus';
+import { baixarGuiaTissPdf } from '@/lib/guiaTissPdf';
 
 interface FaturamentoFiltros { tab?: string; buscaLote?: string; statusLote?: string; buscaGlosa?: string; statusGlosa?: string }
 interface EstadoRota { filtros?: FaturamentoFiltros }
@@ -76,7 +78,7 @@ export default function GuiasLoteTissPage() {
   const addAttempt = useRef<PayloadGuia | null>(null);
 
   const loteQuery = useQuery({
-    queryKey: ['lote-tiss-guias-workspace', clinicId || null, loteId], enabled: !!clinicId && !!loteId,
+    queryKey: ['lotes-tiss', 'detalhe', clinicId || null, loteId], enabled: !!clinicId && !!loteId,
     queryFn: async () => {
       const { data, error } = await (supabase as any).from('lotes_tiss')
         .select('id,numero_lote,competencia,versao_tiss,convenio_id,quantidade_guias,valor_apresentado,status,convenios(nome,registro_ans)')
@@ -86,7 +88,7 @@ export default function GuiasLoteTissPage() {
     },
   });
   const guiasQuery = useQuery({
-    queryKey: ['lote-tiss-guias', clinicId || null, loteId], enabled: !!clinicId && !!loteId,
+    queryKey: ['lotes-tiss', 'guias', clinicId || null, loteId], enabled: !!clinicId && !!loteId,
     queryFn: async () => buscarEmBlocos<GuiaLote>(() => (supabase as any).from('lote_tiss_guias').select('*')
       .eq('clinica_id', clinicId).eq('lote_id', loteId).order('created_at', { ascending: true }).order('id', { ascending: true })),
   });
@@ -120,11 +122,8 @@ export default function GuiasLoteTissPage() {
     && Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
   const dirtyForm = !!(form.numero.trim() || form.carteira.trim() || form.data || form.codigo.trim() || form.autorizacaoId !== 'nenhuma' || form.quantidade !== '1' || form.valor.trim());
 
-  const atualizarGuias = async () => Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['lote-tiss-guias', clinicId, loteId] }),
-    queryClient.invalidateQueries({ queryKey: ['lote-tiss-guias'] }),
-    queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] }),
-  ]);
+  // Lote, guias do lote e a lista do faturamento compartilham o prefixo 'lotes-tiss'.
+  const atualizarGuias = async () => queryClient.invalidateQueries({ queryKey: ['lotes-tiss'] });
 
   async function adicionar(payload?: PayloadGuia) {
     if (!lote || !editavel || adding) return;
@@ -205,7 +204,7 @@ export default function GuiasLoteTissPage() {
   return <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 pb-28 sm:px-6 sm:pb-8">
     <PageHeader title={`Conferir guias · ${lote.numero_lote}`} description="Revise os dados e as autorizações vinculadas antes de exportar o resumo ou registrar o envio." icon={<FileStack />} actions={<Button variant="outline" onClick={goBack} disabled={adding || !!deletingId}><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao faturamento</Button>} />
     <Card>
-      <CardHeader className="border-b border-border/70"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">Resumo e consistência</CardTitle><p className="mt-1 text-sm text-muted-foreground">{lote.convenios?.nome ?? 'Convênio'} · competência {lote.competencia.slice(0, 7)}</p></div><Badge variant="outline" className="capitalize">{lote.status.replace(/_/g, ' ')}</Badge></div></CardHeader>
+      <CardHeader className="border-b border-border/70"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">Resumo e consistência</CardTitle><p className="mt-1 text-sm text-muted-foreground">{lote.convenios?.nome ?? 'Convênio'} · competência {formatarCompetencia(lote.competencia)}</p></div><Badge variant="outline">{rotuloStatusLote(lote.status)}</Badge></div></CardHeader>
       <CardContent className="grid gap-4 pt-5 sm:grid-cols-4"><div><p className="text-xs text-muted-foreground">Guias registradas</p><p className="mt-1 font-semibold tabular-nums">{guias.length} <span className="font-normal text-muted-foreground">/ {lote.quantidade_guias}</span></p></div><div><p className="text-xs text-muted-foreground">Valor das guias</p><p className="mt-1 font-semibold tabular-nums">{moeda(totalGuias)}</p></div><div><p className="text-xs text-muted-foreground">Valor apresentado</p><p className="mt-1 font-semibold tabular-nums">{moeda(Number(lote.valor_apresentado))}</p></div><div><p className="text-xs text-muted-foreground">Pendências que bloqueiam envio</p><p className={`mt-1 font-semibold tabular-nums ${errors.length ? 'text-destructive' : 'text-success-foreground'}`}>{errors.length}</p></div></CardContent>
     </Card>
     <section aria-label="Validação do lote" className={`rounded-xl border p-4 ${errors.length ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-secondary'}`}>
@@ -214,10 +213,10 @@ export default function GuiasLoteTissPage() {
     <Card>
       <CardHeader><CardTitle className="text-base">Guias vinculadas</CardTitle></CardHeader>
       <CardContent className="space-y-4">
-        {guias.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Nenhuma guia cadastrada neste lote.</p> : <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>Guia / carteira</TableHead><TableHead>Atendimento</TableHead><TableHead>Procedimento</TableHead><TableHead>Autorização</TableHead><TableHead className="text-right">Valor</TableHead>{editavel && <TableHead><span className="sr-only">Ações</span></TableHead>}</TableRow></TableHeader><TableBody>{guias.map(guia => {
+        {guias.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Nenhuma guia cadastrada neste lote.</p> : <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>Guia / carteira</TableHead><TableHead>Atendimento</TableHead><TableHead>Procedimento</TableHead><TableHead>Autorização</TableHead><TableHead className="text-right">Valor</TableHead><TableHead><span className="sr-only">Ações</span></TableHead></TableRow></TableHeader><TableBody>{guias.map(guia => {
           const auth = autorizacoes.find(item => item.id === guia.autorizacao_id);
           const guideErrors = pending.filter(item => item.guiaId === guia.id && item.gravidade === 'erro').length;
-          return <TableRow key={guia.id}><TableCell className="font-medium">{guia.numero_guia}<p className="text-xs text-muted-foreground">Carteira {guia.numero_carteira || '—'}</p>{guideErrors > 0 && <Badge variant="outline" className="mt-1 rounded-full border-destructive/40 text-destructive">{guideErrors} a corrigir</Badge>}</TableCell><TableCell>{guia.data_atendimento.split('-').reverse().join('/')}</TableCell><TableCell>{guia.codigo_procedimento}<p className="text-xs text-muted-foreground">{tipos.find(type => type.value === guia.tipo_servico)?.label ?? guia.tipo_servico} · {guia.quantidade}x</p></TableCell><TableCell>{auth ? `${auth.numero_autorizacao || 'sem número'} · ${auth.paciente_nome || 'Paciente'} · ${auth.status}` : guia.autorizacao_id ? 'Não encontrada' : '—'}</TableCell><TableCell className="text-right tabular-nums">{moeda(Number(guia.valor_total))}</TableCell>{editavel && <TableCell><Button size="icon" variant="ghost" className="h-9 w-9 rounded-full text-destructive" aria-label={`Remover guia ${guia.numero_guia}`} disabled={adding || !!deletingId} onClick={() => { setDeleteError(''); setDeleteTarget(guia); }}><Trash2 className="h-4 w-4" /></Button></TableCell>}</TableRow>;
+          return <TableRow key={guia.id}><TableCell className="font-medium">{guia.numero_guia}<p className="text-xs text-muted-foreground">Carteira {guia.numero_carteira || '—'}</p>{guideErrors > 0 && <Badge variant="outline" className="mt-1 rounded-full border-destructive/40 text-destructive">{guideErrors} a corrigir</Badge>}</TableCell><TableCell>{formatarDataCurta(guia.data_atendimento)}</TableCell><TableCell>{guia.codigo_procedimento}<p className="text-xs text-muted-foreground">{tipos.find(type => type.value === guia.tipo_servico)?.label ?? guia.tipo_servico} · {guia.quantidade}x</p></TableCell><TableCell>{auth ? `${auth.numero_autorizacao || 'sem número'} · ${auth.paciente_nome || 'Paciente'} · ${rotuloStatusAutorizacao(auth.status)}` : guia.autorizacao_id ? 'Não encontrada' : '—'}</TableCell><TableCell className="text-right tabular-nums">{moeda(Number(guia.valor_total))}</TableCell><TableCell><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" className="h-11 w-11 rounded-full" aria-label={`Imprimir guia ${guia.numero_guia}`} title="Baixar espelho da guia em PDF" onClick={() => void baixarGuiaTissPdf(guia, lote, auth).catch(error => toast.error('Não foi possível gerar o PDF da guia.', { description: mensagemDeErro(error) }))}><Printer className="h-4 w-4" /></Button>{editavel && <Button size="icon" variant="ghost" className="h-11 w-11 rounded-full text-destructive" aria-label={`Remover guia ${guia.numero_guia}`} disabled={adding || !!deletingId} onClick={() => { setDeleteError(''); setDeleteTarget(guia); }}><Trash2 className="h-4 w-4" /></Button>}</div></TableCell></TableRow>;
         })}</TableBody></Table></div>}
         {!editavel && <p className="text-xs text-muted-foreground">O lote já foi enviado; suas guias estão disponíveis apenas para consulta.</p>}
       </CardContent>
@@ -231,15 +230,26 @@ export default function GuiasLoteTissPage() {
           <div className="space-y-2"><Label htmlFor="lote-guia-data">Data do atendimento</Label><Input id="lote-guia-data" type="date" value={form.data} onChange={event => setForm(current => ({ ...current, data: event.target.value }))} /></div>
           <div className="space-y-2"><Label htmlFor="lote-guia-tuss">Código TUSS</Label><Input id="lote-guia-tuss" inputMode="numeric" maxLength={8} value={form.codigo} onChange={event => setForm(current => ({ ...current, codigo: event.target.value }))} /></div>
           <div className="space-y-2"><Label htmlFor="lote-guia-tipo">Serviço faturado</Label><Select value={form.tipo} onValueChange={value => setForm(current => ({ ...current, tipo: value }))}><SelectTrigger id="lote-guia-tipo"><SelectValue /></SelectTrigger><SelectContent>{tipos.map(type => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2 lg:col-span-2"><Label htmlFor="lote-guia-autorizacao">Autorização</Label><Select value={form.autorizacaoId} onValueChange={value => setForm(current => ({ ...current, autorizacaoId: value }))}><SelectTrigger id="lote-guia-autorizacao"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhuma">Sem autorização</SelectItem>{autorizacoes.map(item => <SelectItem key={item.id} value={item.id}>{item.numero_autorizacao || 'Sem número'} · {item.paciente_nome || 'Paciente'} · {item.tipo_servico} · {item.status}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">Paciente e convênio são obtidos da autorização selecionada.</p></div>
+          <div className="space-y-2 lg:col-span-2"><Label htmlFor="lote-guia-autorizacao">Autorização</Label><Select value={form.autorizacaoId} onValueChange={value => setForm(current => ({ ...current, autorizacaoId: value }))}><SelectTrigger id="lote-guia-autorizacao"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhuma">Sem autorização</SelectItem>{autorizacoes.map(item => <SelectItem key={item.id} value={item.id}>{item.numero_autorizacao || 'Sem número'} · {item.paciente_nome || 'Paciente'} · {tipos.find(type => type.value === item.tipo_servico)?.label ?? item.tipo_servico} · {rotuloStatusAutorizacao(item.status)}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">Paciente e convênio são obtidos da autorização selecionada.</p></div>
           <div className="grid grid-cols-2 gap-3"><div className="space-y-2"><Label htmlFor="lote-guia-quantidade">Quantidade</Label><Input id="lote-guia-quantidade" type="number" min="1" step="1" value={form.quantidade} onChange={event => setForm(current => ({ ...current, quantidade: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="lote-guia-valor">Valor (R$)</Label><Input id="lote-guia-valor" type="number" min="0.01" step="0.01" value={form.valor} onChange={event => setForm(current => ({ ...current, valor: event.target.value }))} /></div></div>
         </fieldset>
-        {addError && <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p>{addError}</p><p className="text-xs">Os dados foram preservados. A repetição consulta a guia pelo número no lote antes de gravar novamente.</p><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button size="sm" variant="outline" onClick={() => { addAttempt.current = null; setAddError(''); }}>Editar e conferir</Button><Button size="sm" onClick={() => addAttempt.current && void adicionar(addAttempt.current)}>Repetir a mesma inclusão</Button></div></div>}
+        {addError && <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p>{addError}</p><p className="text-xs">Os dados foram preservados. Ao repetir, o EloLab confere se a guia já entrou no lote antes de gravar de novo, sem duplicar.</p><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button size="sm" variant="outline" onClick={() => { addAttempt.current = null; setAddError(''); }}>Editar e conferir</Button><Button size="sm" onClick={() => addAttempt.current && void adicionar(addAttempt.current)}>Repetir a mesma inclusão</Button></div></div>}
         <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" onClick={goBack} disabled={adding || !!deletingId}>Voltar</Button><Button onClick={() => void adicionar()} disabled={adding || !!addError || !formValido}>{adding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Incluir guia</Button></div>
       </CardContent>
     </Card>}
     {lote.status === 'rascunho' && errors.length > 0 && <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">O registro de envio permanece bloqueado enquanto houver pendências críticas. Revise cada guia e a autorização vinculada antes de voltar ao faturamento.</p>}
     <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open && !deletingId) { setDeleteTarget(null); setDeleteError(''); } }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remover a guia {deleteTarget?.numero_guia}?</AlertDialogTitle>
+          <AlertDialogDescription>A guia de {moeda(Number(deleteTarget?.valor_total ?? 0))} sai deste rascunho. Os demais dados do lote continuam como estão.</AlertDialogDescription>
+        </AlertDialogHeader>
+        {deleteError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{deleteError}</p>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={!!deletingId}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={!!deletingId} onClick={event => { event.preventDefault(); void remover(); }}>{deletingId && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Remover</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
     </AlertDialog>
     <div className="sr-only" aria-live="polite">{bloqueiaEnvio(pending) ? `${errors.length} pendências impedem o envio` : 'Nenhuma pendência crítica impede o envio'}</div>
     <UnsavedChangesGuard dirty={dirtyForm} busy={adding || !!deletingId} completed={completed} />
