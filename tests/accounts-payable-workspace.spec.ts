@@ -20,9 +20,11 @@ test('payables show due urgency in mobile rows and keep the active summary filte
 
   const main = page.locator('#main-content');
   await expect(main.getByText('Saldo em aberto', { exact: true }).locator('..')).toContainText(/1\.600,00/);
-  const overdueRow = main.getByRole('row').filter({ hasText: 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal' });
+  // No celular as despesas viram fichas (listitem) em vez de linhas de tabela.
+  const overdueRow = main.getByRole('list', { name: 'Despesas' }).getByRole('listitem').filter({ hasText: 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal' });
   const dueDate = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateOffset(-4));
-  await expect(overdueRow.getByText(new RegExp(`Vencimento ${dueDate} · Atrasada há 4 dias`))).toBeVisible();
+  await expect(overdueRow.getByText(dueDate, { exact: true })).toBeVisible();
+  await expect(overdueRow.getByText('Atrasada há 4 dias', { exact: true })).toBeVisible();
 
   const overdueSummary = main.getByRole('button', { name: /Vencidas \/ em atraso/ });
   await overdueSummary.focus();
@@ -30,7 +32,7 @@ test('payables show due urgency in mobile rows and keep the active summary filte
   await expect(overdueSummary).toHaveAttribute('aria-pressed', 'true');
   await expect(overdueSummary).toHaveClass(/bg-primary\/5/);
   await expect(overdueRow).toBeVisible();
-  await expect(main.getByRole('row').filter({ hasText: 'Licença mensal do prontuário externo' })).toHaveCount(0);
+  await expect(main.getByRole('listitem').filter({ hasText: 'Licença mensal do prontuário externo' })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await overdueRow.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('payables-mobile-urgency.png'), fullPage: true, animations: 'disabled' });
@@ -103,7 +105,7 @@ test('payable payment keeps the audited payload after an uncertain response and 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
   const main = page.locator('#main-content');
-  const payableRow = main.getByRole('row').filter({ hasText: 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal' });
+  const payableRow = main.getByRole('list', { name: 'Despesas' }).getByRole('listitem').filter({ hasText: 'Manutenção preventiva dos equipamentos de diagnóstico e climatização da unidade principal' });
   await payableRow.getByRole('button', { name: 'Pagar saldo' }).click();
   await expect(page).toHaveURL(`/contas/pagar/${accountId}/pagamento`);
   await expect(page.getByRole('heading', { name: 'Registrar pagamento da conta' })).toBeVisible();
@@ -181,10 +183,10 @@ test('new payable opens as a page, survives reload, and returns to the filtered 
   await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
   const search = page.getByPlaceholder('Descrição, fornecedor, NF...');
   await search.fill('Fornecedor QA');
-  await page.getByRole('button', { name: 'Nova Conta', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Nova conta', exact: true }).first().click();
 
   await expect(page).toHaveURL('/contas/pagar/nova');
-  await expect(page.getByRole('heading', { name: 'Nova Conta a Pagar', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Nova conta a pagar', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('new-payable-mobile.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -202,7 +204,7 @@ test('new payable opens as a page, survives reload, and returns to the filtered 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: info.outputPath('new-payable-desktop.png'), fullPage: true });
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Nova Conta a Pagar', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Nova conta a pagar', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Voltar às contas a pagar' }).click();
 
@@ -221,10 +223,10 @@ test('payable creation keeps its draft after an error and submits the existing f
     return route.fulfill({ status: 201, json: [] });
   });
   await page.goto('/contas?tab=pagar&status=aberto&mes=2026-10');
-  await page.getByRole('button', { name: 'Nova Conta', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Nova conta', exact: true }).first().click();
   await page.getByLabel('Descrição *').fill('Licença de software da clínica');
   await page.getByLabel('Fornecedor / Favorecido').fill('Fornecedor QA');
-  await page.getByLabel('Valor (R$) *').fill('184.75');
+  await page.getByLabel('Valor *', { exact: true }).fill('184,75');
   await page.getByLabel('Vencimento *').fill('2026-11-20');
   await page.getByRole('switch', { name: 'Marcar como despesa recorrente' }).click();
   await page.getByLabel('Frequência').click();
@@ -238,7 +240,10 @@ test('payable creation keeps its draft after an error and submits the existing f
   await page.getByRole('button', { name: 'Salvar conta', exact: true }).click();
   await expect(page).toHaveURL('/contas?tab=pagar&status=aberto&mes=2026-10');
   expect(payloads).toHaveLength(2);
-  expect(payloads[1]).toMatchObject({
+  // O cadastro envia uma lista (uma linha por parcela); a despesa recorrente é uma linha só.
+  const created = [payloads[1]].flat() as Record<string, unknown>[];
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({
     tipo: 'despesa',
     clinica_id: '00000000-0000-4000-8000-000000000002',
     descricao: 'Licença de software da clínica',

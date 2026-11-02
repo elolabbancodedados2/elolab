@@ -566,6 +566,24 @@ export default function ContasPagar() {
     }
   };
 
+  // Urgência do vencimento, igual na tabela e nas fichas do celular.
+  const urgenciaVencimento = (conta: any) => {
+    const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+    const diasAteVencimento = dataVencimento
+      ? differenceInCalendarDays(dataVencimento, parseDateOnly(todaySaoPauloDateOnly())!)
+      : null;
+    const aberto = ['pendente', 'atrasado', 'parcial'].includes(conta.status);
+    const diasAtraso = diasAteVencimento === null ? null : Math.abs(diasAteVencimento);
+    const urgencia = conta.vencida && diasAtraso !== null
+      ? `Atrasada há ${diasAtraso} ${diasAtraso === 1 ? 'dia' : 'dias'}`
+      : aberto && diasAteVencimento === 0
+        ? 'Vence hoje'
+        : aberto && diasAteVencimento !== null && diasAteVencimento > 0 && diasAteVencimento <= 7
+          ? `Vence em ${diasAteVencimento} ${diasAteVencimento === 1 ? 'dia' : 'dias'}`
+          : null;
+    return { dataVencimento, urgencia };
+  };
+
   const acoesConta = (conta: any) => (
     <>
       <Button size="icon" variant="ghost" className="h-11 w-11 md:h-9 md:w-9" aria-label={`Ver detalhes de ${conta.descricao}`} title="Ver detalhes" onClick={() => handleDetalhes(conta.id)}>
@@ -796,7 +814,7 @@ export default function ContasPagar() {
           {telaEstreita && filteredContas.length > 0 ? (
             <ul aria-label="Despesas" className="space-y-2">
               {filteredContas.map((conta: any) => {
-                const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
+                const { dataVencimento, urgencia } = urgenciaVencimento(conta);
                 return (
                   <li key={conta.id} className={cn('rounded-xl border border-border bg-card p-3', conta.vencida && 'border-destructive/30 bg-destructive/5')}>
                     <div className="flex items-start gap-3">
@@ -813,6 +831,7 @@ export default function ContasPagar() {
                           <div><dt className="text-muted-foreground">Vencimento</dt><dd className={cn('font-medium', conta.vencida ? 'text-destructive' : 'text-foreground')}>{dataVencimento ? format(dataVencimento, 'dd/MM/yyyy') : '—'}</dd></div>
                           <div className="text-right"><dt className="text-muted-foreground">{Number(conta.valor_pago || 0) > 0 ? 'Em aberto' : 'Valor'}</dt><dd className="font-semibold tabular-nums text-foreground">{formatCurrency(Number(conta.valor_pago || 0) > 0 ? saldoEmAberto(conta) : Number(conta.valor))}</dd></div>
                         </dl>
+                        {urgencia && <p className={cn('mt-1 text-xs font-medium', conta.vencida ? 'text-destructive' : 'text-warning-foreground')}>{urgencia}</p>}
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-end gap-1">{acoesConta(conta)}</div>
@@ -851,7 +870,7 @@ export default function ContasPagar() {
                         </p>
                         {contas.length === 0 ? (
                           <Button className="mt-3 gap-2" size="sm" onClick={handleNew}>
-                            <Plus className="h-4 w-4" /> Nova Conta
+                            <Plus className="h-4 w-4" /> Nova conta
                           </Button>
                         ) : (
                           <Button className="mt-3 rounded-full" size="sm" variant="outline" onClick={() => { setSearchTerm(''); clearRouteFilters(); }}>
@@ -863,19 +882,7 @@ export default function ContasPagar() {
                   </TableRow>
                 ) : (
                   filteredContas.map((conta: any) => {
-                    const dataVencimento = conta.data_vencimento ? parseDateOnly(conta.data_vencimento) : null;
-                    const diasAteVencimento = dataVencimento
-                      ? differenceInCalendarDays(dataVencimento, parseDateOnly(todaySaoPauloDateOnly())!)
-                      : null;
-                    const aberto = ['pendente', 'atrasado', 'parcial'].includes(conta.status);
-                    const diasAtraso = diasAteVencimento === null ? null : Math.abs(diasAteVencimento);
-                    const urgencia = conta.vencida && diasAtraso !== null
-                      ? `Atrasada há ${diasAtraso} ${diasAtraso === 1 ? 'dia' : 'dias'}`
-                      : aberto && diasAteVencimento === 0
-                        ? 'Vence hoje'
-                        : aberto && diasAteVencimento !== null && diasAteVencimento > 0 && diasAteVencimento <= 7
-                          ? `Vence em ${diasAteVencimento} ${diasAteVencimento === 1 ? 'dia' : 'dias'}`
-                          : null;
+                    const { dataVencimento, urgencia } = urgenciaVencimento(conta);
                     return (
                     <TableRow key={conta.id} className={cn(conta.vencida && 'bg-destructive/5')}>
                       <TableCell>
