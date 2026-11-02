@@ -5,17 +5,18 @@ const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   statusCallback: null as null | ((status: string) => void),
   handlers: [] as Array<() => void>,
+  filtros: [] as unknown[],
   removeChannel: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
 }));
-vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ user: { id: 'u1' } }) }));
+vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ user: { id: 'u1' }, profile: { clinica_id: 'c1' } }) }));
 vi.mock('@/lib/realtimeCanal', () => ({ canalUnico: (nome: string) => nome }));
 vi.mock('@/integrations/supabase/client', () => {
   const channel = {
-    on: (_tipo: string, _filtro: unknown, handler: () => void) => { mocks.handlers.push(handler); return channel; },
+    on: (_tipo: string, filtro: unknown, handler: () => void) => { mocks.filtros.push(filtro); mocks.handlers.push(handler); return channel; },
     subscribe: (cb: (status: string) => void) => { mocks.statusCallback = cb; return channel; },
   };
   return { supabase: { channel: () => channel, removeChannel: mocks.removeChannel } };
@@ -32,6 +33,7 @@ describe('useRealtimeSubscription', () => {
     vi.useFakeTimers();
     mocks.invalidateQueries.mockClear();
     mocks.handlers.length = 0;
+    mocks.filtros.length = 0;
     mocks.statusCallback = null;
     setHidden(false);
   });
@@ -69,6 +71,12 @@ describe('useRealtimeSubscription', () => {
     setHidden(true);
     vi.advanceTimersByTime(INITIAL_POLL_INTERVAL * 3);
     expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('assina cada tabela só com eventos da clínica da sessão', () => {
+    renderHook(() => useRealtimeSubscription());
+    expect(mocks.filtros.length).toBeGreaterThan(0);
+    expect(mocks.filtros.every((f) => (f as { filter?: string }).filter === 'clinica_id=eq.c1')).toBe(true);
   });
 
   it('remove o canal ao desmontar', () => {
