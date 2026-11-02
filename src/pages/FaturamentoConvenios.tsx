@@ -368,7 +368,7 @@ export default function FaturamentoConvenios() {
             : <Button variant="outline" disabled className="min-h-11 gap-2 rounded-full disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" title="Envie um lote antes de registrar uma glosa"><AlertTriangle className="h-4 w-4" />Registrar glosa</Button>}
           {convenios.length > 0
             ? <Button asChild className="min-h-11 gap-2 rounded-full"><Link to="/faturamento-convenios/lotes/novo" state={{ filtros: filtrosAtuais }}><Plus className="h-4 w-4" />Novo lote</Link></Button>
-            : <Button disabled className="min-h-11 gap-2 rounded-full"><Plus className="h-4 w-4" />Novo lote</Button>}
+            : <Button disabled className="min-h-11 gap-2 rounded-full disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" title="Cadastre um convênio antes de criar um lote"><Plus className="h-4 w-4" />Novo lote</Button>}
         </>
       )}
     />
