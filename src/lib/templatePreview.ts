@@ -1,3 +1,5 @@
+import { escapeHtml } from '@/lib/html';
+
 export const VALORES_EXEMPLO: Readonly<Record<string, string>> = {
   paciente_nome: 'João Silva',
   cpf: '123.456.789-10',
@@ -38,15 +40,6 @@ export type TemplatePreview = {
   renderedSubject: string;
   renderedContent: string;
 };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function variablesIn(value: string): string[] {
   const variables: string[] = [];

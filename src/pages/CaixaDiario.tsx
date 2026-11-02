@@ -1,3 +1,4 @@
+import { formatCurrency as fmt } from '@/lib/formatters';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +35,7 @@ import { calcularSaldoGaveta, calcularTotaisCaixa, validarResultadoRpcCaixa } fr
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { ehMovimentoDoCaixa, origemExternaDoMovimento } from '@/lib/origemMovimentoCaixa';
 import { dataHoraSP, FORMA_LABELS, horaSP, textoSeguroCsv } from '@/lib/caixaFormatacao';
+import { escapeHtml } from '@/lib/html';
 
 type LancamentoTipo = 'receita' | 'despesa' | 'sangria' | 'suprimento';
 type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cartao_credito' | 'cartao_debito' | 'cheque' | 'transferencia';
@@ -94,11 +96,6 @@ const FORMA_ICONS: Record<string, typeof Banknote> = {
   cheque: FileText,
   transferencia: ArrowUpFromLine,
 };
-
-
-
-const escapeHtml = (valor: unknown) => String(valor ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function abrirJanelaDeImpressao(titulo: string, corpoHtml: string) {
   // Com "noopener" o navegador devolve null e não dá para escrever o relatório.
@@ -324,7 +321,6 @@ export default function CaixaDiario() {
   });
 
   // ─── Helpers ────────────────────────────────────
-  const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtTime = horaSP;
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 

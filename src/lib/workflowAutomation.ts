@@ -1,5 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
+import { escapeHtml } from '@/lib/html';
 /**
  * Centralized Workflow Automation Engine
  * Handles automated transitions across all clinical flows:
@@ -20,12 +21,6 @@ interface WorkflowResult {
   success: boolean;
   message: string;
   actions: string[]; // list of automated actions taken
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char] ?? char);
 }
 
 /**
