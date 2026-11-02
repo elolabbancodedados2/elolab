@@ -193,7 +193,7 @@ export default function Analytics() {
     queryKey: ['analytics-ag', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     enabled: !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('agendamentos')
-        .select('*, medicos(nome, especialidade)')
+        .select('id, data, status, medico_id, medicos(nome, especialidade)')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(range.from, 'yyyy-MM-dd'))
         .lte('data', format(range.to, 'yyyy-MM-dd'))
@@ -204,7 +204,7 @@ export default function Analytics() {
     queryKey: ['analytics-ag-prev', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison && !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('agendamentos')
-        .select('*')
+        .select('id, data, status, medico_id')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(prevRange.from, 'yyyy-MM-dd'))
         .lte('data', format(prevRange.to, 'yyyy-MM-dd'))
@@ -215,7 +215,7 @@ export default function Analytics() {
     queryKey: ['analytics-lanc-emissao', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     enabled: !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
-        .select('*')
+        .select('id, tipo, status, data, data_pagamento, agendamento_id, valor, valor_pago, forma_pagamento')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(range.from, 'yyyy-MM-dd'))
         .lte('data', format(range.to, 'yyyy-MM-dd'))
@@ -228,7 +228,7 @@ export default function Analytics() {
     queryKey: ['analytics-lanc-pagamento', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     enabled: !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
-        .select('*')
+        .select('id, tipo, status, data, data_pagamento, agendamento_id, valor, valor_pago, forma_pagamento')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('data_pagamento', format(range.from, 'yyyy-MM-dd'))
         .lte('data_pagamento', format(range.to, 'yyyy-MM-dd'))
@@ -245,7 +245,7 @@ export default function Analytics() {
     queryKey: ['analytics-lanc-prev-emissao', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison && !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
-        .select('*')
+        .select('id, tipo, status, data, data_pagamento, agendamento_id, valor, valor_pago, forma_pagamento')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('data', format(prevRange.from, 'yyyy-MM-dd'))
         .lte('data', format(prevRange.to, 'yyyy-MM-dd'))
@@ -256,7 +256,7 @@ export default function Analytics() {
     queryKey: ['analytics-lanc-prev-pagamento', ...scopeKey, prevRange.from.toISOString(), prevRange.to.toISOString()],
     enabled: showComparison && !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('lancamentos')
-        .select('*')
+        .select('id, tipo, status, data, data_pagamento, agendamento_id, valor, valor_pago, forma_pagamento')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('data_pagamento', format(prevRange.from, 'yyyy-MM-dd'))
         .lte('data_pagamento', format(prevRange.to, 'yyyy-MM-dd'))
@@ -298,7 +298,7 @@ export default function Analytics() {
     queryKey: ['analytics-tri', ...scopeKey, range.from.toISOString(), range.to.toISOString()],
     enabled: !!profile?.clinica_id,
     queryFn: async () => buscarEmBlocos<any>(() => supabase.from('triagens')
-        .select('*')
+        .select('id, classificacao_risco')
         .eq('clinica_id', profile!.clinica_id!)
         .gte('created_at', timestampRange.inicio)
         .lt('created_at', timestampRange.fimExclusivo)
