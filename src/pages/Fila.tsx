@@ -305,8 +305,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const { data: cobrancas = [], isLoading: carregandoCobrancas, isError: erroCobrancas } = useQuery({
     queryKey: ['fila-cobrancas', profile?.clinica_id, idsAgendamentosHoje],
     staleTime: 15_000,
-    refetchInterval: 15_000,
-    refetchIntervalInBackground: false,
     queryFn: async () => {
       if (!profile?.clinica_id || idsAgendamentosHoje.length === 0) return [];
       const { data, error } = await supabase
@@ -339,8 +337,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     },
     enabled: !!profile?.clinica_id && travaLigada && idsAgendamentosHoje.length > 0,
     staleTime: 15_000,
-    refetchInterval: 15_000,
-    refetchIntervalInBackground: false,
   });
 
   /**
@@ -350,8 +346,6 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const triagensQuery = useQuery<string[]>({
     queryKey: ['fila-triagens', profile?.clinica_id, today, idsAgendamentosHoje],
     staleTime: 15_000,
-    refetchInterval: 15_000,
-    refetchIntervalInBackground: false,
     queryFn: async () => {
       if (idsAgendamentosHoje.length === 0) return [];
       const { data, error } = await (supabase as any).rpc('listar_agendamentos_com_triagem', {
