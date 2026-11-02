@@ -4534,7 +4534,8 @@ test('reception payment is a dedicated page and confirms through the idempotent 
   await confirmPayment.click();
   await expect(page).toHaveURL('/recepcao');
   await expect(page.getByText(/Pagamento de.*550,00 confirmado!/)).toBeVisible();
-  expect(paymentPayload).toMatchObject({ p_lancamento_id: lancamentoId, p_desconto: 0, p_acrescimo: 0 });
+  // Desconto e acréscimo não alterados vão como null: o RPC mantém o valor já gravado (outra aba pode ter mudado).
+  expect(paymentPayload).toMatchObject({ p_lancamento_id: lancamentoId, p_desconto: null, p_acrescimo: null });
   expect(paymentPayload?.p_chave_idempotencia).toEqual(expect.any(String));
   expect(paymentPayload?.p_pagamentos).toEqual([{ forma_pagamento: 'pix', valor: 550 }]);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
