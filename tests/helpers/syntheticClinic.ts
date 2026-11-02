@@ -108,6 +108,7 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     browser_notifications: false,
     email_daily_summary: false,
   };
+  // Mesmo padrão do playwright.config: a porta do servidor local pode mudar via PLAYWRIGHT_PORT.
   const appOrigin = options.appOrigin ?? `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? 4173}`;
   const todaySaoPaulo = options.today ?? new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',

@@ -435,11 +435,12 @@ function SalasWorkspace({ creationPage }: { creationPage: boolean }) {
       </section>
     );
   }
-  // Uma atualização que falha com dados na tela vira aviso; sem dados, a tela pausa.
+  // Uma atualização de salas ou médicos que falha com dados na tela vira aviso; sem dados, a tela pausa.
   if (salasQuery.isError && !salasQuery.data && !initialized.current) {
     return <ErrorState title="Não foi possível carregar as salas" error={salasQuery.error} onRetry={() => void salasQuery.refetch()} />;
   }
-  if (ocupacoesQuery.isError && !ocupacoesQuery.data && !initialized.current) {
+  // A ocupação nunca fica velha na tela: sem confirmação atual, uma sala ocupada poderia aparecer como disponível.
+  if (ocupacoesQuery.isError && !initialized.current) {
     return <ErrorState title="Não foi possível confirmar a ocupação das salas" description="A tela foi pausada para evitar mostrar uma sala ocupada como disponível." error={ocupacoesQuery.error} onRetry={() => void ocupacoesQuery.refetch()} />;
   }
   if (medicosQuery.isError && !medicosQuery.data && !initialized.current) {

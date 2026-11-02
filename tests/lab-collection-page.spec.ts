@@ -31,7 +31,10 @@ for (const width of [1440, 768, 390]) {
     await page.goto('/laboratorio/coletas/nova');
     await expect(page.getByRole('heading', { name: 'Nova coleta de amostra', exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByLabel('Lote do insumo', { exact: true }).fill('QA-001');
+    // O lote agora vem dos lotes do estoque; "Outro lote" abre o campo digitado.
+    await page.getByRole('combobox', { name: 'Lote do insumo (tubo ou agulha)', exact: true }).click();
+    await page.getByRole('option', { name: 'Outro lote (digitar)', exact: true }).click();
+    await page.getByLabel('Lote do insumo digitado', { exact: true }).fill('QA-001');
     await page.screenshot({ path: `.qa-artifacts/lab-collection-20261029/new-${width}.png` });
     const save = page.getByRole('button', { name: 'Registrar Coleta', exact: true });
     await save.evaluate(el => el.scrollIntoView({ block: 'center' }));
@@ -40,7 +43,7 @@ for (const width of [1440, 768, 390]) {
     await page.screenshot({ path: `.qa-artifacts/lab-collection-20261029/footer-${width}.png` });
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await page.getByRole('button', { name: 'Continuar nesta página' }).click();
-    await expect(page.getByLabel('Lote do insumo', { exact: true })).toHaveValue('QA-001');
+    await expect(page.getByLabel('Lote do insumo digitado', { exact: true })).toHaveValue('QA-001');
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await page.getByRole('button', { name: 'Descartar e sair' }).click();
     await expect(page).toHaveURL('/laboratorio');

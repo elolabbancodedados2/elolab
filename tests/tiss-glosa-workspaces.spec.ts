@@ -79,7 +79,8 @@ test('preparação de recurso é página própria e preserva os mesmos dados na 
   await page.screenshot({ path: 'test-results/tiss-appeal-page-desktop.png', fullPage: true });
   await page.getByLabel('Justificativa').fill('A cobrança está respaldada pela documentação e autorização clínica vigente.');
   await page.getByLabel('Prazo para envio').fill('2026-11-15');
-  await page.getByLabel('Responsável financeiro').selectOption(userId);
+  await page.getByRole('combobox', { name: 'Responsável financeiro' }).click();
+  await page.getByRole('option', { name: 'Financeiro QA', exact: true }).click();
   await page.getByRole('button', { name: 'Salvar preparação' }).click();
   await expect(page.getByRole('alert')).toContainText('Falha sintética ao preparar recurso');
   await expect(page.getByLabel('Justificativa')).toHaveValue('A cobrança está respaldada pela documentação e autorização clínica vigente.');
@@ -177,7 +178,8 @@ test('as ações da lista de convênios navegam para páginas próprias em vez d
 
   await page.goto('/faturamento-convenios');
   await page.getByRole('tab', { name: /Glosas/ }).click();
-  await page.getByRole('button', { name: 'Preparar recurso' }).click();
+  // A ação da linha; "Preparar recurso (n)" é a ação em lote das glosas selecionadas.
+  await page.getByRole('button', { name: 'Preparar recurso', exact: true }).click();
   await expect(page).toHaveURL(`/faturamento-convenios/glosas/${glosaId}/recurso`);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

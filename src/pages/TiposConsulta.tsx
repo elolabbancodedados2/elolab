@@ -125,7 +125,9 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
   const [gradeAlterada, setGradeAlterada] = useState(false);
   const [duplicandoId, setDuplicandoId] = useState<string | null>(null);
 
-  const { user, profile, isAdmin } = useSupabaseAuth();
+  const { user, profile, isAdmin, hasRole } = useSupabaseAuth();
+  // Preços seguem a política do banco (can_access_financial): administração e financeiro alteram; o cadastro do tipo é só da administração.
+  const podeAlterarPrecos = isAdmin() || hasRole('financeiro');
   const queryClient = useQueryClient();
   const conveniosQuery = useConvenios();
   const convenios = conveniosQuery.data ?? [];
@@ -312,7 +314,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
   };
 
   const salvarGrade = async (alteracoes: AlteracaoGrade[]) => {
-    if (!isAdmin() || !profile?.clinica_id) { toast.error('Somente administradores alteram preços.'); return { falhas: alteracoes.length }; }
+    if (!podeAlterarPrecos || !profile?.clinica_id) { toast.error('Somente administração e financeiro alteram preços.'); return { falhas: alteracoes.length }; }
     const clinicaId = profile.clinica_id;
     const chaves = alteracoes.map(a => `${a.tipoId}|${a.convenioId}`);
     const resultado = await executarEmSequencia(chaves, async chave => {
@@ -335,7 +337,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
   const openPrecos = (t: TipoConsulta) => openTask(`/precos-servicos/tipos/${t.id}/precos`);
 
   const handleSavePreco = async (convenioId: string, valor: number) => {
-    if (!isAdmin()) throw new Error('Somente administradores alteram preços.');
+    if (!podeAlterarPrecos) throw new Error('Somente administração e financeiro alteram preços.');
     if (!precosTipo || !profile?.clinica_id) throw new Error('Clínica ou tipo de consulta não identificado.');
     if (tiposQuery.isError || tiposQuery.isLoading || conveniosQuery.isError || precosQuery.isError || tiposQuery.isFetching || conveniosQuery.isLoading || precosQuery.isLoading || conveniosQuery.isFetching || precosQuery.isFetching) throw new Error('Aguarde o carregamento de tipos, convênios e preços antes de gravar.');
     if (!tipos.some((tipo) => tipo.id === precosTipo.id)) throw new Error('O tipo de consulta não pertence à clínica atual ou não está mais disponível. Atualize a página e tente novamente.');
@@ -478,7 +480,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
       ) : visao === 'grade' ? (
         conveniosQuery.isLoading || precosQuery.isLoading
           ? <p role="status" className="text-sm text-muted-foreground">Carregando convênios e preços…</p>
-          : <GradePrecosConsulta tipos={filtered} convenios={convenios.filter(c => c.ativo)} precos={precos} podeEditar={isAdmin()} onSalvar={salvarGrade} onDirtyChange={setGradeAlterada} />
+          : <GradePrecosConsulta tipos={filtered} convenios={convenios.filter(c => c.ativo)} precos={precos} podeEditar={podeAlterarPrecos} onSalvar={salvarGrade} onDirtyChange={setGradeAlterada} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((tipo) => {
@@ -606,7 +608,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
               Preços — {precosTipo?.nome}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Valor particular: {precosTipo && fmt(precosTipo.valor_particular)}. {isAdmin() ? 'Configure valores por convênio abaixo.' : 'Somente leitura: apenas administradores alteram preços.'}
+              Valor particular: {precosTipo && fmt(precosTipo.valor_particular)}. {podeAlterarPrecos ? 'Configure valores por convênio abaixo.' : 'Somente leitura: apenas administração e financeiro alteram preços.'}
             </p>
           </header>
           {conveniosQuery.isError ? (
@@ -636,7 +638,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
                   {convenios.filter(c => c.ativo).map(conv => {
                     const preco = precosTipo ? getPrecoConvenio(precosTipo.id, conv.id) : null;
                     return (
-                      <PrecoRow key={conv.id} convenio={conv} precoAtual={preco?.valor ?? null} somenteLeitura={!isAdmin()}
+                      <PrecoRow key={conv.id} convenio={conv} precoAtual={preco?.valor ?? null} somenteLeitura={!podeAlterarPrecos}
                         onSave={(valor) => handleSavePreco(conv.id, valor)} onStateChange={value => updateRowState(conv.id, value)} />
                     );
                   })}

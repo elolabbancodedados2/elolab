@@ -60,7 +60,8 @@ test('médico consulta exames da clínica solicitados por outro profissional', a
   });
   await page.goto('/exames');
   const main = page.locator('#main-content');
-  await expect(main.getByText('Exame de acompanhamento clínico QA', { exact: true })).toBeVisible();
+  // Fichas (celular) e tabela (desktop) ficam no DOM; só uma delas é visível por largura.
+  await expect(main.getByText('Exame de acompanhamento clínico QA', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(main.getByRole('button', { name: 'Nova Guia de Exames', exact: true })).toBeEnabled();
 });
 
