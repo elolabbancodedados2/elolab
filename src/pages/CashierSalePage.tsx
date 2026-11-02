@@ -1,3 +1,4 @@
+import { formatCurrency as moeda } from '@/lib/formatters';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -67,9 +68,6 @@ const FORMAS: Array<{ value: FormaPagamento; label: string; icon: typeof Banknot
   { value: 'transferencia', label: 'Transferência', icon: ArrowUpFromLine },
 ];
 
-function moeda(value: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
 
 function toMoney(value: unknown): number {
   const normalized = typeof value === 'string'

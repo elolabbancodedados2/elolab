@@ -9,7 +9,6 @@ import { Navbar } from '../Navbar';
 const mocks = vi.hoisted(() => ({ useSupabaseAuth: vi.fn() }));
 
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: mocks.useSupabaseAuth }));
-vi.mock('@/hooks/useRealtimeNotifications', () => ({ useRealtimeNotifications: () => ({ notifications: [], unreadCount: 0 }) }));
 vi.mock('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }), useQueryClient: () => ({ invalidateQueries: vi.fn() }), useMutation: () => ({ mutate: vi.fn() }) }));
 vi.mock('@/components/GlobalSearch', () => ({ GlobalSearch: () => <div /> }));

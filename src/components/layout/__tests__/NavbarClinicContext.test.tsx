@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
   useSupabaseAuth: () => ({ user: null, profile: mocks.profile, signOut: vi.fn(), isAdmin: () => mocks.profile?.role === 'admin' }),
 }));
-vi.mock('@/hooks/useRealtimeNotifications', () => ({ useRealtimeNotifications: () => ({ notifications: [], unreadCount: 0 }) }));
 vi.mock('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({ data: queryKey[0] === 'navbar-clinic-context' ? { nome: 'EloLab Centro' } : [] }),

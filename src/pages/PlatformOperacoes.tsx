@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -19,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Link } from 'react-router-dom';
-import { Activity, AlertTriangle, Flag, Lock, Plus, RefreshCw, Settings2 } from 'lucide-react';
+import { Activity, AlertTriangle, Lock, RefreshCw, Settings2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -36,12 +35,8 @@ export default function PlatformOperacoes() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const changeLock = useRef(false);
-  const createFlagLock = useRef(false);
-  const [nome, setNome] = useState('');
-  const [chave, setChave] = useState('');
   const [pendingChange, setPendingChange] = useState<OperationalChange | null>(null);
   const [savingChange, setSavingChange] = useState(false);
-  const [creatingFlag, setCreatingFlag] = useState(false);
 
   const estado = useQuery({
     queryKey: ['platform-operational-state'],
@@ -55,18 +50,7 @@ export default function PlatformOperacoes() {
     },
   });
 
-  const flags = useQuery({
-    queryKey: ['platform-flags'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('platform_feature_flags')
-        .select('*')
-        .order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-  const refreshing = estado.isFetching || flags.isFetching;
+  const refreshing = estado.isFetching;
 
   const confirmarMudanca = async () => {
     if (changeLock.current || !pendingChange) return;
@@ -107,35 +91,6 @@ export default function PlatformOperacoes() {
     }
   };
 
-  const criar = async () => {
-    if (createFlagLock.current) return;
-    const nomeLimpo = nome.trim();
-    const chaveLimpa = chave.trim();
-    if (!nomeLimpo || !/^[a-z0-9_]+$/.test(chaveLimpa)) {
-      toast.error('Informe um nome e uma chave válida usando letras minúsculas, números e _ .');
-      return;
-    }
-
-    createFlagLock.current = true;
-    setCreatingFlag(true);
-    try {
-      const { error } = await (supabase as any)
-        .from('platform_feature_flags')
-        .insert({ nome: nomeLimpo, chave: chaveLimpa, updated_by: user?.id });
-      if (error) throw error;
-
-      setNome('');
-      setChave('');
-      await queryClient.invalidateQueries({ queryKey: ['platform-flags'] });
-      toast.success('Flag cadastrada. Ela ainda precisa ser conectada ao módulo correspondente no código.');
-    } catch (error) {
-      toast.error('Não foi possível criar a flag.', { description: mensagemDeErro(error) });
-    } finally {
-      createFlagLock.current = false;
-      setCreatingFlag(false);
-    }
-  };
-
   const solicitarMudanca = (change: OperationalChange) => {
     if (change.value) {
       setPendingChange(change);
@@ -150,12 +105,12 @@ export default function PlatformOperacoes() {
         title="Controle Operacional"
         icon={<Settings2 />}
         description={estado.data
-          ? `Somente leitura ${estado.data.somente_leitura ? 'ativado' : 'desativado'} · bloqueio emergencial ${estado.data.bloqueio_emergencial ? 'ativado' : 'desativado'}${flags.data ? ` · ${flags.data.length} feature flags cadastradas` : ''}. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.`
+          ? `Somente leitura ${estado.data.somente_leitura ? 'ativado' : 'desativado'} · bloqueio emergencial ${estado.data.bloqueio_emergencial ? 'ativado' : 'desativado'}. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.`
           : 'Controles globais da plataforma. Mudanças de impacto exigem confirmação e ficam registradas na auditoria.'}
         actions={<>
           <Button asChild variant="outline" className="rounded-full gap-2"><Link to="/admin/incidentes"><AlertTriangle className="h-4 w-4" />Incidentes</Link></Button>
           <Button asChild variant="outline" className="rounded-full gap-2"><Link to="/admin/saude"><Activity className="h-4 w-4" />Saúde da plataforma</Link></Button>
-          <Button type="button" variant="outline" size="icon" className="rounded-full" aria-label="Atualizar" onClick={() => { void estado.refetch(); void flags.refetch(); }} disabled={refreshing}>
+          <Button type="button" variant="outline" size="icon" className="rounded-full" aria-label="Atualizar" onClick={() => void estado.refetch()} disabled={refreshing}>
             <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
           </Button>
         </>}
@@ -228,45 +183,6 @@ export default function PlatformOperacoes() {
           </CardContent>
         </Card>
       </div>
-
-      <Card className="rounded-2xl border-border/60 shadow-xs">
-        <CardHeader>
-          <CardTitle>Nova feature flag</CardTitle>
-          <CardDescription>As chaves aceitam letras minúsculas, números e sublinhado. O cadastro não altera o app até um módulo consumir essa chave.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Input className="h-10 w-full rounded-full sm:max-w-xs" aria-label="Nome do recurso" value={nome} disabled={creatingFlag} onChange={event => setNome(event.target.value)} placeholder="Nome do recurso" />
-          <Input className="h-10 w-full rounded-full font-mono text-sm sm:max-w-xs" aria-label="Chave do recurso" value={chave} disabled={creatingFlag} onChange={event => setChave(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} placeholder="chave_do_recurso" />
-          <Button className="h-10 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" onClick={() => void criar()} disabled={!nome.trim() || !chave.trim() || creatingFlag}>{creatingFlag ? 'Salvando…' : <><Plus className="mr-2 h-4 w-4" />Cadastrar flag</>}</Button>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-2xl border-border/60 shadow-xs">
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2">Catálogo de feature flags{flags.data && <Badge variant="outline" className="rounded-full border-border text-primary">{flags.data.length}</Badge>}</CardTitle>
-          <CardDescription>Estas chaves ainda não são consumidas por telas ou permissões do app. O estado é apenas informativo e não libera nem oculta funcionalidades.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {flags.isError && <p className="text-sm text-destructive">Não foi possível carregar as flags. <Button variant="link" className="h-auto p-0" onClick={() => void flags.refetch()}>Tentar novamente</Button></p>}
-          {flags.isLoading && <p className="text-sm text-muted-foreground">Carregando recursos…</p>}
-          {flags.data?.map((flag: any) => (
-              <div key={flag.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3">
-                <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2"><b>{flag.nome}</b><span className="text-xs text-muted-foreground">Sem consumidor no app</span></div>
-                <p className="break-all text-xs text-muted-foreground">{flag.chave} · {flag.percentual}% · {flag.destino}</p>
-              </div>
-              <Badge variant="outline" className={cn('rounded-full', flag.ativo && 'border-border bg-secondary text-primary')}>{flag.ativo ? 'Ativa no cadastro' : 'Inativa no cadastro'}</Badge>
-            </div>
-          ))}
-          {!flags.isLoading && !flags.isError && flags.data?.length === 0 && (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-white shadow-md"><Flag className="h-6 w-6" /></span>
-              <p className="text-sm text-muted-foreground">Nenhum recurso controlado ainda.</p>
-              <p className="text-xs text-muted-foreground">Cadastre a primeira chave no formulário acima.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <AlertDialog open={!!pendingChange} onOpenChange={open => { if (!open && !savingChange) setPendingChange(null); }}>
         <AlertDialogContent>

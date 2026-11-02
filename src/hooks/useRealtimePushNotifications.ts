@@ -34,13 +34,15 @@ export function useRealtimePushNotifications() {
   }, []);
 
   useEffect(() => {
-    if (!user || !enabled || permission !== 'granted') return;
+    const clinicaId = profile?.clinica_id;
+    if (!user || !clinicaId || !enabled || permission !== 'granted') return;
+    const filter = `clinica_id=eq.${clinicaId}`;
 
     const channel = supabase
       .channel(canalUnico('push-notifications'))
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'agendamentos' },
+        { event: 'INSERT', schema: 'public', table: 'agendamentos', filter },
         (payload) => {
           const ag = payload.new as Record<string, unknown>;
           sendLocalNotification('📅 Novo Agendamento', {
@@ -51,7 +53,7 @@ export function useRealtimePushNotifications() {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'agendamentos' },
+        { event: 'UPDATE', schema: 'public', table: 'agendamentos', filter },
         (payload) => {
           const ag = payload.new as Record<string, unknown>;
           const old = payload.old as Record<string, unknown>;
@@ -72,7 +74,7 @@ export function useRealtimePushNotifications() {
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'fila_atendimento' },
+        { event: 'INSERT', schema: 'public', table: 'fila_atendimento', filter },
         (payload) => {
           const fila = payload.new as Record<string, unknown>;
           if (fila.prioridade === 'urgente' || fila.prioridade === 'emergencia') {
@@ -85,7 +87,7 @@ export function useRealtimePushNotifications() {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'estoque' },
+        { event: 'UPDATE', schema: 'public', table: 'estoque', filter },
         (payload) => {
           const item = payload.new as Record<string, unknown>;
           const quantidade = Number(item.quantidade);
@@ -108,5 +110,5 @@ export function useRealtimePushNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, permission, sendLocalNotification, enabled]);
+  }, [user, profile?.clinica_id, permission, sendLocalNotification, enabled]);
 }

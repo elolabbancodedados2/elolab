@@ -1,5 +1,5 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
-import { nomeMedico } from '@/lib/formatters';
+import { nomeMedico, formatCurrency } from '@/lib/formatters';
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -92,9 +92,6 @@ function marcarAvaliacaoEnviada(chave: string) {
   try { localStorage.setItem(chave, '1'); } catch { /* sem armazenamento: vale só nesta sessão */ }
 }
 
-function formatCurrency(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 
 function calcularIdade(dn: string | null) {
   if (!dn) return null;

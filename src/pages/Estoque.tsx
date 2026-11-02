@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -334,7 +335,6 @@ function EstoqueWorkspace({ task }: { task?: StockTask }) {
   const ABC_COLORS = { A: 'hsl(var(--foreground))', B: 'hsl(var(--muted-foreground))', C: 'hsl(var(--border))' };
   const ABC_BADGE = { A: 'border-transparent bg-foreground text-background', B: 'border-border bg-secondary text-foreground', C: 'border-border bg-muted text-muted-foreground' };
 
-  const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const formatCategoria = rotuloCategoriaEstoque;
   const duracaoDe = (produto: any) => textoDuracao(diasAteRuptura(Number(produto.quantidade), consumo90.get(produto.id) ?? 0));
 

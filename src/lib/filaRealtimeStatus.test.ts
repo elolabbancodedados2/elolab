@@ -18,6 +18,7 @@ describe('filaRealtimeState', () => {
     expect(source).toMatch(/\.subscribe\(\(status\) => setRealtimeStatus\(status\)\)/);
     expect(source).toMatch(/filaRealtimeMessage\(queueRealtimeState\)/);
     expect(source).toMatch(/aria-label="Atualizar fila"/);
-    expect(source).toMatch(/refetchInterval:\s*15_000/);
+    expect(source).toMatch(/pollingDeReserva = realtimeStatus === 'SUBSCRIBED' \? false : 15_000/);
+    expect(source).toMatch(/refetchInterval:\s*pollingDeReserva/);
   });
 });

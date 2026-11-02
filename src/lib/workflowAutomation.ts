@@ -1,5 +1,6 @@
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
+import { escapeHtml } from '@/lib/html';
 /**
  * Centralized Workflow Automation Engine
  * Handles automated transitions across all clinical flows:
@@ -27,12 +28,6 @@ interface WorkflowResult {
   actions: string[]; // list of automated actions taken
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char] ?? char);
-}
-
 /**
  * Propaga erro do Supabase como exceção.
  *
@@ -53,35 +48,6 @@ async function must<T extends { error: unknown }>(op: PromiseLike<T>): Promise<T
   return res;
 }
 
-// ─── 1. Check-in Automático ─────────────────────────────
-/** When a patient arrives, auto check-in and add to queue */
-export async function autoCheckin(
-  agendamentoId: string,
-  clinicaId?: string | null,
-): Promise<WorkflowResult> {
-  void clinicaId;
-  const actions: string[] = [];
-
-  try {
-    const { data, error } = await supabase.rpc('realizar_checkin', {
-      p_agendamento_id: agendamentoId,
-      p_prioridade: 'normal',
-    });
-    if (error) throw error;
-    const resultado = data as any;
-    if (!resultado) throw new Error('O check-in nao retornou um resultado.');
-
-    if (resultado.repetido) {
-      return { success: true, message: 'Paciente ja esta na fila', actions: [] };
-    }
-
-    actions.push('Paciente adicionado a fila');
-    actions.push('Status do agendamento atualizado para aguardando');
-    return { success: true, message: 'Check-in realizado', actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}
 // ─── 3. Finalizar Atendimento (completo) ────────────────
 /** Finalize: billing + auto-schedule return if applicable */
 export async function autoFinalizarAtendimento(params: {
@@ -607,102 +573,6 @@ export async function autoConfirmarPagamento(params: {
     }
 
     return { success: true, message: 'Pagamento processado com sucesso', actions };
-  } catch (e: any) {
-    return { success: false, message: e.message, actions };
-  }
-}
-
-// ─── 11. Cancelar / No-Show + Convocar Lista de Espera ──
-/** Cancel or mark no-show, then auto-notify waiting list */
-export async function autoCancelarAgendamento(params: {
-  agendamentoId: string;
-  motivo: 'cancelado' | 'faltou';
-}): Promise<WorkflowResult> {
-  const actions: string[] = [];
-
-  try {
-    // Get appointment details before cancelling
-    const { data: ag } = await supabase
-      .from('agendamentos')
-      .select('data, hora_inicio, medico_id, paciente_id, clinica_id, updated_at')
-      .eq('id', params.agendamentoId)
-      .maybeSingle();
-
-    if (!ag?.clinica_id) throw new Error('Agendamento sem clínica ou não encontrado.');
-
-    const { data: resultado, error } = await supabase.rpc('alterar_status_agendamento_com_fila', {
-      p_agendamento_id: params.agendamentoId,
-      p_clinica_id: ag.clinica_id,
-      p_status: params.motivo,
-      p_updated_at: ag.updated_at ?? null,
-    });
-    if (error) throw error;
-    const atualizado = resultado as any;
-    if (!atualizado?.atualizado) throw new Error('A consulta mudou ou foi finalizada. Atualize a agenda e tente novamente.');
-
-    actions.push(`Agendamento marcado como ${params.motivo === 'faltou' ? 'falta' : 'cancelado'}`);
-    actions.push('Removido da fila (se estava)');
-
-    // Cancelled appointments trigger the database waitlist workflow atomically.
-    // A no-show does not trigger that workflow, so keep the legacy invitation here.
-    if (params.motivo === 'faltou') {
-      const { data: espera } = await supabase
-        .from('lista_espera')
-        .select('id, paciente_id, medico_id')
-        .eq('status', 'aguardando')
-        .or(`medico_id.eq.${ag.medico_id},medico_id.is.null`)
-        .order('prioridade', { ascending: true })
-        .order('created_at', { ascending: true })
-        .limit(3);
-
-      if (espera && espera.length > 0) {
-        for (const item of espera) {
-          const { data: pacEspera } = await supabase
-            .from('pacientes')
-            .select('nome, email, telefone')
-            .eq('id', item.paciente_id)
-            .maybeSingle();
-
-          if (pacEspera?.telefone || pacEspera?.email) {
-            const { data: med } = await supabase
-              .from('medicos')
-              .select('nome')
-              .eq('id', ag.medico_id)
-              .maybeSingle();
-
-            const msg = `Olá ${pacEspera.nome}! Uma vaga abriu na agenda de ${nomeMedico(med?.nome || '')} para o dia ${format(new Date(ag.data + 'T12:00:00'), 'dd/MM/yyyy')} às ${ag.hora_inicio?.slice(0, 5)}. Deseja agendar? Responda SIM para confirmar.`;
-
-            if (pacEspera.telefone) {
-              await must(supabase.from('notification_queue').insert({
-                tipo: 'whatsapp',
-                destinatario_id: item.paciente_id,
-                destinatario_telefone: pacEspera.telefone,
-                destinatario_nome: pacEspera.nome,
-                assunto: 'Vaga Disponível',
-                conteudo: msg,
-                status: 'pendente',
-              }));
-            }
-            if (pacEspera.email) {
-              await must(supabase.from('notification_queue').insert({
-                tipo: 'email',
-                destinatario_id: item.paciente_id,
-                destinatario_email: pacEspera.email,
-                destinatario_nome: pacEspera.nome,
-                assunto: 'Vaga disponível na agenda',
-                conteudo: msg,
-                status: 'pendente',
-              }));
-            }
-
-            await must(supabase.from('lista_espera').update({ status: 'notificado' }).eq('id', item.id));
-            actions.push(`Lista de espera: ${pacEspera.nome} notificado sobre vaga`);
-          }
-        }
-      }
-    }
-
-    return { success: true, message: 'Agendamento cancelado e lista de espera notificada', actions };
   } catch (e: any) {
     return { success: false, message: e.message, actions };
   }

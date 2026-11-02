@@ -240,6 +240,8 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const formCompleted = useRef(false);
   const [now, setNow] = useState(Date.now());
   const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING');
+  // Com o canal fila-realtime inscrito, os eventos já invalidam as consultas abaixo.
+  const pollingDeReserva = realtimeStatus === 'SUBSCRIBED' ? false : 15_000;
   const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
   const queueActionLock = useRef<string | null>(null);
 
@@ -306,7 +308,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const { data: cobrancas = [], isLoading: carregandoCobrancas, isError: erroCobrancas } = useQuery({
     queryKey: ['fila-cobrancas', profile?.clinica_id, idsAgendamentosHoje],
     staleTime: 15_000,
-    refetchInterval: 15_000,
+    refetchInterval: pollingDeReserva,
     refetchIntervalInBackground: false,
     queryFn: async () => {
       if (!profile?.clinica_id || idsAgendamentosHoje.length === 0) return [];
@@ -340,7 +342,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
     },
     enabled: !!profile?.clinica_id && travaLigada && idsAgendamentosHoje.length > 0,
     staleTime: 15_000,
-    refetchInterval: 15_000,
+    refetchInterval: pollingDeReserva,
     refetchIntervalInBackground: false,
   });
 
@@ -351,7 +353,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   const triagensQuery = useQuery<string[]>({
     queryKey: ['fila-triagens', profile?.clinica_id, today, idsAgendamentosHoje],
     staleTime: 15_000,
-    refetchInterval: 15_000,
+    refetchInterval: pollingDeReserva,
     refetchIntervalInBackground: false,
     queryFn: async () => {
       if (idsAgendamentosHoje.length === 0) return [];
