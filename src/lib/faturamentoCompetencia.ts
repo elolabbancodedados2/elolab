@@ -86,7 +86,8 @@ export function relatorioFaturamentoCompetencia(
       recebido: emCentavos(l.valor_pago),
       glosado: glosa.glosado,
       recuperado: glosa.recuperado,
-      aReceber: Math.max(0, emCentavos(l.valor_apresentado) - emCentavos(l.valor_pago)),
+      // Glosa cheia: o recuperado em recurso entra como receita própria, fora do valor pago do lote.
+      aReceber: Math.max(0, emCentavos(l.valor_apresentado) - emCentavos(l.valor_pago) - glosa.glosado),
     };
     for (const alvo of [linha, total]) {
       alvo.lotes += 1;
@@ -117,7 +118,7 @@ export function csvFaturamentoCompetencia(
     ['Competência', `${mesBr(filtros.competenciaInicial)} a ${mesBr(filtros.competenciaFinal)}`],
     ['Convênio', convenioNome],
     ['Situação', SITUACOES_FATURAMENTO[filtros.situacao].label],
-    ['Glosas', 'Somadas exceto canceladas; a receber = apresentado - recebido'],
+    ['Glosas', 'Somadas exceto canceladas; a receber = apresentado - recebido - glosado'],
     [],
     ['Competência', 'Convênio', 'Lotes', 'Guias', 'Apresentado', 'Recebido', 'Glosado', 'Recuperado', 'A receber'],
     ...relatorio.linhas.map((l) => [mesBr(l.competencia), l.convenio, l.lotes, l.guias, ...CAMPOS.map((c) => reais(l[c]))]),

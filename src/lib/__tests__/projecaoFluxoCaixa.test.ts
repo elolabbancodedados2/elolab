@@ -84,6 +84,21 @@ describe('lotesTissComoRecebiveis', () => {
     expect(recebivel).toMatchObject({ valor: 400, data_vencimento: '2026-10-31' });
   });
 
+  it('desconta glosas não canceladas do saldo a receber', () => {
+    const [recebivel] = lotesTissComoRecebiveis([{
+      id: 'l4', status: 'pago_parcial', valor_apresentado: 0.3, valor_pago: 0.1, enviado_em: '2026-10-01',
+      glosas_convenio: [
+        { status: 'aceita', valor_glosado: 0.1 },
+        { status: 'cancelada', valor_glosado: 0.05 },
+      ],
+    }]);
+    expect(recebivel.valor).toBe(0.1);
+    expect(lotesTissComoRecebiveis([{
+      id: 'l5', status: 'pago_parcial', valor_apresentado: 0.3, valor_pago: 0.1, enviado_em: '2026-10-01',
+      glosas_convenio: [{ status: 'aberta', valor_glosado: 0.2 }],
+    }])).toEqual([]);
+  });
+
   it('ignora rascunho, pago e lote sem saldo', () => {
     expect(lotesTissComoRecebiveis([
       { id: 'a', status: 'rascunho', valor_apresentado: 100, valor_pago: 0, enviado_em: null },

@@ -122,7 +122,7 @@ export default function FluxoCaixa() {
     meta: { suppressGlobalErrorToast: true },
     queryFn: async () => {
       const { data, error } = await (supabase as any).from('lotes_tiss')
-        .select('id, status, valor_apresentado, valor_pago, enviado_em, competencia, convenios(prazo_retorno)')
+        .select('id, status, valor_apresentado, valor_pago, enviado_em, competencia, convenios(prazo_retorno), glosas_convenio(status, valor_glosado)')
         .eq('clinica_id', profile!.clinica_id)
         .in('status', ['enviado', 'processando', 'pago_parcial'])
         .limit(500);
