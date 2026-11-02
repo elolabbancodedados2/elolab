@@ -253,63 +253,8 @@ Deno.serve(async (req) => {
       if (paymentId) {
         console.log("Processing automatic subscription renewal payment:", paymentId);
         await processAuthorizedSubscriptionPaymentNotification(paymentId.toString(), mpToken, supabase, logId);
-        // Also log this as a renewal in the subscription
-        const preapprovalId = data.data?.preapproval_id;
-        if (preapprovalId) {
-          const { data: assinatura } = await supabase
-            .from("assinaturas_mercadopago")
-            .select("detalhes, id")
-            .eq("mp_preapproval_id", preapprovalId)
-            .maybeSingle();
-
-          if (assinatura) {
-            const detalhes = (assinatura.detalhes || {}) as Record<string, unknown>;
-            const trialType = typeof detalhes.trial_type === "string" ? detalhes.trial_type : null;
-
-            await supabase
-              .from("assinaturas_mercadopago")
-              .update({
-                detalhes: {
-                  ...detalhes,
-                  ultima_renovacao: new Date().toISOString(),
-                  ultimo_pagamento_autorizado: paymentId,
-                },
-              })
-              .eq("mp_preapproval_id", preapprovalId);
-
-            // If this is a trial with payment method, activate the plan now that 3 days have passed
-            if (trialType === "with_payment_method") {
-              const userId = typeof detalhes.user_id === "string" ? detalhes.user_id : null;
-              const planoId = typeof detalhes.plano_id === "string" ? detalhes.plano_id : null;
-              const planoSlug = typeof detalhes.plano_slug === "string" ? detalhes.plano_slug : null;
-
-              if (userId && planoId && planoSlug) {
-                const { data: existingPlan } = await supabase
-                  .from("assinaturas_plano")
-                  .select("id")
-                  .eq("user_id", userId)
-                  .order("created_at", { ascending: false })
-                  .limit(1)
-                  .maybeSingle();
-
-                if (existingPlan?.id) {
-                  // Activate the trial plan after first payment (trial ended)
-                  await supabase
-                    .from("assinaturas_plano")
-                    .update({
-                      status: "ativa",
-                      em_trial: false,
-                      trial_fim: null,
-                      data_cancelamento: null,
-                      updated_at: new Date().toISOString(),
-                    })
-                    .eq("id", existingPlan.id);
-                  console.log("Trial period ended and activated paid plan for user:", userId);
-                }
-              }
-            }
-          }
-        }
+        // processAuthorizedSubscriptionPaymentNotification já grava a renovação
+        // e só ativa o plano (syncPlatformPlan) quando o pagamento foi aprovado.
       }
     }
 

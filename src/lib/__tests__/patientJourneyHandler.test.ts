@@ -4,9 +4,9 @@ declare global { var Deno: { env: { get(key: string): string | undefined } }; }
 const clinic = '00000000-0000-0000-0000-000000000001';
 const id = '00000000-0000-0000-0000-000000000002';
 const token = `header.${btoa(JSON.stringify({role:'authenticated',sub:id}))}.signature`;
-function db(result: any={data:{enfileirados:2,duplicado:false},error:null}) {
+function db(result: any={data:{enfileirados:2,duplicado:false},error:null},tokenValido=true) {
  const calls:any[]=[];
- return {calls, rpc:async(name:string,args:any)=>{calls.push({name,args});return result;},from:(table:string)=>{
+ return {calls, auth:{getUser:async()=>tokenValido?{data:{user:{id}},error:null}:{data:{user:null},error:new Error('invalid JWT')}}, rpc:async(name:string,args:any)=>{calls.push({name,args});return result;},from:(table:string)=>{
   const q:any={select:()=>q,eq:()=>q,in:()=>q,limit:()=>q,maybeSingle:async()=>({data:table==='profiles'?{clinica_id:clinic,ativo:true}:{role:'admin'},error:null})};return q;
  }};
 }
@@ -27,6 +27,10 @@ describe('patient journey producers',()=>{
    const res=await handlePatientJourney(req({resultado_id:id}),'result',db({data:null,error:{code,message:'failed'}}));
    expect(res.status).toBe(status);expect((await res.json()).success).toBe(false);
   }
+ });
+ it('rejects forged JWT whose signature the Auth server does not accept',async()=>{
+  const client=db(undefined,false);const res=await handlePatientJourney(req({agendamento_id:id}),'confirmation',client);
+  expect(res.status).toBe(403);expect(client.calls).toHaveLength(0);
  });
  it('permits cron reminder reconciliation but forbids cron masquerading as result or confirmation user',async()=>{
   const client=db();expect((await handlePatientJourney(req({},true),'reminders',client)).status).toBe(200);
