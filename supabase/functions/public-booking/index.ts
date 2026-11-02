@@ -17,6 +17,8 @@ import { checarRateLimit, clientIp } from '../_shared/rateLimit.ts';
 import { corsPadrao } from '../_shared/cors.ts';
 import { horariosLivres, validarHorario, agoraEmBrasilia, dataValida } from '../_shared/horarios.ts';
 
+// Versão do texto do aceite em src/pages/AgendamentoOnline.tsx; mude junto com o texto.
+const TERMO_AGENDAMENTO_ONLINE_VERSAO = 'agendamento-online-2026-11-02';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function hashHoldToken(token: string): Promise<string> {
@@ -264,6 +266,18 @@ Deno.serve(async (req) => {
           pacienteId = novo.id;
         }
       }
+
+      // Registro do aceite exigido acima (LGPD art. 8º): quem, quando, de onde e qual texto.
+      const { error: erroConsentimento } = await db.from('consentimentos_lgpd').insert({
+        paciente_id: pacienteId,
+        clinica_id: clinicaId,
+        tipo_consentimento: 'agendamento_online',
+        versao_termo: TERMO_AGENDAMENTO_ONLINE_VERSAO,
+        aceito: true,
+        data_aceite: new Date().toISOString(),
+        ip_aceite: ip && ip !== 'unknown' ? ip : null,
+      });
+      if (erroConsentimento) throw erroConsentimento;
 
       // Um paciente não acumula vários pedidos pendentes pelo link.
       const { count: pendentes } = await db.from('agendamentos').select('id', { count: 'exact', head: true })
