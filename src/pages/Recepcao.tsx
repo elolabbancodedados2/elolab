@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/lib/formatters';
+import { emCentavos } from '@/lib/dinheiro';
 import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { imprimirReciboComAviso, registroProfissional, type ReceiptData } from '@/lib/pdfReceipt';
 import { calcularDesconto, calcularTroco, formatarCampoReais, parseMoneyInput } from '@/lib/dinheiro';
@@ -1295,8 +1296,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       const { data: resultado, error } = await (supabase as any).rpc('registrar_pagamento', {
         p_lancamento_id: selectedLancamento.id,
         p_pagamentos: pagamentos,
-        p_desconto: Number(desconto.toFixed(2)),
-        p_acrescimo: Number(acrescimo.toFixed(2)),
+        // null mantém no banco o valor atual: outra aba pode ter mudado o desconto.
+        p_desconto: emCentavos(desconto) === emCentavos(Number(selectedLancamento.desconto || 0)) ? null : Number(desconto.toFixed(2)),
+        p_acrescimo: emCentavos(acrescimo) === emCentavos(Number(selectedLancamento.acrescimo || 0)) ? null : Number(acrescimo.toFixed(2)),
         p_chave_idempotencia: chaveIdempotencia || null,
         p_observacoes: observacoesPagamento.slice(0, 500) || null,
       });

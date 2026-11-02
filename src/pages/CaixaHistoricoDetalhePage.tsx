@@ -198,7 +198,8 @@ export default function CaixaHistoricoDetalhePage() {
                     <caption className="sr-only">Movimentações registradas neste caixa</caption>
                     <thead><tr className="border-b text-left text-xs text-muted-foreground"><th scope="col" className="py-2 pr-3">Horário</th><th scope="col" className="py-2 pr-3">Tipo</th><th scope="col" className="py-2 pr-3">Descrição</th><th scope="col" className="py-2 pr-3">Paciente</th><th scope="col" className="py-2 pr-3">Pagamento</th><th scope="col" className="py-2 text-right">Valor</th></tr></thead>
                     <tbody>{movements.map(item => {
-                      const positive = item.tipo === 'receita' || item.tipo === 'suprimento';
+                      // Estorno vem com valor negativo: inverte o sinal do tipo.
+                      const positive = (item.tipo === 'receita' || item.tipo === 'suprimento') === Number(item.valor) >= 0;
                       return <tr key={item.id} className="border-b last:border-0">
                         <td className="py-3 pr-3 tabular-nums">{horaSP(item.created_at)}</td>
                         <td className="py-3 pr-3">{movementLabel[item.tipo]}</td><td className="max-w-[28rem] py-3 pr-3">{item.descricao}</td><td className="py-3 pr-3">{item.paciente_nome || '—'}</td><td className="py-3 pr-3">{rotuloForma(item.forma_pagamento)}</td>

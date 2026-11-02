@@ -20,9 +20,9 @@ describe('relatório de faturamento por competência', () => {
     expect(r.erro).toBeNull();
     expect(r.lotes.map(l => l.id)).toEqual(['l1', 'l2']);
     expect(r.linhas).toEqual([
-      { competencia: '2026-08', convenio: 'Unimed', lotes: 2, guias: 5, apresentado: 0.3, recebido: 0.15, glosado: 0.15, recuperado: 0.1, aReceber: 0.15 },
+      { competencia: '2026-08', convenio: 'Unimed', lotes: 2, guias: 5, apresentado: 0.3, recebido: 0.15, glosado: 0.15, recuperado: 0.1, aReceber: 0 },
     ]);
-    expect(r.totais).toEqual({ lotes: 2, guias: 5, apresentado: 0.3, recebido: 0.15, glosado: 0.15, recuperado: 0.1, aReceber: 0.15 });
+    expect(r.totais).toEqual({ lotes: 2, guias: 5, apresentado: 0.3, recebido: 0.15, glosado: 0.15, recuperado: 0.1, aReceber: 0 });
   });
 
   it('inclui rascunhos somente quando a situação pede todos, e nunca mistura cancelados por padrão', () => {
@@ -42,8 +42,8 @@ describe('relatório de faturamento por competência', () => {
     const csv = csvFaturamentoCompetencia(r, filtros, 'Todos os convênios');
     expect(csv).toContain('"Competência";"08/2026 a 09/2026"');
     expect(csv).toContain('"Situação";"Faturados (enviados, em processamento, pagos ou rejeitados)"');
-    expect(csv).toContain('"08/2026";"Unimed";"2";"5";"0,30";"0,15";"0,15";"0,10";"0,15"');
-    expect(csv).toContain('"Total";"";"2";"5";"0,30";"0,15";"0,15";"0,10";"0,15"');
+    expect(csv).toContain('"08/2026";"Unimed";"2";"5";"0,30";"0,15";"0,15";"0,10";"0,00"');
+    expect(csv).toContain('"Total";"";"2";"5";"0,30";"0,15";"0,15";"0,10";"0,00"');
     expect(csv).toContain('"11";"Unimed";"08/2026";"pago parcial";"2";"0,20";"0,05"');
   });
 });

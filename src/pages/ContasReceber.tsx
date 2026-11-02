@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 import { isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
+import { emCentavos } from '@/lib/dinheiro';
 import { podeExportarContasCompletas, valorRecebidoDaConta } from '@/lib/contasReceber';
 import { ErrorState } from '@/components/ErrorState';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
@@ -616,8 +617,9 @@ export default function ContasReceber() {
           valor: Number(valorDoPagamento.toFixed(2)),
           parcelas: 1,
         }],
-        p_desconto: Number(descontoBaixa.toFixed(2)),
-        p_acrescimo: Number(acrescimoBaixa.toFixed(2)),
+        // null mantém no banco o valor atual: outra aba pode ter mudado o desconto.
+        p_desconto: emCentavos(descontoBaixa) === emCentavos(Number(selectedConta.desconto || 0)) ? null : Number(descontoBaixa.toFixed(2)),
+        p_acrescimo: emCentavos(acrescimoBaixa) === emCentavos(Number(selectedConta.acrescimo || 0)) ? null : Number(acrescimoBaixa.toFixed(2)),
         p_chave_idempotencia: chavesBaixa[selectedConta.id] || null,
         p_observacoes: baixaData.observacoes.trim() || null,
       });

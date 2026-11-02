@@ -68,7 +68,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 const STATUS_LABELS: Record<string, string> = STATUS_DESPESA;
 
 const CATEGORIAS = CATEGORIAS_DESPESA.map(c => c.value);
-const CATEGORIAS_LABELS: Record<string, string> = Object.fromEntries(CATEGORIAS_DESPESA.map(c => [c.value, c.label]));
+const CATEGORIAS_LABELS: Record<string, string> = {
+  ...Object.fromEntries(CATEGORIAS_DESPESA.map(c => [c.value, c.label])),
+  estorno_venda: 'Estorno de venda',
+};
 const FORMAS_PAGAMENTO = FORMAS_PAGAMENTO_DESPESA;
 const CENTROS_CUSTO = CENTROS_CUSTO_DESPESA.map(c => c.value);
 const CENTROS_CUSTO_LABELS: Record<string, string> = Object.fromEntries(CENTROS_CUSTO_DESPESA.map(c => [c.value, c.label]));

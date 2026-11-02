@@ -52,7 +52,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
   equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
   receita_caixa: 'Receitas avulsas', sangria: 'Sangrias', suprimento: 'Suprimentos',
-  ajuste_convenio: 'Ajustes de convênio',
+  ajuste_convenio: 'Ajustes de convênio', estorno_venda: 'Estornos de vendas',
 };
 
 /** Chave canônica: minúsculas, sem espaços nas pontas, vazio vira "outros". */
