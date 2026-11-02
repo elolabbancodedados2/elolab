@@ -13,6 +13,7 @@ import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
+import { montarLinkPortal } from '@/lib/patientPortalAccess';
 
 interface PatientPortalContext {
   id: string;
@@ -36,28 +37,13 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function safeReturnTo(value: unknown, patientId: string) {
   if (typeof value !== 'string' || value.includes('#')) return '';
-  if (value === '/recepcao') return value;
+  if (value === '/recepcao' || value === '/portal-pacientes') return value;
   if (!value.startsWith('/pacientes')) return '';
   const [pathname, query = ''] = value.split('?');
   if (pathname === `/pacientes/${patientId}`) return value;
   if (pathname === '/pacientes' && new URLSearchParams(query).get('paciente') === patientId) return value;
   if (pathname === '/pacientes' && !query) return value;
   return '';
-}
-
-function validatePortalLink(value: unknown) {
-  if (typeof value !== 'string') throw new Error('O servidor não retornou um link válido.');
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error('O servidor retornou um link inválido.');
-  }
-  const token = url.searchParams.get('token');
-  if (url.origin !== 'https://app.elolab.com.br' || url.pathname !== '/portal-paciente' || !token || !/^[a-f0-9]{64}$/i.test(token)) {
-    throw new Error('O servidor retornou um link em formato inesperado. O acesso não foi exibido.');
-  }
-  return url.toString();
 }
 
 export default function PatientPortalLinkPage() {
@@ -151,7 +137,7 @@ export default function PatientPortalLinkPage() {
       const { data, error } = await supabase.rpc('link_portal_paciente', { p_paciente_id: patientQuery.data.id });
       if (error) throw error;
       if (!data) throw new Error('Paciente não encontrado nesta clínica.');
-      const url = validatePortalLink(data);
+      const url = montarLinkPortal(data);
       setGeneratedUrl(url);
       setCopied(false);
       setCopyNotice('');

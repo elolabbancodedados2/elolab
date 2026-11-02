@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { csvCobrancaManual, faixaAtraso, resumoPorFaixa } from '../inadimplencia';
+import { agruparPorPaciente, csvCobrancaManual, faixaAtraso, pacienteMaisUrgente, resumoPorFaixa } from '../inadimplencia';
 
 describe('faixas de atraso', () => {
   it('classifica pelos limites de cada faixa', () => {
@@ -36,5 +36,27 @@ describe('exportação para cobrança manual', () => {
     expect(linhas[0]).toBe('"Paciente";"Telefone";"E-mail";"Descrição";"Saldo em aberto";"Vencimento";"Dias de atraso";"Faixa de atraso"');
     expect(linhas[1]).toBe('"\'=Maria";"11999990000";"";"Consulta";"1234,50";"01/09/2026";"45";"31 a 60 dias"');
     expect(linhas[2]).toBe('"Total";"";"";"1 título(s)";"1234,50";"";"";""');
+  });
+});
+
+describe('agrupamento por paciente', () => {
+  const titulos = [
+    { id: 'a', paciente_id: 'p1', dias: 10, saldo: 0.1 },
+    { id: 'b', paciente_id: 'p1', dias: 53, saldo: 0.2 },
+    { id: 'c', paciente_id: 'p2', dias: 53, saldo: 80 },
+    { id: 'd', paciente_id: 'p3', dias: 5, saldo: 500 },
+  ];
+
+  it('soma em centavos e guarda o maior atraso', () => {
+    const grupos = agruparPorPaciente(titulos);
+    expect(grupos.map(g => g.id)).toEqual(['p3', 'p2', 'p1']);
+    const p1 = grupos.find(g => g.id === 'p1')!;
+    expect(p1).toMatchObject({ titulos: 2, total: 0.3, maiorAtraso: 53 });
+    expect(p1.itens.map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('o mais urgente é o de maior atraso; no empate, o maior total', () => {
+    expect(pacienteMaisUrgente(agruparPorPaciente(titulos))?.id).toBe('p2');
+    expect(pacienteMaisUrgente([])).toBeNull();
   });
 });

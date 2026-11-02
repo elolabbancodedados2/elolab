@@ -1,5 +1,7 @@
 import { nomeMedico } from '@/lib/formatters';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { podeRemarcarAgendamento } from '@/lib/appointmentStatus';
 import { addDays, format, isWeekend, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -19,6 +21,62 @@ interface Props {
   bloqueios?: any[];
   /** Médicos em exibição; limita quais bloqueios aparecem. */
   medicosVisiveis?: string[];
+}
+
+/** Coluna do dia que recebe uma consulta arrastada de outro dia da semana. */
+function DiaSoltavel({ iso, rotulo, children }: { iso: string; rotulo: string; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `semana:${iso}`, data: { semana: true, data: iso } });
+  return (
+    <div
+      ref={setNodeRef}
+      aria-label={`Consultas de ${rotulo}`}
+      className={cn('flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[520px]', isOver && 'bg-primary/5 ring-1 ring-inset ring-primary/30')}
+    >
+      {children}
+    </div>
+  );
+}
+
+function CartaoSemana({ agendamento: a, cor, medicoById, onClick }: { agendamento: any; cor: string; medicoById: Record<string, any>; onClick: () => void }) {
+  const movel = podeRemarcarAgendamento(a.status);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `semana-ag:${a.id}`,
+    data: { agendamento: a },
+    disabled: !movel,
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onKeyDown={(e) => {
+        // Enter abre a consulta; Espaço pega o cartão para levá-lo a outro dia.
+        if (e.key === 'Enter' && !isDragging) { e.preventDefault(); onClick(); return; }
+        listeners?.onKeyDown?.(e);
+      }}
+      aria-roledescription="consulta"
+      aria-label={`Consulta de ${a.pacientes?.nome_social || a.pacientes?.nome || 'Paciente'} às ${a.hora_inicio.slice(0, 5)}`}
+      className={cn(
+        'w-full rounded-lg bg-card border border-border/60 hover:shadow-sm hover:border-primary/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
+        movel && 'cursor-grab active:cursor-grabbing',
+        !contaNaAgenda(a) && 'opacity-50 line-through',
+        isDragging && 'opacity-40',
+      )}
+      style={{ borderLeft: `3px solid ${cor}`, transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined }}
+    >
+      <div className="font-medium tabular-nums">{a.hora_inicio.slice(0, 5)}</div>
+      <div className="truncate text-muted-foreground">
+        {a.pacientes?.nome_social || a.pacientes?.nome || 'Paciente'}
+      </div>
+      {medicoById[a.medico_id] && (
+        <div className="truncate text-[10px] text-muted-foreground/80 mt-0.5">
+          {nomeMedico(medicoById[a.medico_id].nome || medicoById[a.medico_id].crm)}
+        </div>
+      )}
+    </button>
+  );
 }
 
 export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDayClick, onCardClick, bloqueios = [], medicosVisiveis }: Props) {
@@ -154,31 +212,13 @@ export function WeeklyView({ date, agendamentos, colorFor, medicoById = {}, onDa
                   </div>
                 ))}
               </button>
-              <div className="flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[520px]">
+              <DiaSoltavel iso={iso} rotulo={format(d, "EEEE, d 'de' MMM", { locale: ptBR })}>
                 {dayAppts.length === 0 ? (
                   <div className="text-[11px] text-muted-foreground/50 text-center py-8 italic">{bloqueiosDia.length > 0 ? 'Sem consultas' : 'Livre'}</div>
                 ) : dayAppts.map(a => (
-                  <button
-                    key={a.id}
-                    onClick={(e) => { e.stopPropagation(); onCardClick(a); }}
-                    className={cn(
-                      'w-full rounded-lg bg-card border border-border/60 hover:shadow-sm hover:border-primary/40 text-left px-2 py-1.5 text-[11px] transition-all leading-tight',
-                      !contaNaAgenda(a) && 'opacity-50 line-through',
-                    )}
-                    style={{ borderLeft: `3px solid ${colorFor(a)}` }}
-                  >
-                    <div className="font-medium tabular-nums">{a.hora_inicio.slice(0, 5)}</div>
-                    <div className="truncate text-muted-foreground">
-                      {a.pacientes?.nome_social || a.pacientes?.nome || 'Paciente'}
-                    </div>
-                    {medicoById[a.medico_id] && (
-                      <div className="truncate text-[10px] text-muted-foreground/80 mt-0.5">
-                        {nomeMedico(medicoById[a.medico_id].nome || medicoById[a.medico_id].crm)}
-                      </div>
-                    )}
-                  </button>
+                  <CartaoSemana key={a.id} agendamento={a} cor={colorFor(a)} medicoById={medicoById} onClick={() => onCardClick(a)} />
                 ))}
-              </div>
+              </DiaSoltavel>
             </div>
           );
         })}

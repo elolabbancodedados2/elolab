@@ -1,6 +1,5 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
 
 import { ptBR } from 'date-fns/locale';
 import { Activity, Heart, Thermometer, Scale, TrendingUp } from 'lucide-react';
@@ -22,96 +21,79 @@ import { cn } from '@/lib/utils';
 import { formatVitalMeasurement } from '@/lib/vitalSigns';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { ErrorState } from '@/components/ErrorState';
+import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
+import { consolidarHistoricoVitais, type ProntuarioVitalsRow, type TriagemVitalsRow, type VitalSignData } from '@/lib/vitalsHistory';
+import { classeTextoNivelVital, classificarSinalVital } from '@/lib/limiaresVitais';
 
 interface VitalSignsChartProps {
   pacienteId: string;
   className?: string;
 }
 
-interface TriagemData {
-  id: string;
-  data_hora: string;
-  pressao_arterial: string | null;
-  frequencia_cardiaca: number | null;
-  temperatura: number | null;
-  peso: number | null;
-  altura: number | null;
-  saturacao: number | null;
-  frequencia_respiratoria: number | null;
-}
+const LIMITE_REGISTROS = 20;
+const COR_SERIE_PRIMARIA = 'hsl(var(--primary))';
+const COR_SERIE_SECUNDARIA = 'hsl(var(--muted-foreground))';
 
+/**
+ * Evolução dos sinais vitais do paciente. Junta triagens e evoluções do
+ * prontuário (antes só lia triagens, e o que o médico registrava na consulta
+ * não aparecia no gráfico).
+ */
 export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps) {
   const { user, profile } = useSupabaseAuth();
-  const { data: triagensRecentes, isLoading, isError, error, refetch } = useQuery({
+  const { data: registrosConsolidados, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['patient-vital-signs', user?.id ?? null, profile?.clinica_id ?? null, pacienteId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    queryFn: async (): Promise<VitalSignData[]> => {
+      const clinicaId = profile!.clinica_id!;
+      const { data: triagens, error: erroTriagens } = await supabase
         .from('triagens')
-        .select('id, data_hora, pressao_arterial, frequencia_cardiaca, temperatura, peso, altura, saturacao, frequencia_respiratoria')
+        .select('id, paciente_id, agendamento_id, pressao_arterial, frequencia_cardiaca, frequencia_respiratoria, temperatura, peso, altura, imc, saturacao, glicemia, dor_escala, data_hora, created_at')
         .eq('paciente_id', pacienteId)
-        .eq('clinica_id', profile!.clinica_id!)
+        .eq('clinica_id', clinicaId)
         .order('data_hora', { ascending: false })
-        .limit(20);
+        .limit(LIMITE_REGISTROS);
+      if (erroTriagens) throw erroTriagens;
 
-      if (error) throw error;
-      return data as TriagemData[];
+      // Evoluções exigem a leitura auditada do histórico, como no restante
+      // do prontuário; perfis sem acesso clínico seguem só com as triagens.
+      const podeLerProntuarios = profile?.roles?.some(role => role === 'admin' || role === 'medico');
+      let prontuarios: ProntuarioVitalsRow[] = [];
+      if (podeLerProntuarios) {
+        await autorizarLeituraHistoricoPaciente(pacienteId);
+        const { data, error: erroProntuarios } = await supabase
+          .from('prontuarios')
+          .select('id, paciente_id, agendamento_id, data, created_at, sinais_vitais')
+          .eq('paciente_id', pacienteId)
+          .eq('clinica_id', clinicaId)
+          .order('created_at', { ascending: false })
+          .limit(LIMITE_REGISTROS);
+        if (erroProntuarios) throw erroProntuarios;
+        prontuarios = (data || []) as ProntuarioVitalsRow[];
+      }
+
+      return consolidarHistoricoVitais((triagens || []) as TriagemVitalsRow[], prontuarios).slice(-LIMITE_REGISTROS);
     },
     enabled: !!pacienteId && !!user && !!profile?.clinica_id,
   });
-  // O servidor entrega primeiro as mais recentes; inverter preserva a ordem
-  // cronológica no gráfico sem sacrificar os dados atuais pelo limite de 20.
-  const triagens = [...(triagensRecentes ?? [])].reverse();
+  // Já vem em ordem cronológica, com as medições mais recentes no fim.
+  const registros = registrosConsolidados ?? [];
 
-  const chartData = triagens?.map((t) => {
-    // Parse blood pressure (systolic/diastolic)
-    let sistolica = null;
-    let diastolica = null;
-    if (t.pressao_arterial) {
-      const parts = t.pressao_arterial.split('/').map(p => parseInt(p.trim()));
-      if (parts.length === 2) {
-        sistolica = parts[0];
-        diastolica = parts[1];
-      }
-    }
+  const chartData = registros.map((r) => ({
+    data: format(new Date(r.created_at), 'dd/MM', { locale: ptBR }),
+    dataCompleta: format(new Date(r.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }),
+    sistolica: r.pressao_sistolica,
+    diastolica: r.pressao_diastolica,
+    fc: r.frequencia_cardiaca,
+    temperatura: r.temperatura,
+    peso: r.peso,
+    saturacao: r.oxigenacao,
+    fr: r.frequencia_respiratoria,
+  }));
 
-    return {
-      data: format(new Date(t.data_hora || new Date()), 'dd/MM', { locale: ptBR }),
-      dataCompleta: format(new Date(t.data_hora || new Date()), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }),
-      sistolica,
-      diastolica,
-      fc: t.frequencia_cardiaca,
-      temperatura: t.temperatura,
-      peso: t.peso,
-      saturacao: t.saturacao,
-      fr: t.frequencia_respiratoria,
-    };
-  }) || [];
-
-  const lastTriagem = triagens?.[triagens.length - 1];
-
-  const getStatusColor = (value: number | null, type: 'fc' | 'temperatura' | 'saturacao' | 'sistolica') => {
-    if (value === null) return 'text-muted-foreground';
-    
-    switch (type) {
-      case 'fc':
-        if (value < 60 || value > 100) return 'text-amber-600';
-        return 'text-green-600';
-      case 'temperatura':
-        if (value > 38) return 'text-red-600';
-        if (value < 36 || value > 37.5) return 'text-amber-600';
-        return 'text-green-600';
-      case 'saturacao':
-        if (value < 90) return 'text-red-600';
-        if (value < 95) return 'text-amber-600';
-        return 'text-green-600';
-      case 'sistolica':
-        if (value > 180 || value < 80) return 'text-red-600';
-        if (value > 140 || value < 90) return 'text-amber-600';
-        return 'text-green-600';
-      default:
-        return 'text-foreground';
-    }
-  };
+  const ultimo = registros[registros.length - 1];
+  const pressaoUltima = ultimo && ultimo.pressao_sistolica !== null && ultimo.pressao_diastolica !== null
+    ? `${ultimo.pressao_sistolica}/${ultimo.pressao_diastolica}`
+    : null;
 
   if (isLoading) {
     return (
@@ -119,7 +101,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5" />
-            Sinais Vitais
+            Sinais vitais
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -133,7 +115,7 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
     return (
       <Card className={className}>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" />Sinais Vitais</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" />Sinais vitais</CardTitle>
         </CardHeader>
         <CardContent>
           <ErrorState compact title="Não foi possível carregar os sinais vitais" error={error} onRetry={() => void refetch()} />
@@ -142,159 +124,114 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
     );
   }
 
-  if (triagens.length === 0) {
+  if (registros.length === 0) {
     return (
       <Card className={className}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5" />
-            Sinais Vitais
+            Sinais vitais
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-center text-muted-foreground py-8">
-            Nenhuma triagem registrada para este paciente.
+            Nenhuma medição registrada na triagem ou no prontuário deste paciente.
           </p>
         </CardContent>
       </Card>
     );
   }
 
+  const tooltipEstilo = { backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' };
+
   return (
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Activity className="h-5 w-5" />
-          Evolução de Sinais Vitais
+          Evolução de sinais vitais
           <Badge variant="outline" className="ml-auto">
-            Últimos {triagens.length} registro(s)
+            Últimos {registros.length} registro(s)
           </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Current vitals summary */}
-        {lastTriagem && (
+        {ultimo && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center gap-2">
-              <Heart className="h-5 w-5 text-red-500" />
+              <Heart aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">PA</p>
-                <p className={cn("font-semibold", getStatusColor(
-                  lastTriagem.pressao_arterial ? parseInt(lastTriagem.pressao_arterial.split('/')[0]) : null, 
-                  'sistolica'
-                ))}>
-                  {formatVitalMeasurement(lastTriagem.pressao_arterial, 'mmHg')}
+                <p className={cn('font-semibold', classeTextoNivelVital(classificarSinalVital('pressao_sistolica', ultimo.pressao_sistolica)))}>
+                  {formatVitalMeasurement(pressaoUltima, 'mmHg')}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-pink-500" />
+              <TrendingUp aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">FC</p>
-                <p className={cn("font-semibold", getStatusColor(lastTriagem.frequencia_cardiaca, 'fc'))}>
-                  {formatVitalMeasurement(lastTriagem.frequencia_cardiaca, 'bpm')}
+                <p className={cn('font-semibold', classeTextoNivelVital(classificarSinalVital('frequencia_cardiaca', ultimo.frequencia_cardiaca)))}>
+                  {formatVitalMeasurement(ultimo.frequencia_cardiaca, 'bpm')}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Thermometer className="h-5 w-5 text-orange-500" />
+              <Thermometer aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Temp</p>
-                <p className={cn("font-semibold", getStatusColor(lastTriagem.temperatura, 'temperatura'))}>
-                  {formatVitalMeasurement(lastTriagem.temperatura, '°C')}
+                <p className={cn('font-semibold', classeTextoNivelVital(classificarSinalVital('temperatura', ultimo.temperatura)))}>
+                  {formatVitalMeasurement(ultimo.temperatura, '°C')}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Scale className="h-5 w-5 text-blue-500" />
+              <Scale aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Peso</p>
                 <p className="font-semibold">
-                  {formatVitalMeasurement(lastTriagem.peso, 'kg')}
+                  {formatVitalMeasurement(ultimo.peso, 'kg')}
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Blood Pressure Chart */}
         {chartData.some(d => d.sistolica !== null) && (
           <div>
-            <h4 className="text-sm font-medium mb-2">Pressão Arterial (mmHg)</h4>
+            <h4 className="text-sm font-medium mb-2">Pressão arterial (mmHg)</h4>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="data" className="text-xs" />
                 <YAxis domain={[60, 200]} className="text-xs" />
-                <Tooltip 
-                  labelFormatter={(label, payload) => payload?.[0]?.payload?.dataCompleta || label}
-                  contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
-                />
+                <Tooltip labelFormatter={(label, payload) => payload?.[0]?.payload?.dataCompleta || label} contentStyle={tooltipEstilo} />
                 <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="sistolica" 
-                  name="Sistólica"
-                  stroke="hsl(var(--destructive))" 
-                  strokeWidth={2}
-                  dot={{ fill: 'hsl(var(--destructive))' }}
-                  connectNulls
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="diastolica" 
-                  name="Diastólica"
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={2}
-                  dot={{ fill: 'hsl(var(--primary))' }}
-                  connectNulls
-                />
+                <Line type="monotone" dataKey="sistolica" name="Sistólica" stroke={COR_SERIE_PRIMARIA} strokeWidth={2} dot={{ fill: COR_SERIE_PRIMARIA }} connectNulls />
+                <Line type="monotone" dataKey="diastolica" name="Diastólica" stroke={COR_SERIE_SECUNDARIA} strokeWidth={2} strokeDasharray="5 4" dot={{ fill: COR_SERIE_SECUNDARIA }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
 
-        {/* Heart Rate & Temperature Chart */}
         {chartData.some(d => d.fc !== null || d.temperatura !== null) && (
           <div>
-            <h4 className="text-sm font-medium mb-2">Frequência Cardíaca (bpm) e Temperatura (°C)</h4>
+            <h4 className="text-sm font-medium mb-2">Frequência cardíaca (bpm) e temperatura (°C)</h4>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="data" className="text-xs" />
                 <YAxis yAxisId="left" domain={[40, 140]} className="text-xs" />
                 <YAxis yAxisId="right" orientation="right" domain={[35, 40]} className="text-xs" />
-                <Tooltip 
-                  labelFormatter={(label, payload) => payload?.[0]?.payload?.dataCompleta || label}
-                  contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
-                />
+                <Tooltip labelFormatter={(label, payload) => payload?.[0]?.payload?.dataCompleta || label} contentStyle={tooltipEstilo} />
                 <Legend />
-                <Line 
-                  yAxisId="left"
-                  type="monotone" 
-                  dataKey="fc" 
-                  name="FC (bpm)"
-                  stroke="#ec4899" 
-                  strokeWidth={2}
-                  dot={{ fill: '#ec4899' }}
-                  connectNulls
-                />
-                <Line 
-                  yAxisId="right"
-                  type="monotone" 
-                  dataKey="temperatura" 
-                  name="Temp (°C)"
-                  stroke="#f97316" 
-                  strokeWidth={2}
-                  dot={{ fill: '#f97316' }}
-                  connectNulls
-                />
+                <Line yAxisId="left" type="monotone" dataKey="fc" name="FC (bpm)" stroke={COR_SERIE_PRIMARIA} strokeWidth={2} dot={{ fill: COR_SERIE_PRIMARIA }} connectNulls />
+                <Line yAxisId="right" type="monotone" dataKey="temperatura" name="Temp (°C)" stroke={COR_SERIE_SECUNDARIA} strokeWidth={2} strokeDasharray="5 4" dot={{ fill: COR_SERIE_SECUNDARIA }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
 
-        {/* Weight Chart */}
         {chartData.some(d => d.peso !== null) && (
           <div>
             <h4 className="text-sm font-medium mb-2">Peso (kg)</h4>
@@ -303,19 +240,8 @@ export function VitalSignsChart({ pacienteId, className }: VitalSignsChartProps)
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="data" className="text-xs" />
                 <YAxis className="text-xs" />
-                <Tooltip 
-                  labelFormatter={(label, payload) => payload?.[0]?.payload?.dataCompleta || label}
-                  contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="peso" 
-                  name="Peso"
-                  stroke="#1080CA"
-                  strokeWidth={2}
-                  dot={{ fill: '#1080CA' }}
-                  connectNulls
-                />
+                <Tooltip labelFormatter={(label, payload) => payload?.[0]?.payload?.dataCompleta || label} contentStyle={tooltipEstilo} />
+                <Line type="monotone" dataKey="peso" name="Peso" stroke={COR_SERIE_PRIMARIA} strokeWidth={2} dot={{ fill: COR_SERIE_PRIMARIA }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>

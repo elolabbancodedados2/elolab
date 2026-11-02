@@ -7,6 +7,7 @@ import { Ban, User } from '@/components/icons/elolabIcons';
 import { cn } from '@/lib/utils';
 import { AppointmentCard } from '../AppointmentCard';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { minutosDaHora, proximaVagaNoDia, type Faixa } from '@/lib/vagaLivreDia';
 
 function minutesNowInSaoPaulo() {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -48,31 +49,33 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) =>
 // duas barras verticais aninhadas) e o cabeçalho continua visível.
 const SLOT_LIVRE_MIN = 30;
 
-/** Primeiro horário com 30 min livres a partir de `fromMin`, respeitando consultas e bloqueios. */
-function proximaVagaLivre(agendamentos: any[], bloqueios: any[], fromMin: number): string | null {
-  const ocupados = [
-    ...agendamentos
-      .filter((a: any) => a.status !== 'cancelado' && a.status !== 'faltou')
-      .map((a: any) => {
-        const ini = toMinutes(a.hora_inicio);
-        return [ini, a.hora_fim ? toMinutes(a.hora_fim) : ini + 30] as const;
-      }),
-    ...bloqueios.map((b: any) => [
-      b.hora_inicio ? toMinutes(b.hora_inicio) : START_HOUR * 60,
-      b.hora_fim ? toMinutes(b.hora_fim) : END_HOUR * 60,
-    ] as const),
-  ];
-  const inicio = Math.max(START_HOUR * 60, Math.ceil(fromMin / SLOT_MINUTES) * SLOT_MINUTES);
-  for (let m = inicio; m + SLOT_LIVRE_MIN <= END_HOUR * 60; m += SLOT_MINUTES) {
-    const fim = m + SLOT_LIVRE_MIN;
-    if (!ocupados.some(([ini, end]) => ini < fim && end > m)) return fromMinutes(m);
-  }
-  return null;
+/** Primeiro horário com 30 min livres a partir de `fromMin`, dentro do expediente quando ele é conhecido. */
+function proximaVagaLivre(agendamentos: any[], bloqueios: any[], fromMin: number, faixas?: Faixa[]): string | null {
+  return proximaVagaNoDia({
+    agendamentos,
+    bloqueios,
+    faixas,
+    aPartirDe: Math.max(START_HOUR * 60, fromMin),
+    duracaoMinutos: SLOT_LIVRE_MIN,
+    passoMinutos: SLOT_MINUTES,
+    gradeInicio: START_HOUR * 60,
+    gradeFim: END_HOUR * 60,
+  });
 }
 
 const STATUS_SEM_RESERVA = new Set(['cancelado', 'faltou']);
 
-function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios = [], columnIndex, inactive = false, onSlotClick, expedienteMinutos }: any) {
+/** Consultas que começam ou terminam fora da grade de 06:00 a 22:00. */
+export function contarForaDaGrade(agendamentos: Array<{ hora_inicio?: string | null; hora_fim?: string | null }>): number {
+  return agendamentos.filter((a) => {
+    const ini = minutosDaHora(a.hora_inicio);
+    if (ini === null) return false;
+    const fim = minutosDaHora(a.hora_fim) ?? ini + 30;
+    return ini < START_HOUR * 60 || fim > END_HOUR * 60;
+  }).length;
+}
+
+function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios = [], columnIndex, inactive = false, onSlotClick, expedienteMinutos, faixasExpediente }: any) {
   // `agendamentos` é a lista exibida (pode estar filtrada por status/busca);
   // `agendamentosDoDia` é a ocupação real da coluna, usada para "próximo",
   // vaga livre e ocupação — senão um filtro faria horários ocupados parecerem livres.
@@ -84,7 +87,8 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
   const nowMin = minutesNowInSaoPaulo();
   const isToday = date === hoje;
   const next = isToday ? sorted.find((a: any) => toMinutes(a.hora_inicio) >= nowMin) : sorted[0];
-  const vagaLivre = inactive || date < hoje ? null : proximaVagaLivre(reais, bloqueios, isToday ? nowMin : START_HOUR * 60);
+  const vagaLivre = inactive || date < hoje ? null : proximaVagaLivre(reais, bloqueios, isToday ? nowMin : START_HOUR * 60, faixasExpediente);
+  const semExpediente = Array.isArray(faixasExpediente) && faixasExpediente.length === 0;
   const nomeExibido = nomeMedico(medico.nome || medico.crm);
   const minutosOcupados = reais.reduce((acc: number, a: any) => {
     const ini = toMinutes(a.hora_inicio);
@@ -134,7 +138,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
             {confirmed > 0 && <span className="text-success">✓ {confirmed}</span>}
           </>
         ) : (
-          <span className="italic text-muted-foreground/60">{total === 0 ? 'Agenda livre' : 'Sem próximas consultas'}</span>
+          <span className="italic text-muted-foreground/60">{total === 0 ? (semExpediente ? 'Sem expediente neste dia' : 'Agenda livre') : 'Sem próximas consultas'}</span>
         )}
         {vagaLivre && onSlotClick && (
           <button
@@ -152,7 +156,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
 }
 
 function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, convenioById, columnIndex, inactive = false,
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, onRemarcar, convenioById, columnIndex, inactive = false,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
@@ -250,7 +254,11 @@ function DoctorColumn({
           );
         })}
 
-        {agendamentos.map((ag: any) => (
+        {agendamentos.filter((ag: any) => {
+          // Começo fora da grade desenharia o cartão sobre o cabeçalho; ele entra no aviso.
+          const ini = minutosDaHora(ag.hora_inicio);
+          return ini !== null && ini >= START_HOUR * 60 && ini < END_HOUR * 60;
+        }).map((ag: any) => (
           <AppointmentCard
             key={ag.id}
             agendamento={ag}
@@ -259,7 +267,8 @@ function DoctorColumn({
             minutesToPx={minutesToPx}
             onClick={() => onCardClick(ag)}
             onNovaConsulta={onNovaConsulta}
-            convenioName={convenioById?.[ag.pacientes?.convenio_id]?.nome}
+            onRemarcar={onRemarcar}
+            convenioName={convenioById?.[ag.convenio_id || ag.pacientes?.convenio_id]?.nome}
           />
         ))}
       </div>
@@ -286,9 +295,11 @@ function DropSlot({ id, data, className, style, onClick, onKeyDown, accessibleNa
 }
 
 export function DailyMultiDoctorView({
-  date, medicos, agendamentos, agendamentosDoDia, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, convenioById, expedientePorMedico = {},
+  date, medicos, agendamentos, agendamentosDoDia, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, onRemarcar, convenioById, expedientePorMedico = {}, faixasPorMedico, onVerForaDaGrade,
 }: any) {
   const ocupacaoBase: any[] = agendamentosDoDia ?? agendamentos;
+  // A grade vai de 06:00 a 22:00; o que fica fora some do desenho, então avisamos.
+  const foraDaGrade = contarForaDaGrade(agendamentos);
   const activeDoctors = useMemo(() => medicos.filter((m: any) => m.ativo !== false), [medicos]);
   // Keep existing bookings visible after a clinician is deactivated, but do not
   // expose empty slots that could create new appointments for that clinician.
@@ -340,6 +351,14 @@ export function DailyMultiDoctorView({
             </button>
           )}
         </div>
+        {foraDaGrade > 0 && (
+          <p role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-warning-foreground">
+            {foraDaGrade} consulta{foraDaGrade === 1 ? '' : 's'} fora da grade (antes das 06:00 ou depois das 22:00).
+            {onVerForaDaGrade && (
+              <button type="button" onClick={onVerForaDaGrade} className="font-semibold underline underline-offset-2">Ver em lista</button>
+            )}
+          </p>
+        )}
       </div>
       {doctorsToShow.length > 0 && (
         <div className="sticky top-0 z-[45] flex bg-card/95 backdrop-blur border-b border-border/60">
@@ -358,6 +377,7 @@ export function DailyMultiDoctorView({
                 bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}
                 onSlotClick={onSlotClick}
                 expedienteMinutos={expedientePorMedico[medico.id] ?? 0}
+                faixasExpediente={faixasPorMedico ? faixasPorMedico[medico.id] ?? [] : undefined}
               />
             ))}
           </div>
@@ -415,6 +435,7 @@ export function DailyMultiDoctorView({
                 onSlotClick={onSlotClick}
                 onCardClick={onCardClick}
                 onNovaConsulta={onNovaConsulta}
+                onRemarcar={onRemarcar}
               />
             ))}
           </div>

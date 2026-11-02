@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,12 @@ import {
   ChevronRight,
   RefreshCw,
   FileUp,
+  MoreHorizontal,
+  BarChart3,
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { formatarPercentualFinanceiro, formatarValorAbreviadoFinanceiro } from '@/lib/financeiroCalculations';
+import { normalizarCategoria, rotuloCategoria } from '@/lib/financeiroRotulos';
 import {
   AreaChart,
   Area,
@@ -67,19 +72,6 @@ const noMes = (dateValue: string | null, month: number, year: number) => {
 };
 const dateOnlyFromTimestamp = (value: string) =>
   dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo');
-const rotulosCategoria: Record<string, string> = {
-  consulta: 'Consultas', retorno: 'Retornos', procedimento: 'Procedimentos', exame: 'Exames',
-  cirurgia: 'Cirurgias', internacao: 'Internações', taxa_administrativa: 'Taxas administrativas',
-  taxa_material: 'Materiais', convenio_repasse: 'Repasses de convênio', honorario_medico: 'Honorários médicos',
-  fisioterapia: 'Fisioterapia', psicologia: 'Psicologia', pediatria: 'Pediatria', outros: 'Outros',
-  fornecedores: 'Fornecedores', folha_pagamento: 'Folha de pagamento', impostos: 'Impostos',
-  aluguel: 'Aluguel', servicos: 'Serviços', equipamentos: 'Equipamentos', marketing: 'Marketing',
-  receita_caixa: 'Receitas avulsas', sangria: 'Sangrias', suprimento: 'Suprimentos',
-  ajuste_convenio: 'Ajustes de convênio',
-};
-const rotuloCategoria = (categoria: string) => rotulosCategoria[categoria]
-  || categoria.replace(/_/g, ' ').replace(/\b\w/g, letra => letra.toLocaleUpperCase('pt-BR'));
-
 const GRID_COLOR = 'hsl(var(--border))';
 
 export default function FluxoCaixa() {
@@ -87,6 +79,7 @@ export default function FluxoCaixa() {
   const searchString = searchParams.toString();
   const currentDate = parseFinanceMonth(searchParams.get('mes')) ?? currentFinanceMonth();
   const { profile } = useSupabaseAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const normalized = normalizeFinanceRouteParams(searchParams);
@@ -179,7 +172,7 @@ export default function FluxoCaixa() {
       .map(l => ({
         id: l.id,
         tipo: l.tipo,
-        categoria: l.categoria,
+        categoria: normalizarCategoria(l.categoria),
         data: dataRealizacao(l),
         valor: valorRealizado(l),
       }));
@@ -189,7 +182,7 @@ export default function FluxoCaixa() {
       const pagamento = {
         id: p.id,
         tipo: conta.tipo,
-        categoria: conta.categoria || 'outros',
+        categoria: normalizarCategoria(conta.categoria),
         data: dateOnlyFromTimestamp(p.data_pagamento),
         valor: Number(p.valor),
       };
@@ -325,36 +318,48 @@ export default function FluxoCaixa() {
   return (
     <div className="space-y-6 pb-8">
       <PageHeader
-        title="Fluxo de Caixa"
+        title="Fluxo de caixa"
         icon={<Wallet />}
         description={`${format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })} · Saldo ${formatCurrency(totaisMes.saldo)} · Entradas ${formatCurrency(totaisMes.entradas)} · Saídas ${formatCurrency(totaisMes.saidas)}`}
         actions={(
-          <>
-            <Button
-              aria-label="Atualizar fluxo de caixa"
-              variant="outline"
-              size="icon"
-              className="shrink-0 rounded-full"
-              onClick={() => { void lancamentosQuery.refetch(); void pagamentosQuery.refetch(); }}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" asChild className="shrink-0 rounded-full">
-              <Link to={`/financeiro?mes=${formatFinanceMonth(currentDate)}&tab=resumo`}>Visão financeira</Link>
-            </Button>
-            {profile?.clinica_id && <Button variant="outline" asChild className="shrink-0 rounded-full"><Link to={`/fluxo-caixa/extrato?mes=${formatFinanceMonth(currentDate)}`}><FileUp className="mr-2 h-4 w-4" />Importar extrato</Link></Button>}
-            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
-              <Button aria-label="Mês anterior" variant="ghost" size="icon" className="rounded-full text-primary hover:bg-primary/10" onClick={handlePrevMonth}>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs sm:flex-none">
+              <Button aria-label="Mês anterior" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={handlePrevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="min-w-[140px] text-center text-sm font-semibold capitalize text-foreground">
+              <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold capitalize text-foreground sm:min-w-[140px]" aria-live="polite">
                 {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
               </span>
-              <Button aria-label="Próximo mês" variant="ghost" size="icon" className="rounded-full text-primary hover:bg-primary/10" onClick={handleNextMonth}>
+              <Button aria-label="Próximo mês" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={handleNextMonth}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
+              {!visualizandoMesAtual && (
+                <Button variant="ghost" size="sm" className="h-9 shrink-0 rounded-full px-3 text-xs font-semibold" onClick={() => updateMonth(currentFinanceMonth())}>
+                  Hoje
+                </Button>
+              )}
             </div>
-          </>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-11 shrink-0 gap-1.5 rounded-full sm:h-10" aria-label="Mais ações do fluxo de caixa">
+                  <MoreHorizontal aria-hidden="true" className="h-4 w-4" /> Mais
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="gap-2" onClick={() => { void lancamentosQuery.refetch(); void pagamentosQuery.refetch(); }}>
+                  <RefreshCw aria-hidden="true" className="h-4 w-4" /> Atualizar valores
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2" onClick={() => navigate(`/financeiro?mes=${formatFinanceMonth(currentDate)}&tab=resumo`)}>
+                  <BarChart3 aria-hidden="true" className="h-4 w-4" /> Visão financeira
+                </DropdownMenuItem>
+                {profile?.clinica_id && (
+                  <DropdownMenuItem className="gap-2" onClick={() => navigate(`/fluxo-caixa/extrato?mes=${formatFinanceMonth(currentDate)}`)}>
+                    <FileUp aria-hidden="true" className="h-4 w-4" /> Importar extrato
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       />
 
@@ -381,7 +386,7 @@ export default function FluxoCaixa() {
             sub: totaisMes.despesasPendentes > 0 ? `Em aberto com vencimento no mês: ${formatCurrency(totaisMes.despesasPendentes)}` : undefined },
           { label: totaisMes.saldo < 0 ? 'Saldo negativo no mês' : 'Saldo do mês', value: totaisMes.saldo, icon: Wallet, color: totaisMes.saldo < 0 ? 'text-destructive' : 'text-primary', surface: totaisMes.saldo < 0 ? 'bg-destructive/10' : 'bg-primary/10', trendNovaBase: false },
           { label: 'Margem operacional', value: -1, icon: DollarSign, color: 'text-primary', surface: 'bg-primary/10',
-            pct: totaisMes.receitas > 0 ? `${(((totaisMes.receitas - totaisMes.despesas) / totaisMes.receitas) * 100).toFixed(1)}%` : '—', trendNovaBase: false },
+            pct: totaisMes.receitas > 0 ? formatarPercentualFinanceiro(((totaisMes.receitas - totaisMes.despesas) / totaisMes.receitas) * 100) : '—', trendNovaBase: false },
         ].map((s, index) => (
           <div
             key={s.label}
@@ -407,7 +412,7 @@ export default function FluxoCaixa() {
                 ) : s.trend !== undefined && s.trend !== 0 && (
                   <div className={cn('flex items-center gap-1 mt-1 text-xs font-medium', s.trendPositive ? 'text-success' : 'text-destructive')}>
                     {s.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                    {Math.abs(s.trend).toFixed(1)}%
+                    {formatarPercentualFinanceiro(Math.abs(s.trend))}
                   </div>
                 )}
                 {s.sub && <p className="mt-1 text-xs text-muted-foreground">{s.sub}</p>}
@@ -445,7 +450,7 @@ export default function FluxoCaixa() {
                 <TrendingUp className="h-4 w-4" />
               </span>
               <div>
-                <CardTitle className="text-base font-semibold">Evolução Diária</CardTitle>
+                <CardTitle className="text-base font-semibold">Evolução diária</CardTitle>
                 <CardDescription>Receitas e despesas por dia; sangrias e suprimentos aparecem como transferências</CardDescription>
               </div>
             </div>
@@ -456,7 +461,7 @@ export default function FluxoCaixa() {
                   <BarChart data={dadosDiarios}>
                   <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                   <XAxis dataKey="dia" className="text-xs" />
-                  <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
+                  <YAxis className="text-xs" tickFormatter={formatarValorAbreviadoFinanceiro} />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
                     contentStyle={{
@@ -484,7 +489,7 @@ export default function FluxoCaixa() {
                 <Wallet className="h-4 w-4" />
               </span>
               <div>
-                <CardTitle className="text-base font-semibold">Saldo Acumulado</CardTitle>
+                <CardTitle className="text-base font-semibold">Saldo acumulado</CardTitle>
                 <CardDescription>Receitas menos despesas acumuladas no mês; não inclui saldo inicial nem transferências</CardDescription>
               </div>
             </div>
@@ -501,7 +506,7 @@ export default function FluxoCaixa() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                   <XAxis dataKey="dia" className="text-xs" />
-                  <YAxis className="text-xs" tickFormatter={(v) => `R$${v}`} />
+                  <YAxis className="text-xs" tickFormatter={formatarValorAbreviadoFinanceiro} />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
                     contentStyle={{
@@ -544,7 +549,7 @@ export default function FluxoCaixa() {
               <DollarSign className="h-4 w-4" />
             </span>
             <div>
-              <CardTitle className="text-base font-semibold">Por Categoria</CardTitle>
+              <CardTitle className="text-base font-semibold">Por categoria</CardTitle>
               <CardDescription>Valores efetivamente recebidos e pagos no mês, por categoria</CardDescription>
             </div>
           </div>
@@ -562,7 +567,7 @@ export default function FluxoCaixa() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dadosPorCategoria} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-                  <XAxis type="number" className="text-xs" tickFormatter={(v) => `R$${v}`} />
+                  <XAxis type="number" className="text-xs" tickFormatter={formatarValorAbreviadoFinanceiro} />
                   <YAxis dataKey="categoria" type="category" className="text-xs" width={100} />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}

@@ -44,7 +44,7 @@ for (const width of [1440, 768, 390]) {
     await page.screenshot({ path: info.outputPath(`certificate-header-${width}.png`) });
     await page.getByLabel('Texto do Atestado / Observações').fill('Texto sintético para conferir o rascunho.');
     await page.screenshot({ path: info.outputPath(`certificate-page-${width}.png`) });
-    const submit = page.locator('#main-content').getByRole('button', { name: 'Emitir atestado', exact: true });
+    const submit = page.locator('#main-content').getByRole('button', { name: 'Emitir', exact: true });
     await submit.scrollIntoViewIfNeeded();
     expect((await submit.boundingBox())!.y + (await submit.boundingBox())!.height).toBeLessThanOrEqual(width < 1024 ? 840 : 900);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -69,7 +69,7 @@ test('certificate validates attendance times, retains failed save and emits with
     await route.fulfill(attempts === 1 ? { status: 400, json: { message: 'Falha sintética' } } : { status: 201, body: '' });
   });
   await page.goto(createUrl);
-  const submit = page.locator('#main-content').getByRole('button', { name: 'Emitir atestado', exact: true });
+  const submit = page.locator('#main-content').getByRole('button', { name: 'Emitir', exact: true });
   await submit.click();
   await expect(page.getByText('Informe o horário de início e fim para atestado de comparecimento.', { exact: true })).toBeVisible();
   expect(attempts).toBe(0);
@@ -117,7 +117,7 @@ test('templates apply inline using keyboard and retain the new consent requireme
   await page.getByRole('button', { name: 'Modelos', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Modelos de atestado', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Aplicar', exact: true }).focus();
+  await page.getByRole('button', { name: 'Aplicar modelo Modelo sintético', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'Modelos', exact: true })).toBeFocused();
   await expect(page.getByLabel('Dias de Afastamento')).toHaveValue('3');

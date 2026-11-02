@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Activity, AlertTriangle, CalendarDays, CheckCircle2, ClipboardList, FilePlus2, FolderOpen, Loader2,
+  Activity, AlertTriangle, CalendarDays, CheckCircle2, ClipboardList, FileDown, FilePlus2, FolderOpen, Loader2,
   MapPin, Plus, RefreshCw, Search, ShieldCheck, Siren, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,13 +26,17 @@ import {
   SEVERITY_WEIGHT, STATUSES, STATUS_CLASSES,
 } from '@/lib/seguranca-assistencial';
 import type { IndicadorKey, Ordenacao, Report, Reviewer, SafetyFilters } from '@/lib/seguranca-assistencial';
+import { gerarCsvNotivisa, resumoMensal, rotuloMes, ultimosMeses } from '@/lib/segurancaAssistencialRelatorio';
 
 type FormState = { category: string; severity: string; occurred_at: string; location_label: string; summary: string; immediate_action: string; reporter_confidential: boolean };
 const EMPTY_REPORTS: Report[] = [];
-const EMPTY_FORM: FormState = {
+// A hora sugerida é calculada ao abrir a tela (e após cada envio), não ao
+// carregar o módulo: com a aba aberta desde cedo, o formulário sugeria a hora
+// em que o app foi carregado.
+const novoFormulario = (): FormState => ({
   category: 'near_miss', severity: 'moderate', occurred_at: localDateTime(new Date().toISOString()),
   location_label: '', summary: '', immediate_action: '', reporter_confidential: true,
-};
+});
 
 const isOpen = (report: Report) => report.status !== 'closed';
 const isOverdue = (report: Report, now: number) => isOpen(report) && !!report.due_at && new Date(report.due_at).getTime() < now;
@@ -50,7 +54,7 @@ export default function SegurancaAssistencial() {
   const isAdmin = profile?.roles?.includes('admin') ?? false;
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<FormState>(novoFormulario);
   const initialFilters = location.state?.safetyFilters as Partial<SafetyFilters> | undefined;
   const [search, setSearch] = useState(initialFilters?.search || '');
   const [indicador, setIndicador] = useState<IndicadorKey | 'todos'>(initialFilters?.indicador || 'todos');
@@ -81,7 +85,7 @@ export default function SegurancaAssistencial() {
       return data;
     },
     onSuccess: () => {
-      setForm({ ...EMPTY_FORM, occurred_at: localDateTime(new Date().toISOString()) });
+      setForm(novoFormulario());
       toast.success('Relato recebido.', SAFETY_TOAST_OPTIONS);
       void queryClient.invalidateQueries({ queryKey: ['clinical-safety-reports'] });
     },
@@ -138,6 +142,20 @@ export default function SegurancaAssistencial() {
     return lista;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reports, reviewers, search, indicador, severityFilter, statusFilter, ordenacao]);
+  const mesesDoPainel = useMemo(() => ultimosMeses(6), []);
+  const resumoDosMeses = useMemo(() => resumoMensal(reports, mesesDoPainel), [reports, mesesDoPainel]);
+  const maiorMes = Math.max(1, ...resumoDosMeses.map(item => item.total));
+  const exportarNotivisa = () => {
+    // Exporta o que está filtrado na tela: o núcleo escolhe o período e a gravidade antes.
+    const csv = gerarCsvNotivisa(filtrados);
+    const url = URL.createObjectURL(new Blob([String.fromCharCode(0xfeff), csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `seguranca-assistencial-notivisa-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.success(`${filtrados.length} ${plural(filtrados.length, 'relato exportado', 'relatos exportados')}.`, { ...SAFETY_TOAST_OPTIONS, description: 'Use a planilha para preencher a notificação no portal NOTIVISA.' });
+  };
   const abertosFiltrados = filtrados.filter(isOpen);
   const encerradosFiltrados = filtrados.filter((report) => !isOpen(report));
   const temFiltro = search.trim() !== '' || indicador !== 'todos' || severityFilter !== 'todas' || statusFilter !== 'todos';
@@ -252,6 +270,40 @@ export default function SegurancaAssistencial() {
       </div>
       {!!counts.byCategory.length && <div aria-label="Relatos por categoria" className="flex flex-wrap gap-2 pt-1">{counts.byCategory.map((item) => <Badge key={item.key} variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-primary">{item.label}: {item.count}</Badge>)}</div>}
     </section>
+
+    {isAdmin && reports.length > 0 && (
+      <section aria-labelledby="safety-monthly-heading" className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="safety-monthly-heading" className="text-sm font-semibold text-foreground">Painel mensal</h2>
+            <p className="text-xs text-muted-foreground">Relatos por mês de ocorrência nos últimos 6 meses.</p>
+          </div>
+          <Button variant="outline" className="h-10 gap-1.5 rounded-full text-xs" onClick={exportarNotivisa} disabled={filtrados.length === 0}>
+            <FileDown aria-hidden="true" className="h-4 w-4" />Planilha para o NOTIVISA ({filtrados.length})
+          </Button>
+        </div>
+        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {resumoDosMeses.map(item => {
+            const graves = (item.porGravidade.critical ?? 0) + (item.porGravidade.high ?? 0);
+            return (
+              <li key={item.mes} className="flex flex-col gap-1.5 rounded-lg border border-border/70 p-2.5">
+                <span className="text-xs font-medium text-muted-foreground">{rotuloMes(item.mes)}</span>
+                <span className="text-xl font-bold tabular-nums text-foreground">{item.total}</span>
+                <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <span className="block h-full rounded-full bg-foreground" style={{ width: `${(item.total / maiorMes) * 100}%` }} />
+                </span>
+                <span className="text-[11px] leading-4 text-muted-foreground">
+                  {graves > 0 ? <span className="font-medium text-destructive">{graves} {plural(graves, 'grave', 'graves')}</span> : 'Sem graves'}
+                  {item.eventosAdversos > 0 ? ` · ${item.eventosAdversos} ${plural(item.eventosAdversos, 'evento adverso', 'eventos adversos')}` : ''}
+                  {` · ${item.encerrados} ${plural(item.encerrados, 'encerrado', 'encerrados')}`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="text-xs text-muted-foreground">A planilha segue os filtros da lista abaixo e não inclui o nome do relator. O NOTIVISA não importa arquivos: use-a para preencher a notificação no portal da Anvisa e confirme o grau do dano.</p>
+      </section>
+    )}
 
     {maisUrgente && (() => {
       const atrasado = isOverdue(maisUrgente, Date.now());

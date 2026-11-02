@@ -176,6 +176,25 @@ export function consolidarHistoricoVitais(
   return [...agrupados.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 }
 
+/** CSV das medições (sem identificação do paciente), com hora de Brasília. */
+export function gerarCsvVitais(registros: VitalSignData[]): string {
+  const cabecalho = ['Data e hora', 'PA sistólica', 'PA diastólica', 'FC', 'FR', 'Temperatura', 'Peso', 'IMC', 'SpO2', 'Glicemia', 'Dor'];
+  const valor = (n: number | null) => (n === null || !Number.isFinite(n) ? '' : String(n).replace('.', ','));
+  const dataHora = (iso: string) => {
+    const instante = new Date(iso);
+    if (!Number.isFinite(instante.getTime())) return '';
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(instante).replace(',', '');
+  };
+  const linhas = registros.map(r => [
+    dataHora(r.created_at),
+    valor(r.pressao_sistolica), valor(r.pressao_diastolica), valor(r.frequencia_cardiaca), valor(r.frequencia_respiratoria),
+    valor(r.temperatura), valor(r.peso), valor(r.imc), valor(r.oxigenacao), valor(r.glicemia), valor(r.dor_escala),
+  ]);
+  return [cabecalho, ...linhas].map(linha => linha.map(campo => `"${campo.replace(/"/g, '""')}"`).join(';')).join('\r\n');
+}
+
 export function historicoVitaisLimitado(
   triagensCount: number,
   prontuariosCount: number,

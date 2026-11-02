@@ -17,6 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 const nomePaciente = (paciente: { nome_social?: string; nome?: string } | null) => paciente?.nome_social?.trim() || paciente?.nome || '—';
+const TIPO_EVENTO: Record<string, string> = { recebida: 'Recebimento no laboratório', transporte: 'Transporte', armazenamento: 'Armazenamento', observacao: 'Observação', rejeicao: 'Amostra rejeitada', recoleta: 'Recoleta solicitada', coleta: 'Coleta registrada', status: 'Mudança de status' };
+const rotuloEvento = (tipo: unknown) => TIPO_EVENTO[String(tipo)] ?? String(tipo ?? '').replace(/_/g, ' ').replace(/^./, (letra) => letra.toUpperCase());
 const dataHoraClinica = (instant: Date) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant);
 
 export default function AmostraPage() {
@@ -122,7 +124,7 @@ function AmostraWorkspace() {
                 <div><p className="text-[11px] text-muted-foreground">Amostra</p><p>{detailItem.tipo_amostra} {detailItem.tubo && `· ${detailItem.tubo}`}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">Volume</p><p>{detailItem.volume_ml ? `${detailItem.volume_ml}mL` : '—'}</p></div>
                 <div><p className="text-[11px] text-muted-foreground">Sítio</p><p>{detailItem.sitio_coleta || '—'}</p></div>
-                <div><p className="text-[11px] text-muted-foreground">Lote Insumo</p><p>{detailItem.lote_insumo || '—'}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">Lote do insumo</p><p>{detailItem.lote_insumo || '—'}</p></div>
               </div>
               {detailItem.condicao_amostra?.length > 0 && (
                 <div>
@@ -146,7 +148,7 @@ function AmostraWorkspace() {
               <section className="space-y-3 border-b py-5" aria-label="Histórico de rastreabilidade">
                 <div><p className="text-sm font-semibold">Rastreabilidade da amostra</p><p className="text-xs text-muted-foreground">Cada movimentação fica registrada com data e responsável. Exibindo os 100 eventos mais recentes.</p></div>
                 {eventosAmostraQuery.isError ? <ErrorState compact description="Não foi possível carregar o histórico" error={eventosAmostraQuery.error} onRetry={() => void eventosAmostraQuery.refetch()} /> : eventosAmostraQuery.isLoading ? <p role="status" className="text-xs text-muted-foreground">Carregando histórico…</p> : eventosAmostraQuery.data?.length ? (
-                  <ol className="space-y-3">{eventosAmostraQuery.data.map((evento: any) => <li key={evento.id} className="flex gap-2 border-l-2 border-primary/30 pl-3"><div className="min-w-0"><p className="text-xs font-medium capitalize">{String(evento.tipo).replace(/_/g, ' ')}{evento.status_novo ? ` · ${evento.status_novo}` : ''}</p><p className="text-[11px] text-muted-foreground">{dataHoraClinica(new Date(evento.created_at))}{evento.profiles?.nome ? ` · ${evento.profiles.nome}` : ''}{evento.local ? ` · ${evento.local}` : ''}</p>{evento.detalhes?.motivo && <p className="mt-0.5 text-xs">{evento.detalhes.motivo}</p>}</div></li>)}</ol>
+                  <ol className="space-y-3">{eventosAmostraQuery.data.map((evento: any) => <li key={evento.id} className="flex gap-2 border-l-2 border-primary/30 pl-3"><div className="min-w-0"><p className="text-xs font-medium">{rotuloEvento(evento.tipo)}{evento.status_novo ? ` · ${STATUS_COLETA_LABELS[evento.status_novo] ?? evento.status_novo}` : ''}</p><p className="text-[11px] text-muted-foreground">{dataHoraClinica(new Date(evento.created_at))}{evento.profiles?.nome ? ` · ${evento.profiles.nome}` : ''}{evento.local ? ` · ${evento.local}` : ''}</p>{evento.detalhes?.motivo && <p className="mt-0.5 text-xs">{evento.detalhes.motivo}</p>}</div></li>)}</ol>
                 ) : <p className="text-xs text-muted-foreground">Nenhuma movimentação registrada.</p>}
               </section>
 

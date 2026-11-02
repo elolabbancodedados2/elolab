@@ -1,5 +1,6 @@
 import { Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { classeTextoNivelVital, classificarSinalVital, numeroVital, piorNivelVital } from '@/lib/limiaresVitais';
 
 // Faixa do protótipo aprovado em 30/10/2026: sinais vitais do atendimento sempre à vista no topo.
 type Sinais = Partial<Record<string, string | number | null>>;
@@ -13,15 +14,11 @@ interface Props {
 }
 
 function numero(valor: Sinais[string]) {
-  const n = Number(String(valor ?? '').replace(',', '.'));
-  return Number.isFinite(n) && String(valor ?? '').trim() !== '' ? n : null;
+  return numeroVital(valor);
 }
 
-// Vermelho e âmbar só para valor fora da faixa usual de adulto.
-function tom(alerta: boolean, atencao: boolean) {
-  return alerta ? 'text-destructive' : atencao ? 'text-warning-foreground' : 'text-foreground';
-}
-
+// Vermelho e âmbar só fora da faixa, pelos limiares únicos do app
+// (os mesmos do painel de contexto clínico e dos gráficos).
 export function FaixaSinaisVitais({ sinais, onAbrir, origem, onUsar }: Props) {
   const pas = numero(sinais.pressao_sistolica);
   const pad = numero(sinais.pressao_diastolica);
@@ -31,10 +28,10 @@ export function FaixaSinaisVitais({ sinais, onAbrir, origem, onUsar }: Props) {
   const peso = numero(sinais.peso);
 
   const itens = [
-    pas !== null && { rotulo: 'PA', valor: `${pas}/${pad ?? '—'}`, unidade: 'mmHg', classe: tom(pas >= 160 || pas < 90, pas >= 140) },
-    fc !== null && { rotulo: 'FC', valor: String(fc), unidade: 'bpm', classe: tom(fc > 130 || fc < 45, fc > 100 || fc < 55) },
-    temp !== null && { rotulo: 'Temp', valor: String(temp).replace('.', ','), unidade: '°C', classe: tom(temp >= 39, temp >= 37.8) },
-    sat !== null && { rotulo: 'SpO₂', valor: String(sat), unidade: '%', classe: tom(sat < 90, sat < 94) },
+    pas !== null && { rotulo: 'PA', valor: `${pas}/${pad ?? '—'}`, unidade: 'mmHg', classe: classeTextoNivelVital(piorNivelVital(classificarSinalVital('pressao_sistolica', pas), classificarSinalVital('pressao_diastolica', pad))) },
+    fc !== null && { rotulo: 'FC', valor: String(fc), unidade: 'bpm', classe: classeTextoNivelVital(classificarSinalVital('frequencia_cardiaca', fc)) },
+    temp !== null && { rotulo: 'Temp', valor: String(temp).replace('.', ','), unidade: '°C', classe: classeTextoNivelVital(classificarSinalVital('temperatura', temp)) },
+    sat !== null && { rotulo: 'SpO₂', valor: String(sat), unidade: '%', classe: classeTextoNivelVital(classificarSinalVital('saturacao', sat)) },
     peso !== null && { rotulo: 'Peso', valor: String(peso).replace('.', ','), unidade: 'kg', classe: 'text-foreground' },
   ].filter(Boolean) as Array<{ rotulo: string; valor: string; unidade: string; classe: string }>;
 

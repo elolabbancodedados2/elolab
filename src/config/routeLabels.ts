@@ -27,6 +27,9 @@ const labelsByPath: Record<string, string> = {
   '/agenda/bloqueios': 'Bloqueios da agenda',
   '/agenda/bloqueios/novo': 'Novo bloqueio',
   '/agenda/nova': 'Nova consulta',
+  '/agenda/confirmacoes': 'Confirmação das consultas de amanhã',
+  '/agenda/imprimir': 'Imprimir agenda',
+  '/agenda/buscar-vaga': 'Buscar vaga',
   '/prontuarios': 'Prontuários',
   '/prontuarios/atendimento': 'Atendimento clínico',
   '/documentos-clinicos': 'Documentos clínicos',
@@ -64,6 +67,7 @@ const labelsByPath: Record<string, string> = {
   '/gestao-fluxo': 'Salas e lista de espera',
   '/estoque': 'Estoque',
   '/estoque/novo': 'Novo produto',
+  '/estoque/inventario': 'Inventário do estoque',
   '/compras': 'Compras',
   '/tarefas/nova': 'Nova tarefa',
   '/convenios': 'Convênios',
@@ -82,6 +86,7 @@ const labelsByPath: Record<string, string> = {
   '/recepcao/encaixe': 'Encaixe sem agendamento',
   '/financeiro': 'Financeiro',
   '/financeiro/dre': 'DRE e plano de contas',
+  '/financeiro/recorrencias': 'Contas recorrentes',
   '/contas': 'Contas a receber e a pagar',
   '/contas/pagar': 'Contas a pagar',
   '/contas/receber/nova': 'Nova receita',
@@ -198,12 +203,15 @@ export function getRouteLabel(pathname: string): string {
   if (/^\/recepcao\/caixa\/lancamentos\/[^/]+\/editar$/.test(pathname)) return 'Editar lançamento do caixa';
   if (/^\/recepcao\/caixa\/vendas\/[^/]+\/estornar$/.test(pathname)) return 'Estornar venda do caixa';
   if (/^\/agenda\/[^/]+\/corrigir-status$/.test(pathname)) return 'Corrigir status da consulta';
+  if (/^\/agenda\/bloqueios\/[^/]+\/editar$/.test(pathname)) return 'Editar bloqueio';
   if (/^\/contas\/pagar\/[^/]+\/pagamento-anterior$/.test(pathname)) return 'Pagamento em data anterior';
   if (/^\/contas\/receber\/[^/]+\/recebimento$/.test(pathname)) return 'Receber pagamento';
   if (/^\/contas\/receber\/[^/]+\/estorno$/.test(pathname)) return 'Estornar pagamento';
   if (/^\/contas\/receber\/[^/]+\/detalhes$/.test(pathname)) return 'Detalhes da conta a receber';
   if (/^\/contas\/pagar\/[^/]+\/pagamento$/.test(pathname)) return 'Registrar pagamento da conta';
   if (/^\/contas\/pagar\/[^/]+\/editar$/.test(pathname)) return 'Editar conta a pagar';
+  if (/^\/contas\/pagar\/[^/]+\/detalhes$/.test(pathname)) return 'Detalhes da conta a pagar';
+  if (/^\/contas\/receber\/[^/]+\/editar$/.test(pathname)) return 'Renegociar conta a receber';
   if (/^\/laudos-lab\/[^/]+$/.test(pathname)) return 'Conferência do laudo';
   if (/^\/guias-externas\/(?!nova$|portal$)[^/]+$/.test(pathname)) return 'Detalhe da guia';
   if (pathname === '/guias-externas/nova') return 'Nova guia externa';
