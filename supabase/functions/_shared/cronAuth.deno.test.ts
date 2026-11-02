@@ -7,8 +7,9 @@ function requestFor(sub: string) {
   });
 }
 
-function dbMock(profile: { clinica_id: string | null; ativo: boolean } | null, role: string | null = 'admin') {
+function dbMock(profile: { clinica_id: string | null; ativo: boolean } | null, role: string | null = 'admin', tokenValido = true) {
   return {
+    auth: { getUser: async () => (tokenValido ? { data: { user: { id: 'user-1' } }, error: null } : { data: { user: null }, error: new Error('invalid JWT') }) },
     from(table: string) {
       return {
         select() {
@@ -41,4 +42,9 @@ Deno.test('cron manual mantém administrador ativo restrito à própria clínica
 Deno.test('cron manual nega falha ou ausência de vínculo de clínica', async () => {
   const clinic = await clinicaAdminDoChamador(requestFor('orphan-user'), dbMock(null));
   if (clinic !== null) throw new Error('Usuário sem vínculo recebeu escopo global.');
+});
+
+Deno.test('cron manual nega JWT com assinatura inválida mesmo com role authenticated', async () => {
+  const clinic = await clinicaAdminDoChamador(requestFor('forged-user'), dbMock({ clinica_id: 'clinic-a', ativo: true }, 'admin', false));
+  if (clinic !== null) throw new Error('Token forjado recebeu escopo de clínica.');
 });

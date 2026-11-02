@@ -8,8 +8,9 @@ function requestFor(role: string, sub: string) {
   });
 }
 
-function supabaseMock(options: { clinic?: string | null; role?: string | null; active?: boolean; error?: boolean } = {}) {
+function supabaseMock(options: { clinic?: string | null; role?: string | null; active?: boolean; error?: boolean; forged?: boolean } = {}) {
   return {
+    auth: { getUser: async () => (options.forged ? { data: { user: null }, error: new Error('invalid JWT') } : { data: { user: { id: 'user-1' } }, error: null }) },
     from: (table: string) => ({
       select: () => ({
         eq: () => ({
@@ -28,6 +29,7 @@ describe('autorização das execuções manuais de automação', () => {
     expect(await usuarioTemAlgumPapel(requestFor('authenticated', 'user-1'), supabaseMock({ role: 'admin' }), ['admin'])).toBe(true);
     expect(await usuarioTemAlgumPapel(requestFor('authenticated', 'user-1'), supabaseMock({ role: 'medico' }), ['admin'])).toBe(false);
     expect(await usuarioTemAlgumPapel(requestFor('authenticated', 'user-1'), supabaseMock({ role: 'admin', error: true }), ['admin'])).toBe(false);
+    expect(await usuarioTemAlgumPapel(requestFor('authenticated', 'user-1'), supabaseMock({ role: 'admin', forged: true }), ['admin'])).toBe(false);
   });
 
   it('retorna a clínica somente para administrador autenticado vinculado', async () => {
@@ -36,5 +38,6 @@ describe('autorização das execuções manuais de automação', () => {
     expect(await clinicaAdminDoChamador(req, supabaseMock({ clinic: 'clinic-1', role: 'admin', active: false }))).toBeNull();
     expect(await clinicaAdminDoChamador(req, supabaseMock({ clinic: 'clinic-1', role: 'recepcao' }))).toBeNull();
     expect(await clinicaAdminDoChamador(req, supabaseMock({ role: 'admin' }))).toBeNull();
+    expect(await clinicaAdminDoChamador(req, supabaseMock({ clinic: 'clinic-1', role: 'admin', forged: true }))).toBeNull();
   });
 });
