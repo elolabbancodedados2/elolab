@@ -66,6 +66,29 @@ export function cronOrUserOk(req: Request): boolean {
   return jwtRole(req) === 'authenticated';
 }
 
+type ClienteComAuth = {
+  from: (t: string) => any;
+  auth: { getUser: (jwt: string) => Promise<{ data: { user: { id: string } | null }; error: unknown }> };
+};
+
+/**
+ * Id do usuário do Authorization, com a assinatura do JWT conferida pelo Auth.
+ *
+ * Decodificar o payload não basta: um token forjado com role "authenticated" e
+ * qualquer `sub` passaria se o gateway não validar o JWT (verify_jwt
+ * desligado ou VERIFY_JWT=false no self-hosted).
+ */
+async function usuarioVerificado(req: Request, supabase: ClienteComAuth): Promise<string | null> {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (jwtRole(req) !== 'authenticated') return null; // cron, anon ou service_role
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    return !error && data?.user?.id ? data.user.id : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Clínica de quem chamou, quando a chamada veio de um usuário logado.
  *
@@ -84,22 +107,9 @@ export function cronOrUserOk(req: Request): boolean {
  */
 export async function clinicaDoChamador(
   req: Request,
-  supabase: { from: (t: string) => any },
+  supabase: ClienteComAuth,
 ): Promise<string | null> {
-  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-
-  let sub: string | null = null;
-  try {
-    const resto = parts[1].length % 4;
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(resto ? 4 - resto : 0);
-    const claims = JSON.parse(atob(b64));
-    if (claims?.role !== 'authenticated') return null; // cron ou service_role
-    sub = claims?.sub ?? null;
-  } catch {
-    return null;
-  }
+  const sub = await usuarioVerificado(req, supabase);
   if (!sub) return null;
 
   const { data, error } = await supabase
@@ -111,22 +121,17 @@ export async function clinicaDoChamador(
 /** Verifica um papel do usuário autenticado sem confiar em campos do body. */
 export async function usuarioTemAlgumPapel(
   req: Request,
-  supabase: { from: (t: string) => any },
+  supabase: ClienteComAuth,
   roles: string[],
 ): Promise<boolean> {
-  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-  const parts = token.split('.');
-  if (parts.length !== 3) return false;
+  const sub = await usuarioVerificado(req, supabase);
+  if (!sub) return false;
 
   try {
-    const resto = parts[1].length % 4;
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(resto ? 4 - resto : 0);
-    const claims = JSON.parse(atob(b64));
-    if (claims?.role !== 'authenticated' || !claims?.sub) return false;
     const { data, error } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', claims.sub)
+      .eq('user_id', sub)
       .in('role', roles)
       .limit(1)
       .maybeSingle();
@@ -139,7 +144,7 @@ export async function usuarioTemAlgumPapel(
 /** Escopo usado pela tela de automações, que só é acessível a administradores. */
 export async function clinicaAdminDoChamador(
   req: Request,
-  supabase: { from: (t: string) => any },
+  supabase: ClienteComAuth,
 ): Promise<string | null> {
   const clinicaId = await clinicaDoChamador(req, supabase);
   if (!clinicaId || !(await usuarioTemAlgumPapel(req, supabase, ['admin']))) return null;
