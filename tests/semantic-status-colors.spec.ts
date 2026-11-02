@@ -114,10 +114,19 @@ test('stock timeline keeps ordinary movements out of the destructive palette', a
     await page.setViewportSize(viewport);
     await page.goto('/estoque');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('button', { name: 'Registrar entrada de Luva QA' }).locator('svg')).toHaveClass(/text-success/);
-    await expect(main.getByRole('button', { name: 'Registrar saída de Luva QA' }).locator('svg')).toHaveClass(/text-muted-foreground/);
-
-    await main.getByRole('button', { name: 'Ver histórico de Luva QA' }).click();
+    const entradaButton = main.getByRole('button', { name: 'Registrar entrada de Luva QA' });
+    const saidaButton = main.getByRole('button', { name: 'Registrar saída de Luva QA' });
+    if (viewport.width >= 768) {
+      await expect(entradaButton.locator('svg')).toHaveClass(/text-success/);
+      await expect(saidaButton.locator('svg')).toHaveClass(/text-muted-foreground/);
+      await main.getByRole('button', { name: 'Ver histórico de Luva QA' }).click();
+    } else {
+      // Ficha do celular: botões neutros com texto; o histórico fica no menu de ações.
+      await expect(entradaButton).toBeVisible();
+      await expect(saidaButton.locator('svg')).not.toHaveClass(/destructive/);
+      await main.getByRole('button', { name: 'Mais ações de Luva QA' }).click();
+      await page.getByRole('menuitem', { name: 'Histórico' }).click();
+    }
     await expect(page).toHaveURL(`/estoque/${ITEM_ID}/historico`);
     const history = page.locator('#main-content');
     const entrada = history.getByText('↓ Entrada', { exact: true });
