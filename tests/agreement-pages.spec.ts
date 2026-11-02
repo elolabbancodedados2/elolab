@@ -44,9 +44,15 @@ for (const width of [1440, 768, 390]) {
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await page.getByRole('button', { name: 'Descartar e sair' }).click();
     await expect(page).toHaveURL('/convenios');
-    await page.getByRole('button', { name: 'Gerenciar preços de exames do convênio Operadora QA' }).click();
-    await expect(page.getByRole('heading', { name: 'Tabela de preços de exames', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Adicionar Exame', exact: true }).click();
+    if (width < 640) {
+      // No celular a lista vira cartões e as ações do convênio ficam no menu do cartão.
+      await page.getByRole('button', { name: 'Ações do convênio Operadora QA' }).click();
+      await page.getByRole('menuitem', { name: 'Tabela de exames' }).click();
+    } else {
+      await page.getByRole('button', { name: 'Gerenciar preços de exames do convênio Operadora QA' }).click();
+    }
+    await expect(page.getByRole('heading', { level: 1, name: 'Tabela de preços de exames', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar exame', exact: true }).click();
     await expect(page).toHaveURL(`/convenios/${id}/exames/novo`);
     await page.getByLabel('Tipo do Exame *').fill('Novo exame QA');
     await page.getByLabel('Valor de tabela (R$) *').fill('25');

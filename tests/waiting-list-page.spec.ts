@@ -33,7 +33,7 @@ for (const width of [1440, 768, 390]) {
     await page.getByRole('button', { name: 'Voltar à lista de espera' }).click();
     await page.getByRole('button', { name: 'Descartar e sair' }).click();
     await expect(page).toHaveURL('/gestao-fluxo?tab=espera&origem=qa');
-    await expect(page.getByRole('tab', { name: 'Lista de Espera', exact: true })).toHaveAttribute('data-state', 'active');
+    await expect(page.getByRole('tab', { name: 'Lista de espera', exact: true })).toHaveAttribute('data-state', 'active');
   });
 }
 test('waiting request keeps duplicate prevention and recovers failed insert', async ({ page }, info) => {

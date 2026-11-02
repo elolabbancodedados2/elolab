@@ -57,8 +57,12 @@ test('inventory separates expired products from upcoming expiry and keeps dates 
     await expect(expiredIndicator).toContainText('1');
     await expect(upcomingIndicator).toContainText('1');
 
-    const expiredRow = main.getByRole('row').filter({ hasText: 'Dipirona QA' });
-    const upcomingRow = main.getByRole('row').filter({ hasText: 'Soro fisiológico QA' });
+    // Abaixo de 768px a tabela vira fichas (lista "Produtos"), uma por produto.
+    const productItem = (name: string) => viewport.width >= 768
+      ? main.getByRole('row').filter({ hasText: name })
+      : main.getByRole('list', { name: 'Produtos' }).getByRole('listitem').filter({ hasText: name });
+    const expiredRow = productItem('Dipirona QA');
+    const upcomingRow = productItem('Soro fisiológico QA');
     if (viewport.width >= 640) {
       await expect(expiredRow.getByText('Vencido', { exact: true }).last()).toBeVisible();
       await expect(upcomingRow.getByText('28d', { exact: true })).toBeVisible();
@@ -92,8 +96,9 @@ test('inventory separates expired products from upcoming expiry and keeps dates 
   await page.goto('/estoque?alerta=vencidos');
   const deepLinkedMain = page.locator('#main-content');
   await expect(deepLinkedMain.getByRole('button', { name: /Itens vencidos/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(deepLinkedMain.getByRole('row').filter({ hasText: 'Dipirona QA' })).toBeVisible();
-  await expect(deepLinkedMain.getByRole('row').filter({ hasText: 'Soro fisiológico QA' })).toHaveCount(0);
+  const deepLinkedList = deepLinkedMain.getByRole('list', { name: 'Produtos' });
+  await expect(deepLinkedList.getByRole('listitem').filter({ hasText: 'Dipirona QA' })).toBeVisible();
+  await expect(deepLinkedList.getByRole('listitem').filter({ hasText: 'Soro fisiológico QA' })).toHaveCount(0);
 
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
   expect(synthetic.writes.filter(write => !write.includes('/rpc/'))).toEqual([]);

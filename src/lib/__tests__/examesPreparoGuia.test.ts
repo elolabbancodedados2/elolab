@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { preparosAusentesNaGuia, textoPreparosParaGuia } from '../examesWorkflow';
+import { mensagemPreparoWhatsApp, preparosAusentesNaGuia, preparosDosExames, textoPreparosParaGuia } from '../examesWorkflow';
 
 const catalogo = [
   { nome: 'Glicemia de Jejum', preparo: 'Jejum de 8 horas.' },
@@ -32,6 +32,18 @@ describe('preparo configurado ausente na guia', () => {
     const texto = textoPreparosParaGuia([{ exame: 'Glicemia de Jejum', preparo: 'Jejum de 8 horas.' }]);
     expect(texto).toBe('Preparo — Glicemia de Jejum: Jejum de 8 horas.');
     expect(preparosAusentesNaGuia([{ nome: 'Glicemia de Jejum' }], catalogo, texto)).toEqual([]);
+  });
+
+  it('encontra o preparo dos exames gravados com código e sem repetir', () => {
+    expect(preparosDosExames(['40302040 - Glicemia de Jejum', 'Hemograma', 'glicemia de jejum', 'TSH'], catalogo)).toEqual([
+      { exame: 'Glicemia de Jejum', preparo: 'Jejum de 8 horas.' },
+    ]);
+  });
+
+  it('monta a mensagem de WhatsApp com o primeiro nome e cada preparo', () => {
+    const texto = mensagemPreparoWhatsApp('Maria da Silva', [{ exame: 'Urina tipo I', preparo: 'Primeira urina.' }]);
+    expect(texto).toContain('Olá, Maria!');
+    expect(texto).toContain('• Urina tipo I: Primeira urina.');
   });
 
   it('o formulário de solicitação avisa e oferece incluir o preparo', () => {

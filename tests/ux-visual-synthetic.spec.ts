@@ -966,15 +966,15 @@ test('convenios desktop distinguishes active states and renders a solid destruct
 
     await activeRow.getByRole('button', { name: 'Excluir convênio Convênio QA Ativo' }).click();
     const alert = page.getByRole('alertdialog');
-    const confirmDelete = alert.getByRole('button', { name: 'Excluir', exact: true });
-    await expect(confirmDelete).toHaveClass(/bg-none/);
-    await expect(confirmDelete).toHaveClass(/bg-destructive/);
-    const style = await confirmDelete.evaluate(element => {
-      const computed = getComputedStyle(element);
-      return { backgroundImage: computed.backgroundImage, backgroundColor: computed.backgroundColor };
-    });
-    expect(style.backgroundImage).toBe('none');
-    expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    // Convênio ativo: a ação principal é inativar (preserva histórico); excluir continua
+    // disponível como ação secundária, sinalizada em vermelho e sem degradê.
+    await expect(alert.getByRole('button', { name: 'Inativar', exact: true })).toBeVisible();
+    const confirmDelete = alert.getByRole('button', { name: 'Excluir mesmo assim', exact: true });
+    await expect(confirmDelete).toBeVisible();
+    await expect(confirmDelete).toHaveClass(/text-destructive/);
+    await expect(confirmDelete).toHaveClass(/border-destructive/);
+    const style = await confirmDelete.evaluate(element => getComputedStyle(element).backgroundImage);
+    expect(style).toBe('none');
     await page.keyboard.press('Escape');
     await expect(alert).toBeHidden();
   }
@@ -1295,7 +1295,7 @@ test('queue presents the full care journey and keeps patients readable at deskto
     await page.setViewportSize(viewport);
     await page.goto('/fila');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Fila de atendimento' })).toBeVisible();
     await expect(main.getByRole('heading', { name: 'Jornada dos atendimentos' })).toBeVisible();
     await expect(main.locator('#fila-etapa-aguardando')).toContainText('2');
     await expect(main.locator('#fila-etapa-triagem')).toContainText('1');
@@ -1633,6 +1633,9 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
   await expect(dialog.locator('textarea').first()).toHaveValue('Evolução já registrada');
   await expect(dialog.getByTestId('prontuario-agendamento-context')).toContainText('09:00');
   await dialog.getByRole('button', { name: 'Cancelar' }).click();
+  // Aberto pela fila, o prontuário devolve à fila ao cancelar; a ficha do paciente é reaberta pelo prontuário.
+  await expect(page).toHaveURL(/\/fila(?:\?.*)?$/);
+  await page.goto(`/prontuarios?paciente=${patientId}`);
   await page.getByRole('tab', { name: 'Solicitações' }).click();
   await expect(page.getByText('Resultados laboratoriais liberados')).toBeVisible();
   await expect(page.getByText('Hemoglobina', { exact: true })).toBeVisible();
@@ -1707,7 +1710,7 @@ test('doctor reopens the prontuario already linked to an active queue appointmen
     tipo_exame: '40304361 - Hemograma Completo',
   });
   await expect(page.getByRole('dialog')).toBeHidden();
-  await expect(page.getByText('40304361 - Hemograma Completo', { exact: true })).toBeVisible();
+  await expect(page.getByText('40304361 - Hemograma Completo', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Coleta no Laboratório' })).toBeVisible();
   expect(coletaInsertPayloads).toHaveLength(0);
   const savedRequestUrl = new URL(page.url());
@@ -2390,8 +2393,9 @@ test('exam cancellation and permanent deletion dialogs are clear and safely dism
     await page.goto('/exames');
     const main = page.locator('#main-content');
     await expect(main.getByRole('heading', { name: 'Solicitação de exames' })).toBeVisible();
-    await expect(main.getByText('Ultrassom abdominal QA')).toBeVisible();
-    await expect(main.getByText('Ana Souza').first()).toBeVisible();
+    // Fichas (celular) e tabela (desktop) ficam no DOM; só uma delas é visível por largura.
+    await expect(main.getByText('Ultrassom abdominal QA').filter({ visible: true })).toBeVisible();
+    await expect(main.getByText('Ana Souza').filter({ visible: true }).first()).toBeVisible();
     const todayIndicator = main.getByRole('button', { name: /Solicitados hoje/ });
     await expect(todayIndicator).toBeVisible();
     expect(await todayIndicator.locator('.text-2xl').evaluate(element => getComputedStyle(element).color)).toBe('rgb(16, 17, 19)');
@@ -2792,10 +2796,15 @@ test('collection map keeps sample identity and actions usable on desktop and mob
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`mapa-coleta-top-${viewport.width}.png`), animations: 'disabled' });
 
-    const pendingRow = main.getByRole('row').filter({ hasText: 'QA-UR-001' });
+    // Abaixo de 768px a tabela vira fichas; a urgência aparece como ícone rotulado (tabela) ou selo "Urgente" (ficha).
+    const pendingRow = viewport.width >= 768
+      ? main.getByRole('row').filter({ hasText: 'QA-UR-001' })
+      : main.getByRole('listitem').filter({ hasText: 'QA-UR-001' });
     await pendingRow.scrollIntoViewIfNeeded();
     await expect(pendingRow.getByRole('button', { name: /Cancelar coleta QA-UR-001/ })).toBeVisible();
-    await expect(pendingRow.getByText('Ana Souza').locator('xpath=..')).toHaveClass(/text-warning-foreground/);
+    await expect(pendingRow.getByText('Ana Souza')).toBeVisible();
+    if (viewport.width >= 768) await expect(pendingRow.getByLabel('Urgente', { exact: true })).toHaveClass(/text-warning-foreground/);
+    else await expect(pendingRow.getByText('Urgente', { exact: true })).toHaveClass(/text-warning-foreground/);
     await page.screenshot({ path: testInfo.outputPath(`mapa-coleta-amostra-${viewport.width}.png`), animations: 'disabled' });
     await pendingRow.getByRole('button', { name: 'Ver detalhes da coleta QA-UR-001' }).click();
     await expect(page.getByRole('heading', { name: 'Detalhes da coleta', exact: true })).toBeVisible();
@@ -2869,20 +2878,25 @@ test('lab reports keep critical results clear and block release before technical
     const pendingIndicator = reportIndicators.getByRole('button', { name: /Pendentes/ });
     const totalIndicator = reportIndicators.getByRole('button', { name: /Total/ });
     await expect(pendingIndicator).toHaveAttribute('aria-pressed', 'false');
-    await expect(pendingIndicator).not.toHaveClass(/ring-primary\/30/);
+    // Indicador selecionado usa superfície sólida (bg-primary); os demais ficam neutros.
+    await expect(pendingIndicator).not.toHaveClass(/\bbg-primary\b/);
     await expect(totalIndicator).toHaveAttribute('aria-pressed', 'true');
     await pendingIndicator.click();
     await expect(pendingIndicator).toHaveAttribute('aria-pressed', 'true');
-    await expect(pendingIndicator).toHaveClass(/ring-primary\/30/);
+    await expect(pendingIndicator).toHaveClass(/\bbg-primary\b/);
     await totalIndicator.click();
     await expect(totalIndicator).toHaveAttribute('aria-pressed', 'true');
     await page.screenshot({ path: testInfo.outputPath(`laudos-lista-${viewport.width}.png`), animations: 'disabled' });
 
-    const reportRow = main.getByRole('row').filter({ hasText: 'QA-LAUDO-001' });
+    // Abaixo de 768px a lista vira fichas (listitem) com o botão "Ver laudo".
+    const reportRow = viewport.width >= 768
+      ? main.getByRole('row').filter({ hasText: 'QA-LAUDO-001' })
+      : main.getByRole('listitem').filter({ hasText: 'QA-LAUDO-001' });
+    const verLaudo = reportRow.getByRole('button', { name: /^Ver laudo$/i });
     await reportRow.scrollIntoViewIfNeeded();
-    await expect(reportRow.getByRole('button', { name: 'Ver Laudo' })).toBeVisible();
+    await expect(verLaudo).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`laudos-linha-${viewport.width}.png`), animations: 'disabled' });
-    await reportRow.getByRole('button', { name: 'Ver Laudo' }).click();
+    await verLaudo.click();
     const dialog = page.getByRole('main');
     await expect(dialog.getByRole('heading', { name: /Laudo — QA-LAUDO-001/ })).toBeVisible();
     if (viewport.width < 768) {
@@ -3362,16 +3376,16 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
       }
       if (path === '/gestao-fluxo') {
         await expect(main.getByRole('heading', { name: 'Salas e Leitos', exact: true })).toBeVisible();
-        await expect(main.getByRole('button', { name: 'Nova Sala / Leito', exact: true })).toHaveCount(1);
-        const addRoom = main.getByRole('button', { name: 'Nova Sala / Leito', exact: true }).first();
+        await expect(main.getByRole('button', { name: 'Nova sala ou leito', exact: true })).toHaveCount(1);
+        const addRoom = main.getByRole('button', { name: 'Nova sala ou leito', exact: true }).first();
         await expect(addRoom).toBeVisible();
         await addRoom.click();
-        await expect(page.getByRole('heading', { name: 'Nova Sala', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Nova sala', exact: true })).toBeVisible();
         await page.getByRole('button', { name: 'Voltar às salas e leitos' }).click();
         await expect(page.getByRole('dialog')).not.toBeVisible();
       }
       if (path === '/precos-servicos?tab=tipos') {
-        await expect(main.getByRole('heading', { name: 'Tipos & Preços de Consulta', exact: true })).toBeVisible();
+        await expect(main.getByRole('heading', { level: 1, name: 'Preços e serviços', exact: true })).toBeVisible();
         const addType = main.getByRole('button', { name: 'Novo Tipo', exact: false });
         await expect(addType).toHaveCount(1);
         await expect(addType).toBeVisible();
@@ -3413,7 +3427,7 @@ test(`captures key screens through internal scrolling at ${viewport.width}px`, a
         });
       }
       if (path === '/gestao-fluxo') {
-        await main.getByRole('tab', { name: 'Lista de Espera' }).click();
+        await main.getByRole('tab', { name: 'Lista de espera' }).click();
         await expect(main.getByRole('heading', { name: 'Lista de Espera' })).toBeVisible();
         await expect(main.getByText('Nenhum paciente na lista de espera')).toBeVisible();
         await expect(main.getByRole('button', { name: 'Adicionar à Lista', exact: true })).toHaveCount(1);
@@ -3509,7 +3523,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
     await expect(reservedRoom).toContainText('Bruno Almeida');
     await expect(reservedRoom).toContainText('Reservada');
     if (viewport.width === 1280) {
-      await main.getByRole('button', { name: 'Nova Sala / Leito' }).click();
+      await main.getByRole('button', { name: 'Nova sala ou leito' }).click();
       const colorPicker = page.getByRole('group', { name: 'Cor de Identificação' });
       await expect(colorPicker.getByRole('button')).toHaveCount(5);
       await expect(colorPicker.getByRole('button', { name: /roxo/i })).toHaveCount(0);
@@ -3536,7 +3550,7 @@ test('room workspace preserves occupancy safety and readable status filters', as
     }
     await page.screenshot({ path: testInfo.outputPath(`room-workspace-${viewport.width}.png`), animations: 'disabled' });
 
-    await main.getByRole('tab', { name: 'Lista de Espera' }).click();
+    await main.getByRole('tab', { name: 'Lista de espera' }).click();
     await expect(page).toHaveURL(/origem=qa.*tab=espera|tab=espera.*origem=qa/);
     await expect(main.getByText('Nenhum paciente na lista de espera', { exact: true })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Adicionar à Lista', exact: true })).toHaveCount(1);
@@ -3709,7 +3723,7 @@ test('queue check-in opens its own page and keeps the check-in validation visibl
   await page.goto('/fila');
 
   const main = page.locator('#main-content');
-  await expect(main.getByRole('heading', { name: 'Fila de Atendimento' })).toBeVisible();
+  await expect(main.getByRole('heading', { name: 'Fila de atendimento' })).toBeVisible();
   await main.getByRole('button', { name: 'Adicionar à fila' }).click();
 
   await expect(page).toHaveURL('/fila/adicionar');
@@ -3865,10 +3879,10 @@ test('Manchester risk choices keep readable contrast when selected', async ({ pa
   const riskGroup = main.getByRole('group', { name: /Classificação de risco/ });
   const choices = [
     /Emergência.*Imediato/,
-    /Muito Urgente.*10 min/,
-    /Urgente.*30 min/,
-    /Pouco Urgente.*120 min/,
-    /Não Urgente.*240 min/,
+    /Muito urgente.*10 min/,
+    /^Urgente.*30 min/,
+    /Pouco urgente.*120 min/,
+    /Não urgente.*240 min/,
   ];
   for (const name of choices) {
     const choice = riskGroup.getByRole('button', { name });
@@ -4034,8 +4048,13 @@ test('reception first fold keeps a filled synthetic queue visible at desktop wid
   expect(firstPatientBounds).not.toBeNull();
   expect(firstCheckinBounds).not.toBeNull();
   expect(mobileNavigationBounds).not.toBeNull();
-  expect(firstPatientBounds!.y + firstPatientBounds!.height).toBeLessThanOrEqual(844);
-  expect(firstCheckinBounds!.y + firstCheckinBounds!.height).toBeLessThanOrEqual(mobileNavigationBounds!.y);
+  expect(firstPatientBounds!.y + firstPatientBounds!.height).toBeLessThanOrEqual(mobileNavigationBounds!.y);
+  // O lote 1 acrescentou atalhos e etapas acima da fila: o check-in fica logo abaixo da dobra,
+  // mas precisa ficar alcançável sem ser coberto pela navegação inferior.
+  await firstCheckin.scrollIntoViewIfNeeded();
+  const firstCheckinAfterScroll = await firstCheckin.boundingBox();
+  expect(firstCheckinBounds).not.toBeNull();
+  expect(firstCheckinAfterScroll!.y + firstCheckinAfterScroll!.height).toBeLessThanOrEqual(mobileNavigationBounds!.y);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('recepcao-fila-preenchida-390.png'), animations: 'disabled' });
 

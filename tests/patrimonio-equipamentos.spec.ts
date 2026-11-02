@@ -80,7 +80,7 @@ test('cadastro patrimonial, ordem concluída, documento privado e bloqueio de sa
   await page.getByLabel('Bloquear disponibilidade da sala se este equipamento ficar indisponível').check();
   await page.getByRole('button', { name: 'Cadastrar ativo' }).click();
   await expect(page.getByRole('heading', { name: 'Autoclave consultório', exact: true })).toBeVisible();
-  await expect(page.getByText('Equipamento cadastrado')).toBeVisible();
+  await expect(page.getByText('Equipamento cadastrado', { exact: true })).toBeVisible();
   await page.locator('#main-content').evaluate((main) => main.scrollTo({ top: 0 }));
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(async () => {

@@ -132,3 +132,23 @@ describe('somaDasExtras', () => {
     expect(somaDasExtras([])).toBe(0);
   });
 });
+
+describe('valor com vírgula, formas disponíveis e restante', () => {
+  it('aceita valor digitado com vírgula', () => {
+    expect(validarValorRecebido('25,50', 100)).toBe(25.5);
+  });
+
+  it('não repete formas já usadas no pagamento dividido', async () => {
+    const { formasDisponiveis } = await import('@/lib/pagamentoDividido');
+    const todas = [{ value: 'dinheiro' }, { value: 'pix' }, { value: 'credito' }, { value: 'debito' }];
+    const extras = [{ forma: 'pix', valor: 10 }, { forma: '', valor: 0 }];
+    expect(formasDisponiveis(todas, 'dinheiro', extras, 1).map(f => f.value)).toEqual(['credito', 'debito']);
+    expect(formasDisponiveis(todas, 'dinheiro', extras, 0).map(f => f.value)).toEqual(['pix', 'credito', 'debito']);
+  });
+
+  it('calcula o restante da forma principal', async () => {
+    const { restanteDaPrincipal } = await import('@/lib/pagamentoDividido');
+    expect(restanteDaPrincipal(200, [{ forma: 'pix', valor: 50.1 }])).toBe(149.9);
+    expect(restanteDaPrincipal(50, [{ forma: 'pix', valor: 80 }])).toBe(0);
+  });
+});

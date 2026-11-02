@@ -1,3 +1,5 @@
+import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
+
 type AgendamentoCheckin = {
   id: string;
   paciente_id?: string | null;
@@ -45,7 +47,7 @@ export function validarCheckin({ agendamento, paciente, clinicaId, hoje }: {
     : agendamento.data !== hoje
       ? 'O agendamento não é de hoje.'
       : STATUS_ENCERRADOS.includes(status)
-        ? `O agendamento está ${status} e não aceita check-in.`
+        ? `O agendamento está como “${formatAppointmentStatus(status).toLocaleLowerCase('pt-BR')}” e não aceita check-in.`
         : status === 'em_atendimento'
           ? 'O atendimento já foi iniciado.'
           : null;
