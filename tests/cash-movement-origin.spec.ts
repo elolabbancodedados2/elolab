@@ -113,7 +113,8 @@ test('pedido recebido oferece lançar a conta a pagar já preenchida', async ({ 
   await expect(page.getByRole('status').filter({ hasText: 'Pedido nº AB12CD34 recebido' })).toBeVisible();
   await page.getByRole('button', { name: 'Lançar conta a pagar' }).click();
   await expect(page).toHaveURL('/contas/pagar/nova');
-  await expect(page.locator('#payable-value')).toHaveValue('487.5');
+  // O valor da conta agora aparece no formato brasileiro do campo monetário.
+  await expect(page.locator('#payable-value')).toHaveValue('487,50');
   await expect(page.getByRole('textbox', { name: /Descrição/ })).toHaveValue('Pedido de compra nº AB12CD34 — Distribuidora QA');
   await expect(page.getByRole('textbox', { name: /Fornecedor/ })).toHaveValue('Distribuidora QA');
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

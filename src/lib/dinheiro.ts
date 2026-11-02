@@ -50,7 +50,7 @@ export function arredondarReais(valor: number): number {
  * sinal negativo). Era copiada em cinco telas do caixa com pequenas diferenças.
  */
 export function parseMoneyInput(valor: string | null | undefined): number | null {
-  const compacto = String(valor ?? '').trim().replace(/\s/g, '');
+  const compacto = String(valor ?? '').trim().replace(/\s/g, '').replace(/^R\$/i, '');
   if (!compacto) return null;
   const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
   const formatoDecimal = /^\d+(?:\.\d{1,2})?$/;
@@ -149,4 +149,14 @@ export function calcularDesconto(subtotal: number, digitado: string, modo: 'reai
 export function calcularTroco(total: number, entregue: number): number | null {
   const diferenca = emCentavos(entregue) - emCentavos(total);
   return diferenca < 0 ? null : diferenca / 100;
+}
+
+/** Número para o campo de texto: 1234.5 → "1234,50". */
+export function formatMoneyInput(value: number): string {
+  return Number.isFinite(value) ? formatarCampoReais(value) : '';
+}
+
+/** Valor em reais formatado como moeda brasileira. */
+export function formatarMoeda(valor: number | string | null | undefined): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor ?? 0) || 0);
 }

@@ -24,7 +24,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getPrioridadeListaEspera } from '@/lib/listaEsperaPrioridade';
+import { compararPorPrioridade, getPrioridadeListaEspera } from '@/lib/listaEsperaPrioridade';
+import { especialidadeAtende, especialidadesCadastradas } from '@/lib/waitingListSlotCompatibility';
+import { buscarVagas, type VagaEncontrada } from '@/lib/buscaVaga';
+import { minutosAgoraSaoPaulo } from '@/lib/proximaVagaLivre';
+import { mensagemDeErro } from '@/lib/erros';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { toast } from 'sonner';
@@ -50,8 +54,6 @@ const STATUS_COLORS: Record<string, string> = {
   desistiu: 'border-border bg-muted text-muted-foreground',
 };
 
-const PESO_PRIORIDADE: Record<string, number> = { urgente: 0, preferencial: 1, normal: 2 };
-
 const PREFERENCIA_LABELS: Record<string, string> = { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' };
 
 type OrdenacaoEspera = 'prioridade' | 'mais_antigos' | 'mais_recentes';
@@ -67,7 +69,8 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_ATIVOS = ['aguardando', 'notificado', 'confirmado'];
 const LIMITE_HISTORICO = 500;
 
-const ESPECIALIDADES = [
+// Usada só quando nenhum profissional ativo tem especialidade cadastrada.
+const ESPECIALIDADES_PADRAO = [
   'Clínico Geral',
   'Cardiologia',
   'Dermatologia',
@@ -180,12 +183,36 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
     return data ? Math.max(0, differenceInCalendarDays(parseDateOnly(todaySaoPauloDateOnly())!, data)) : 0;
   };
 
-  const compararPorPrioridade = (a: any, b: any) => {
-    const pa = PESO_PRIORIDADE[getPrioridadeListaEspera(a.prioridade).value ?? 'normal'] ?? 2;
-    const pb = PESO_PRIORIDADE[getPrioridadeListaEspera(b.prioridade).value ?? 'normal'] ?? 2;
-    if (pa !== pb) return pa - pb;
-    return String(a.data_cadastro ?? '').localeCompare(String(b.data_cadastro ?? ''));
+  // As especialidades dos profissionais da clínica, não uma lista fixa.
+  const especialidades = useMemo(() => {
+    const cadastradas = especialidadesCadastradas(medicos as any[]);
+    const base = cadastradas.length ? cadastradas : ESPECIALIDADES_PADRAO;
+    return formData.especialidade && !base.includes(formData.especialidade) ? [formData.especialidade, ...base] : base;
+  }, [medicos, formData.especialidade]);
+
+  // "Encontrar vaga": próxima vaga do médico pedido ou de quem atende a especialidade.
+  const [vagas, setVagas] = useState<Record<string, { carregando: boolean; vaga?: VagaEncontrada | null; erro?: string }>>({});
+  const encontrarVaga = async (item: any) => {
+    if (!profile?.clinica_id) return;
+    const candidatos = (medicos as any[]).filter(m => m.ativo !== false && (
+      item.medico_id ? m.id === item.medico_id : especialidadeAtende(m.especialidade, item.especialidade)
+    ));
+    setVagas(atual => ({ ...atual, [item.id]: { carregando: true } }));
+    try {
+      const encontradas = await buscarVagas({
+        clinicaId: profile.clinica_id,
+        medicos: candidatos.slice(0, 12),
+        hoje: todaySaoPauloDateOnly(),
+        agoraMinutos: minutosAgoraSaoPaulo(),
+        dias: 30,
+        periodo: item.preferencia_horario,
+      });
+      setVagas(atual => ({ ...atual, [item.id]: { carregando: false, vaga: encontradas[0] ?? null } }));
+    } catch (error) {
+      setVagas(atual => ({ ...atual, [item.id]: { carregando: false, erro: mensagemDeErro(error) } }));
+    }
   };
+  const agendarPedido = (item: any) => navigate(`/agenda?espera=${encodeURIComponent(item.id)}&paciente=${encodeURIComponent(item.paciente_id)}`);
 
   const filteredLista = useMemo(() => {
     const filtrada = lista.filter(item => {
@@ -364,6 +391,109 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
   };
 
   const getDiasEspera = diasDeEspera;
+
+  // Mesmas ações na tabela (desktop) e nas fichas (celular).
+  const acoesDoPedido = (item: any, nome: string, whatsapp: string | null, encerrado: boolean) => {
+    const ativo = ['aguardando', 'notificado', 'confirmado'].includes(item.status || 'aguardando');
+    const busca = vagas[item.id];
+    return (
+      <div className="flex flex-col items-stretch gap-1.5 md:items-end">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {whatsapp && !encerrado && (
+            <Button aria-label={`Chamar ${nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-11 w-11 rounded-full md:h-9 md:w-9">
+              <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${nome} no WhatsApp`} title="Chamar no WhatsApp">
+                <MessageCircle className="h-4 w-4" />
+              </a>
+            </Button>
+          )}
+          {item.status === 'aguardando' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 rounded-full text-xs md:h-9"
+              title="Registra o contato manual; esta ação não envia mensagem."
+              onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'notificado')}
+              disabled={updatingId !== null}
+            >
+              {updatingId === item.id ? 'Salvando...' : 'Registrar contato'}
+            </Button>
+          )}
+          {item.status === 'notificado' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 rounded-full text-xs md:h-9"
+              onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'confirmado')}
+              disabled={updatingId !== null}
+            >
+              {updatingId === item.id ? 'Salvando...' : 'Confirmar'}
+            </Button>
+          )}
+          {ativo && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 gap-1 rounded-full text-xs md:h-9"
+              onClick={() => void encontrarVaga(item)}
+              disabled={busca?.carregando}
+              title="Procura a próxima vaga do médico pedido ou da especialidade, no período preferido."
+            >
+              <Search aria-hidden="true" className="h-3.5 w-3.5" /> {busca?.carregando ? 'Procurando…' : 'Encontrar vaga'}
+            </Button>
+          )}
+          {/* Agendar em qualquer status ativo: antes exigia contato e confirmação (três cliques). */}
+          {ativo && (
+            <Button
+              size="sm"
+              className="h-11 gap-1 rounded-full text-xs md:h-9"
+              onClick={() => agendarPedido(item)}
+              disabled={updatingId !== null}
+              title="Abre a agenda para criar a consulta; o status só muda após salvar."
+            >
+              <CalendarPlus aria-hidden="true" className="h-3.5 w-3.5" /> Agendar
+            </Button>
+          )}
+          {ativo && (
+            <Button
+              aria-label={`Marcar ${nome} como desistente`}
+              title={`Marcar ${nome} como desistente`}
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0 rounded-full text-muted-foreground md:h-9 md:w-9"
+              onClick={() => setDesistindo({ id: item.id, nome, status: item.status || 'aguardando' })}
+              disabled={isRemoving || updatingId !== null}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          )}
+          {podeRemoverPermanentemente && <Button
+            aria-label={`Remover ${nome} permanentemente da lista de espera`}
+            title={`Remover ${nome} permanentemente`}
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 shrink-0 rounded-full md:h-9 md:w-9"
+            onClick={() => setRemoveId(item.id)}
+            disabled={isRemoving || updatingId !== null}
+          >
+            <XCircle className="h-4 w-4 text-destructive" />
+          </Button>}
+        </div>
+        {busca && !busca.carregando && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {busca.erro ? `Não foi possível procurar: ${busca.erro}`
+              : busca.vaga ? (
+                <>
+                  Vaga: <span className="font-semibold text-foreground">{busca.vaga.data.split('-').reverse().join('/')} às {busca.vaga.hora_inicio}</span>
+                  {' com '}{nomeMedico((medicos as any[]).find(m => m.id === busca.vaga!.medico_id)?.nome || '')}
+                  {' · '}
+                  <button type="button" className="font-semibold text-foreground underline underline-offset-2" onClick={() => navigate(`/agenda?data=${busca.vaga!.data}&view=daily`)}>ver na agenda</button>
+                </>
+              ) : 'Sem vaga nos próximos 30 dias para este pedido.'}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   if (isLoading && !creationPage) {
     return (
@@ -576,7 +706,44 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-xl border border-border/60">
+          {/* No celular a tabela vira fichas: sem rolagem lateral e com alvos de 44px. */}
+          {filteredLista.length > 0 && (
+            <ul className="space-y-2 md:hidden" aria-label="Pacientes na lista de espera">
+              {filteredLista.map((item, index) => {
+                const { nome, telefone } = getPacienteInfo(item);
+                const diasEspera = getDiasEspera(item.data_cadastro);
+                const prioridade = getPrioridadeListaEspera(item.prioridade);
+                const whatsapp = linkWhatsApp(telefone, mensagemWhatsApp(nome.split(' ')[0], item.especialidade));
+                const medicoPref = (item as any).medicos;
+                const encerrado = ['agendado', 'desistiu'].includes(item.status || '');
+                return (
+                  <li key={item.id} className={cn('space-y-2 rounded-xl border border-border bg-card p-3', proximoAChamar?.id === item.id && 'border-foreground/40')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground"><span className="mr-1.5 tabular-nums text-muted-foreground">{index + 1}.</span>{nome}</p>
+                        <p className="text-xs text-muted-foreground">{telefone}</p>
+                      </div>
+                      <Badge variant="outline" className={cn('shrink-0 rounded-full', STATUS_COLORS[item.status || 'aguardando'])}>
+                        {STATUS_LABELS[item.status || 'aguardando']}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {item.especialidade || 'Sem especialidade'} · {medicoPref ? nomeMedico(medicoPref.nome || medicoPref.crm) : 'Qualquer médico'}
+                      {item.preferencia_horario ? ` · ${PREFERENCIA_LABELS[item.preferencia_horario] ?? item.preferencia_horario}` : ''}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline" className={cn('rounded-full text-[11px]', prioridade.className)}>{prioridade.label}</Badge>
+                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums', diasEspera > 30 ? 'bg-destructive/10 text-destructive' : diasEspera > 14 ? 'bg-warning/10 text-warning-foreground' : 'bg-muted text-muted-foreground')}>
+                        {diasEspera} dia{diasEspera === 1 ? '' : 's'} na lista
+                      </span>
+                    </div>
+                    {acoesDoPedido(item, nome, whatsapp, encerrado)}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className={cn('overflow-hidden rounded-xl border border-border/60', filteredLista.length > 0 && 'hidden md:block')}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -677,72 +844,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {whatsapp && !encerrado && (
-                              <Button aria-label={`Chamar ${nome} no WhatsApp`} asChild variant="ghost" size="icon" className="h-9 w-9 rounded-full text-primary hover:bg-primary/10 hover:text-primary">
-                                <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${nome} no WhatsApp`} title="Chamar no WhatsApp">
-                                  <MessageCircle className="h-4 w-4" />
-                                </a>
-                              </Button>
-                            )}
-                            {item.status === 'aguardando' && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 rounded-full text-xs"
-                                title="Registra o contato manual; esta ação não envia mensagem."
-                                onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'notificado')}
-                                disabled={updatingId !== null}
-                              >
-                                {updatingId === item.id ? 'Salvando...' : 'Registrar contato'}
-                              </Button>
-                            )}
-                            {item.status === 'notificado' && (
-                              <Button
-                                size="sm"
-                                className="h-9 rounded-full text-xs"
-                                onClick={() => handleUpdateStatus(item.id, item.status || 'aguardando', 'confirmado')}
-                                disabled={updatingId !== null}
-                              >
-                                {updatingId === item.id ? 'Salvando...' : 'Confirmar'}
-                              </Button>
-                            )}
-                            {item.status === 'confirmado' && (
-                              <Button
-                                size="sm"
-                                className="h-9 gap-1 rounded-full text-xs"
-                                onClick={() => navigate(`/agenda?espera=${encodeURIComponent(item.id)}&paciente=${encodeURIComponent(item.paciente_id)}`)}
-                                disabled={updatingId !== null}
-                                title="Abre a agenda para criar a consulta; o status só muda após salvar."
-                              >
-                                <CalendarPlus aria-hidden="true" className="h-3.5 w-3.5" /> Agendar
-                              </Button>
-                            )}
-                            {['aguardando', 'notificado', 'confirmado'].includes(item.status || '') && (
-                              <Button
-                                aria-label={`Marcar ${nome} como desistente`}
-                                title={`Marcar ${nome} como desistente`}
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 shrink-0 rounded-full text-muted-foreground"
-                                onClick={() => setDesistindo({ id: item.id, nome, status: item.status || 'aguardando' })}
-                                disabled={isRemoving || updatingId !== null}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {podeRemoverPermanentemente && <Button
-                              aria-label={`Remover ${nome} permanentemente da lista de espera`}
-                              title={`Remover ${nome} permanentemente`}
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 shrink-0 rounded-full"
-                              onClick={() => setRemoveId(item.id)}
-                              disabled={isRemoving || updatingId !== null}
-                            >
-                              <XCircle className="h-4 w-4 text-destructive" />
-                            </Button>}
-                          </div>
+                          {acoesDoPedido(item, nome, whatsapp, encerrado)}
                         </TableCell>
                       </TableRow>
                     );
@@ -786,7 +888,7 @@ function ListaEsperaWorkspace({ creationPage }: { creationPage: boolean }) {
                   <SelectValue placeholder="Selecione a especialidade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ESPECIALIDADES.map((esp) => (
+                  {especialidades.map((esp) => (
                     <SelectItem key={esp} value={esp}>{esp}</SelectItem>
                   ))}
                 </SelectContent>

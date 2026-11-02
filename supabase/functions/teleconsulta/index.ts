@@ -71,24 +71,26 @@ Deno.serve(async (req) => {
       }).select('id').single();
       if (error) {
         if (error.code !== '23505') throw error;
-        // UNIQUE(agendamento_id): a sala já existe. O link do convidado só é
-        // mostrado uma vez, então reemite o token; sala encerrada ou vencida é
-        // reaberta do zero para a nova janela do agendamento.
+        // A sala já existe (UNIQUE agendamento_id). `modo: 'entrar'` devolve a sala vigente;
+        // nos demais casos o link do convidado é reemitido (o token só existe em hash) e
+        // uma sala encerrada ou vencida é reaberta para a nova janela do agendamento.
+        const modo = body.modo === 'entrar' ? 'entrar' : 'link';
         const { data: existing } = await db.from('teleconsulta_sessions').select('id,status,expires_at')
           .eq('agendamento_id', appointment.id).eq('clinica_id', clinicaId).maybeSingle();
         if (!existing) return json({ error: 'Este agendamento já possui uma sala criada.' }, 409);
         const vigente = !['closed', 'expired'].includes(existing.status) && existing.expires_at > new Date().toISOString();
+        if (modo === 'entrar' && vigente) return json({ session_id: existing.id, expires_at: existing.expires_at, reutilizada: true });
         const changes = vigente
           ? { guest_token_hash: await hashTokenConvidado(token) }
           : {
             guest_token_hash: await hashTokenConvidado(token), status: 'waiting', expires_at: expiresAt.toISOString(),
             closed_at: null, provider_consented_at: null, guest_consented_at: null, provider_last_seen_at: null, guest_last_seen_at: null,
           };
-        const { error: updateError } = await db.from('teleconsulta_sessions').update(changes).eq('id', existing.id);
+        const { error: updateError } = await db.from('teleconsulta_sessions').update(changes).eq('id', existing.id).eq('clinica_id', clinicaId);
         if (updateError) throw updateError;
         if (!vigente) await db.from('teleconsulta_signals').delete().eq('session_id', existing.id);
-        await db.from('audit_log').insert({ user_id: user!.id, clinica_id: clinicaId, action: 'update', collection: 'teleconsulta_sessions', record_id: existing.id, changes: { evento: vigente ? 'token_convidado_reemitido' : 'sala_reaberta' } });
-        return json({ session_id: existing.id, guest_token: token, expires_at: vigente ? existing.expires_at : expiresAt.toISOString() });
+        await db.from('audit_log').insert({ user_id: user!.id, clinica_id: clinicaId, action: 'update', collection: 'teleconsulta_sessions', record_id: existing.id, changes: { evento: vigente ? 'link_reemitido' : 'sala_reaberta' } });
+        return json({ session_id: existing.id, guest_token: token, expires_at: vigente ? existing.expires_at : expiresAt.toISOString(), reutilizada: true });
       }
       await db.from('audit_log').insert({ user_id: user!.id, clinica_id: clinicaId, action: 'create', collection: 'teleconsulta_sessions', record_id: session.id, changes: { evento: 'sala_criada' } });
       return json({ session_id: session.id, guest_token: token, expires_at: expiresAt.toISOString() });

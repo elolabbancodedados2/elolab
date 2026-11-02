@@ -4,6 +4,13 @@ import { installSyntheticClinic } from './helpers/syntheticClinic';
 test.use({ serviceWorkers: 'block' });
 const clinic = '00000000-0000-4000-8000-000000000002';
 const patient = '00000000-0000-4000-8000-000000000004';
+// As especialidades da lista vêm dos profissionais ativos da clínica.
+async function mockClinicSpecialties(page: Page) {
+  await page.route('**/rest/v1/medicos*', route => route.request().method() !== 'GET' ? route.fallback() : route.fulfill({ json: [
+    { id: '00000000-0000-4000-8000-000000000003', nome: 'Dra. Marina Ribeiro', crm: '000000', especialidade: 'Clínica geral', ativo: true, clinica_id: clinic },
+    { id: '00000000-0000-4000-8000-000000000005', nome: 'Dr. Paulo Cardoso', crm: '000001', especialidade: 'Cardiologia', ativo: true, clinica_id: clinic },
+  ] }));
+}
 async function fillRequest(page: Page) {
   await page.getByLabel('Paciente *', { exact: true }).click();
   await page.getByRole('option', { name: /Pessoa Exemplo QA/ }).click();
@@ -15,6 +22,7 @@ async function fillRequest(page: Page) {
 for (const width of [1440, 768, 390]) {
   test(`waiting request has a dedicated page at ${width}px`, async ({ page }, info) => {
     await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), role: 'recepcao', platformAdmin: false, prontuarioPopulated: true });
+    await mockClinicSpecialties(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/gestao-fluxo?tab=espera&origem=qa');
     await page.getByRole('button', { name: 'Adicionar à Lista', exact: true }).click();
@@ -38,6 +46,7 @@ for (const width of [1440, 768, 390]) {
 }
 test('waiting request keeps duplicate prevention and recovers failed insert', async ({ page }, info) => {
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, prontuarioPopulated: true });
+  await mockClinicSpecialties(page);
   let duplicate = true;
   let writes = 0;
   await page.route('**/rest/v1/lista_espera*', route => {

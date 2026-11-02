@@ -84,6 +84,22 @@ describe('lotesTissComoRecebiveis', () => {
     expect(recebivel).toMatchObject({ valor: 400, data_vencimento: '2026-10-31' });
   });
 
+  it('prazo de retorno nulo conta como 30 dias, não como zero', () => {
+    const [recebivel] = lotesTissComoRecebiveis([{
+      id: 'l3', status: 'enviado', valor_apresentado: 500, valor_pago: 0, enviado_em: '2026-10-01', convenios: { prazo_retorno: null },
+    }]);
+    expect(recebivel.data_vencimento).toBe('2026-10-31');
+    const [prazoZero] = lotesTissComoRecebiveis([{
+      id: 'l4', status: 'enviado', valor_apresentado: 500, valor_pago: 0, enviado_em: '2026-10-01', convenios: { prazo_retorno: 0 },
+    }]);
+    expect(prazoZero.data_vencimento).toBe('2026-10-01');
+  });
+
+  it('próxima ocorrência aceita várias repetições a partir da mesma base', () => {
+    expect(proximaOcorrencia('2026-01-31', 'mensal', 2)).toBe('2026-03-31');
+    expect(proximaOcorrencia('2026-01-01', 'semanal', 3)).toBe('2026-01-22');
+  });
+
   it('ignora rascunho, pago e lote sem saldo', () => {
     expect(lotesTissComoRecebiveis([
       { id: 'a', status: 'rascunho', valor_apresentado: 100, valor_pago: 0, enviado_em: null },

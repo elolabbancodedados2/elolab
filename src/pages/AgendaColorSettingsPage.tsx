@@ -11,17 +11,12 @@ import { useSupabaseQuery, useMedicos } from '@/hooks/useSupabaseData';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { ColorCriterion, ColorScheme, PALETTE, useAgendaColorScheme } from '@/components/agenda/hooks/useAgendaColorScheme';
 import { nomeMedico } from '@/lib/formatters';
+import { STATUSES_AGENDA, TIPOS_FIXOS_CONSULTA } from '@/components/agenda/agendaStatus';
 import { cn } from '@/lib/utils';
 
-const STATUS_OPTIONS: { key: string; label: string }[] = [
-  { key: 'agendado', label: 'Agendado' },
-  { key: 'confirmado', label: 'Confirmado' },
-  { key: 'aguardando', label: 'Aguardando' },
-  { key: 'em_atendimento', label: 'Em atendimento' },
-  { key: 'finalizado', label: 'Finalizado' },
-  { key: 'cancelado', label: 'Cancelado' },
-  { key: 'faltou', label: 'Faltou' },
-];
+// Mesma lista do filtro da agenda: antes só 7 status tinham cor configurável.
+const STATUS_OPTIONS: { key: string; label: string }[] = STATUSES_AGENDA.map(([key, label]) => ({ key, label }));
+const TIPOS_FIXOS_OPTIONS: { key: string; label: string }[] = TIPOS_FIXOS_CONSULTA.map(([key, label]) => ({ key, label }));
 
 type ReturnState = {
   returnTo?: string;
@@ -70,7 +65,14 @@ export default function AgendaColorSettingsPage() {
       case 'status': return STATUS_OPTIONS;
       case 'medico': return visibleMedicos.map(medico => ({ key: medico.id, label: nomeMedico(medico.nome || medico.crm) }));
       case 'convenio': return [{ key: 'particular', label: 'Particular' }, ...(conveniosQuery.data ?? []).map(convenio => ({ key: convenio.id, label: convenio.nome }))];
-      case 'tipo': return (tiposQuery.data ?? []).map(tipo => ({ key: tipo.nome, label: tipo.nome }));
+      case 'tipo': {
+        // Os cinco tipos fixos do formulário entram sempre; os cadastrados vêm depois, sem repetir.
+        const fixos = new Set(TIPOS_FIXOS_OPTIONS.map(tipo => tipo.key));
+        return [
+          ...TIPOS_FIXOS_OPTIONS,
+          ...(tiposQuery.data ?? []).filter(tipo => !fixos.has(tipo.nome)).map(tipo => ({ key: tipo.nome, label: tipo.nome })),
+        ];
+      }
     }
   }, [criterion, visibleMedicos, conveniosQuery.data, tiposQuery.data]);
 

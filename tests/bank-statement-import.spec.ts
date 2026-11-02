@@ -56,7 +56,9 @@ test('OFX import has its own page, preserves month, suggests matches, and retrie
 
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto('/fluxo-caixa?mes=2026-10');
-  await page.getByRole('link', { name: 'Importar extrato' }).click();
+  // A importação agora fica no menu de ações secundárias do fluxo de caixa.
+  await page.getByRole('button', { name: 'Mais ações do fluxo de caixa' }).click();
+  await page.getByRole('menuitem', { name: 'Importar extrato' }).click();
   await expect(page).toHaveURL('/fluxo-caixa/extrato?mes=2026-10');
   await expect(page.getByRole('heading', { name: 'Importar extrato bancário' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);

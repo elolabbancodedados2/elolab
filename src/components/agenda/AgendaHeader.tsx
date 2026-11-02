@@ -13,8 +13,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ChevronLeft, ChevronRight, Filter, Plus, Palette, Ban, Search, X,
-  CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard, Pin, SkipForward,
+  CalendarDays, LayoutGrid, List, MoreHorizontal, Users2, Printer, Keyboard, Pin, SkipForward, CalendarCheck,
 } from '@/components/icons/elolabIcons';
+import { STATUSES_AGENDA, STATUS_A_CONFIRMAR, STATUS_NA_CLINICA, type TotaisAgenda } from './agendaStatus';
 import { cn } from '@/lib/utils';
 import { AgendaView } from './AgendaPage';
 import { Link } from 'react-router-dom';
@@ -41,7 +42,18 @@ interface Props {
   onOpenColorScheme: () => void;
   onToggleWaiting: () => void;
   waitingCount: number;
-  totals: { total: number; confirmados: number; aguardando: number; cancelados: number };
+  totals: TotaisAgenda;
+  /** Período que os totais cobrem: "no dia", "na semana" ou "no mês". */
+  totalsLabel?: string;
+  /** Médico sem papel operacional vê só a própria agenda: o filtro não se aplica. */
+  hideMedicoFilter?: boolean;
+  /** Filtro "Online a confirmar": pedidos do link público ainda sem confirmação. */
+  onlineFilter?: boolean;
+  onOnlineFilterChange?: (ativo: boolean) => void;
+  onlineCount?: number;
+  onPrint?: () => void;
+  onOpenConfirmacoes?: () => void;
+  onBuscarVaga?: () => void;
   defaultView: AgendaView | null;
   onSetDefaultView: (v: AgendaView) => void;
   legend?: Array<{ label: string; color: string }>;
@@ -51,29 +63,16 @@ interface Props {
   onIrParaProxima?: () => void;
 }
 
-const TOTAL_FILTERS: Record<'total' | 'confirmados' | 'aguardando' | 'cancelados', string[]> = {
+// "Aguard." misturava quem ainda não confirmou com quem já chegou à clínica.
+const TOTAL_FILTERS: Record<'total' | 'confirmados' | 'aConfirmar' | 'naClinica' | 'cancelados', string[]> = {
   total: [],
   confirmados: ['confirmado'],
-  aguardando: ['agendado', 'aguardando'],
+  aConfirmar: STATUS_A_CONFIRMAR,
+  naClinica: STATUS_NA_CLINICA,
   cancelados: ['cancelado'],
 };
 
-const STATUSES: [string, string][] = [
-  ['agendado', 'Agendado'],
-  ['confirmado', 'Confirmado'],
-  ['aguardando', 'Aguardando'],
-  ['aguardando_triagem', 'Aguardando triagem'],
-  ['em_triagem', 'Em triagem'],
-  ['fila_atendimento', 'Na fila de atendimento'],
-  ['em_atendimento', 'Em atendimento'],
-  ['finalizado', 'Finalizado'],
-  ['atendimento_finalizado', 'Atendimento finalizado'],
-  ['aguardando_pagamento', 'Aguardando pagamento'],
-  ['aguardando_pagamento_adicional', 'Aguardando pagamento adicional'],
-  ['pago', 'Pago'],
-  ['cancelado', 'Cancelado'],
-  ['faltou', 'Faltou'],
-];
+const STATUSES = STATUSES_AGENDA;
 
 const pill = 'rounded-full border-border bg-card text-foreground hover:bg-accent';
 
@@ -95,7 +94,7 @@ export function AgendaHeader(p: Props) {
 
   const today = todaySaoPauloDateOnly();
   const isToday = safeDate === today;
-  const activeFilters = p.medicoFilter.length + p.statusFilter.length + (p.search ? 1 : 0);
+  const activeFilters = (p.hideMedicoFilter ? 0 : p.medicoFilter.length) + p.statusFilter.length + (p.search ? 1 : 0) + (p.onlineFilter ? 1 : 0);
   const sameFilter = (a: string[], b: string[]) => a.length === b.length && a.every(s => b.includes(s));
   const toggleTotal = (key: keyof typeof TOTAL_FILTERS) => {
     const alvo = TOTAL_FILTERS[key];
@@ -196,8 +195,10 @@ export function AgendaHeader(p: Props) {
             </DropdownMenuTrigger>
             <DropdownMenuContent data-elo-font-preview="agenda" align="end" className="w-56 rounded-xl">
               <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
+              {p.onBuscarVaga && <DropdownMenuItem onSelect={p.onBuscarVaga}><Search className="mr-2 h-4 w-4" /> Buscar vaga</DropdownMenuItem>}
+              {p.onOpenConfirmacoes && <DropdownMenuItem onSelect={p.onOpenConfirmacoes}><CalendarCheck className="mr-2 h-4 w-4" /> Confirmar consultas de amanhã</DropdownMenuItem>}
               <DropdownMenuItem onSelect={p.onOpenColorScheme}><Palette className="mr-2 h-4 w-4" /> Esquema de cores</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Imprimir agenda</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => (p.onPrint ? p.onPrint() : window.print())}><Printer className="mr-2 h-4 w-4" /> Imprimir agenda</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => p.onSetDefaultView(p.view)}>
                 <Pin className="mr-2 h-4 w-4" />
@@ -245,7 +246,7 @@ export function AgendaHeader(p: Props) {
             )}
           </div>
 
-          <Popover>
+          {!p.hideMedicoFilter && <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.medicoFilter.length > 0 && 'border-primary/40 text-primary')}>
                 <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
@@ -271,7 +272,7 @@ export function AgendaHeader(p: Props) {
                 </label>
               ))}
             </PopoverContent>
-          </Popover>
+          </Popover>}
 
           <Popover>
             <PopoverTrigger asChild>
@@ -301,16 +302,31 @@ export function AgendaHeader(p: Props) {
             </PopoverContent>
           </Popover>
 
+          {p.onOnlineFilterChange && (p.onlineFilter || (p.onlineCount ?? 0) > 0) && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={!!p.onlineFilter}
+              onClick={() => p.onOnlineFilterChange?.(!p.onlineFilter)}
+              className={cn('h-10 sm:h-9', pill, p.onlineFilter && 'border-transparent bg-foreground text-background hover:bg-foreground/90')}
+            >
+              Online a confirmar
+              {(p.onlineCount ?? 0) > 0 && <span className="ml-1.5 tabular-nums">{p.onlineCount}</span>}
+            </Button>
+          )}
+
           {activeFilters > 0 && (
             <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs text-muted-foreground" onClick={() => {
-              p.onMedicoFilterChange([]); p.onStatusFilterChange([]); p.onSearchChange('');
+              if (!p.hideMedicoFilter) p.onMedicoFilterChange([]);
+              p.onStatusFilterChange([]); p.onSearchChange(''); p.onOnlineFilterChange?.(false);
             }}>Limpar filtros</Button>
           )}
         </div>
-        <div role="group" aria-label={`Resumo dos atendimentos: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aguardando} aguardando e ${p.totals.cancelados} cancelados`} className="-mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 text-xs sm:ml-auto">
-          <Stat label="Total" value={p.totals.total} active={p.statusFilter.length === 0} onClick={() => toggleTotal('total')} />
+        <div role="group" aria-label={`Resumo dos atendimentos ${p.totalsLabel ?? 'no dia'}: ${p.totals.total} no total, ${p.totals.confirmados} confirmados, ${p.totals.aConfirmar} a confirmar, ${p.totals.naClinica} na clínica e ${p.totals.cancelados} cancelados`} className="-mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 text-xs sm:ml-auto">
+          <Stat label={p.totalsLabel && p.totalsLabel !== 'no dia' ? `Total ${p.totalsLabel}` : 'Total'} value={p.totals.total} active={p.statusFilter.length === 0} onClick={() => toggleTotal('total')} />
           <Stat label="Conf." value={p.totals.confirmados} tone="success" active={sameFilter(p.statusFilter, TOTAL_FILTERS.confirmados)} onClick={() => toggleTotal('confirmados')} />
-          <Stat label="Aguard." value={p.totals.aguardando} tone="warning" active={sameFilter(p.statusFilter, TOTAL_FILTERS.aguardando)} onClick={() => toggleTotal('aguardando')} />
+          <Stat label="A confirmar" value={p.totals.aConfirmar} tone="warning" active={sameFilter(p.statusFilter, TOTAL_FILTERS.aConfirmar)} onClick={() => toggleTotal('aConfirmar')} />
+          <Stat label="Na clínica" value={p.totals.naClinica} active={sameFilter(p.statusFilter, TOTAL_FILTERS.naClinica)} onClick={() => toggleTotal('naClinica')} />
           <Stat label="Canc." value={p.totals.cancelados} tone="destructive" active={sameFilter(p.statusFilter, TOTAL_FILTERS.cancelados)} onClick={() => toggleTotal('cancelados')} />
         </div>
         {p.legend && p.legend.length > 0 && (

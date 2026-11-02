@@ -37,7 +37,8 @@ test('doctor headers contain occupancy and free-slot action without clipping', a
   }
   await page.setViewportSize({ width: 1024, height: 900 });
   await expect(page.getByTestId('agenda-doctor-header-strip')).toBeHidden();
-  await expect(page.getByText('Nenhuma consulta neste dia', { exact: true })).toBeVisible();
+  // Abaixo do xl a agenda vira lista; ela também mostra as vagas livres, então o dia sem consultas não fica vazio.
+  await expect(page.getByText('0 consultas neste dia', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

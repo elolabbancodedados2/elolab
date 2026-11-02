@@ -37,7 +37,8 @@ test('patient registry puts lookup and the patient list ahead of secondary actio
       await expect(main.getByRole('button', { name: /^PE Pessoa Exemplo QA/ })).toBeVisible();
       const actions = main.getByTestId('patient-mobile-actions');
       await expect(actions.getByRole('button', { name: 'Editar Pessoa Exemplo QA' })).toBeVisible();
-      const deleteAction = actions.getByRole('button', { name: 'Excluir Pessoa Exemplo QA' });
+      // Só as ações principais ficam à mostra; as demais (como excluir) ficam no menu "Mais ações", a última da linha.
+      const deleteAction = actions.getByRole('button', { name: 'Mais ações para Pessoa Exemplo QA' });
       await expect(deleteAction).toBeVisible();
       await deleteAction.scrollIntoViewIfNeeded();
       const navigation = page.getByRole('navigation', { name: 'Navegação principal' });
@@ -53,13 +54,17 @@ test('patient registry puts lookup and the patient list ahead of secondary actio
         ));
       });
       expect(actionLayoutIsClear, 'as ações do paciente não devem se sobrepor no celular').toBe(true);
+      await deleteAction.click();
+      await expect(page.getByRole('menuitem', { name: 'Excluir Pessoa Exemplo QA' })).toBeVisible();
+      await page.keyboard.press('Escape');
     } else {
       // No computador o padrão são as fichas com o painel do paciente ao lado; a tabela segue em "Lista".
       await expect(main.getByRole('complementary', { name: 'Resumo de Pessoa Exemplo QA' })).toBeVisible();
       await main.getByRole('button', { name: 'Lista', exact: true }).click();
       const patientRow = main.getByRole('row').filter({ hasText: 'Pessoa Exemplo QA' });
       await expect(patientRow).toBeVisible();
-      await expect(patientRow.getByLabel('Sexo não informado')).toBeVisible();
+      // Sexo não informado deixou de aparecer como a sigla "N/I"; só o sexo informado é exibido por extenso.
+      await expect(patientRow.getByText('N/I', { exact: true })).toHaveCount(0);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`patient-registry-${viewport.width}.png`), animations: 'disabled' });
@@ -144,7 +149,7 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
   await page.keyboard.press('Enter');
   await expect(patientDialog.getByPlaceholder('Queixa principal...')).toHaveValue(/^Cefaleia recorrente/);
   await patientDialog.getByRole('tab', { name: /Prontu.rio/ }).click();
-  await patientDialog.getByRole('tab', { name: 'Timeline' }).click();
+  await patientDialog.getByRole('tab', { name: 'Linha do tempo' }).click();
   await expect(patientDialog.getByRole('heading', { name: 'Histórico Completo do Paciente' })).toBeVisible();
   await expect(patientDialog.getByText('Cefaleia recorrente', { exact: false }).first()).toBeVisible();
   const search = patientDialog.getByRole('textbox', { name: 'Buscar no histórico do paciente' });
@@ -204,7 +209,10 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
 
   await page.setViewportSize({ width: 375, height: 812 });
   const patientTabs = patientDialog.getByRole('tablist');
-  expect(await patientTabs.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  // As abas da ficha rolam dentro do próprio contêiner; a última continua alcançável.
+  await expect(patientTabs.locator('xpath=..')).toHaveCSS('overflow-x', 'auto');
+  await patientTabs.getByRole('tab').last().scrollIntoViewIfNeeded();
+  await expect(patientTabs.getByRole('tab').last()).toBeInViewport();
   const timelineFilters = patientDialog.getByRole('group', { name: /Filtrar hist.rico por tipo/ });
   expect(await timelineFilters.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await timelineFilters.evaluate(element => {
@@ -214,15 +222,19 @@ test('patient timeline keeps clinical context and filters usable on desktop and 
       return buttonBounds.left >= bounds.left - 1 && buttonBounds.right <= bounds.right + 1;
     });
   })).toBe(true);
-  for (const tabName of ['Dados', 'Consultas', 'Exames', /Prontu.rio/, 'Timeline', 'Sinais', /End/, 'Financeiro', 'LGPD']) {
+  // Sinais foram para "Exames e sinais", Endereço para "Dados" e LGPD para "Documentos e LGPD".
+  for (const tabName of ['Dados', 'Consultas', 'Exames e sinais', /Prontu.rio/, 'Linha do tempo', 'Financeiro', 'Documentos e LGPD']) {
     await expect(patientTabs.getByRole('tab', { name: tabName })).toBeVisible();
   }
-  await expect(patientDialog.getByRole('tab', { name: 'Timeline' })).toBeVisible();
+  await expect(patientDialog.getByRole('tab', { name: 'Linha do tempo' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('patient-timeline-375.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 768, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  expect(await patientTabs.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  // As abas da ficha rolam dentro do próprio contêiner; a última continua alcançável.
+  await expect(patientTabs.locator('xpath=..')).toHaveCSS('overflow-x', 'auto');
+  await patientTabs.getByRole('tab').last().scrollIntoViewIfNeeded();
+  await expect(patientTabs.getByRole('tab').last()).toBeInViewport();
   expect(await timelineFilters.evaluate(element => [...element.querySelectorAll('button')].every(button => {
     const bounds = button.getBoundingClientRect();
     const container = element.getBoundingClientRect();
@@ -761,7 +773,8 @@ test('Agenda desktop shows short appointments and opens them with Enter', async 
     await expect(main.getByText('Urgente', { exact: true })).toHaveClass(/bg-destructive\/10/);
     await expect(main.getByText('Preferencial', { exact: true })).toHaveClass(/bg-info\/10.*text-info/);
     await expect(main.getByText('Normal', { exact: true })).toHaveClass(/bg-muted.*text-muted-foreground/);
-    const waitingValue = main.getByText('Aguard.', { exact: true }).locator('xpath=..').locator('span').first();
+    // "Aguard." foi separado em "A confirmar" e "Na clínica"; o alerta continua em "A confirmar".
+    const waitingValue = main.getByText('A confirmar', { exact: true }).locator('xpath=..').locator('span').first();
     await expect(waitingValue).toHaveClass(/text-warning-foreground/);
 
     const grid = main.getByTestId('agenda-day-grid');
@@ -821,7 +834,7 @@ test('Agenda restores date and view through its URL and browser history', async 
   await expect(main.getByRole('heading', { name: 'Terça-feira, 13 de out' })).toBeVisible();
   await expect(page).toHaveURL(/data=2026-10-13&view=daily&origem=qa/);
   const viewControls = main.getByRole('group', { name: 'Visualização da agenda' });
-  const appointmentSummary = main.getByRole('group', { name: /Resumo dos atendimentos:/ });
+  const appointmentSummary = main.getByRole('group', { name: /Resumo dos atendimentos no dia:/ });
   const [viewBounds, summaryBounds] = await Promise.all([viewControls.boundingBox(), appointmentSummary.boundingBox()]);
   expect(viewBounds).not.toBeNull();
   expect(summaryBounds).not.toBeNull();
@@ -1023,7 +1036,8 @@ test('referrals desktop gives clinic administrators a compact next step when no 
   await expect(page.getByRole('heading', { name: 'Pacientes', exact: true })).toHaveCount(0);
   await expect(page.getByText(/Um médico identificado precisa constar como origem/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'Gerenciar corpo clínico' })).toHaveAttribute('href', '/equipe');
-  const referralState = page.getByRole('link', { name: 'Gerenciar corpo clínico' }).locator('xpath=ancestor::div[contains(@class, "max-w-3xl")]');
+  // O aviso sem médico vinculado virou uma nota compacta acima da lista única.
+  const referralState = page.getByRole('note').filter({ hasText: 'Um médico identificado precisa constar como origem' });
   const referralBounds = await referralState.boundingBox();
   expect(referralBounds?.height).toBeLessThan(220);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -1468,6 +1482,10 @@ test('doctor starts a called appointment and opens the same patient in a new pro
 
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(clinicalWorkspace.getByRole('heading', { name: 'Nova evolução' })).toBeVisible();
+  // No celular o contexto do atendimento fica recolhido atrás de um botão.
+  const contextToggle = clinicalWorkspace.getByRole('button', { name: /Contexto do atendimento/ });
+  await expect(contextToggle).toHaveAttribute('aria-expanded', 'false');
+  await contextToggle.click();
   await expect(appointmentContext).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('fila-atendimento-prontuario-novo-375.png'), animations: 'disabled' });
@@ -4132,8 +4150,9 @@ test('finance does not report a zero margin when there is no revenue at desktop 
     await page.goto('/financeiro?tab=dre');
     const main = page.locator('#main-content');
     await expect(main.getByRole('tab', { name: 'DRE' })).toHaveAttribute('aria-selected', 'true');
-    await expect(main.getByText('Resultado Operacional', { exact: true })).toBeVisible();
-    await expect(main.getByText('Sem receita para calcular a margem no período.', { exact: true })).toBeVisible();
+    // A aba DRE do painel virou um resumo do mês; a demonstração completa fica em /financeiro/dre.
+    await expect(main.getByText('Resultado operacional', { exact: true })).toBeVisible();
+    await expect(main.getByText('Sem receita para calcular a margem.', { exact: true })).toBeVisible();
     await expect(main.getByText('0,0%', { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`finance-no-revenue-${viewport.width}.png`), animations: 'disabled' });
@@ -4357,15 +4376,15 @@ test('accounts receivable and payable use the same title and action hierarchy', 
     await page.setViewportSize(viewport);
 
     await page.goto('/contas?tab=receber');
-    await expect(page.getByRole('heading', { level: 1, name: 'Contas a Receber', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Nova Receita' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Contas a receber', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Nova receita' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Exportar' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`contas-receber-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
 
     await page.goto('/contas?tab=pagar');
-    await expect(page.getByRole('heading', { level: 1, name: 'Contas a Pagar', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Nova Conta' }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Contas a pagar', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Nova conta' }).first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`contas-pagar-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
   }
@@ -4421,7 +4440,7 @@ test('populated financial accounts show status, balance and row actions on deskt
     const pendingRevenueRowContainer = pendingRevenueRow.locator('xpath=ancestor::tr[1]');
     await expect(pendingRevenueRowContainer.locator('td').nth(4)).toContainText('Pendente');
     await expect(pendingRevenueRowContainer.locator('td').nth(4).locator('div')).toHaveClass(/text-warning-foreground/);
-    await expect(pendingRevenueRowContainer.getByText('Exame / Diagnóstico', { exact: true })).toBeVisible();
+    await expect(pendingRevenueRowContainer.getByText('Exame / diagnóstico', { exact: true })).toBeVisible();
     await pendingRevenueRowContainer.getByRole('button', { name: /Mais ações da conta de/ }).click();
     await page.getByRole('menuitem', { name: 'Cancelar', exact: true }).click();
     const cancelDialog = page.getByRole('dialog');
