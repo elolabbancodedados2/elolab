@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { iceServersTeleconsulta } from '@/lib/teleconsultaIce';
 
 type Signal = { id: number; sender: 'provider' | 'guest'; signal_type: 'offer' | 'answer' | 'ice-candidate'; payload: RTCSessionDescriptionInit | RTCIceCandidateInit };
 type SessionInfo = { status: string; expires_at: string; provider_present: boolean; guest_present: boolean };
@@ -30,6 +31,8 @@ export default function Teleconsulta() {
   const localStream = useRef<MediaStream | null>(null);
   const seenSignals = useRef(new Set<number>());
   const connecting = useRef(false);
+  /** Credenciais TURN temporárias, se a função da sala as enviar no estado. */
+  const iceDoServidor = useRef<unknown>(undefined);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -67,7 +70,11 @@ export default function Teleconsulta() {
   useEffect(() => {
     if (!sessionId || (!user && !guestToken)) return;
     let alive = true;
-    call('state').then((state: SessionInfo) => { if (alive) setSession(state); })
+    call('state').then((state: SessionInfo & { ice_servers?: unknown }) => {
+      if (!alive) return;
+      if (state.ice_servers) iceDoServidor.current = state.ice_servers;
+      setSession(state);
+    })
       .catch((cause: Error) => { if (alive) setError(cause.message); });
     return () => { alive = false; };
   }, [call, guestToken, sessionId, user]);
@@ -90,7 +97,7 @@ export default function Teleconsulta() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
       localStream.current = stream;
       if (localVideo.current) localVideo.current.srcObject = stream;
-      const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      const connection = new RTCPeerConnection({ iceServers: iceServersTeleconsulta(import.meta.env as Record<string, string | undefined>, iceDoServidor.current) });
       peer.current = connection;
       stream.getTracks().forEach((track) => connection.addTrack(track, stream));
       connection.ontrack = (event) => {
@@ -187,7 +194,7 @@ export default function Teleconsulta() {
     }
   };
 
-  if (!user && !guestToken) return <main className="min-h-screen grid place-items-center bg-secondary p-4"><Card className="max-w-md rounded-2xl border-border shadow-[0_8px_24px_rgba(16,17,19,0.06)]"><CardHeader><CardTitle>Entre para abrir a sala</CardTitle><CardDescription>A equipe da clínica precisa estar autenticada. Se você recebeu o convite, abra o link completo enviado pela clínica.</CardDescription></CardHeader><CardContent><Button asChild className="rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110"><Link to="/auth">Entrar na conta</Link></Button></CardContent></Card></main>;
+  if (!user && !guestToken) return <main className="min-h-screen grid place-items-center bg-secondary p-4"><Card className="max-w-md rounded-2xl border-border shadow-[0_8px_24px_rgba(16,17,19,0.06)]"><CardHeader><CardTitle>Entre para abrir a sala</CardTitle><CardDescription>A equipe da clínica precisa estar autenticada. Se você recebeu o convite, abra o link completo enviado pela clínica.</CardDescription></CardHeader><CardContent><Button asChild className="min-h-11 rounded-full"><Link to="/auth">Entrar na conta</Link></Button></CardContent></Card></main>;
   if (error && !session && !accepted) return <main className="min-h-screen grid place-items-center bg-secondary p-4"><Card className="max-w-md rounded-2xl border-border shadow-[0_8px_24px_rgba(16,17,19,0.06)]"><CardHeader><CardTitle>Sala indisponível</CardTitle><CardDescription>{error}</CardDescription></CardHeader></Card></main>;
   return <main className="min-h-screen bg-secondary p-4 sm:p-8">
     <div className="w-full space-y-5">
@@ -196,7 +203,7 @@ export default function Teleconsulta() {
         <div className="flex items-start gap-3 rounded-xl border border-border bg-secondary p-4"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><p className="text-sm">O áudio e o vídeo são transmitidos diretamente entre os dispositivos. Esta aplicação não grava a chamada. Sua conexão e o endereço de rede podem ser usados para estabelecer o canal de vídeo.</p></div>
         <div className="flex items-start gap-3"><Checkbox id="teleconsulta-consent" checked={consentChecked} onCheckedChange={(checked) => setConsentChecked(checked === true)} /><Label htmlFor="teleconsulta-consent" className="leading-5">Entendi como funciona a chamada e concordo em participar desta teleconsulta.</Label></div>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <Button className="h-11 w-full rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110" disabled={!consentChecked || !session} onClick={acceptConsent}>{!session ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Validando sala</> : 'Aceitar e entrar'}</Button>
+        <Button className="h-11 w-full rounded-full" disabled={!consentChecked || !session} onClick={acceptConsent}>{!session ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Validando sala</> : 'Aceitar e entrar'}</Button>
       </CardContent></Card> : <>
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="rounded-2xl border-border/60 shadow-xs"><CardContent className="p-2"><video ref={remoteVideo} autoPlay playsInline className="aspect-video w-full rounded-xl bg-black" aria-label="Vídeo da outra pessoa" /><p className="px-2 py-1 text-sm text-muted-foreground">{connected ? 'Chamada conectada' : 'Aguardando a outra pessoa entrar'}</p></CardContent></Card>
@@ -204,10 +211,11 @@ export default function Teleconsulta() {
         </div>
         {error && <p role="alert" className="text-center text-sm text-destructive">{error}</p>}
         <div className="flex flex-wrap justify-center gap-3">
-          <Button variant="outline" className="rounded-full gap-2" onClick={reconnect}><Wifi className="h-4 w-4" />Reconectar</Button>
-          <Button variant="outline" size="icon" className={`rounded-full ${muted ? 'border-destructive/40 bg-destructive/10 text-destructive' : ''}`} aria-label={muted ? 'Ativar microfone' : 'Silenciar microfone'} onClick={() => { const next = !muted; localStream.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); setMuted(next); }}>{muted ? <MicOff /> : <Mic />}</Button>
-          <Button variant="outline" size="icon" className={`rounded-full ${cameraOff ? 'border-destructive/40 bg-destructive/10 text-destructive' : ''}`} aria-label={cameraOff ? 'Ativar câmera' : 'Desligar câmera'} onClick={() => { const next = !cameraOff; localStream.current?.getVideoTracks().forEach((track) => { track.enabled = !next; }); setCameraOff(next); }}>{cameraOff ? <VideoOff /> : <Video />}</Button>
-          <Button variant="destructive" className="rounded-full gap-2" onClick={closeRoom}><PhoneOff className="h-4 w-4" />{isProvider ? 'Encerrar chamada' : 'Sair da sala'}</Button>
+          {/* Microfone e câmera desligados são escolha da pessoa, não erro: preto, não vermelho. */}
+          <Button variant="outline" className="min-h-11 rounded-full gap-2" onClick={reconnect}><Wifi className="h-4 w-4" />Reconectar</Button>
+          <Button variant="outline" size="icon" aria-pressed={muted} className={`h-11 w-11 rounded-full ${muted ? 'border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background' : ''}`} aria-label={muted ? 'Ativar microfone' : 'Silenciar microfone'} onClick={() => { const next = !muted; localStream.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); setMuted(next); }}>{muted ? <MicOff /> : <Mic />}</Button>
+          <Button variant="outline" size="icon" aria-pressed={cameraOff} className={`h-11 w-11 rounded-full ${cameraOff ? 'border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background' : ''}`} aria-label={cameraOff ? 'Ativar câmera' : 'Desligar câmera'} onClick={() => { const next = !cameraOff; localStream.current?.getVideoTracks().forEach((track) => { track.enabled = !next; }); setCameraOff(next); }}>{cameraOff ? <VideoOff /> : <Video />}</Button>
+          <Button variant="destructive" className="min-h-11 rounded-full gap-2" onClick={closeRoom}><PhoneOff className="h-4 w-4" />{isProvider ? 'Encerrar chamada' : 'Sair da sala'}</Button>
         </div>
       </>}
       <p className="text-center text-xs text-muted-foreground">Se não conseguir conectar, confirme as permissões da câmera e do microfone e tente novamente.</p>

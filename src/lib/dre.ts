@@ -12,6 +12,7 @@
 import { formatCsvCell } from '@/lib/csv';
 import { dateOnlyInTimeZone } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
+import { normalizarCategoria, rotuloCategoria } from '@/lib/financeiroRotulos';
 
 export const GRUPOS_DRE = [
   'receita_bruta',
@@ -39,19 +40,8 @@ export const ROTULO_GRUPO_DRE: Record<GrupoDre, string> = {
   outras: 'Outras receitas e despesas',
 };
 
-/** Nomes legíveis das categorias padrão de `lancamentos`. */
-const ROTULO_CATEGORIA: Record<string, string> = {
-  consulta: 'Consultas', retorno: 'Retornos', procedimento: 'Procedimentos',
-  exame: 'Exames', cirurgia: 'Cirurgias', internacao: 'Internações',
-  taxa_administrativa: 'Taxas administrativas', taxa_material: 'Taxas de material',
-  convenio_repasse: 'Repasse de convênio', honorario_medico: 'Honorários',
-  fisioterapia: 'Fisioterapia', psicologia: 'Psicologia', pediatria: 'Pediatria',
-  fornecedores: 'Fornecedores', folha_pagamento: 'Folha de pagamento',
-  impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
-  equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
-};
-
-export const rotuloCategoria = (categoria: string) => ROTULO_CATEGORIA[categoria] ?? categoria;
+/** Nomes legíveis das categorias: a tabela única fica em `financeiroRotulos`. */
+export { rotuloCategoria };
 
 /** Naturezas aceitas em cada grupo (espelha o CHECK da migration). */
 export const NATUREZAS_DO_GRUPO: Record<GrupoDre, NaturezaConta[]> = {
@@ -104,6 +94,7 @@ export interface LancamentoRealizavel {
   data_pagamento: string | null;
   data_vencimento?: string | null;
   competencia?: string | null;
+  data_emissao?: string | null;
   desconto?: number | string | null;
   acrescimo?: number | string | null;
 }
@@ -140,7 +131,7 @@ export function montarEventosRealizados(
     const conta = Array.isArray(pagamento.lancamentos) ? pagamento.lancamentos[0] : pagamento.lancamentos;
     if (!conta || !['receita', 'despesa'].includes(conta.tipo)) return [];
     const eventos: EventoRealizado[] = [];
-    const categoria = conta.categoria || 'outros';
+    const categoria = normalizarCategoria(conta.categoria);
     const dataPagamento = paraDataLocal(pagamento.data_pagamento);
     if (dentro(dataPagamento)) eventos.push({
       id: pagamento.id, lancamentoId: pagamento.lancamento_id, tipo: conta.tipo, categoria,
@@ -162,7 +153,7 @@ export function montarEventosRealizados(
     .flatMap(l => {
       const data = paraDataLocal(l.data_pagamento || l.data);
       return dentro(data)
-        ? [{ id: l.id, lancamentoId: l.id, tipo: l.tipo, categoria: l.categoria || 'outros', data, valor: valorRealizado(l) }]
+        ? [{ id: l.id, lancamentoId: l.id, tipo: l.tipo, categoria: normalizarCategoria(l.categoria), data, valor: valorRealizado(l) }]
         : [];
     });
 
@@ -196,7 +187,7 @@ export function agregarPorConta(
   const contaDaCategoria = new Map<string, string>();
   for (const v of vinculos) {
     const conta = contasPorId.get(v.conta_id);
-    if (conta && conta.natureza === v.natureza) contaDaCategoria.set(chaveCategoria(v.natureza, v.categoria), v.conta_id);
+    if (conta && conta.natureza === v.natureza) contaDaCategoria.set(chaveCategoria(v.natureza, normalizarCategoria(v.categoria)), v.conta_id);
   }
 
   const porConta = new Map<string, number>();
@@ -445,11 +436,23 @@ export function dreParaCsv(dre: Dre, competencia: string, competenciaAnterior: s
   return [cabecalho, ...linhas].join('\r\n');
 }
 
+const MES = /^\d{4}-(0[1-9]|1[0-2])/;
+
+/** Mês (AAAA-MM) a que o lançamento pertence: competência, emissão, vencimento, data. */
+export function mesDeCompetencia(l: Pick<LancamentoRealizavel, 'competencia' | 'data_emissao' | 'data_vencimento' | 'data'>): string | null {
+  for (const valor of [l.competencia, l.data_emissao, l.data_vencimento, l.data]) {
+    const mes = MES.exec(valor ?? '')?.[0];
+    if (mes) return mes;
+  }
+  return null;
+}
+
 const FORA_DA_COMPETENCIA = new Set(['cancelado', 'estornado']);
 
 /**
  * Eventos por competência: cada lançamento entra no mês a que pertence
- * (`competencia`, ou a data de emissão quando não informada), pelo valor
+ * (`competencia`; sem ela, a data de emissão, o vencimento e por fim a data
+ * do lançamento), pelo valor
  * líquido de desconto e acréscimo, pago ou não. Cancelados e estornados ficam
  * de fora. É a visão do resultado econômico; a de caixa continua sendo a
  * de `montarEventosRealizados`.
@@ -458,9 +461,69 @@ export function montarEventosCompetencia(lancamentos: ReadonlyArray<LancamentoRe
   return lancamentos.flatMap(l => {
     if (l.tipo !== 'receita' && l.tipo !== 'despesa') return [];
     if (FORA_DA_COMPETENCIA.has(String(l.status ?? ''))) return [];
-    const mes = /^\d{4}-\d{2}/.exec(l.competencia ?? '')?.[0] ?? l.data?.slice(0, 7);
+    const mes = mesDeCompetencia(l);
     if (!mes) return [];
     const valor = (Number(l.valor) || 0) - (Number(l.desconto) || 0) + (Number(l.acrescimo) || 0);
-    return [{ id: `${l.id}:competencia`, lancamentoId: l.id, tipo: l.tipo, categoria: l.categoria || 'outros', data: `${mes}-01`, valor }];
+    return [{ id: `${l.id}:competencia`, lancamentoId: l.id, tipo: l.tipo, categoria: normalizarCategoria(l.categoria), data: `${mes}-01`, valor }];
   });
+}
+
+export interface LinhaDreAnual {
+  id: IdLinhaDre;
+  rotulo: string;
+  tipo: 'grupo' | 'subtotal';
+  /** Doze valores, de janeiro a dezembro. */
+  valores: number[];
+  total: number;
+}
+
+export interface DreAnual {
+  ano: number;
+  meses: string[];
+  linhas: LinhaDreAnual[];
+}
+
+/**
+ * DRE do ano em doze colunas: a mesma cascata de `montarDre`, mês a mês.
+ * Recebe os eventos do ano inteiro (caixa ou competência).
+ */
+export function montarDreAnual(input: {
+  ano: number;
+  contas: ReadonlyArray<ContaPlano>;
+  vinculos: ReadonlyArray<VinculoCategoria>;
+  eventos: ReadonlyArray<EventoRealizado>;
+}): DreAnual {
+  const meses = Array.from({ length: 12 }, (_, i) => `${input.ano}-${String(i + 1).padStart(2, '0')}`);
+  const porMes = new Map<string, EventoRealizado[]>(meses.map(m => [m, []]));
+  for (const evento of input.eventos) porMes.get(evento.data.slice(0, 7))?.push(evento);
+  const dres = meses.map(m => montarDre({ contas: input.contas, vinculos: input.vinculos, eventosMes: porMes.get(m)!, eventosMesAnterior: [] }));
+  const linhas = ESTRUTURA.map<LinhaDreAnual>((item, indice) => {
+    const valores = dres.map(dre => dre.linhas[indice].valor);
+    return { ...item, valores, total: arredondar(valores.reduce((t, v) => t + v, 0)) };
+  });
+  return { ano: input.ano, meses, linhas };
+}
+
+/** Eventos que compõem uma conta do plano, do maior para o menor valor. */
+export function eventosDaConta(
+  eventos: ReadonlyArray<EventoRealizado>,
+  contaId: string,
+  contas: ReadonlyArray<ContaPlano>,
+  vinculos: ReadonlyArray<VinculoCategoria>,
+): EventoRealizado[] {
+  const conta = contas.find(c => c.id === contaId);
+  if (!conta) return [];
+  const categorias = new Set(vinculos
+    .filter(v => v.conta_id === contaId && v.natureza === conta.natureza)
+    .map(v => normalizarCategoria(v.categoria)));
+  return eventos
+    .filter(e => e.tipo === conta.natureza && categorias.has(e.categoria))
+    .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor) || a.data.localeCompare(b.data));
+}
+
+/** CSV da DRE anual (separado por ponto e vírgula). */
+export function dreAnualParaCsv(dre: DreAnual): string {
+  const cabecalho = ['Linha', ...dre.meses, `Total ${dre.ano}`].map(v => formatCsvCell(v)).join(';');
+  const linhas = dre.linhas.map(l => [formatCsvCell(l.rotulo), ...l.valores.map(numeroCsv), numeroCsv(l.total)].join(';'));
+  return [cabecalho, ...linhas].join('\r\n');
 }

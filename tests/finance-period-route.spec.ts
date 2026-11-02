@@ -91,9 +91,9 @@ test('financeiro e fluxo normalizam query params inválidos e preservam o mês a
   await expect(page).toHaveURL(new RegExp(`/financeiro\\?mes=\\d{4}-\\d{2}&tab=resumo&origem=qa`));
   const selectedMonth = new URL(page.url()).searchParams.get('mes');
 
-  await page.getByRole('link', { name: /^Fluxo de Caixa/ }).click();
+  await page.getByRole('link', { name: /^Fluxo de caixa/ }).click();
   await expect(page).toHaveURL(new RegExp(`/fluxo-caixa\\?mes=${selectedMonth}`));
-  await page.getByRole('heading', { name: 'Fluxo de Caixa', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Fluxo de caixa', exact: true }).waitFor();
   const monthlyStatement = page.getByRole('region', { name: 'Resumo do fluxo de caixa do mês' });
   await expect(monthlyStatement).toBeVisible();
   expect(await monthlyStatement.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(4);
@@ -106,7 +106,7 @@ test('financeiro e fluxo normalizam query params inválidos e preservam o mês a
   await page.locator('#main-content').evaluate(element => { element.scrollTop = 0; });
   await page.screenshot({ path: testInfo.outputPath('fluxo-caixa-mobile.png'), fullPage: true });
   await page.setViewportSize({ width: 1280, height: 800 });
-  const flowHeading = page.locator('#main-content').getByRole('heading', { name: 'Fluxo de Caixa' });
+  const flowHeading = page.locator('#main-content').getByRole('heading', { name: 'Fluxo de caixa' });
   await expect(flowHeading).toBeVisible();
   const flowMonthDescription = page.locator('#main-content header p').first();
   await expect(flowMonthDescription).toContainText(clinicMonthLabel(selectedMonth!));
@@ -122,7 +122,9 @@ test('financeiro e fluxo normalizam query params inválidos e preservam o mês a
   await expect(page).toHaveURL(new RegExp(`/fluxo-caixa\\?mes=${previousFlowMonth}`));
   await expect(flowMonthDescription).toContainText(clinicMonthLabel(previousFlowMonth));
 
-  await page.locator('#main-content').getByRole('link', { name: 'Visão financeira' }).click();
+  // A volta ao painel agora fica no menu de ações do fluxo de caixa.
+  await page.getByRole('button', { name: 'Mais ações do fluxo de caixa' }).click();
+  await page.getByRole('menuitem', { name: 'Visão financeira' }).click();
   await expect(page).toHaveURL(new RegExp(`/financeiro\\?mes=${previousFlowMonth}&tab=resumo`));
 
   await page.goto('/fluxo-caixa?mes=2025-00');
@@ -145,7 +147,7 @@ test('fluxo de caixa mostra movimentações sintéticas quando existem dados', a
   await authenticateFinance(page, appOrigin, true);
   await page.goto(`/fluxo-caixa?mes=${currentClinicMonth()}`);
 
-  await expect(page.getByRole('heading', { name: 'Fluxo de Caixa', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fluxo de caixa', exact: true })).toBeVisible();
   await expect(page.getByText('Nenhuma movimentação registrada neste mês')).toHaveCount(0);
   await expect(page.getByText('R$ 720,00').first()).toBeVisible();
 });
@@ -224,7 +226,7 @@ test('fluxo de caixa vazio compartilha o estado dos gráficos sem reservar área
     await page.setViewportSize(viewport);
     await page.goto('/fluxo-caixa?mes=2025-03');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('heading', { name: 'Fluxo de Caixa', exact: true })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Fluxo de caixa', exact: true })).toBeVisible();
 
     const statement = main.getByRole('region', { name: 'Resumo do fluxo de caixa do mês' });
     expect(await statement.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length))
@@ -283,7 +285,7 @@ test('fluxo de caixa mostra erro recuperável e volta a carregar', async ({ page
 
   forceFailure = false;
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.getByRole('heading', { name: 'Fluxo de Caixa', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fluxo de caixa', exact: true })).toBeVisible();
 });
 
 test('painel financeiro mantém resumo operacional com dados sintéticos em desktop e mobile', async ({ page }, testInfo) => {
@@ -303,7 +305,7 @@ test('painel financeiro mantém resumo operacional com dados sintéticos em desk
   await expect(receivableSummaryLink).toHaveAttribute('href', `/contas?tab=receber&status=aberto&mes=${month}`);
   await expect(payableSummaryLink).toHaveAttribute('href', `/contas?tab=pagar&status=aberto&mes=${month}`);
   await expect(main.getByRole('heading', { name: 'Operações financeiras' })).toBeVisible();
-  await expect(main.getByRole('link', { name: /Fluxo de Caixa/ })).toHaveAttribute('href', `/fluxo-caixa?mes=${month}`);
+  await expect(main.getByRole('link', { name: /Fluxo de caixa/ })).toHaveAttribute('href', `/fluxo-caixa?mes=${month}`);
   await expect(main.getByText('R$ 720,00', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('financeiro-resumo-desktop.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -324,7 +326,7 @@ test('painel financeiro mantém resumo operacional com dados sintéticos em desk
   expect(mobileNavBounds).not.toBeNull();
   expect(payableBounds!.y + payableBounds!.height).toBeLessThanOrEqual(mobileNavBounds!.y);
   await page.screenshot({ path: testInfo.outputPath('financeiro-pendencias-mobile.png'), animations: 'disabled' });
-  const lastOperationLink = operations.getByRole('link', { name: /Tipos de Consulta/ });
+  const lastOperationLink = operations.getByRole('link', { name: /Relatórios/ });
   await lastOperationLink.scrollIntoViewIfNeeded();
   const [lastOperationBounds, mobileNavAfterScroll] = await Promise.all([
     lastOperationLink.boundingBox(),

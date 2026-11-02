@@ -49,7 +49,7 @@ describe('DrePlanoContas', () => {
       ],
       plano_contas_categorias: [{ id: 'v1', natureza: 'receita', categoria: 'consulta', conta_id: 'rb' }],
       lancamentos: [
-        { id: 'l1', tipo: 'receita', categoria: 'consulta', status: 'pago', valor: 500, valor_pago: 500, data: '2026-10-05', data_pagamento: '2026-10-05' },
+        { id: 'l1', tipo: 'receita', categoria: 'consulta', descricao: 'Consulta de outubro', status: 'pago', valor: 500, valor_pago: 500, data: '2026-10-05', data_pagamento: '2026-10-05' },
         { id: 'l2', tipo: 'despesa', categoria: 'material', status: 'pago', valor: 80, valor_pago: 80, data: '2026-10-07', data_pagamento: '2026-10-07' },
       ],
       pagamentos: [],
@@ -57,7 +57,7 @@ describe('DrePlanoContas', () => {
     renderizar();
 
     expect(await screen.findByRole('heading', { level: 1, name: 'DRE e plano de contas' })).toBeInTheDocument();
-    const aviso = screen.getByRole('alert');
+    const aviso = await screen.findByRole('alert');
     expect(aviso).toHaveTextContent('1 lançamento sem conta');
 
     const tabela = screen.getByRole('table');
@@ -68,9 +68,16 @@ describe('DrePlanoContas', () => {
     fireEvent.click(within(receitaBruta).getByRole('button', { expanded: false }));
     expect(within(tabela).getByRole('row', { name: /1\.1 Consultas e retornos/ })).toBeInTheDocument();
 
+    // Detalhar a conta mostra os lançamentos que formam o valor.
+    fireEvent.click(within(tabela).getByRole('button', { name: /1\.1 Consultas e retornos/ }));
+    const detalhe = await screen.findByRole('dialog');
+    expect(within(detalhe).getByText('Consulta de outubro')).toBeInTheDocument();
+    fireEvent.keyDown(detalhe, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
     fireEvent.click(within(aviso).getByRole('button', { name: 'Mapear categorias' }));
     expect(await screen.findByRole('heading', { name: 'Categorias dos lançamentos' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Conta da categoria material (despesa)' })).toHaveTextContent('Sem conta');
+    expect(screen.getByRole('combobox', { name: 'Conta da categoria Material (despesa)' })).toHaveTextContent('Sem conta');
     expect(screen.getByRole('combobox', { name: 'Conta da categoria Consultas (receita)' })).toHaveTextContent('1.1 · Consultas e retornos');
   });
 
@@ -81,5 +88,30 @@ describe('DrePlanoContas', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Criar plano padrão/ }));
     await waitFor(() => expect(banco.rpc).toHaveBeenCalledWith('criar_plano_contas_padrao'));
+  });
+});
+
+describe('DrePlanoContas: DRE anual', () => {
+  it('mostra o ano em doze colunas', async () => {
+    banco.tabelas = {
+      plano_contas: [{ id: 'rb', codigo: '1.1', nome: 'Consultas', natureza: 'receita', grupo_dre: 'receita_bruta', pai_id: null, ativo: true }],
+      plano_contas_categorias: [{ id: 'v1', natureza: 'receita', categoria: 'consulta', conta_id: 'rb' }],
+      lancamentos: [
+        { id: 'l1', tipo: 'receita', categoria: 'consulta', status: 'pago', valor: 500, valor_pago: 500, data: '2026-03-05', data_pagamento: '2026-03-05' },
+      ],
+      pagamentos: [],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/financeiro/dre?mes=2026-10&aba=anual']}>
+          <Routes><Route path="/financeiro/dre" element={<DrePlanoContas />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole('heading', { name: 'DRE anual de 2026' })).toBeInTheDocument();
+    const linha = screen.getByRole('row', { name: /^Receita bruta/ });
+    expect(within(linha).getAllByRole('cell')).toHaveLength(13);
+    expect(linha).toHaveTextContent('500,00');
   });
 });

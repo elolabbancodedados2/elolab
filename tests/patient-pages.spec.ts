@@ -58,50 +58,61 @@ test('patient detail has its own address, accepts legacy links and preserves loo
   await search.fill('Pessoa');
   await page.getByRole('complementary', { name: 'Resumo de Pessoa Exemplo QA' }).getByRole('button', { name: 'Abrir ficha', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}$`));
-  await expect(page.getByRole('heading', { name: 'Ficha do Paciente', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ficha do paciente', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   for (const width of [1440, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    // As abas da ficha rolam na horizontal dentro do próprio contêiner; a última precisa continuar alcançável.
     const tabs = page.locator('#main-content').getByRole('tablist');
-    expect(await tabs.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(tabs.locator('xpath=..')).toHaveCSS('overflow-x', 'auto');
+    const lastTab = tabs.getByRole('tab').last();
+    await lastTab.scrollIntoViewIfNeeded();
+    await expect(lastTab).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`patient-detail-${width}.png`) });
   }
   await page.getByRole('button', { name: '← Voltar à lista', exact: true }).click();
   await expect(search).toHaveValue('Pessoa');
   await page.goto(`/pacientes?paciente=${patientId}&tab=endereco`);
   await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}\\?tab=endereco$`));
-  await expect(page.getByRole('tab', { name: 'Endereço', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // O endereço passou para a aba Dados; o link antigo continua abrindo a seção certa.
+  await expect(page.getByRole('tab', { name: 'Dados', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('patient consent registration and revocation use dedicated responsive pages', async ({ page }, info) => {
   const synthetic = await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false });
-  let consent: Record<string, unknown> | null = null;
+  const consents: Record<string, unknown>[] = [];
   await page.route('**/rest/v1/consentimentos_lgpd*', async route => {
     const method = route.request().method();
     if (method === 'GET') {
-      return route.fulfill({ json: consent ? [consent] : [], headers: { 'content-range': '0-0/1' } });
+      return route.fulfill({ json: consents, headers: { 'content-range': `0-${Math.max(consents.length - 1, 0)}/${consents.length}` } });
     }
     if (method === 'POST') {
-      consent = {
+      const consent = {
         ...route.request().postDataJSON(),
-        id: '00000000-0000-4000-9000-000000000015',
+        id: `00000000-0000-4000-9000-0000000000${15 + consents.length}`,
         clinica_id: '00000000-0000-4000-8000-000000000002',
         revogado: false,
         data_revogacao: null,
         updated_at: new Date().toISOString(),
       };
+      consents.push(consent);
       return route.fulfill({ status: 201, json: [consent], headers: { 'content-range': '0-0/1' } });
     }
     if (method === 'PATCH') {
-      consent = { ...consent, ...route.request().postDataJSON(), updated_at: new Date().toISOString() };
-      return route.fulfill({ status: 200, json: [consent], headers: { 'content-range': '0-0/1' } });
+      const id = new URL(route.request().url()).searchParams.get('id')?.replace(/^eq\./, '');
+      const index = consents.findIndex(item => item.id === id);
+      expect(index).toBeGreaterThanOrEqual(0);
+      consents[index] = { ...consents[index], ...route.request().postDataJSON(), updated_at: new Date().toISOString() };
+      return route.fulfill({ status: 200, json: [consents[index]], headers: { 'content-range': '0-0/1' } });
     }
     return route.fallback();
   });
 
   await page.goto(`/pacientes/${patientId}?tab=lgpd`);
-  await expect(page.getByRole('tab', { name: 'LGPD', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // A LGPD passou para a aba "Documentos e LGPD"; ?tab=lgpd continua valendo.
+  await expect(page.getByRole('tab', { name: 'Documentos e LGPD', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Novo Consentimento' }).click();
   await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}/consentimentos/novo$`));
   await expect(page.getByRole('heading', { name: 'Novo consentimento', exact: true })).toBeVisible();
@@ -122,10 +133,18 @@ test('patient consent registration and revocation use dedicated responsive pages
   }
 
   await page.getByRole('checkbox', { name: /Comunicações e Marketing/ }).click();
+  // Sem o tratamento de dados aceito, os demais consentimentos não podem ser registrados.
+  await page.getByRole('button', { name: 'Registrar Consentimento' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Tratamento de Dados Pessoais' }).first()).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}/consentimentos/novo$`));
+  expect(consents).toHaveLength(0);
+  await page.getByRole('checkbox', { name: /Tratamento de Dados Pessoais/ }).click();
   await page.getByRole('button', { name: 'Registrar Consentimento' }).click();
   await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}\\?tab=lgpd$`));
-  await expect(page.getByRole('button', { name: 'Revogar' })).toBeVisible();
-  await page.getByRole('button', { name: 'Revogar' }).click();
+  expect(consents.map(item => item.tipo_consentimento).sort()).toEqual(['comunicacao_marketing', 'tratamento_dados']);
+  const marketingRow = page.locator('div.border.rounded-lg').filter({ hasText: 'Comunicações e Marketing' });
+  await expect(marketingRow.getByRole('button', { name: 'Revogar' })).toBeVisible();
+  await marketingRow.getByRole('button', { name: 'Revogar' }).click();
   await expect(page).toHaveURL(new RegExp(`/pacientes/${patientId}/consentimentos/comunicacao_marketing/revogar$`));
   await page.getByLabel('Motivo da revogação').fill('Solicitação do paciente');
   await page.getByRole('button', { name: 'Confirmar Revogação' }).click();
@@ -140,7 +159,7 @@ test('nursing can view a patient but cannot open the editing form', async ({ pag
   await expect(page.getByRole('heading', { name: 'Cadastro indisponível para seu perfil' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Salvar', exact: true })).toHaveCount(0);
   await page.goto(`/pacientes/${patientId}`);
-  await expect(page.getByRole('heading', { name: 'Ficha do Paciente', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ficha do paciente', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Editar cadastro', exact: true })).toHaveCount(0);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);
 });

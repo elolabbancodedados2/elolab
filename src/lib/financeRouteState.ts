@@ -1,6 +1,6 @@
 import { dateOnlyInTimeZone } from '@/lib/dateOnly';
 
-export const FINANCE_OVERVIEW_TABS = ['resumo', 'dre', 'categorias'] as const;
+export const FINANCE_OVERVIEW_TABS = ['resumo', 'dre', 'categorias', 'centros'] as const;
 export type FinanceOverviewTab = typeof FINANCE_OVERVIEW_TABS[number];
 export const ACCOUNT_FILTER_STATUSES = ['aberto', 'pendente', 'parcial', 'atrasado', 'pago', 'cancelado'] as const;
 export type AccountFilterStatus = typeof ACCOUNT_FILTER_STATUSES[number] | 'todos';

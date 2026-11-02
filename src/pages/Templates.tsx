@@ -216,7 +216,7 @@ export default function Templates() {
             <Button variant="outline" size="icon" className="shrink-0 rounded-full" onClick={refresh} aria-label="Atualizar modelos" title="Atualizar modelos">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={openNewForActiveTab} className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110">
+            <Button onClick={openNewForActiveTab} className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
               <Plus className="h-4 w-4" /> Novo modelo
             </Button>
           </>
@@ -304,7 +304,7 @@ export default function Templates() {
                 : (clinicalTab === 'prescriptions' ? 'Tente outro nome, tipo ou medicamento.' : 'Tente outro nome, tipo, CID ou conteúdo.')}
             </p>
             {activeTotal === 0 ? (
-              <Button className="mt-4 rounded-full bg-gradient-primary text-white hover:brightness-110" size="sm" onClick={openNewForActiveTab}>Novo modelo</Button>
+              <Button className="mt-4 rounded-full bg-primary text-primary-foreground hover:bg-primary/90" size="sm" onClick={openNewForActiveTab}>Novo modelo</Button>
             ) : (
               <Button className="mt-4 rounded-full" size="sm" variant="outline" onClick={limparFiltros}>Limpar filtros</Button>
             )}
@@ -337,7 +337,7 @@ export default function Templates() {
                                 {PRESCRIPTION_TYPES[template.tipo || 'simples'] || template.tipo}
                               </Badge>
                             </div>
-                            <Badge variant="secondary" className="shrink-0 rounded-full text-[10px] tabular-nums">
+                            <Badge variant="secondary" className="shrink-0 rounded-full text-xs tabular-nums">
                               {linhas.length} medicamento{linhas.length === 1 ? '' : 's'}
                             </Badge>
                           </div>
@@ -362,7 +362,7 @@ export default function Templates() {
                               Duplicar
                             </Button>
                             {podeEditar && <>
-                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110" onClick={() => openEditor('prescription', template.id)}>
+                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90" onClick={() => openEditor('prescription', template.id)}>
                                 <Edit className="h-3.5 w-3.5" /> Editar
                               </Button>
                               <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" title="Excluir" onClick={() => setDeleteDialog({ open: true, type: 'prescription', id: template.id })}>
@@ -387,10 +387,10 @@ export default function Templates() {
                                   {CERTIFICATE_TYPES[template.tipo || 'comparecimento'] || template.tipo}
                                 </Badge>
                                 {template.tipo === 'afastamento' && template.dias_afastamento != null && (
-                                  <Badge variant="secondary" className="rounded-full text-[10px] tabular-nums">{template.dias_afastamento} dia{template.dias_afastamento === 1 ? '' : 's'}</Badge>
+                                  <Badge variant="secondary" className="rounded-full text-xs tabular-nums">{template.dias_afastamento} dia{template.dias_afastamento === 1 ? '' : 's'}</Badge>
                                 )}
                                 {template.tipo === 'afastamento' && template.cid && (
-                                  <Badge variant="secondary" className="rounded-full text-[10px]">CID {template.cid}</Badge>
+                                  <Badge variant="secondary" className="rounded-full text-xs">CID {template.cid}</Badge>
                                 )}
                               </div>
                             </div>
@@ -411,7 +411,7 @@ export default function Templates() {
                               Duplicar
                             </Button>
                             {podeEditar && <>
-                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-gradient-primary px-3 text-xs text-white hover:brightness-110" onClick={() => openEditor('certificate', template.id)}>
+                              <Button aria-label={`Editar modelo ${template.nome}`} size="sm" className="h-9 gap-1.5 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90" onClick={() => openEditor('certificate', template.id)}>
                                 <Edit className="h-3.5 w-3.5" /> Editar
                               </Button>
                               <Button aria-label={`Excluir modelo ${template.nome}`} size="icon" variant="ghost" className="ml-auto h-9 w-9 rounded-full text-destructive" title="Excluir" onClick={() => setDeleteDialog({ open: true, type: 'certificate', id: template.id })}>
@@ -460,7 +460,7 @@ function TipoPill({ ativo, onClick, children }: { ativo: boolean; onClick: () =>
       className={cn(
         'h-8 rounded-full border px-3 text-xs transition-colors',
         ativo
-          ? 'border-transparent bg-gradient-primary text-white shadow-sm'
+          ? 'border-transparent bg-primary text-primary-foreground'
           : 'border-border/60 bg-card text-muted-foreground hover:border-foreground/25',
       )}
     >

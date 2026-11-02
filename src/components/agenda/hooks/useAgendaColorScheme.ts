@@ -44,6 +44,11 @@ const FALLBACK_COLOR = 'hsl(var(--primary))';
 
 const KEY = 'agenda_color_scheme';
 
+/** Convênio da consulta, ou o do cadastro do paciente quando a consulta não tem. */
+export function convenioDaConsulta(ag: { convenio_id?: string | null; pacientes?: { convenio_id?: string | null } | null }): string | null {
+  return ag.convenio_id || ag.pacientes?.convenio_id || null;
+}
+
 export function useAgendaColorScheme() {
   const { user, profile } = useSupabaseAuth();
   const userId = user?.id ?? profile?.id;
@@ -101,7 +106,8 @@ export function useAgendaColorScheme() {
       case 'status': return scheme.map[ag.status] || DEFAULT_SCHEME.map[ag.status] || FALLBACK_COLOR;
       case 'tipo': return scheme.map[ag.tipo] || FALLBACK_COLOR;
       case 'medico': return scheme.map[ag.medico_id] || FALLBACK_COLOR;
-      case 'convenio': return scheme.map[ag.convenio_id || 'particular'] || FALLBACK_COLOR;
+      // Consultas antigas não gravavam convenio_id: cai no convênio do cadastro.
+      case 'convenio': return scheme.map[convenioDaConsulta(ag) || 'particular'] || FALLBACK_COLOR;
     }
   };
 

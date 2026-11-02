@@ -41,12 +41,13 @@ const ABERTO = ['pendente', 'atrasado', 'parcial'];
 const isoUtc = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Mesma regra de `gerar_proxima_despesa_recorrente`: mantém o dia, limitado ao fim do mês. */
-export function proximaOcorrencia(vencimento: string, frequencia: string | null | undefined): string | null {
+export function proximaOcorrencia(vencimento: string, frequencia: string | null | undefined, vezes = 1): string | null {
   const [ano, mes, dia] = vencimento.slice(0, 10).split('-').map(Number);
-  if (frequencia && DIAS[frequencia]) return isoUtc(new Date(Date.UTC(ano, mes - 1, dia + DIAS[frequencia])));
+  if (frequencia && DIAS[frequencia]) return isoUtc(new Date(Date.UTC(ano, mes - 1, dia + DIAS[frequencia] * vezes)));
   if (!frequencia || !MESES[frequencia]) return null;
-  const ultimoDia = new Date(Date.UTC(ano, mes - 1 + MESES[frequencia] + 1, 0)).getUTCDate();
-  return isoUtc(new Date(Date.UTC(ano, mes - 1 + MESES[frequencia], Math.min(dia, ultimoDia))));
+  const meses = MESES[frequencia] * vezes;
+  const ultimoDia = new Date(Date.UTC(ano, mes - 1 + meses + 1, 0)).getUTCDate();
+  return isoUtc(new Date(Date.UTC(ano, mes - 1 + meses, Math.min(dia, ultimoDia))));
 }
 
 const diasEntre = (de: string, ate: string) => (Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${de}T00:00:00Z`)) / 86_400_000;
@@ -124,9 +125,19 @@ export interface LoteTissProjecao {
   enviado_em: string | null;
   competencia?: string | null;
   convenios?: { prazo_retorno?: number | null } | null;
+  glosas_convenio?: ReadonlyArray<{ status: string; valor_glosado: number | null }> | null;
 }
 
 const LOTE_A_RECEBER = ['enviado', 'processando', 'pago_parcial'];
+
+/**
+ * Glosas não canceladas, pelo valor glosado cheio: o valor recuperado num
+ * recurso aceito entra como receita própria no financeiro (não no valor pago
+ * do lote), então não volta a ser saldo a receber do lote.
+ */
+export function glosadoDoLoteEmCentavos(glosas: LoteTissProjecao['glosas_convenio']): number {
+  return (glosas ?? []).reduce((total, g) => g.status === 'cancelada' ? total : total + emCentavos(Number(g.valor_glosado)), 0);
+}
 
 /**
  * Lote TISS enviado ainda não vira lançamento: a receita só nasce quando o
@@ -137,10 +148,13 @@ const LOTE_A_RECEBER = ['enviado', 'processando', 'pago_parcial'];
 export function lotesTissComoRecebiveis(lotes: ReadonlyArray<LoteTissProjecao>): LancamentoProjecao[] {
   return lotes.flatMap((lote) => {
     if (!LOTE_A_RECEBER.includes(lote.status)) return [];
-    const saldo = Number(lote.valor_apresentado || 0) - Number(lote.valor_pago || 0);
+    const saldo = (emCentavos(Number(lote.valor_apresentado)) - emCentavos(Number(lote.valor_pago))
+      - glosadoDoLoteEmCentavos(lote.glosas_convenio)) / 100;
     const base = (lote.enviado_em || lote.competencia || '').slice(0, 10);
     if (saldo <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(base)) return [];
-    const prazo = Number(lote.convenios?.prazo_retorno);
+    // Number(null) é 0: prazo não informado virava retorno no mesmo dia.
+    const prazoInformado = lote.convenios?.prazo_retorno;
+    const prazo = prazoInformado === null || prazoInformado === undefined ? NaN : Number(prazoInformado);
     const dias = Number.isFinite(prazo) && prazo >= 0 ? prazo : 30;
     const [ano, mes, dia] = base.split('-').map(Number);
     const vencimento = isoUtc(new Date(Date.UTC(ano, mes - 1, dia + dias)));

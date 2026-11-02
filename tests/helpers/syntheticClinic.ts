@@ -132,6 +132,8 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     agendamento_id: null,
     agendamento_retorno_id: null,
     clinica_id: TEST_CLINIC_ID,
+    // A tela de retornos recebe o paciente embutido em vez de baixar o cadastro inteiro.
+    pacientes: { id: TEST_PATIENT_ID, nome: 'Pessoa Exemplo QA', nome_social: null, cpf: '000.000.000-00', telefone: '(00) 00000-0000', email: 'paciente.qa@example.test' },
   }] : [];
   const hasSyntheticProntuario = Boolean(options.prontuarioPopulated || options.prontuarioDraft);
   const syntheticProntuarios = hasSyntheticProntuario ? [
@@ -568,7 +570,8 @@ export async function installSyntheticClinic(page: Page, options: SyntheticClini
     if (method === 'GET' && pathname === '/rest/v1/prontuarios' && hasSyntheticProntuario) {
       const select = requestUrl.searchParams.get('select') || '*';
       const idFilter = requestUrl.searchParams.get('id')?.replace(/^eq\./, '');
-      if (select === 'medicamentos_em_uso,sinais_vitais,data') {
+      // O painel de contexto clínico também lê created_at para saber se os sinais são das últimas 24 h.
+      if (select === 'medicamentos_em_uso,sinais_vitais,data' || select === 'medicamentos_em_uso,sinais_vitais,data,created_at') {
         await json(route, syntheticProntuarios[0]);
       } else if (requestUrl.searchParams.get('assinado') === 'eq.false') {
         await json(route, syntheticProntuarios.filter(item => !item.assinado));

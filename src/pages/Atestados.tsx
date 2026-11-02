@@ -28,7 +28,8 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
-import { gerarAtestado, openPDF } from '@/lib/pdfGenerator';
+import { gerarAtestado, marcarComoPrevia, openPDF } from '@/lib/pdfGenerator';
+import { legendaVariaveisAtestado, substituirVariaveisAtestado } from '@/lib/variaveisAtestado';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Cid10Search } from '@/components/clinical';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
@@ -307,26 +308,52 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
     toast.success(`Modelo "${template.nome}" carregado.`);
   };
 
-  // Replace template variables
+  // Troca as variáveis do modelo pelo dicionário único (o mesmo do editor de
+  // modelos), aceitando também os sinônimos {{paciente}}, {{data}}, {{medico}}…
   const processTemplateText = (text: string): string => {
     const paciente = pacienteSelecionado;
     const medico = medicos.find(m => m.id === formData.medico_id);
-    return text
-      .replace(/\{\{nome_paciente\}\}/gi, paciente?.nome || '_______________')
-      .replace(/\{\{cpf_paciente\}\}/gi, paciente?.cpf || '_______________')
-      .replace(/\{\{data_emissao\}\}/gi, formData.data_emissao ? format(new Date(formData.data_emissao + 'T12:00'), 'dd/MM/yyyy') : '__/__/____')
-      .replace(/\{\{data_atual\}\}/gi, format(parseDateOnly(today)!, 'dd/MM/yyyy'))
-      .replace(/\{\{dias\}\}/gi, formData.dias?.toString() || '___')
-      .replace(/\{\{data_inicio\}\}/gi, formData.data_inicio ? format(new Date(formData.data_inicio + 'T12:00'), 'dd/MM/yyyy') : '__/__/____')
-      .replace(/\{\{data_fim\}\}/gi, formData.data_fim ? format(new Date(formData.data_fim + 'T12:00'), 'dd/MM/yyyy') : '__/__/____')
-      .replace(/\{\{hora_inicio\}\}/gi, formData.hora_inicio || '__:__')
-      .replace(/\{\{hora_fim\}\}/gi, formData.hora_fim || '__:__')
-      .replace(/\{\{medico_nome\}\}/gi, medico?.nome || medico?.crm || '_______________')
-      .replace(/\{\{medico_crm\}\}/gi, medico?.crm || '_______________')
-      .replace(/\{\{cid\}\}/gi, formData.incluirCid ? formData.cid || '___' : '___');
+    return substituirVariaveisAtestado(text, {
+      nome_paciente: paciente?.nome || '_______________',
+      cpf_paciente: paciente?.cpf || '_______________',
+      data_emissao: formData.data_emissao ? format(new Date(formData.data_emissao + 'T12:00'), 'dd/MM/yyyy') : '__/__/____',
+      data_atual: format(parseDateOnly(today)!, 'dd/MM/yyyy'),
+      dias: formData.dias?.toString() || '___',
+      data_inicio: formData.data_inicio ? format(new Date(formData.data_inicio + 'T12:00'), 'dd/MM/yyyy') : '__/__/____',
+      data_fim: formData.data_fim ? format(new Date(formData.data_fim + 'T12:00'), 'dd/MM/yyyy') : '__/__/____',
+      hora_inicio: formData.hora_inicio || '__:__',
+      hora_fim: formData.hora_fim || '__:__',
+      medico_nome: medico?.nome || medico?.crm || '_______________',
+      medico_crm: medico?.crm || '_______________',
+      cid: formData.incluirCid ? formData.cid || '___' : '___',
+    });
   };
 
-  const handleSave = async () => {
+  // Comparecimento emitido a partir do atendimento: o horário de chegada vem
+  // do check-in da fila e o de saída é a hora atual, ambos editáveis.
+  const checkinQuery = useQuery({
+    queryKey: ['atestado-checkin', profile?.clinica_id ?? null, agendamentoOrigemId],
+    enabled: creationPage && !!agendamentoOrigemId && !!profile?.clinica_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('fila_atendimento')
+        .select('horario_chegada')
+        .eq('agendamento_id', agendamentoOrigemId!)
+        .eq('clinica_id', profile!.clinica_id!)
+        .not('horario_chegada', 'is', null)
+        .order('horario_chegada', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.horario_chegada ?? null;
+    },
+  });
+  const horaClinica = (instante: Date) => new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Sao_Paulo' }).format(instante);
+  const checkinDoAtendimento = checkinQuery.data ? new Date(checkinQuery.data) : null;
+  const horaCheckin = checkinDoAtendimento && Number.isFinite(checkinDoAtendimento.getTime()) ? horaClinica(checkinDoAtendimento) : null;
+  const checkinAplicado = useRef('');
+
+  const handleSave = async (imprimir = false) => {
     if (saveLock.current) return;
     if (!profile?.clinica_id) {
       toast.error('Clínica não identificada. O atestado não foi salvo.');
@@ -407,7 +434,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
         motivo = `Finalidade: ${finalidade}.`;
       }
 
-      const { error } = await supabase.from('atestados').insert({
+      const { data: emitido, error } = await supabase.from('atestados').insert({
         clinica_id: profile.clinica_id,
         tipo: formData.tipo,
         paciente_id: formData.paciente_id,
@@ -422,14 +449,17 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
         modelo_atestado_id: selectedTemplateId,
         // Emitido a partir do atendimento: fica ligado à consulta de origem.
         ...(agendamentoOrigemId && formData.paciente_id === pacienteFiltroId ? { agendamento_id: agendamentoOrigemId } : {}),
-      } as any);
+      } as any).select('*, pacientes(nome,nome_social,cpf,telefone)').single();
 
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['atestados'] });
       completed.current = true;
-      leaveTask();
       toast.success('Atestado emitido com sucesso.');
+      // "Emitir e imprimir": o PDF sai do registro gravado, com a mesma
+      // auditoria de impressão do histórico.
+      if (imprimir && emitido) await handlePrint(emitido as unknown as Atestado);
+      leaveTask();
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error saving atestado:', error);
       toast.error('Erro ao emitir atestado.', { description: mensagemDeErro(error) });
@@ -498,6 +528,23 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creationPage, taskKey, loadingCurrentMedico, currentMedicoError, isMedicoOnly, medicoId, sourceId, recordQuery.data]);
 
+  // Preenche o comparecimento com o check-in só uma vez por formulário e só
+  // se os horários ainda estiverem vazios (não sobrescreve o que foi digitado).
+  useEffect(() => {
+    if (!creationPage || readyFor !== taskKey || !horaCheckin || !checkinDoAtendimento || checkinAplicado.current === taskKey) return;
+    checkinAplicado.current = taskKey;
+    setFormData(prev => {
+      if (prev.tipo !== 'comparecimento' || prev.hora_inicio || prev.hora_fim) return prev;
+      if (todaySaoPauloDateOnly(checkinDoAtendimento) !== prev.data_emissao) return prev;
+      const agora = horaClinica(new Date());
+      const next = { ...prev, hora_inicio: horaCheckin, hora_fim: prev.data_emissao === today && agora > horaCheckin ? agora : '' };
+      // Valor sugerido pelo sistema não conta como alteração do usuário.
+      if (JSON.stringify(prev) === JSON.stringify(formBaselineRef.current)) formBaselineRef.current = next;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creationPage, readyFor, taskKey, horaCheckin]);
+
   const handlePrint = async (atestado: Atestado) => {
     const paciente = atestado.pacientes;
     const medico = medicos.find(m => m.id === atestado.medico_id);
@@ -514,10 +561,11 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
         : atestado.tipo !== 'aptidao' ? atestado.motivo : null;
       const doc = await gerarAtestado(
         { nome: paciente.nome, cpf: paciente.cpf || '' },
-        { nome: medico.nome || medico.crm, crm: medico.crm, especialidade: medico.especialidade || '' },
+        { nome: medico.nome || medico.crm, crm: medico.crm, especialidade: medico.especialidade || '', crmUf: (medico as any).crm_uf || undefined, rqe: (medico as any).rqe || undefined },
         {
           tipo: atestado.tipo as any,
           dataAtendimento: atestado.data_emissao || '',
+          dataEmissao: atestado.data_emissao || undefined,
           dataInicio: atestado.data_inicio || undefined,
           dataFim: atestado.data_fim || undefined,
           horarioInicio: horario?.[1],
@@ -533,6 +581,48 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
       openPDF(doc);
     } catch (error) {
       toast.error('Não foi possível preparar o atestado para impressão.', { description: mensagemDeErro(error) });
+    }
+  };
+
+  /**
+   * Prévia do PDF com os dados do formulário, antes de emitir. Nada é
+   * gravado; o arquivo sai marcado como "PRÉ-VISUALIZAÇÃO".
+   */
+  const [gerandoPrevia, setGerandoPrevia] = useState(false);
+  const handlePreview = async () => {
+    const medico = medicos.find(m => m.id === formData.medico_id);
+    if (!pacienteSelecionado || !medico) {
+      toast.error('Selecione o paciente e o médico para pré-visualizar.');
+      return;
+    }
+    setGerandoPrevia(true);
+    try {
+      const finalidade = formData.tipo === 'aptidao'
+        ? (formData.finalidade === 'custom' ? formData.motivo.trim() : formData.finalidade) || undefined
+        : undefined;
+      const doc = await gerarAtestado(
+        { nome: pacienteSelecionado.nome, cpf: pacienteSelecionado.cpf || '' },
+        { nome: medico.nome || medico.crm, crm: medico.crm, especialidade: medico.especialidade || '', crmUf: (medico as any).crm_uf || undefined, rqe: (medico as any).rqe || undefined },
+        {
+          tipo: formData.tipo as any,
+          dataAtendimento: formData.data_emissao,
+          dataEmissao: formData.data_emissao,
+          dataInicio: formData.tipo === 'afastamento' ? formData.data_inicio || undefined : undefined,
+          dataFim: formData.tipo === 'afastamento' ? formData.data_fim || undefined : undefined,
+          horarioInicio: formData.tipo === 'comparecimento' ? formData.hora_inicio || undefined : undefined,
+          horarioFim: formData.tipo === 'comparecimento' ? formData.hora_fim || undefined : undefined,
+          finalidade,
+          diasAfastamento: formData.tipo === 'afastamento' ? formData.dias || undefined : undefined,
+          cid: formData.incluirCid ? formData.cid || undefined : undefined,
+          observacoes: [formData.tipo !== 'aptidao' ? formData.motivo : null, processTemplateText(formData.observacoes)].filter(Boolean).join('\n'),
+        },
+      );
+      marcarComoPrevia(doc);
+      openPDF(doc);
+    } catch (error) {
+      toast.error('Não foi possível montar a pré-visualização.', { description: mensagemDeErro(error) });
+    } finally {
+      setGerandoPrevia(false);
     }
   };
 
@@ -610,7 +700,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
             </Button>
             <Button
               onClick={handleNew}
-              className="shrink-0 gap-2 rounded-full bg-gradient-primary text-white shadow-md hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+              className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
               disabled={!medicosDisponiveis.length}
             >
               <Plus className="h-4 w-4" />Novo Atestado
@@ -654,7 +744,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
               onClick={alternar}
               className={cn(
                 'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                s.escuro && 'border-transparent bg-gradient-primary text-white',
+                s.escuro && 'border-transparent bg-primary text-primary-foreground',
                 ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
                 ativo && s.escuro && 'ring-2 ring-primary/60',
               )}
@@ -711,7 +801,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                       onClick={() => setPeriodoFiltro(opt.key)}
                       className={cn(
                         'h-8 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                        ativo ? 'border-transparent bg-gradient-primary text-white shadow-sm' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
+                        ativo ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:border-foreground/25 hover:text-foreground',
                       )}
                     >
                       {opt.label}
@@ -749,8 +839,8 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                   <TableHead>Data</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Paciente</TableHead>
-                  <TableHead className="hidden md:table-cell">Médico</TableHead>
-                  <TableHead className="hidden sm:table-cell">Detalhes</TableHead>
+                  <TableHead className="sm:hidden md:table-cell">Médico</TableHead>
+                  <TableHead>Detalhes</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -765,7 +855,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                       <p className="mt-1 text-sm">{atestados.length === 0 ? 'Emita o primeiro atestado para o paciente' : 'Ajuste a busca, o tipo ou o período.'}</p>
                       {atestados.length === 0 ? (
                         <Button
-                          className="mt-4 gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110 disabled:bg-none disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                          className="mt-4 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                           onClick={handleNew}
                           disabled={!medicosDisponiveis.length}
                         >
@@ -775,7 +865,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                           <Button size="sm" variant="outline" className="rounded-full" onClick={limparFiltros}>Limpar filtros</Button>
                           {tipoFiltro !== 'todos' && medicosDisponiveis.length > 0 && (
-                            <Button size="sm" className="gap-2 rounded-full bg-gradient-primary text-white hover:brightness-110" onClick={() => handleNewWithType(tipoFiltro)}>
+                            <Button size="sm" className="gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => handleNewWithType(tipoFiltro)}>
                               <Plus className="h-4 w-4" />Emitir {getTipoLabel(tipoFiltro)}
                             </Button>
                           )}
@@ -795,17 +885,17 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                         <TableCell className="font-medium">
                           <div className="flex flex-wrap items-center gap-2">
                             <span>{nomePaciente}</span>
-                            {atestado.data_emissao === today && <Badge className="rounded-full border-transparent bg-gradient-primary text-[9px] text-white hover:bg-gradient-primary">Hoje</Badge>}
-                            {vigente && <Badge variant="outline" className="rounded-full border-warning/40 text-[10px] text-warning">Em vigor</Badge>}
+                            {atestado.data_emissao === today && <Badge className="rounded-full border-transparent bg-primary text-xs text-primary-foreground hover:bg-primary">Hoje</Badge>}
+                            {vigente && <Badge variant="outline" className="rounded-full border-warning/40 text-xs text-warning">Em vigor</Badge>}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">{getMedicoNome(atestado.medico_id)}</TableCell>
-                        <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
+                        <TableCell className="sm:hidden md:table-cell">{getMedicoNome(atestado.medico_id)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
                           {atestado.dias && <span className="tabular-nums">{atestado.dias} dia(s)</span>}
                           {atestado.dias && atestado.data_inicio && atestado.data_fim && (
                             <span className="ml-1 text-xs">({format(parseDateOnly(atestado.data_inicio)!, 'dd/MM')} a {format(parseDateOnly(atestado.data_fim)!, 'dd/MM')})</span>
                           )}
-                          {atestado.cid && <Badge variant="outline" className="ml-1 rounded-full text-[10px]">CID: {atestado.cid}</Badge>}
+                          {atestado.cid && <Badge variant="outline" className="ml-1 rounded-full text-xs">CID: {atestado.cid}</Badge>}
                           {!atestado.dias && !atestado.cid && <span>—</span>}
                         </TableCell>
                         <TableCell className="text-right">
@@ -823,7 +913,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                             <Button variant="outline" className="h-9 gap-1.5 rounded-full text-xs" onClick={() => handleView(atestado)} aria-label="Ver atestado">
                               <Eye className="h-4 w-4" />Ver
                             </Button>
-                            <Button className="h-9 gap-1.5 rounded-full bg-gradient-primary text-xs text-white hover:brightness-110" onClick={() => handlePrint(atestado)} aria-label="Imprimir atestado">
+                            <Button className="h-9 gap-1.5 rounded-full bg-primary text-xs text-primary-foreground hover:bg-primary/90" onClick={() => handlePrint(atestado)} aria-label="Imprimir atestado">
                               <Printer className="h-4 w-4" />Imprimir
                             </Button>
                           </div>
@@ -883,22 +973,23 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
           ) : (
             <div className="space-y-2">
               {templates.map(t => (
-                <div
+                // Botão de verdade (teclado e leitor de tela), em vez de div clicável.
+                <button
                   key={t.id}
-                  className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                  type="button"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => handleLoadTemplate(t)}
+                  aria-label={`Aplicar modelo ${t.nome}`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{t.nome}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {getTipoLabel(t.tipo)}
-                        {(t.dias_afastamento ?? t.diasAfastamento) && ` • ${t.dias_afastamento ?? t.diasAfastamento} dias`}
-                      </p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="gap-1"><Clipboard className="h-3.5 w-3.5" />Aplicar</Button>
-                  </div>
-                </div>
+                  <span className="min-w-0">
+                    <span className="block font-medium">{t.nome}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {getTipoLabel(t.tipo)}
+                      {(t.dias_afastamento ?? t.diasAfastamento) ? ` • ${t.dias_afastamento ?? t.diasAfastamento} dias` : ''}
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="inline-flex shrink-0 items-center gap-1 text-sm font-medium"><Clipboard className="h-3.5 w-3.5" />Aplicar</span>
+                </button>
               ))}
             </div>
           )}
@@ -954,6 +1045,9 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
                   Período de Comparecimento *
                 </h4>
                 <p className="text-xs text-muted-foreground">Obrigatório para validação pelo RH. Informe o horário em que o paciente esteve na clínica.</p>
+                {horaCheckin && formData.hora_inicio === horaCheckin && (
+                  <p role="status" className="text-xs text-muted-foreground">Chegada preenchida pelo check-in das {horaCheckin}; a saída é a hora atual. Confira antes de emitir.</p>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Label htmlFor="atestado-hora-inicio" className="text-xs">Horário de Início</Label>
@@ -1082,7 +1176,7 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
             <div className="space-y-1.5">
               <Label htmlFor="atestado-observacoes" className="text-xs font-medium">Texto do Atestado / Observações</Label>
               <p className="text-[11px] text-muted-foreground">
-                Variáveis disponíveis: {'{{nome_paciente}}'}, {'{{cpf_paciente}}'}, {'{{data_emissao}}'}, {'{{dias}}'}, {'{{data_inicio}}'}, {'{{data_fim}}'}, {'{{hora_inicio}}'}, {'{{hora_fim}}'}, {'{{medico_nome}}'}, {'{{medico_crm}}'}, {'{{cid}}'}
+                Variáveis disponíveis: {legendaVariaveisAtestado()}
               </p>
               <Textarea
                 id="atestado-observacoes"
@@ -1113,12 +1207,27 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
           <footer className="flex flex-wrap justify-end gap-3 border-t border-border py-4">
             <Button variant="outline" onClick={leaveTask} disabled={isSaving}>Voltar aos atestados</Button>
             <Button
-              onClick={handleSave}
+              variant="outline"
+              onClick={() => { void handlePreview(); }}
+              disabled={isSaving || gerandoPrevia || !formData.paciente_id || !formData.medico_id || pacienteSelecionadoQuery.isFetching || pacienteSelecionadoQuery.isError}
+              className="gap-2"
+            >
+              {gerandoPrevia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}Pré-visualizar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => { void handleSave(false); }}
               disabled={isSaving || pacienteSelecionadoQuery.isFetching || !!formData.paciente_id && pacienteSelecionadoQuery.isError}
               className="gap-2"
             >
-              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              <FileSignature className="h-4 w-4" />Emitir atestado
+              <FileSignature className="h-4 w-4" />Emitir
+            </Button>
+            <Button
+              onClick={() => { void handleSave(true); }}
+              disabled={isSaving || pacienteSelecionadoQuery.isFetching || !!formData.paciente_id && pacienteSelecionadoQuery.isError}
+              className="gap-2"
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}Emitir e imprimir
             </Button>
           </footer>
       </section>}

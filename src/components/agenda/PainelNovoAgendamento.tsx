@@ -1,4 +1,5 @@
-import { format, parseISO } from 'date-fns';
+import { useEffect, useState } from 'react';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,9 @@ interface Props {
 
 export function PainelNovoAgendamento({ date, diasComConsulta, onDateChange, onNovoAgendamento, onBloquear, onEncaixe }: Props) {
   const dia = parseISO(date);
+  // Folhear os meses não muda o dia da agenda (antes pulava para o dia 1).
+  const [mesExibido, setMesExibido] = useState(() => startOfMonth(dia));
+  useEffect(() => { setMesExibido(startOfMonth(parseISO(date))); }, [date]);
   const diasMarcados = Object.entries(diasComConsulta ?? {})
     .filter(([, total]) => total > 0)
     .map(([iso]) => parseISO(iso));
@@ -30,8 +34,8 @@ export function PainelNovoAgendamento({ date, diasComConsulta, onDateChange, onN
         mode="single"
         locale={ptBR}
         selected={dia}
-        month={dia}
-        onMonthChange={mes => onDateChange(format(mes, 'yyyy-MM-01'))}
+        month={mesExibido}
+        onMonthChange={setMesExibido}
         onSelect={selecionado => { if (selecionado) onDateChange(format(selecionado, 'yyyy-MM-dd')); }}
         modifiers={{ comConsulta: diasMarcados }}
         modifiersClassNames={{ comConsulta: "relative font-semibold after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-foreground after:content-['']" }}

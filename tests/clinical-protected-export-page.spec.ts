@@ -9,7 +9,11 @@ test('FHIR export uses a protected page without putting clinical content in the 
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin' });
   await page.route('**/functions/v1/fhir-export*', route => {
     expect(route.request().postDataJSON()).toEqual({ paciente_id: patientId });
-    return route.fulfill({ json: { resourceType: 'Bundle', type: 'collection', entry: [{ resource: { resourceType: 'Patient', id: patientId } }] } });
+    // Um Bundle só com o Patient não tem registro clínico e não abre a proteção; inclui uma observação sintética.
+    return route.fulfill({ json: { resourceType: 'Bundle', type: 'collection', entry: [
+      { resource: { resourceType: 'Patient', id: patientId } },
+      { resource: { resourceType: 'Observation', id: 'observacao-qa', status: 'final' } },
+    ] } });
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/interoperabilidade');

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({ triagens: [] as any[] }));
 
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: mocks.triagens, isLoading: false, isError: false, refetch: vi.fn() }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
+vi.mock('@/lib/prontuarioAudit', () => ({ autorizarLeituraHistoricoPaciente: vi.fn() }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({ useSupabaseAuth: () => ({ user: { id: 'user-1' }, profile: { clinica_id: 'clinica-1' } }) }));
 vi.mock('recharts', () => ({
   LineChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -21,16 +22,22 @@ import { VitalSignsChart } from '@/components/clinical/VitalSignsChart';
 
 describe('VitalSignsChart', () => {
   beforeEach(() => {
+    // O componente recebe o histórico já consolidado (triagens + evoluções).
     mocks.triagens = [{
       id: 'triagem-1',
-      data_hora: '2026-10-14T12:00:00Z',
-      pressao_arterial: null,
+      paciente_id: 'paciente-1',
+      created_at: '2026-10-14T12:00:00Z',
+      pressao_sistolica: null,
+      pressao_diastolica: null,
       frequencia_cardiaca: null,
+      frequencia_respiratoria: null,
       temperatura: null,
       peso: null,
       altura: null,
-      saturacao: null,
-      frequencia_respiratoria: null,
+      imc: null,
+      oxigenacao: null,
+      glicemia: null,
+      dor_escala: null,
     }];
   });
 

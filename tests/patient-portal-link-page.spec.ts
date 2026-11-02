@@ -64,7 +64,14 @@ test('geração do Portal tem página própria e mantém token fora da URL e do 
   await page.goto('/pacientes', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('textbox', { name: 'Buscar pacientes por nome, CPF, telefone ou e-mail' })).toBeVisible({ timeout: 20000 });
   await page.getByRole('textbox', { name: 'Buscar pacientes por nome, CPF, telefone ou e-mail' }).fill('Pessoa');
-  await page.getByRole('button', { name: 'Gerar link do portal para Pessoa Exemplo QA' }).click();
+  // No celular a geração do link fica no menu "Mais ações" da ficha na lista.
+  // A lista ainda pode re-renderizar após a busca e fechar o menu; reabre até a navegação acontecer (o item só abre a página, sem gravar).
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Mais ações para Pessoa Exemplo QA' }).click({ timeout: 2_000 });
+    await page.getByRole('menuitem', { name: 'Gerar link do portal para Pessoa Exemplo QA' }).click({ timeout: 2_000 });
+    await expect(page).toHaveURL(`/pacientes/${patientId}/portal/link`, { timeout: 2_000 });
+  }).toPass();
 
   await expect(page).toHaveURL(`/pacientes/${patientId}/portal/link`);
   await expect(page.getByRole('heading', { name: 'Acesso ao Portal do Paciente', exact: true })).toBeVisible();
@@ -80,7 +87,8 @@ test('geração do Portal tem página própria e mantém token fora da URL e do 
 
   await page.getByRole('button', { name: 'Gerar e substituir link anterior' }).click();
   const linkField = page.getByRole('textbox', { name: 'Link de acesso ao portal do paciente' });
-  await expect(linkField).toHaveValue(`https://app.elolab.com.br/portal-paciente?token=${token}`);
+  // Só o token sai da resposta do servidor; o endereço é sempre o desta instalação.
+  await expect(linkField).toHaveValue(`${new URL(String(testInfo.project.use.baseURL)).origin}/portal-paciente?token=${token}`);
   await expect(page.getByText(/Link gerado e copiado/)).toBeVisible();
   expect(page.url()).not.toContain(token);
   const persisted = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage }, history: history.state }));

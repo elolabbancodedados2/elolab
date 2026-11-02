@@ -19,7 +19,8 @@ describe('appointment cancellation reason', () => {
 
   it('sends the selected reason through both agenda cancellation flows', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'components', 'agenda');
-    const card = readFileSync(resolve(root, 'AppointmentCard.tsx'), 'utf8');
+    // As ações do cartão (menu, "⋯" e folha do celular) ficam em useAcoesConsulta.
+    const card = readFileSync(resolve(root, 'useAcoesConsulta.tsx'), 'utf8');
     const dialog = readFileSync(resolve(root, 'AppointmentDialog.tsx'), 'utf8');
     expect(card).toMatch(/p_motivo_cancelamento:\s*motivoCancelamento/);
     expect(dialog).toMatch(/p_motivo_cancelamento:\s*motivoCancelamento/);

@@ -3,7 +3,11 @@ import {
   agregarPorConta,
   arvoreDeContas,
   compararCodigo,
+  dreAnualParaCsv,
   dreParaCsv,
+  eventosDaConta,
+  mesDeCompetencia,
+  montarDreAnual,
   margemSobreReceitaLiquida,
   montarDre,
   montarEventosCompetencia,
@@ -205,5 +209,49 @@ describe('montarEventosCompetencia', () => {
       { id: 'a:competencia', lancamentoId: 'a', tipo: 'receita', categoria: 'consulta', data: '2026-10-01', valor: 185 },
       { id: 'b:competencia', lancamentoId: 'b', tipo: 'despesa', categoria: 'outros', data: '2026-10-01', valor: 50 },
     ]);
+  });
+});
+
+describe('competência do lançamento', () => {
+  it('usa competência, depois emissão, vencimento e data', () => {
+    expect(mesDeCompetencia({ competencia: '2026-09', data_emissao: '2026-08-01', data_vencimento: '2026-10-10', data: '2026-11-01' })).toBe('2026-09');
+    expect(mesDeCompetencia({ competencia: null, data_emissao: '2026-08-15', data_vencimento: '2026-10-10', data: '2026-11-01' })).toBe('2026-08');
+    expect(mesDeCompetencia({ competencia: '', data_emissao: null, data_vencimento: '2026-10-10', data: '2026-11-01' })).toBe('2026-10');
+    expect(mesDeCompetencia({ competencia: null, data_emissao: null, data_vencimento: null, data: '2026-11-01' })).toBe('2026-11');
+  });
+
+  it('lança pela data de emissão quando não há competência', () => {
+    const [evento] = montarEventosCompetencia([
+      { id: 'e', tipo: 'despesa', categoria: 'Aluguel', status: 'pendente', valor: 900, data: '2026-11-02', data_pagamento: null, competencia: null, data_emissao: '2026-10-28', data_vencimento: '2026-11-10' },
+    ]);
+    expect(evento).toMatchObject({ data: '2026-10-01', categoria: 'aluguel', valor: 900 });
+  });
+});
+
+describe('DRE anual e detalhe da conta', () => {
+  const eventos: EventoRealizado[] = [
+    { id: '1', lancamentoId: 'a', tipo: 'receita', categoria: 'consulta', data: '2026-01-10', valor: 100 },
+    { id: '2', lancamentoId: 'b', tipo: 'receita', categoria: 'consulta', data: '2026-03-05', valor: 250 },
+    { id: '3', lancamentoId: 'c', tipo: 'despesa', categoria: 'aluguel', data: '2026-03-01', valor: 80 },
+    { id: '4', lancamentoId: 'd', tipo: 'receita', categoria: 'consulta', data: '2025-12-31', valor: 999 },
+  ];
+
+  it('monta doze colunas e o total do ano', () => {
+    const anual = montarDreAnual({ ano: 2026, contas, vinculos, eventos });
+    expect(anual.meses).toHaveLength(12);
+    const bruta = anual.linhas.find(l => l.id === 'receita_bruta')!;
+    expect(bruta.valores.slice(0, 3)).toEqual([100, 0, 250]);
+    expect(bruta.total).toBe(350);
+    const liquido = anual.linhas.find(l => l.id === 'resultado_liquido')!;
+    expect(liquido.valores[2]).toBe(170);
+    expect(liquido.total).toBe(270);
+    expect(dreAnualParaCsv(anual).split('\r\n')[0]).toContain('"Total 2026"');
+  });
+
+  it('lista os eventos que formam uma conta, com vínculo de categoria normalizado', () => {
+    const vinculosMisturados: VinculoCategoria[] = [{ natureza: 'receita', categoria: 'Consulta', conta_id: 'rb' }];
+    expect(eventosDaConta(eventos, 'rb', contas, vinculosMisturados).map(e => e.id)).toEqual(['4', '2', '1']);
+    expect(eventosDaConta(eventos, 'inexistente', contas, vinculos)).toEqual([]);
+    expect(agregarPorConta(eventos.slice(0, 2), contas, vinculosMisturados).porConta.get('rb')).toBe(350);
   });
 });
