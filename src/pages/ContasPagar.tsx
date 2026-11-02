@@ -55,7 +55,7 @@ const CATEGORIAS = ['fornecedores', 'folha_pagamento', 'impostos', 'aluguel', 's
 const CATEGORIAS_LABELS: Record<string, string> = {
   fornecedores: 'Fornecedores', folha_pagamento: 'Folha de Pagamento',
   impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
-  equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
+  equipamentos: 'Equipamentos', marketing: 'Marketing', estorno_venda: 'Estorno de venda', outros: 'Outros',
 };
 const FREQUENCIAS_RECURRENCIA: Record<string, string> = {
   semanal: 'semanal', quinzenal: 'quinzenal', mensal: 'mensal',

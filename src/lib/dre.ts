@@ -48,7 +48,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
   fisioterapia: 'Fisioterapia', psicologia: 'Psicologia', pediatria: 'Pediatria',
   fornecedores: 'Fornecedores', folha_pagamento: 'Folha de pagamento',
   impostos: 'Impostos', aluguel: 'Aluguel', servicos: 'Serviços',
-  equipamentos: 'Equipamentos', marketing: 'Marketing', outros: 'Outros',
+  equipamentos: 'Equipamentos', marketing: 'Marketing', estorno_venda: 'Estornos de vendas', outros: 'Outros',
 };
 
 export const rotuloCategoria = (categoria: string) => ROTULO_CATEGORIA[categoria] ?? categoria;
