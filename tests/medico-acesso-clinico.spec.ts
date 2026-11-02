@@ -79,7 +79,7 @@ test('médico lê histórico assinado e edita apenas seu rascunho na ficha', asy
   await page.goto('/pacientes');
   await page.getByRole('complementary', { name: 'Resumo de Pessoa Exemplo QA' }).getByRole('button', { name: 'Abrir ficha', exact: true }).click();
   const dialog = page.locator('#main-content');
-  await expect(dialog.getByRole('tab', { name: 'Exames', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: 'Exames e sinais', exact: true })).toBeVisible();
   await dialog.getByRole('tab', { name: 'Prontuário', exact: true }).click();
   await dialog.getByText('Histórico assinado por outra médica', { exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Editar', exact: true })).toHaveCount(0);
@@ -100,9 +100,9 @@ test('formulários clínicos da ficha usam o médico da sessão', async ({ page 
   await page.getByRole('complementary', { name: 'Resumo de Pessoa Exemplo QA' }).getByRole('button', { name: 'Abrir ficha', exact: true }).click();
   const dialog = page.locator('#main-content');
   await dialog.getByRole('tab', { name: 'Consultas', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Agendar Consulta', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Agendar consulta', exact: true }).click();
   await expect(dialog.getByRole('combobox').filter({ hasText: 'Médico da sessão' })).toBeDisabled();
-  await dialog.getByRole('tab', { name: 'Exames', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Solicitar Exame', exact: true }).click();
+  await dialog.getByRole('tab', { name: 'Exames e sinais', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Solicitar exame', exact: true }).click();
   await expect(dialog.getByRole('combobox').filter({ hasText: 'Médico da sessão' })).toBeDisabled();
 });

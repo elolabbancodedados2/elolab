@@ -82,7 +82,9 @@ test('portal autenticado leva aos registros certos e marca contagens parciais se
   const unavailableExamsShortcut = page.getByRole('button', { name: /Abrir exames pendentes; dados indisponíveis/ });
   await expect(unavailableExamsShortcut).toBeVisible();
   await unavailableExamsShortcut.click();
-  await expect(page.getByRole('tab', { name: 'Exames' })).toHaveAttribute('aria-selected', 'true');
+  // No celular as abas viram a barra inferior "Seções do portal no celular", que marca a seção atual.
+  const mobileSections = page.getByRole('navigation', { name: 'Seções do portal no celular' });
+  await expect(mobileSections.getByRole('button', { name: 'Exames', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('tabpanel', { name: 'Exames' }).getByRole('status')).toContainText('Não foi possível carregar seus exames e laudos');
   await expect(page.getByText('Nenhum exame encontrado')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('patient-portal-workspace-exam-error-mobile.png'), animations: 'disabled' });
@@ -93,7 +95,7 @@ test('portal autenticado leva aos registros certos e marca contagens parciais se
   const consultasShortcut = page.getByRole('button', { name: /Abrir consultas futuras/ });
   await expect(consultasShortcut).toContainText('1');
   await consultasShortcut.click();
-  await expect(page.getByRole('tab', { name: 'Consultas' })).toHaveAttribute('aria-selected', 'true');
+  await expect(mobileSections.getByRole('button', { name: 'Consultas', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('tabpanel', { name: 'Consultas' }).getByText('Consulta de rotina')).toBeVisible();
 
   const examesShortcut = page.getByRole('button', { name: /Abrir exames pendentes/ });
@@ -101,7 +103,7 @@ test('portal autenticado leva aos registros certos e marca contagens parciais se
   await expect(examesShortcut).toContainText('Há mais exames no histórico');
   await examesShortcut.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('tab', { name: 'Exames' })).toHaveAttribute('aria-selected', 'true');
+  await expect(mobileSections.getByRole('button', { name: 'Exames', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('Hemograma sintético')).toBeVisible();
   await expect(page.getByText('Resultado sintético liberado')).toBeVisible();
   await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 390);
@@ -112,6 +114,7 @@ test('portal autenticado leva aos registros certos e marca contagens parciais se
   await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 320);
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByRole('tab', { name: 'Exames' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Exames' })).toHaveAttribute('aria-selected', 'true');
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath('patient-portal-workspace-desktop.png'), fullPage: true, animations: 'disabled' });
   expect(actions.map(action => action.action)).toEqual(expect.arrayContaining([

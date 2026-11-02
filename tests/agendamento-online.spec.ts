@@ -31,7 +31,9 @@ test.describe('Agendamento online', () => {
     await page.getByRole('button', { name: /Dra\. Ana/ }).click();
     await page.locator('button').filter({ has: page.locator('span.uppercase') }).nth(0).click();
     await page.getByRole('button', { name: /10:30/ }).click();
-    await expect(page.getByText('Horário reservado por até cinco minutos enquanto você preenche seus dados.')).toBeVisible();
+    // A reserva agora mostra a contagem regressiva dos cinco minutos.
+    await expect(page.getByText(/Horário reservado enquanto você preenche seus dados/)).toBeVisible();
+    await expect(page.getByLabel(/restam \d+:\d{2} minutos/)).toBeVisible();
 
     await page.getByLabel('Nome completo *').fill('Mariana da Silva');
     await page.getByLabel('CPF *').fill('123');

@@ -57,9 +57,16 @@ test('inativação tem página própria, preserva filtros/foco e registra motivo
   await page.goto('/pacientes');
   const search = page.getByRole('textbox', { name: 'Buscar pacientes por nome, CPF, telefone ou e-mail' });
   await search.fill('Pessoa');
-  await expect(page.getByRole('button', { name: 'Inativar Pessoa Exemplo QA' })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('patient-status-list-mobile.png'), fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: 'Inativar Pessoa Exemplo QA' }).click();
+  // No celular só as ações principais ficam à mostra; inativar fica no menu "Mais ações".
+  // A lista ainda pode re-renderizar após a busca e fechar o menu; reabre até a navegação acontecer (o item só abre a página, sem gravar).
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Mais ações para Pessoa Exemplo QA' }).click({ timeout: 2_000 });
+    await expect(page.getByRole('menuitem', { name: 'Inativar Pessoa Exemplo QA' })).toBeVisible({ timeout: 2_000 });
+    await page.screenshot({ path: testInfo.outputPath('patient-status-list-mobile.png'), fullPage: true, animations: 'disabled' });
+    await page.getByRole('menuitem', { name: 'Inativar Pessoa Exemplo QA' }).click({ timeout: 2_000 });
+    await expect(page).toHaveURL(`/pacientes/${patientId}/status`, { timeout: 2_000 });
+  }).toPass();
 
   await expect(page).toHaveURL(`/pacientes/${patientId}/status`);
   await expect(page.getByRole('heading', { name: 'Inativar paciente', exact: true })).toBeVisible();

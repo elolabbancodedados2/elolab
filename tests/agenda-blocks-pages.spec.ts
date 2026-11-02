@@ -13,7 +13,10 @@ test('bloqueios da agenda usam páginas próprias e preservam o fluxo de criaç�
       return;
     }
     if (route.request().method() === 'POST') {
-      savedPayload = route.request().postDataJSON() as Record<string, unknown>;
+      // Um bloqueio novo pode valer para vários profissionais: o insert envia uma linha por profissional.
+      const rows = route.request().postDataJSON() as Record<string, unknown>[];
+      expect(rows).toHaveLength(1);
+      savedPayload = rows[0];
       blocks.push({ ...savedPayload, id: 'synthetic-block-1' });
       await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'synthetic-block-1' }) });
       return;
@@ -34,8 +37,7 @@ test('bloqueios da agenda usam páginas próprias e preservam o fluxo de criaç�
   await expect(page.getByRole('heading', { name: 'Novo bloqueio de agenda', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await page.getByLabel('Profissional *').click();
-  await page.getByRole('option', { name: /Dra\. Marina Ribeiro/ }).click();
+  await page.getByRole('checkbox', { name: /Dra\. Marina Ribeiro/ }).check();
   await page.getByLabel('Motivo do bloqueio *').click();
   await page.getByRole('option', { name: 'Férias', exact: true }).click();
   await page.getByLabel('Data inicial *').fill('2026-11-03');
@@ -78,8 +80,7 @@ test('conflito do banco mantém campos e explica como recuperar', async ({ page 
     return route.fallback();
   });
   await page.goto('/agenda/bloqueios/novo');
-  await page.getByLabel('Profissional *').click();
-  await page.getByRole('option', { name: /Dra\. Marina Ribeiro/ }).click();
+  await page.getByRole('checkbox', { name: /Dra\. Marina Ribeiro/ }).check();
   await page.getByLabel('Data inicial *').fill('2026-11-03');
   await page.getByLabel('Data final *').fill('2026-11-03');
   await page.getByLabel('Observação').fill('Reunião clínica sintética');
@@ -96,14 +97,15 @@ test('bloqueio por faixa horária rejeita intervalos invertidos antes de gravar'
   await page.route('**/rest/v1/bloqueios_agenda*', async route => {
     if (route.request().method() === 'GET') return route.fulfill({ json: [] });
     if (route.request().method() === 'POST') {
-      payload = route.request().postDataJSON() as Record<string, unknown>;
+      const rows = route.request().postDataJSON() as Record<string, unknown>[];
+      expect(rows).toHaveLength(1);
+      payload = rows[0];
       return route.fulfill({ status: 201, json: { id: 'synthetic-block-hours' } });
     }
     return route.fallback();
   });
   await page.goto('/agenda/bloqueios/novo');
-  await page.getByLabel('Profissional *').click();
-  await page.getByRole('option', { name: /Dra\. Marina Ribeiro/ }).click();
+  await page.getByRole('checkbox', { name: /Dra\. Marina Ribeiro/ }).check();
   await page.getByLabel('Data inicial *').fill('2026-11-03');
   await page.getByLabel('Data final *').fill('2026-11-03');
   await page.getByRole('switch', { name: 'Dia inteiro' }).click();
@@ -144,7 +146,7 @@ test('remoção mantém confirmação curta e restringe a alteração à clínic
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toContainText('novos agendamentos poderão ocupar');
   await confirmation.getByRole('button', { name: 'Remover bloqueio', exact: true }).click();
-  await expect(page.getByText('Nenhum bloqueio cadastrado')).toBeVisible();
+  await expect(page.getByText('Nenhum bloqueio em vigor')).toBeVisible();
   expect(deleteFilters?.get('id')).toBe('eq.synthetic-block-delete');
   expect(deleteFilters?.get('clinica_id')).toBe('eq.00000000-0000-4000-8000-000000000002');
 });

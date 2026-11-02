@@ -53,9 +53,11 @@ test('estorno do extrato do paciente usa página própria e retorna ao financeir
   expect(actionBox && mobileNavBox && actionBox.y + actionBox.height <= mobileNavBox.y).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('patient-payment-reversal-mobile.png'), fullPage: true, animations: 'disabled' });
 
+  // O motivo do estorno exige pelo menos 5 caracteres em qualquer origem.
   await page.getByLabel('Motivo do estorno').fill('erro');
-  await expect(action).toBeEnabled();
+  await expect(action).toBeDisabled();
   await page.getByLabel('Motivo do estorno').fill('Pagamento lançado com forma incorreta');
+  await expect(action).toBeEnabled();
   await action.click();
   await expect(page).toHaveURL(`/pacientes/${patientId}?tab=financeiro`);
   await expect(page.getByRole('tab', { name: /Financeiro/ })).toHaveAttribute('data-state', 'active');
