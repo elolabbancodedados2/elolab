@@ -20,12 +20,15 @@ import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { mensagemDeErro } from '@/lib/erros';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { calcularSaldoGaveta, type MovimentoCaixa } from '@/lib/caixaDiario';
-import { emCentavos } from '@/lib/dinheiro';
+import { emCentavos, parseMoneyInput } from '@/lib/dinheiro';
+import { dataHoraSP } from '@/lib/caixaFormatacao';
+import { imprimirReciboComAviso } from '@/lib/pdfReceipt';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { LancamentoInsert } from '@/types/supabase';
 
 export type CashOperation = 'sangria' | 'suprimento' | 'despesa';
 
-type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'cartao_credito' | 'debito' | 'cartao_debito' | 'cheque' | 'transferencia';
+type FormaPagamento = 'dinheiro' | 'pix' | 'credito' | 'debito' | 'cheque' | 'transferencia';
 
 interface CaixaAberto {
   id: string;
@@ -36,27 +39,19 @@ interface CaixaAberto {
 }
 
 const CATEGORIAS_DESPESA = ['Material de escritório', 'Limpeza', 'Alimentação', 'Transporte', 'Manutenção', 'Fornecedor', 'Troco', 'Outros'];
+// Uma entrada por forma: "cartao_credito"/"cartao_debito" são grafias antigas e
+// apareciam como um segundo "Crédito" e um segundo "Débito" na lista.
 const LABEL_FORMAS: Record<FormaPagamento, string> = {
-  dinheiro: 'Dinheiro', pix: 'PIX', credito: 'Crédito', cartao_credito: 'Crédito',
-  debito: 'Débito', cartao_debito: 'Débito', cheque: 'Cheque', transferencia: 'Transferência',
+  dinheiro: 'Dinheiro', pix: 'PIX', credito: 'Crédito', debito: 'Débito', cheque: 'Cheque', transferencia: 'Transferência',
 };
+
+export const DESTINOS_SANGRIA = ['Cofre da clínica', 'Depósito bancário', 'Entregue ao responsável', 'Pagamento a fornecedor', 'Outro'] as const;
 
 const CONFIG: Record<CashOperation, { title: string; action: string; icon: typeof ArrowDownToLine; description: string }> = {
   sangria: { title: 'Registrar sangria', action: 'Registrar sangria', icon: ArrowDownToLine, description: 'Retirada de dinheiro da gaveta, registrada no histórico do caixa.' },
   suprimento: { title: 'Registrar suprimento', action: 'Adicionar suprimento', icon: ArrowUpFromLine, description: 'Entrada de dinheiro na gaveta, registrada no histórico do caixa.' },
   despesa: { title: 'Registrar despesa', action: 'Registrar despesa', icon: TrendingDown, description: 'Lance a saída e informe como foi paga para manter a conferência correta da gaveta.' },
 };
-
-function parseMoneyInput(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact) return null;
-  const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
-  const formatoDecimal = /^\d+(?:\.\d{1,2})?$/;
-  if (!formatoBrasileiro.test(compact) && !formatoDecimal.test(compact)) return null;
-  const normalized = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function hasCentPrecision(value: number): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
@@ -114,6 +109,9 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Outros');
   const [paymentMethod, setPaymentMethod] = useState<FormaPagamento>('dinheiro');
+  const [destino, setDestino] = useState<string>(DESTINOS_SANGRIA[0]);
+  const [fornecedor, setFornecedor] = useState('');
+  const [imprimirComprovante, setImprimirComprovante] = useState(true);
   const [submitError, setSubmitError] = useState('');
   const [confirmarAcimaDaGaveta, setConfirmarAcimaDaGaveta] = useState(false);
   const idempotencyRef = useRef<{ clinicId: string; id: string } | null>(null);
@@ -175,7 +173,7 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
       const id = idempotencyRef.current.id;
       const tipo = operation;
       const descricao = operation === 'sangria'
-        ? `Sangria — ${description.trim()}`
+        ? `Sangria — ${description.trim()} · Destino: ${destino}`
         : operation === 'suprimento'
           ? description.trim() || 'Suprimento de Caixa'
           : description.trim();
@@ -194,16 +192,30 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
       // Data civil de São Paulo: em UTC, depois das 21h a despesa caía no dia seguinte
       // (recusada pelo caixa fechado, ou fora do caixa e do mês corretos).
       if (operation === 'despesa') payload.data_pagamento = today;
+      if (operation === 'despesa' && fornecedor.trim()) payload.fornecedor = fornecedor.trim().slice(0, 200);
       await insertMovementOnce(payload);
-      return { type: operation };
+      return { type: operation, id, valor: amountValue, motivo: description.trim() };
     },
-    onSuccess: async ({ type }) => {
+    onSuccess: async ({ type, id, valor, motivo }) => {
       idempotencyRef.current = null;
+      if (type === 'sangria' && imprimirComprovante) {
+        void imprimirReciboComAviso({
+          modelo: 'sangria',
+          dataHora: dataHoraSP(new Date()),
+          docId: id.slice(0, 8).toUpperCase(),
+          descricao: motivo,
+          destino,
+          formaPagamento: 'Dinheiro',
+          valorOriginal: valor,
+          valorFinal: valor,
+          operador: profile?.nome || undefined,
+        });
+      }
       toast.success(type === 'sangria' ? 'Sangria registrada.' : type === 'suprimento' ? 'Suprimento adicionado.' : 'Despesa registrada.');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] }),
         queryClient.invalidateQueries({ queryKey: ['cash-operation-drawer-balance'] }),
       ]);
       navigationAllowed.current = true;
@@ -214,12 +226,12 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] }),
         queryClient.invalidateQueries({ queryKey: ['lancamentos'] }),
-        queryClient.invalidateQueries({ queryKey: ['caixa-diario'] }),
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] }),
       ]);
     },
   });
 
-  const hasUnsavedChanges = amount.trim().length > 0 || description.trim().length > 0 || category !== 'Outros' || paymentMethod !== 'dinheiro';
+  const hasUnsavedChanges = amount.trim().length > 0 || description.trim().length > 0 || category !== 'Outros' || paymentMethod !== 'dinheiro' || fornecedor.trim().length > 0;
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     hasUnsavedChanges && !mutation.isPending && !navigationAllowed.current &&
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
@@ -238,7 +250,7 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
     && (operation !== 'sangria' || description.trim())
     && (operation !== 'despesa' || description.trim())
     && !sangriaAcimaDaGaveta
-    && !(operation === 'sangria' && saldoQuery.isLoading)
+    && !(operation === 'sangria' && (saldoQuery.isLoading || saldoGaveta === null))
     && !mutation.isPending);
 
   const registrar = () => {
@@ -283,7 +295,7 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
               <CardTitle>Movimento do caixa</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${today}T12:00:00`), 'dd/MM/yyyy')} · abertura de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cashQuery.data.valor_abertura))}</p>
             </div>
-            <Badge variant="outline" className="w-fit border-warning/40 bg-warning/5 text-warning-foreground">Aberto</Badge>
+            <Badge variant="outline" className="w-fit gap-1.5"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-success" />Aberto</Badge>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
@@ -307,6 +319,16 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
                   Disponível na gaveta: {saldoQuery.isLoading ? 'calculando…' : saldoGaveta === null ? 'não foi possível calcular' : <span className="font-medium tabular-nums text-foreground">{formatarReais(saldoGaveta)}</span>}
                 </p>
               )}
+              {usaDinheiro && !saldoQuery.isLoading && saldoGaveta === null && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                  <span>{operation === 'sangria'
+                    ? 'Sem o saldo da gaveta não dá para conferir o limite da retirada. A sangria fica bloqueada até o saldo carregar.'
+                    : 'Não foi possível conferir o dinheiro da gaveta.'}</span>
+                  <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => void saldoQuery.refetch()} disabled={saldoQuery.isFetching}>
+                    {saldoQuery.isFetching && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Tentar novamente
+                  </Button>
+                </div>
+              )}
               {sangriaAcimaDaGaveta && <p role="alert" className="text-xs text-destructive">A retirada é maior que o dinheiro disponível na gaveta.</p>}
               {operation === 'despesa' && acimaDaGaveta && <p className="text-xs text-warning-foreground">O valor é maior que o dinheiro disponível na gaveta. Você precisará confirmar.</p>}
             </div>
@@ -316,6 +338,22 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
                 <Label htmlFor="cash-operation-description">Motivo da retirada <span className="text-destructive">*</span></Label>
                 <Input id="cash-operation-description" value={description} placeholder="Ex.: reforço do troco na recepção" onChange={event => { setDescription(event.target.value); setSubmitError(''); }} disabled={mutation.isPending} />
                 <p className="text-xs text-muted-foreground">O motivo será registrado junto ao movimento para conferência do caixa.</p>
+              </div>
+            )}
+
+            {operation === 'sangria' && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cash-operation-destination">Destino do dinheiro</Label>
+                  <Select value={destino} onValueChange={setDestino} disabled={mutation.isPending}>
+                    <SelectTrigger id="cash-operation-destination"><SelectValue /></SelectTrigger>
+                    <SelectContent>{DESTINOS_SANGRIA.map(item => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="flex min-h-11 items-center gap-2 self-end">
+                  <Checkbox id="cash-operation-print" checked={imprimirComprovante} onCheckedChange={value => setImprimirComprovante(value === true)} disabled={mutation.isPending} />
+                  <Label htmlFor="cash-operation-print" className="font-normal">Imprimir comprovante de 80 mm</Label>
+                </div>
               </div>
             )}
 
@@ -332,6 +370,10 @@ export function CashOperationPage({ operation }: { operation: CashOperation }) {
                 <div className="space-y-2">
                   <Label htmlFor="cash-operation-description">Descrição da despesa <span className="text-destructive">*</span></Label>
                   <Input id="cash-operation-description" value={description} placeholder="Ex.: material de limpeza" onChange={event => { setDescription(event.target.value); setSubmitError(''); }} disabled={mutation.isPending} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cash-operation-supplier">Fornecedor <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                  <Input id="cash-operation-supplier" value={fornecedor} maxLength={200} placeholder="Ex.: Papelaria Central" onChange={event => setFornecedor(event.target.value)} disabled={mutation.isPending} />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">

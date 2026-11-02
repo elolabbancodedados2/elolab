@@ -52,9 +52,9 @@ test('cashier history uses the header success treatment for every open status', 
 
     const listBadge = main.getByText('Aberto', { exact: true });
     await expect(listBadge).toBeVisible();
-    await expect(listBadge).toHaveClass(/bg-success\/10/);
-    await expect(listBadge).toHaveClass(/text-success/);
-    await expect(listBadge).not.toHaveClass(/bg-primary/);
+    // Visual sóbrio: selo neutro com o ponto de sucesso, o mesmo do cabeçalho do caixa.
+    await expect(listBadge.locator('.bg-success')).toHaveCount(1);
+    await expect(listBadge).not.toHaveClass(/bg-primary|destructive|warning/);
     await expectNoHorizontalOverflow(page);
     await page.screenshot({ path: testInfo.outputPath(`caixa-historico-aberto-${viewport.width}.png`), animations: 'disabled' });
 
@@ -62,9 +62,8 @@ test('cashier history uses the header success treatment for every open status', 
     await listBadge.click();
     await expect(page).toHaveURL('/recepcao/caixa/historico/00000000-0000-4000-9000-000000000081');
     const detailBadge = main.getByText('Aberto', { exact: true });
-    await expect(detailBadge).toHaveClass(/bg-success\/10/);
-    await expect(detailBadge).toHaveClass(/text-success/);
-    await expect(detailBadge).not.toHaveClass(/bg-primary/);
+    await expect(detailBadge.locator('.bg-success')).toHaveCount(1);
+    await expect(detailBadge).not.toHaveClass(/bg-primary|destructive|warning/);
     await page.screenshot({ path: testInfo.outputPath(`caixa-detalhe-aberto-${viewport.width}.png`), animations: 'disabled' });
   }
 
@@ -115,15 +114,26 @@ test('stock timeline keeps ordinary movements out of the destructive palette', a
     await page.setViewportSize(viewport);
     await page.goto('/estoque');
     const main = page.locator('#main-content');
-    await expect(main.getByRole('button', { name: 'Registrar entrada de Luva QA' }).locator('svg')).toHaveClass(/text-success/);
-    await expect(main.getByRole('button', { name: 'Registrar saída de Luva QA' }).locator('svg')).toHaveClass(/text-muted-foreground/);
-
-    await main.getByRole('button', { name: 'Ver histórico de Luva QA' }).click();
+    const entradaButton = main.getByRole('button', { name: 'Registrar entrada de Luva QA' });
+    const saidaButton = main.getByRole('button', { name: 'Registrar saída de Luva QA' });
+    if (viewport.width >= 768) {
+      await expect(entradaButton.locator('svg')).toHaveClass(/text-success/);
+      await expect(saidaButton.locator('svg')).toHaveClass(/text-muted-foreground/);
+      await main.getByRole('button', { name: 'Ver histórico de Luva QA' }).click();
+    } else {
+      // Ficha do celular: botões neutros com texto; o histórico fica no menu de ações.
+      await expect(entradaButton).toBeVisible();
+      await expect(saidaButton.locator('svg')).not.toHaveClass(/destructive/);
+      await main.getByRole('button', { name: 'Mais ações de Luva QA' }).click();
+      await page.getByRole('menuitem', { name: 'Histórico' }).click();
+    }
     await expect(page).toHaveURL(`/estoque/${ITEM_ID}/historico`);
     const history = page.locator('#main-content');
     const entrada = history.getByText('↓ Entrada', { exact: true });
     const saida = history.getByText('↑ Saída', { exact: true });
-    await expect(entrada).toHaveClass(/bg-success/);
+    // Entrada e saída usam o mesmo selo neutro; o texto e a seta diferenciam o sentido.
+    await expect(entrada).toHaveClass(/bg-secondary/);
+    await expect(entrada).not.toHaveClass(/destructive/);
     await expect(saida).toHaveClass(/bg-secondary/);
     await expect(saida).not.toHaveClass(/destructive/);
     await expect(history.locator('.bg-destructive')).toHaveCount(0);

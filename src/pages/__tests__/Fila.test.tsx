@@ -133,7 +133,7 @@ describe('Fila de atendimento', () => {
     mocks.role = 'admin';
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Liberar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Liberar Paciente aguardando balcão sem pagamento' }));
 
     expect(screen.getByTestId('fila-current-location')).toHaveTextContent('/fila/blocked/liberacao/pagamento');
     expect(screen.getByTestId('fila-current-location')).toHaveTextContent('"returnTo":"/fila?tab=fila"');
@@ -187,7 +187,7 @@ describe('Fila de atendimento', () => {
   it('mantém título, data e ações no cabeçalho compartilhado', () => {
     setup();
 
-    expect(screen.getByRole('heading', { name: 'Fila de Atendimento' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Fila de atendimento' })).toBeInTheDocument();
     expect(screen.getByText(/Atualiza automaticamente/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Atualizar fila' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Adicionar à fila' })).toBeInTheDocument();
@@ -252,10 +252,28 @@ describe('Fila de atendimento', () => {
     };
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: /chamar/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /chamar/i }).find(botao => !/próximo/i.test(botao.textContent ?? ''))!);
     await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith('Outra pessoa já atualizou este paciente na fila.', expect.anything()));
     expect(mocks.toast.success).not.toHaveBeenCalled();
     // A chamada exige a mesma versão da linha lida pela tela (compare-and-set).
     expect(mocks.updateFilters).toContainEqual(['updated_at', mocks.fila[0].updated_at]);
+  });
+
+  it('chama o próximo da fila pelo botão e pelo atalho Alt+P', async () => {
+    const espera = agendamento('today', 'Paciente de hoje', hoje, 'confirmado');
+    mocks.fila = [item('today', espera)];
+    mocks.agendamentos = [espera];
+    mocks.queryResults['clinica-exige-pagamento'] = {
+      data: { exigir_pagamento_previo: false, exigir_triagem: false }, isLoading: false, isError: false,
+    };
+    setup();
+
+    const botao = screen.getByRole('button', { name: /chamar próximo/i });
+    expect(botao).toHaveAttribute('aria-keyshortcuts', 'Alt+P');
+    fireEvent.click(botao);
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledTimes(1));
+
+    fireEvent.keyDown(window, { key: 'p', altKey: true });
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledTimes(2));
   });
 });

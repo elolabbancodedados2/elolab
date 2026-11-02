@@ -20,7 +20,7 @@ for (const width of [1440, 768, 390]) {
     await mock(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/precos-servicos?tab=tipos');
-    await page.getByRole('button', { name: 'Novo Tipo', exact: true }).click();
+    await page.getByRole('button', { name: 'Novo tipo', exact: true }).click();
     await expect(page).toHaveURL('/precos-servicos/tipos/novo');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByLabel('Nome *', { exact: true }).fill('Consulta sintética');
@@ -41,12 +41,12 @@ for (const width of [1440, 768, 390]) {
     await page.getByRole('button', { name: 'Preços', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Preços — Consulta QA', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Editar preço para Convênio QA' }).click();
-    await page.getByLabel('Preço para Convênio QA').fill('99.90');
+    await page.getByLabel('Preço para Convênio QA', { exact: true }).fill('99.90');
     await page.screenshot({ path: info.outputPath(`consultation-prices-${width}.png`) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: 'Voltar aos tipos de consulta' }).click();
     await page.getByRole('button', { name: 'Continuar nesta página' }).click();
-    await expect(page.getByLabel('Preço para Convênio QA')).toHaveValue('99.90');
+    await expect(page.getByLabel('Preço para Convênio QA', { exact: true })).toHaveValue('99.90');
   });
 }
 test('consultation type create keeps failed draft and confirmed payload', async ({ page }, info) => {
@@ -85,11 +85,11 @@ test('finance can change a price with recovery but cannot edit consultation type
   });
   await page.goto(`/precos-servicos/tipos/${id}/precos`);
   await page.getByRole('button', { name: 'Editar preço para Convênio QA' }).click();
-  await page.getByLabel('Preço para Convênio QA').fill('99.90');
-  await page.getByRole('button', { name: 'Salvar preço', exact: true }).click();
+  await page.getByLabel('Preço para Convênio QA', { exact: true }).fill('99.90');
+  await page.getByRole('button', { name: 'Salvar preço para Convênio QA', exact: true }).click();
   await expect(page.getByText('Falha sintética no preço', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Preço para Convênio QA')).toHaveValue('99.90');
-  await page.getByRole('button', { name: 'Salvar preço', exact: true }).click();
+  await expect(page.getByLabel('Preço para Convênio QA', { exact: true })).toHaveValue('99.90');
+  await page.getByRole('button', { name: 'Salvar preço para Convênio QA', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Editar preço para Convênio QA' })).toBeVisible();
   await page.getByRole('button', { name: 'Voltar aos tipos de consulta' }).click();
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -112,13 +112,13 @@ test('consultation type editing preserves saved colors and returns to its prices
     return route.fulfill({ json: [{ id }] });
   });
   await page.goto('/precos-servicos?tab=tipos');
-  await page.getByRole('tab', { name: 'Tipos de Consulta', exact: true }).click();
+  await page.getByRole('tab', { name: 'Tipos de consulta', exact: true }).click();
   await page.getByRole('button', { name: 'Editar Consulta QA', exact: true }).click();
   await page.getByLabel('Nome *', { exact: true }).fill('Consulta QA revisada');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect(page).toHaveURL('/precos-servicos?tab=tipos');
-  await expect(page.getByRole('tab', { name: 'Tipos de Consulta', exact: true })).toHaveAttribute('data-state', 'active');
-  await expect(page.getByRole('heading', { name: 'Tipos & Preços de Consulta', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Tipos de consulta', exact: true })).toHaveAttribute('data-state', 'active');
+  await expect(page.getByRole('heading', { name: 'Preços e serviços', exact: true })).toBeVisible();
   expect(updated).toBe(true);
 });
 test('consultation type page recovers loading errors and missing records', async ({ page }, info) => {

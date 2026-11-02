@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { downloadStringAsFile } from '@/lib/auditExport';
 import { todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import {
-  csvFaturamentoCompetencia, relatorioFaturamentoCompetencia, SITUACOES_FATURAMENTO,
-  type FiltrosFaturamento, type GlosaFaturamento, type LoteFaturamento, type SituacaoFaturamento,
+  analiseGlosasPorMotivo, csvAnaliseGlosas, csvFaturamentoCompetencia, relatorioFaturamentoCompetencia, SITUACOES_FATURAMENTO,
+  type FiltrosFaturamento, type GlosaAnalise, type LoteFaturamento, type SituacaoFaturamento,
 } from '@/lib/faturamentoCompetencia';
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -24,7 +24,7 @@ function mesesAtras(mes: string, quantidade: number) {
 
 interface Props {
   lotes: ReadonlyArray<LoteFaturamento>;
-  glosas: ReadonlyArray<GlosaFaturamento>;
+  glosas: ReadonlyArray<GlosaAnalise>;
   convenios: ReadonlyArray<{ id: string; nome: string }>;
 }
 
@@ -34,11 +34,17 @@ export function RelatorioFaturamentoCompetencia({ lotes, glosas, convenios }: Pr
     competenciaInicial: mesesAtras(mesAtual, 2), competenciaFinal: mesAtual, convenioId: 'todos', situacao: 'faturados',
   });
   const relatorio = useMemo(() => relatorioFaturamentoCompetencia(lotes, glosas, filtros), [lotes, glosas, filtros]);
+  const analiseGlosas = useMemo(() => analiseGlosasPorMotivo(relatorio.lotes, glosas), [relatorio.lotes, glosas]);
   const convenioNome = filtros.convenioId === 'todos' ? 'Todos os convênios' : convenios.find(c => c.id === filtros.convenioId)?.nome ?? 'Convênio selecionado';
 
   const exportar = () => downloadStringAsFile({
     content: csvFaturamentoCompetencia(relatorio, filtros, convenioNome),
     filename: `faturamento-competencia-${filtros.competenciaInicial}-a-${filtros.competenciaFinal}.csv`,
+    mimeType: 'text/csv;charset=utf-8',
+  });
+  const exportarGlosas = () => downloadStringAsFile({
+    content: csvAnaliseGlosas(analiseGlosas, filtros, convenioNome),
+    filename: `glosas-por-motivo-${filtros.competenciaInicial}-a-${filtros.competenciaFinal}.csv`,
     mimeType: 'text/csv;charset=utf-8',
   });
 
@@ -66,6 +72,16 @@ export function RelatorioFaturamentoCompetencia({ lotes, glosas, convenios }: Pr
         <TableBody>{relatorio.linhas.map(l => <TableRow key={`${l.competencia}-${l.convenio}`}><TableCell>{mesBr(l.competencia)}</TableCell><TableCell>{l.convenio}</TableCell><TableCell className="text-right tabular-nums">{l.lotes}</TableCell><TableCell className="text-right tabular-nums">{l.guias}</TableCell><TableCell className="text-right tabular-nums">{brl(l.apresentado)}</TableCell><TableCell className="text-right tabular-nums">{brl(l.recebido)}</TableCell><TableCell className="text-right tabular-nums">{brl(l.glosado)}</TableCell><TableCell className="text-right tabular-nums">{brl(l.recuperado)}</TableCell><TableCell className="text-right tabular-nums">{brl(l.aReceber)}</TableCell></TableRow>)}</TableBody>
         {relatorio.totais && <TableFooter><TableRow><TableCell colSpan={2} className="font-semibold">Total</TableCell><TableCell className="text-right tabular-nums">{relatorio.totais.lotes}</TableCell><TableCell className="text-right tabular-nums">{relatorio.totais.guias}</TableCell><TableCell className="text-right tabular-nums">{brl(relatorio.totais.apresentado)}</TableCell><TableCell className="text-right tabular-nums">{brl(relatorio.totais.recebido)}</TableCell><TableCell className="text-right tabular-nums">{brl(relatorio.totais.glosado)}</TableCell><TableCell className="text-right tabular-nums">{brl(relatorio.totais.recuperado)}</TableCell><TableCell className="text-right tabular-nums">{brl(relatorio.totais.aReceber)}</TableCell></TableRow></TableFooter>}
       </Table></div>}
+      {!relatorio.erro && relatorio.lotes.length > 0 && <section aria-labelledby="fat-glosas-titulo" className="space-y-3 border-t border-border/70 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 id="fat-glosas-titulo" className="text-sm font-semibold">Glosas por convênio e motivo</h3><p className="text-xs text-muted-foreground">Mesmos lotes do relatório acima, da maior perda para a menor.</p></div>
+          <Button variant="outline" className="h-10 gap-1.5 rounded-full" onClick={exportarGlosas} disabled={analiseGlosas.length === 0}><Download aria-hidden="true" className="h-4 w-4" />Exportar glosas</Button>
+        </div>
+        {analiseGlosas.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma glosa nesses lotes.</p> : <div className="overflow-x-auto rounded-xl border border-border/60"><Table>
+          <TableHeader><TableRow><TableHead>Convênio</TableHead><TableHead>Motivo</TableHead><TableHead className="text-right">Glosas</TableHead><TableHead className="text-right">Glosado</TableHead><TableHead className="text-right">Recuperado</TableHead><TableHead className="text-right">Perdido</TableHead></TableRow></TableHeader>
+          <TableBody>{analiseGlosas.map(l => <TableRow key={`${l.convenio}-${l.codigo}`}><TableCell>{l.convenio}</TableCell><TableCell><span className="font-medium">{l.codigo}</span>{l.motivo && <span className="block max-w-xs truncate text-xs text-muted-foreground">{l.motivo}</span>}</TableCell><TableCell className="text-right tabular-nums">{l.quantidade}</TableCell><TableCell className="text-right tabular-nums">{brl(l.glosado)}</TableCell><TableCell className="text-right tabular-nums">{brl(l.recuperado)}</TableCell><TableCell className="text-right tabular-nums">{brl(l.perdido)}</TableCell></TableRow>)}</TableBody>
+        </Table></div>}
+      </section>}
     </CardContent>
   </Card>;
 }

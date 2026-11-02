@@ -81,7 +81,7 @@ test('cash withdrawal opens a page and keeps its reason and idempotency key afte
   await expect(page).toHaveURL('/caixa-diario');
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({
-    tipo: 'sangria', valor: 32.5, descricao: 'Sangria — Troco para o balcão', forma_pagamento: 'dinheiro', status: 'pago',
+    tipo: 'sangria', valor: 32.5, descricao: 'Sangria — Troco para o balcão · Destino: Cofre da clínica', forma_pagamento: 'dinheiro', status: 'pago',
   });
   expect(payloads[1]).toMatchObject(payloads[0]);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

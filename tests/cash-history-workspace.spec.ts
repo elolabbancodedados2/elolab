@@ -57,7 +57,8 @@ test('cash history details are a clinic-scoped, read-only workspace on desktop a
   await page.screenshot({ path: testInfo.outputPath('cash-history-detail-desktop.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'Voltar ao histórico' }).click();
   await expect(page).toHaveURL('/caixa-diario');
-  await expect(page.getByRole('heading', { name: 'Últimos 30 caixas' })).toBeVisible();
+  // O histórico passou a ser filtrado por mês ("Caixas do mês (n)").
+  await expect(page.getByRole('heading', { name: /^Caixas do mês/ })).toBeVisible();
   await expect(page.getByText('29/10', { exact: false })).toBeVisible();
   await expect(page.getByText('Operador QA')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);

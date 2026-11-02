@@ -13,6 +13,8 @@ import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { calcularSaldoGaveta, calcularTotaisCaixa } from '@/lib/caixaDiario';
 import { cn } from '@/lib/utils';
 import { dataHoraSP, horaSP, rotuloForma, textoSeguroCsv } from '@/lib/caixaFormatacao';
+import { abrirJanelaDeImpressao, montarRelatorioCaixaHtml, textoDiferenca } from '@/lib/relatorioCaixa';
+import { diferencaEmReais } from '@/lib/dinheiro';
 
 type CashRecord = {
   id: string;
@@ -35,6 +37,7 @@ type CashMovement = {
   categoria: string | null;
   data: string;
   created_at: string;
+  paciente_nome?: string | null;
 };
 
 type CashEvent = {
@@ -59,12 +62,13 @@ function exportMovementsCsv(movements: CashMovement[], date: string) {
   const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const safeText = textoSeguroCsv;
   const rows = [
-    ['Data', 'Hora', 'Tipo', 'Descrição', 'Forma de pagamento', 'Categoria', 'Valor'],
+    ['Data', 'Hora', 'Tipo', 'Descrição', 'Paciente', 'Forma de pagamento', 'Categoria', 'Valor'],
     ...movements.map(item => [
       item.data,
       horaSP(item.created_at),
       movementLabel[item.tipo],
       safeText(item.descricao),
+      safeText(item.paciente_nome || ''),
       safeText(rotuloForma(item.forma_pagamento)),
       safeText(item.categoria),
       ((item.tipo === 'receita' || item.tipo === 'suprimento') ? item.valor : -item.valor).toFixed(2).replace('.', ','),
@@ -79,23 +83,6 @@ function exportMovementsCsv(movements: CashMovement[], date: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function printCashReport(cash: CashRecord, movements: CashMovement[], expected: number, totals: ReturnType<typeof calcularTotaisCaixa>) {
-  const printWindow = window.open('', '_blank', 'width=900,height=1000');
-  if (!printWindow) {
-    toast.error('O navegador bloqueou a janela de impressão.', { description: 'Permita pop-ups para este site e tente novamente.' });
-    return;
-  }
-  printWindow.opener = null;
-  const escapeHtml = (value: unknown) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const lines = movements.map(item => {
-    const positive = item.tipo === 'receita' || item.tipo === 'suprimento';
-    return `<tr><td>${escapeHtml(horaSP(item.created_at))}</td><td>${escapeHtml(movementLabel[item.tipo])}</td><td>${escapeHtml(item.descricao)}</td><td>${escapeHtml(rotuloForma(item.forma_pagamento))}</td><td class="num ${positive ? 'positive' : 'negative'}">${positive ? '+' : '−'}${escapeHtml(money(Math.abs(Number(item.valor))))}</td></tr>`;
-  }).join('');
-  const body = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Fechamento de caixa ${escapeHtml(cash.data)}</title><style>body{font:13px Arial,sans-serif;color:#172b4d;margin:32px}h1{font-size:20px;margin:0 0 6px}.muted{color:#61748b}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0}.summary div{border:1px solid #dfe7f0;border-radius:6px;padding:10px}.summary b{display:block;margin-top:5px;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-bottom:1px solid #dfe7f0;padding:8px;text-align:left}th{color:#61748b;font-size:11px;text-transform:uppercase}.num{text-align:right;font-variant-numeric:tabular-nums}.positive{color:#047857}.negative{color:#b91c1c}@media print{body{margin:16px}}</style></head><body><h1>Relatório de fechamento de caixa</h1><div class="muted">${escapeHtml(dateLabel(cash.data))} · ${cash.aberto ? 'Caixa ainda aberto (parcial)' : 'Caixa fechado'}</div><div class="summary"><div>Abertura<b>${escapeHtml(money(Number(cash.valor_abertura)))}</b><span class="muted">${escapeHtml(cash.operador_abertura || '—')}</span></div><div>Receitas<b>${escapeHtml(money(totals.receita))}</b></div><div>Despesas e sangrias<b>${escapeHtml(money(totals.despesa + totals.sangria))}</b></div><div>Suprimentos<b>${escapeHtml(money(totals.suprimento))}</b></div><div>Saldo esperado<b>${escapeHtml(money(expected))}</b></div><div>Valor contado<b>${cash.valor_fechamento === null ? '—' : escapeHtml(money(Number(cash.valor_fechamento)))}</b></div></div>${cash.observacoes ? `<p><strong>Observações:</strong> ${escapeHtml(cash.observacoes)}</p>` : ''}<h2>Movimentações (${movements.length})</h2><table><thead><tr><th>Hora</th><th>Tipo</th><th>Descrição</th><th>Forma</th><th class="num">Valor</th></tr></thead><tbody>${lines || '<tr><td colspan="5" class="muted">Nenhuma movimentação</td></tr>'}</tbody></table><script>window.onload=function(){window.print();}</script></body></html>`;
-  printWindow.document.write(body);
-  printWindow.document.close();
 }
 
 export default function CaixaHistoricoDetalhePage() {
@@ -177,14 +164,17 @@ export default function CaixaHistoricoDetalhePage() {
             <Summary label="Receitas" value={money(totals?.receita)} />
             <Summary label="Saídas" value={money((totals?.despesa ?? 0) + (totals?.sangria ?? 0))} />
             <Summary label="Saldo esperado" value={money(expected)} />
-            <Summary label="Fechamento" value={cash.valor_fechamento === null ? 'Não fechado' : money(Number(cash.valor_fechamento))} detail={cash.operador_fechamento || undefined} />
+            <Summary label="Fechamento" value={cash.valor_fechamento === null ? 'Não fechado' : money(Number(cash.valor_fechamento))} detail={[cash.operador_fechamento, cash.valor_fechamento !== null && !cash.aberto ? textoDiferenca(diferencaEmReais(Number(cash.valor_fechamento), expected)) : null].filter(Boolean).join(' · ') || undefined} />
           </section>
 
           <div className="flex flex-wrap items-center gap-2 print:hidden">
-            <Badge variant={cash.aberto ? 'outline' : 'secondary'} className={cn(cash.aberto && 'border-success/20 bg-success/10 text-success')}>
-              {cash.aberto ? 'Aberto' : 'Fechado'}
+            <Badge variant={cash.aberto ? 'outline' : 'secondary'} className="gap-1.5">
+              {cash.aberto && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />}{cash.aberto ? 'Aberto' : 'Fechado'}
             </Badge>
-            <Button variant="outline" disabled={movementsQuery.isLoading || movementsQuery.isError} onClick={() => printCashReport(cash, movements, expected, totals!)}><Printer className="mr-2 h-4 w-4" />Imprimir relatório</Button>
+            <Button variant="outline" disabled={movementsQuery.isLoading || movementsQuery.isError} onClick={() => {
+              const corpo = montarRelatorioCaixaHtml({ caixa: cash, movimentos: movements, emitidoPor: profile?.nome });
+              if (!abrirJanelaDeImpressao(`Fechamento de caixa ${cash.data}`, corpo)) toast.error('O navegador bloqueou a janela de impressão.', { description: 'Permita pop-ups para este site e tente novamente.' });
+            }}><Printer className="mr-2 h-4 w-4" />Imprimir relatório</Button>
             <Button variant="ghost" onClick={() => exportMovementsCsv(movements, cash.data)} disabled={movements.length === 0}><Download className="mr-2 h-4 w-4" />Exportar CSV</Button>
             {cash.aberto && (
               <Button className="ml-auto" variant="destructive" disabled={movementsQuery.isLoading || movementsQuery.isError || exceeded}
@@ -204,14 +194,14 @@ export default function CaixaHistoricoDetalhePage() {
                 <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma movimentação neste caixa.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] text-sm">
+                  <table className="w-full min-w-[720px] text-sm">
                     <caption className="sr-only">Movimentações registradas neste caixa</caption>
-                    <thead><tr className="border-b text-left text-xs text-muted-foreground"><th scope="col" className="py-2 pr-3">Horário</th><th scope="col" className="py-2 pr-3">Tipo</th><th scope="col" className="py-2 pr-3">Descrição</th><th scope="col" className="py-2 pr-3">Pagamento</th><th scope="col" className="py-2 text-right">Valor</th></tr></thead>
+                    <thead><tr className="border-b text-left text-xs text-muted-foreground"><th scope="col" className="py-2 pr-3">Horário</th><th scope="col" className="py-2 pr-3">Tipo</th><th scope="col" className="py-2 pr-3">Descrição</th><th scope="col" className="py-2 pr-3">Paciente</th><th scope="col" className="py-2 pr-3">Pagamento</th><th scope="col" className="py-2 text-right">Valor</th></tr></thead>
                     <tbody>{movements.map(item => {
                       const positive = item.tipo === 'receita' || item.tipo === 'suprimento';
                       return <tr key={item.id} className="border-b last:border-0">
                         <td className="py-3 pr-3 tabular-nums">{horaSP(item.created_at)}</td>
-                        <td className="py-3 pr-3">{movementLabel[item.tipo]}</td><td className="max-w-[28rem] py-3 pr-3">{item.descricao}</td><td className="py-3 pr-3">{rotuloForma(item.forma_pagamento)}</td>
+                        <td className="py-3 pr-3">{movementLabel[item.tipo]}</td><td className="max-w-[28rem] py-3 pr-3">{item.descricao}</td><td className="py-3 pr-3">{item.paciente_nome || '—'}</td><td className="py-3 pr-3">{rotuloForma(item.forma_pagamento)}</td>
                         <td className={cn('py-3 text-right font-medium tabular-nums', positive ? 'text-success' : 'text-destructive')}>{positive ? '+' : '−'}{money(Math.abs(Number(item.valor)))}</td>
                       </tr>;
                     })}</tbody>

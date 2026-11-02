@@ -19,7 +19,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { pacienteCorresponde } from '@/lib/buscaPaciente';
 
 import { parseResultadoNumerico } from '@/lib/laudoWorkflow';
-import { cursorAposAtualizacaoWorklist, type CursorLaudo } from '@/lib/laudoWorklist';
+import { cursorAposAtualizacaoWorklist, mensagemWhatsAppLaudo, mesclarJanelaLaudos, type CursorLaudo } from '@/lib/laudoWorklist';
+import { contagem } from '@/lib/plural';
 import { LaboratorioSubnav } from '@/components/laboratorio/LaboratorioSubnav';
 import { criticalAcknowledgementIsPending } from '@/lib/criticalResultAcknowledgement';
 import { linkWhatsApp } from '@/lib/whatsapp';
@@ -116,13 +117,8 @@ export default function LaudosLab() {
         .sort((a: any, b: any) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-      setColetas(atuais => {
-        const porId = new Map<string, any>();
-        for (const coleta of atuais) porId.set(coleta.id, coleta);
-        for (const coleta of comResultados) porId.set(coleta.id, coleta);
-        return [...porId.values()].sort((a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-      });
+      // Substitui o trecho recarregado; só as páginas antigas carregadas à parte ficam.
+      setColetas(atuais => mesclarJanelaLaudos(atuais, comResultados, cursorMaisRecente, linhas.length > TETO_WORKLIST));
       setLoadError(null);
     } catch (error) {
       if (requestId === fetchRequestRef.current && activeClinicRef.current === clinicId) setLoadError(error);
@@ -195,12 +191,19 @@ export default function LaudosLab() {
     setLoadError(null);
     void fetchLaudos();
     if (!clinicId) return () => { activeClinicRef.current = null; fetchRequestRef.current += 1; };
+    // Uma liberação em lote dispara dezenas de eventos: agrupa em uma recarga.
+    let timer: number | undefined;
+    const agendarRecarga = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void fetchLaudos(); }, 400);
+    };
     const channel = supabase.channel(canalUnico('laudos-rt'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultados_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultado_critico_confirmacoes', filter: `clinica_id=eq.${clinicId}` }, fetchLaudos)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultados_laboratorio', filter: `clinica_id=eq.${clinicId}` }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coletas_laboratorio', filter: `clinica_id=eq.${clinicId}` }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resultado_critico_confirmacoes', filter: `clinica_id=eq.${clinicId}` }, agendarRecarga)
       .subscribe();
     return () => {
+      window.clearTimeout(timer);
       if (activeClinicRef.current === clinicId) activeClinicRef.current = null;
       fetchRequestRef.current += 1;
       supabase.removeChannel(channel);
@@ -291,9 +294,6 @@ export default function LaudosLab() {
         icon={<FileText />}
         actions={
           <>
-            <Button asChild variant="outline" className="shrink-0 gap-2 rounded-full">
-              <Link to="/laboratorio"><FlaskConical aria-hidden="true" className="h-4 w-4" /> Laboratório</Link>
-            </Button>
             <Button
               variant="outline"
               size="icon"
@@ -303,9 +303,6 @@ export default function LaudosLab() {
               title="Atualizar laudos"
             >
               <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button asChild className="shrink-0 gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
-              <Link to="/exames"><TestTube aria-hidden="true" className="h-4 w-4" /> Exames</Link>
             </Button>
           </>
         }
@@ -323,8 +320,8 @@ export default function LaudosLab() {
               value: totalPendentes,
               icon: Clock,
               escuro: false,
-              color: 'text-primary',
-              surface: 'bg-primary/10',
+              color: 'text-foreground',
+              surface: 'bg-secondary',
               caption: 'aguardando laudo',
             },
             {
@@ -353,8 +350,8 @@ export default function LaudosLab() {
               value: totalLiberados,
               icon: CheckCircle2,
               escuro: false,
-              color: 'text-success',
-              surface: 'bg-success/10',
+              color: 'text-foreground',
+              surface: 'bg-secondary',
               caption: 'concluídos',
             },
             {
@@ -363,8 +360,8 @@ export default function LaudosLab() {
               value: coletas.length,
               icon: FileText,
               escuro: false,
-              color: 'text-primary',
-              surface: 'bg-primary/10',
+              color: 'text-foreground',
+              surface: 'bg-secondary',
               caption: 'na worklist',
             },
           ] as const).map(s => {
@@ -378,21 +375,19 @@ export default function LaudosLab() {
                 onClick={() => setStatusFilter(ativo && s.key !== 'todos' ? 'todos' : s.key)}
                 className={cn(
                   'group rounded-2xl border border-border/60 bg-card text-left transition-colors duration-200 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  s.escuro && ativo && 'border-primary bg-primary text-primary-foreground',
-                  ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
-                  ativo && s.escuro && 'ring-2 ring-primary/30',
+                  ativo && 'border-transparent bg-primary text-primary-foreground',
                 )}
               >
                 <div className="flex min-h-[96px] items-center gap-3 p-3">
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.escuro && ativo ? 'bg-primary-foreground/15' : s.surface)}>
-                    <Icon aria-hidden="true" className={cn('h-5 w-5', s.escuro && ativo ? 'text-primary-foreground' : s.color)} />
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', ativo ? 'bg-primary-foreground/15' : s.surface)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5', ativo ? 'text-primary-foreground' : s.color)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', s.escuro && ativo ? 'text-primary-foreground' : 'text-foreground')}>{s.label}</h3>
-                      <span className={cn('text-2xl font-bold tabular-nums', s.escuro && ativo ? 'text-primary-foreground' : s.color)}>{s.value}</span>
+                      <h3 className={cn('truncate text-xs font-semibold', ativo ? 'text-primary-foreground' : 'text-foreground')}>{s.label}</h3>
+                      <span className={cn('text-2xl font-bold tabular-nums', ativo ? 'text-primary-foreground' : s.color)}>{s.value}</span>
                     </div>
-                    <p className={cn('truncate text-[11px]', s.escuro && ativo ? 'text-primary-foreground' : 'text-muted-foreground')}>{s.caption}</p>
+                    <p className={cn('truncate text-xs', ativo ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{s.caption}</p>
                   </div>
                 </div>
               </button>
@@ -404,7 +399,7 @@ export default function LaudosLab() {
       {/* ─── Próximo a Laudar ─── */}
       {proximoALaudar && (
         <div
-          className="rounded-2xl border border-primary/30 bg-card p-4"
+          className={cn('rounded-2xl border bg-card p-4', proximoALaudar.urgente ? 'border-warning/40' : 'border-border')}
           aria-label="Próxima coleta a laudar"
         >
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -413,7 +408,7 @@ export default function LaudosLab() {
                 <FileSearch className="h-6 w-6" />
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-wide text-primary font-semibold">Próximo a laudar</p>
+                <p className="text-xs font-semibold text-muted-foreground">Próximo a laudar</p>
                 <p className="text-lg font-bold truncate">
                   {proximoALaudar.pacientes?.nome_social?.trim() || proximoALaudar.pacientes?.nome || '—'}
                 </p>
@@ -439,7 +434,7 @@ export default function LaudosLab() {
                     asChild
                     variant="outline"
                     size="sm"
-                    className="h-9 gap-1.5 rounded-full border-border text-primary hover:bg-primary/10 hover:text-primary"
+                    className="min-h-11 gap-1.5 rounded-full"
                   >
                     <a href={waLink} target="_blank" rel="noopener noreferrer" aria-label="Contatar paciente via WhatsApp">
                       <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
@@ -449,7 +444,7 @@ export default function LaudosLab() {
               })()}
               <Button
                 size="sm"
-                className="h-9 gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                className="min-h-11 gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                 onClick={() => openReport(proximoALaudar.id)}
               >
                 <Eye className="h-3.5 w-3.5" /> Abrir Laudo
@@ -488,10 +483,10 @@ export default function LaudosLab() {
               aria-pressed={statusFilter === f.key}
               onClick={() => setStatusFilter(f.key)}
               className={cn(
-                'h-8 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'min-h-11 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 statusFilter === f.key
                   ? 'border-transparent bg-primary text-primary-foreground'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  : 'border-border bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground',
               )}
             >
               {f.label}
@@ -543,7 +538,51 @@ export default function LaudosLab() {
               )}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-border/60">
+            <>
+            <ul className="divide-y divide-border/60 md:hidden" aria-label="Laudos">
+              {filtradas.map(c => {
+                const liberados = getExamesLiberados(c);
+                const pendentes = getExamesPendentes(c);
+                const total = c.resultados_laboratorio?.length || 0;
+                const estado = liberados.length > 0 && pendentes.length === 0 ? 'liberado' : liberados.length > 0 ? 'parcial' : 'pendente';
+                const critico = hasCritico(c);
+                const alterado = hasAlterado(c);
+                const nome = c.pacientes?.nome_social?.trim() || c.pacientes?.nome || 'paciente';
+                const texto = mensagemWhatsAppLaudo(nome, c.codigo_amostra ?? '', estado, critico);
+                const waLink = texto ? linkWhatsApp(c.pacientes?.telefone, texto) : null;
+                return (
+                  <li key={c.id} className={cn('space-y-2 p-4', critico && 'bg-destructive/5')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="break-words font-medium">{nome}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{c.codigo_amostra ?? '—'}</p>
+                      </div>
+                      <Badge variant={estado === 'liberado' ? 'default' : 'secondary'} className={cn('shrink-0 rounded-full text-xs', estado === 'parcial' && 'border-warning/30 bg-warning/10 text-warning-foreground')}>
+                        {estado === 'liberado' ? 'Liberado' : estado === 'parcial' ? 'Parcial' : 'Pendente'}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {critico && <Badge variant="destructive" className="gap-1 rounded-full text-xs"><AlertCircle aria-hidden="true" className="h-3 w-3" />Crítico</Badge>}
+                      {hasCriticoPendente(c) && <Badge variant="destructive" className="rounded-full text-xs">Ciência pendente</Badge>}
+                      {alterado && <Badge variant="outline" className="gap-1 rounded-full border-destructive/40 text-xs text-destructive"><AlertTriangle aria-hidden="true" className="h-3 w-3" />Alterado</Badge>}
+                      {c.urgente && <Badge variant="outline" className="rounded-full border-warning/40 bg-warning/10 text-xs text-warning-foreground">Urgente</Badge>}
+                      <span className="text-xs text-muted-foreground">{liberados.length}/{total} liberados</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {waLink && (
+                        <Button asChild variant="outline" size="sm" className="min-h-11 gap-1.5 rounded-full">
+                          <a href={waLink} target="_blank" rel="noopener noreferrer" aria-label={`Contatar ${nome} via WhatsApp`}><MessageCircle aria-hidden="true" className="h-4 w-4" />WhatsApp</a>
+                        </Button>
+                      )}
+                      <Button size="sm" className="min-h-11 gap-1.5 rounded-full" onClick={() => openReport(c.id)}>
+                        <Eye aria-hidden="true" className="h-4 w-4" />Ver laudo
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
@@ -566,28 +605,31 @@ export default function LaudosLab() {
                     const parcial = liberados.length > 0 && pendentes.length > 0;
                     const alterado = hasAlterado(c);
                     const critico = hasCritico(c);
-                    const waLink = linkWhatsApp(
-                      c.pacientes?.telefone,
-                      `Olá, ${c.pacientes?.nome_social?.trim() || c.pacientes?.nome || 'paciente'}! Seu laudo laboratorial (${c.codigo_amostra}) está disponível. Entre em contato para mais informações.`,
+                    const textoWhatsApp = mensagemWhatsAppLaudo(
+                      c.pacientes?.nome_social?.trim() || c.pacientes?.nome || 'paciente',
+                      c.codigo_amostra ?? '',
+                      todoLiberado ? 'liberado' : parcial ? 'parcial' : 'pendente',
+                      critico,
                     );
+                    const waLink = textoWhatsApp ? linkWhatsApp(c.pacientes?.telefone, textoWhatsApp) : null;
                     return (
                       <tr
                         key={c.id}
                         className={cn(
                           'border-b border-border/50 last:border-0 transition-colors hover:bg-muted/20',
                           todoLiberado && 'opacity-60 hover:opacity-100',
-                          c.urgente && 'bg-destructive/5',
+                          critico && 'bg-destructive/5',
                         )}
                       >
                         <td className="px-4 py-2.5">
                           <span className={cn(
                             'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
-                            idx === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                            idx === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground',
                           )}>
                             {idx + 1}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-primary font-semibold">{c.codigo_amostra ?? '—'}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-foreground font-semibold">{c.codigo_amostra ?? '—'}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             {c.urgente && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
@@ -619,7 +661,7 @@ export default function LaudosLab() {
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           {todoLiberado ? (
-                            <Badge className="bg-success/10 text-success border-success/20 text-[10px] rounded-full">Liberado</Badge>
+                            <Badge className="text-[10px] rounded-full">Liberado</Badge>
                           ) : parcial ? (
                             <Badge className="bg-warning/10 text-warning-foreground border-warning/20 text-[10px] rounded-full">Parcial</Badge>
                           ) : (
@@ -636,7 +678,7 @@ export default function LaudosLab() {
                                 asChild
                                 variant="ghost"
                                 size="sm"
-                                className="h-9 w-9 rounded-full p-0 text-primary hover:bg-primary/10"
+                                className="h-11 w-11 rounded-full p-0"
                                 aria-label={`Contatar ${c.pacientes?.nome || 'paciente'} via WhatsApp`}
                               >
                                 <a href={waLink} target="_blank" rel="noopener noreferrer">
@@ -647,7 +689,7 @@ export default function LaudosLab() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-9 rounded-full text-xs gap-1"
+                              className="min-h-11 rounded-full text-xs gap-1"
                               onClick={() => openReport(c.id)}
                             >
                               <Eye className="h-3 w-3" /> Ver Laudo
@@ -660,6 +702,7 @@ export default function LaudosLab() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -676,7 +719,7 @@ export default function LaudosLab() {
       )}
       {hasOlderLaudos && (
         <div className="flex flex-col items-center gap-2">
-          <p className="text-xs text-muted-foreground">{coletas.length} laudo(s) carregado(s)</p>
+          <p className="text-xs text-muted-foreground">{contagem(coletas.length, 'laudo carregado', 'laudos carregados')}</p>
           <Button
             variant="outline"
             className="gap-2 rounded-full"
@@ -688,20 +731,6 @@ export default function LaudosLab() {
           </Button>
         </div>
       )}
-
-      {/* ─── Cross-links ─── */}
-      <div className="flex flex-wrap gap-2 pt-2 border-t border-border/60">
-        <p className="w-full text-xs text-muted-foreground mb-1">Fluxo do laboratório:</p>
-        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 rounded-full text-xs">
-          <Link to="/laboratorio"><FlaskConical className="h-3.5 w-3.5" /> Worklist</Link>
-        </Button>
-        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 rounded-full text-xs">
-          <Link to="/exames"><TestTube className="h-3.5 w-3.5" /> Exames</Link>
-        </Button>
-        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 rounded-full text-xs">
-          <Link to="/guias-externas"><FileSearch className="h-3.5 w-3.5" /> Guias Externas</Link>
-        </Button>
-      </div>
 
     </div>
   );
