@@ -982,7 +982,8 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
         </fieldset>
 
         {/* Rodapé fixo: o botão de salvar fica sempre à vista, sem rolar o formulário. */}
-        <footer className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:mx-0 sm:px-0">
+        {/* Abaixo do lg a barra de navegação fixa ocupa o rodapé da tela: o rodapé da consulta para acima dela. */}
+        <footer className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0 lg:bottom-0 lg:pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div>
             {podeCancelarConsulta && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)} disabled={saving || deleting} className="text-destructive">
