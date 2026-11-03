@@ -12,6 +12,7 @@ async function enterPortal(page: import('@playwright/test').Page, query = '', ex
   await page.goto(`/portal-paciente${query}`);
   const essentialCookies = page.getByRole('button', { name: 'Apenas Essenciais' });
   if (await essentialCookies.isVisible()) await essentialCookies.click();
+  await page.getByRole('button', { name: 'Tenho um código' }).click();
   await page.getByRole('textbox', { name: 'Código de acesso do paciente' }).fill('codigo-sintetico-valido');
   await page.getByRole('button', { name: 'Acessar Portal' }).click();
   await expect(page.getByRole('heading', { name: expectedHeading })).toBeVisible();

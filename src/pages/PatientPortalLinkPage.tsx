@@ -14,12 +14,16 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { mensagemDeErro } from '@/lib/erros';
 import { montarLinkPortal } from '@/lib/patientPortalAccess';
+import { linkWhatsApp } from '@/lib/whatsapp';
+import { formatDateTimeSaoPaulo } from '@/lib/dateOnly';
 
 interface PatientPortalContext {
   id: string;
   nome: string;
   nome_social: string | null;
   ativo: boolean | null;
+  telefone: string | null;
+  email: string | null;
 }
 
 interface PortalLinkRouteState {
@@ -95,7 +99,7 @@ export default function PatientPortalLinkPage() {
       if (!profile?.clinica_id || !patientId) throw new Error('Clínica ou paciente não identificado.');
       const { data, error } = await supabase
         .from('pacientes')
-        .select('id, nome, nome_social, ativo')
+        .select('id, nome, nome_social, ativo, telefone, email')
         .eq('clinica_id', profile.clinica_id)
         .eq('id', patientId)
         .maybeSingle();
@@ -104,6 +108,22 @@ export default function PatientPortalLinkPage() {
     },
     staleTime: 0,
     refetchOnWindowFocus: true,
+  });
+
+  const accessQuery = useQuery({
+    queryKey: ['patient-portal-link-status', profile?.clinica_id, patientId],
+    enabled: Boolean(profile?.clinica_id && patientQuery.data),
+    queryFn: async () => {
+      const { data: active, error } = await supabase.from('paciente_portal_tokens')
+        .select('expires_at').eq('paciente_id', patientId).eq('clinica_id', profile!.clinica_id!)
+        .eq('ativo', true).gt('expires_at', new Date().toISOString()).order('expires_at', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      const { data: last, error: lastError } = await supabase.from('paciente_portal_tokens')
+        .select('ultimo_acesso').eq('paciente_id', patientId).eq('clinica_id', profile!.clinica_id!)
+        .not('ultimo_acesso', 'is', null).order('ultimo_acesso', { ascending: false }).limit(1).maybeSingle();
+      if (lastError) throw lastError;
+      return { active, last: last?.ultimo_acesso };
+    },
   });
 
   const returnToPatient = () => navigate(returnTo, {
@@ -137,8 +157,9 @@ export default function PatientPortalLinkPage() {
       const { data, error } = await supabase.rpc('link_portal_paciente', { p_paciente_id: patientQuery.data.id });
       if (error) throw error;
       if (!data) throw new Error('Paciente não encontrado nesta clínica.');
-      const url = montarLinkPortal(data);
+      const url = montarLinkPortal(data, window.location.origin, profile?.clinica_id || undefined);
       setGeneratedUrl(url);
+      void accessQuery.refetch();
       setCopied(false);
       setCopyNotice('');
       try {
@@ -176,6 +197,9 @@ export default function PatientPortalLinkPage() {
 
   const displayName = patient.nome_social || patient.nome;
   const isActive = patient.ativo !== false;
+  const message = `Olá, ${displayName}. Acesse seu Portal do Paciente pelo link: ${generatedUrl}\nNo primeiro acesso neste aparelho, confirme sua data de nascimento. Não compartilhe este link.`;
+  const whatsapp = linkWhatsApp(patient.telefone, message);
+  const emailLink = patient.email ? `mailto:${encodeURIComponent(patient.email)}?subject=${encodeURIComponent('Acesso ao Portal do Paciente')}&body=${encodeURIComponent(message)}` : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 pb-24 sm:px-6 md:pb-6">
@@ -194,11 +218,20 @@ export default function PatientPortalLinkPage() {
             <CardDescription>O link dá acesso ao Portal deste paciente até expirar ou ser revogado.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            <p role="status" className="text-sm">
+              {accessQuery.isError ? 'Não foi possível consultar o status do acesso.' : accessQuery.isPending ? 'Consultando acesso…' :
+                `${accessQuery.data?.active ? 'Link ativo' : 'Sem link ativo'}. Último acesso: ${accessQuery.data?.last ? formatDateTimeSaoPaulo(accessQuery.data.last) : 'ainda não registrado'}.`}
+            </p>
             {!isActive ? (
               <Alert variant="destructive"><AlertTitle>Paciente inativo</AlertTitle><AlertDescription>Reative a ficha antes de gerar um novo link para o Portal.</AlertDescription></Alert>
             ) : generatedUrl ? (
               <div className="space-y-4">
-                <Alert><ShieldCheck className="h-4 w-4" /><AlertTitle>Link ativo por até um ano</AlertTitle><AlertDescription>{copyNotice || 'O token é exibido apenas nesta tela e permanece somente em memória do navegador. Ao sair, você precisará gerar outro link para vê-lo novamente.'}</AlertDescription></Alert>
+                <Alert><ShieldCheck className="h-4 w-4" /><AlertTitle>Link ativo por até 90 dias</AlertTitle><AlertDescription>{copyNotice || 'O token é exibido apenas nesta tela e permanece somente em memória do navegador. Ao sair, você precisará gerar outro link para vê-lo novamente.'}</AlertDescription></Alert>
+                <div className="flex flex-wrap gap-2">
+                  {whatsapp ? <Button asChild><a href={whatsapp} target="_blank" rel="noopener noreferrer" onClick={() => setCopied(true)}>Enviar por WhatsApp</a></Button> : <Button disabled>Enviar por WhatsApp</Button>}
+                  {emailLink ? <Button asChild variant="outline"><a href={emailLink} onClick={() => setCopied(true)}>Enviar por e-mail</a></Button> : <Button disabled variant="outline">Enviar por e-mail</Button>}
+                </div>
+                {(!whatsapp || !emailLink) && <p className="text-sm text-muted-foreground">Complete o telefone ou e-mail na ficha para habilitar o respectivo envio.</p>}
                 <div className="space-y-2">
                   <div className="flex flex-col items-center gap-2 rounded-xl border bg-background p-4 text-center">
                     {qrCodeUrl ? <img src={qrCodeUrl} alt="QR code para abrir o Portal do Paciente" className="h-56 w-56" /> : qrCodeError ? <p role="status" className="max-w-xs py-8 text-sm text-muted-foreground">Não foi possível gerar o QR code. Use o link abaixo para compartilhar com o paciente.</p> : <Loader2 aria-label="Gerando QR code" className="h-8 w-8 animate-spin text-muted-foreground" />}
@@ -214,7 +247,7 @@ export default function PatientPortalLinkPage() {
               </div>
             ) : (
               <form onSubmit={(event) => { event.preventDefault(); void generateLink(); }} className="space-y-5">
-                <Alert><ShieldCheck className="h-4 w-4" /><AlertTitle>A emissão substitui o link anterior</AlertTitle><AlertDescription>O link anterior será revogado. O novo acesso dura até um ano, e o token completo aparecerá somente nesta tela e no clipboard.</AlertDescription></Alert>
+                <Alert><ShieldCheck className="h-4 w-4" /><AlertTitle>A emissão substitui o link anterior</AlertTitle><AlertDescription>O link anterior será revogado. O novo acesso dura até 90 dias e exige confirmar a data de nascimento no primeiro acesso por aparelho.</AlertDescription></Alert>
                 {generationError && <Alert variant="destructive"><AlertTitle>Não foi possível gerar o link</AlertTitle><AlertDescription>{generationError}</AlertDescription></Alert>}
                 <div className="flex justify-end border-t border-border pt-4">
                   <Button type="submit" disabled={generating} className="w-full gap-2 sm:w-auto">

@@ -1,5 +1,13 @@
 interface AppointmentStepState {
   status: string;
+  portal_checkin_status?: string | null;
+}
+
+export function portalArrivalLabel(appointment: AppointmentStepState, queueItem: QueueStepState | null | undefined): string | null {
+  if (queueItem || !['agendado', 'confirmado'].includes(appointment.status)) return null;
+  if (appointment.portal_checkin_status === 'chegou') return 'Aguardando confirmação do balcão';
+  if (appointment.portal_checkin_status === 'a_caminho') return 'A caminho';
+  return null;
 }
 
 interface QueueStepState {
@@ -18,6 +26,7 @@ export function patientStep(
   billing: BillingStepState | null | undefined,
   billingResolved = true,
 ): number {
+  if (portalArrivalLabel(appointment, queueItem)) return 0;
   if (appointment.status === 'aguardando_pagamento_adicional') return 3;
   if (
     (appointment.status === 'finalizado' || appointment.status === 'atendimento_finalizado') &&

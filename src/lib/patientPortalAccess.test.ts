@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: mocks.rpc } }));
 
-import { montarLinkPortal, revokePatientPortalLinks } from './patientPortalAccess';
+import { montarLinkPortal, lerTokenPortal, revokePatientPortalLinks } from './patientPortalAccess';
 
 describe('revokePatientPortalLinks', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -34,7 +34,14 @@ describe('montarLinkPortal', () => {
 
   it('usa só o token e monta o link no endereço desta instalação', () => {
     expect(montarLinkPortal(`https://app.elolab.com.br/portal-paciente?token=${token}`, 'https://clinica.exemplo'))
-      .toBe(`https://clinica.exemplo/portal-paciente?token=${token}`);
+      .toBe(`https://clinica.exemplo/portal-paciente#token=${token}`);
+  });
+
+  it('aceita fragmento e query antiga, priorizando o fragmento', () => {
+    expect(lerTokenPortal('?token=antigo', '#token=novo')).toBe('novo');
+    expect(lerTokenPortal('?token=antigo', '')).toBe('antigo');
+    expect(montarLinkPortal(`https://app.elolab.com.br/portal-paciente#token=${token}`, 'https://clinica.exemplo'))
+      .toBe(`https://clinica.exemplo/portal-paciente#token=${token}`);
   });
 
   it('recusa caminho, token ou valor inesperados', () => {

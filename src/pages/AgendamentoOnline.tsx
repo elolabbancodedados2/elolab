@@ -374,7 +374,7 @@ export default function AgendamentoOnline() {
               className={cn('flex min-h-11 items-center gap-1.5 rounded-lg border px-2 py-1.5',
                 estado === 'atual' ? 'border-transparent bg-foreground text-background' : 'border-border bg-card',
                 estado === 'futura' && 'text-muted-foreground')}>
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-[10px] font-semibold tabular-nums">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-base font-semibold tabular-nums">
                 {estado === 'feita' ? <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> : i + 1}
               </span>
               <span className="min-w-0 truncate font-medium">{rotulo}</span>
@@ -475,7 +475,7 @@ export default function AgendamentoOnline() {
                     aria-label={`${format(dt, "EEEE, d 'de' MMMM", { locale: ptBR })}${semVaga ? ', sem vaga' : ''}`}
                     disabled={semVaga && data !== d}
                     aria-pressed={data === d} onClick={() => { liberarReserva(); setData(d); setSlots(null); setHora(''); setErroSlots(''); setErro(''); }}
-                    className={cn('flex min-h-14 min-w-0 flex-col items-center rounded-lg border border-border px-0.5 py-2 text-[10px] transition-colors hover:border-primary/50 hover:bg-muted sm:text-xs',
+                    className={cn('flex min-h-14 min-w-0 flex-col items-center rounded-lg border border-border px-0.5 py-2 text-base transition-colors hover:border-primary/50 hover:bg-muted',
                       semVaga && 'cursor-not-allowed border-dashed text-muted-foreground opacity-50 hover:border-border hover:bg-transparent',
                       data === d && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90')}>
                     <span className="uppercase">{diaCurto}</span>
