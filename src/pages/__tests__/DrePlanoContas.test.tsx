@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,8 +25,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import DrePlanoContas from '../DrePlanoContas';
 
-function renderizar() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderizar(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/financeiro/dre?mes=2026-10']}>
@@ -38,9 +37,37 @@ function renderizar() {
   );
 }
 
-afterEach(() => { banco.tabelas = {}; banco.rpc.mockReset(); });
+afterEach(() => { banco.tabelas = {}; banco.rpc.mockReset(); act(() => onlineManager.setOnline(true)); });
 
 describe('DrePlanoContas', () => {
+  it.each(['mês sem cache', 'atualização do cache'])('bloqueia exportação offline durante %s e libera ao reconectar', async (cenario) => {
+    banco.tabelas = {
+      plano_contas: [{ id: 'rb', codigo: '1', nome: 'Consultas', natureza: 'receita', grupo_dre: 'receita_bruta', pai_id: null, ativo: true }],
+      plano_contas_categorias: [{ id: 'v1', natureza: 'receita', categoria: 'consulta', conta_id: 'rb' }],
+      lancamentos: [{ id: 'l1', tipo: 'receita', categoria: 'consulta', status: 'pago', valor: 500, valor_pago: 500, data: '2026-10-05', data_pagamento: '2026-10-05' }],
+      pagamentos: [],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderizar(client);
+    await screen.findByRole('table');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Mais ações da DRE' }), { key: 'Enter' });
+    expect(await screen.findByRole('menuitem', { name: 'Exportar CSV' })).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+
+    act(() => onlineManager.setOnline(false));
+    if (cenario === 'mês sem cache') {
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo mês' }));
+    } else {
+      act(() => { void client.invalidateQueries({ queryKey: ['dre-lancamentos'] }); });
+    }
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Mais ações da DRE' }), { key: 'Enter' });
+    const exportar = await screen.findByRole('menuitem', { name: 'Exportar CSV' });
+    await waitFor(() => expect(exportar).toHaveAttribute('aria-disabled', 'true'));
+
+    act(() => onlineManager.setOnline(true));
+    await waitFor(() => expect(exportar).not.toHaveAttribute('aria-disabled', 'true'));
+  });
+
   it('mostra a cascata, avisa o lançamento sem conta e leva ao mapeamento', async () => {
     banco.tabelas = {
       plano_contas: [

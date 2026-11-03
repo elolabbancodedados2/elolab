@@ -277,9 +277,9 @@ export default function DrePlanoContas() {
   const mesCarregando = planoCarregando || lancamentosQuery.isLoading || pagamentosQuery.isLoading;
   const anoCarregando = planoCarregando || anoQuery.isLoading;
   const queryComErro = [contasQuery, vinculosQuery, lancamentosQuery, pagamentosQuery, anoQuery].find(q => q.isError);
-  const exportacaoCarregando = contasQuery.isFetching || vinculosQuery.isFetching || (aba === 'anual'
-    ? anoQuery.isFetching || !dreAnual
-    : lancamentosQuery.isFetching || pagamentosQuery.isFetching);
+  const exportacaoCarregando = [contasQuery, vinculosQuery, ...(aba === 'anual'
+    ? [anoQuery]
+    : [lancamentosQuery, pagamentosQuery])].some(query => query.isPending || query.isFetching || query.isPaused);
 
   const exportar = () => {
     if (exportacaoCarregando) return;
