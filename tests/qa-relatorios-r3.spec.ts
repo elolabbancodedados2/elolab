@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { expect, test, type Request } from '@playwright/test';
+import { readFile, writeFile } from 'node:fs/promises';
 import { installSyntheticClinic } from './helpers/syntheticClinic';
 
-test.use({ serviceWorkers: 'block' });
+test.use({ serviceWorkers: 'block', trace: 'retain-on-failure' });
 
 test('exige gerar novamente depois de editar filtros antes de exportar', async ({ page, context }, testInfo) => {
   await context.addInitScript(() => { window.print = () => {}; });
@@ -33,10 +33,16 @@ for (const width of [1280, 390]) {
 test(`DRE só permite exportar valores carregados e confere CSV mensal e anual em ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 844 });
   const errors: string[] = [];
+  const pendingRequests = new Map<Request, string>();
+  const networkFailures: string[] = [];
+  page.on('request', request => pendingRequests.set(request, `${request.method()} ${new URL(request.url()).pathname} (${request.resourceType()})`));
+  page.on('requestfinished', request => pendingRequests.delete(request));
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && !message.text().includes('ERR_BLOCKED_BY_CLIENT')) errors.push(message.text()); });
   page.on('requestfailed', request => {
     const reason = request.failure()?.errorText;
+    networkFailures.push(`${pendingRequests.get(request)}: ${reason}`);
+    pendingRequests.delete(request);
     if (!reason?.includes('ERR_BLOCKED_BY_CLIENT') && reason !== 'net::ERR_ABORTED') errors.push(`Falha de rede: ${request.url()}`);
   });
   page.on('response', response => { if (response.status() >= 400) errors.push(`HTTP ${response.status()}: ${response.url()}`); });
@@ -60,6 +66,14 @@ test(`DRE só permite exportar valores carregados e confere CSV mensal e anual e
     await expect(page.getByRole('menuitem', { name: 'Exportar CSV' })).toBeDisabled();
   } finally {
     release();
+    const documentState = await page.evaluate(() => ({
+      readyState: document.readyState,
+      initialLoaderPresent: !!document.getElementById('initial-loader'),
+      appMainPresent: !!document.getElementById('main-content'),
+    })).catch(() => null);
+    const diagnosticPath = testInfo.outputPath('diagnostico-abertura-dre.json');
+    await writeFile(diagnosticPath, JSON.stringify({ documentState, errors, networkFailures, pendingRequests: [...pendingRequests.values()] }, null, 2), 'utf8');
+    await testInfo.attach('diagnostico-abertura-dre', { path: diagnosticPath, contentType: 'application/json' });
   }
   await expect(page.getByRole('menuitem', { name: 'Exportar CSV' })).toBeEnabled();
   const downloadPromise = page.waitForEvent('download');
