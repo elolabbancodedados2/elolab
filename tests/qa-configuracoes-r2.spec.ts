@@ -57,9 +57,15 @@ for (const width of [1280, 390]) {
     page.on('console', message => { if (message.type() === 'error') failures.push(message.text()); });
     page.on('response', response => { if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`); });
     page.on('requestfailed', request => { if (request.failure()?.errorText !== 'net::ERR_ABORTED') failures.push(request.url()); });
-    for (const path of ['/configuracoes?tab=clinica', '/configuracoes?tab=horarios', '/onboarding', '/preferencias']) {
+    for (const [path, title] of [
+      ['/configuracoes?tab=clinica', 'Configurações'],
+      ['/configuracoes?tab=horarios', 'Configurações'],
+      ['/onboarding', 'Prepare sua clínica para atender'],
+      ['/preferencias', 'Minhas preferências'],
+    ]) {
       await page.goto(path);
-      await expect(page.locator('main h1').first()).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
+      await expect(page).toHaveURL(path);
       await expect(page.locator('main [aria-busy="true"]')).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path).toBe(true);
       await page.screenshot({ path: info.outputPath(`${path.replaceAll(/[/?=]/g, '-')}-${width}.png`), fullPage: true });
