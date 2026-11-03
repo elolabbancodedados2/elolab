@@ -58,8 +58,15 @@ export function GlobalSearch() {
   }, []);
 
   useEffect(() => {
+    setResults([]);
+    setError(false);
+    setSearching(normalized.length >= 2);
     const timer = window.setTimeout(() => void search(normalized), 250);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      // Invalida a resposta anterior já durante a espera pelo próximo termo.
+      requestRef.current++;
+    };
   }, [normalized, search]);
 
   // Módulos vêm do mesmo filtro de perfil e plano do menu lateral.

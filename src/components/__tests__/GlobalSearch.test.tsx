@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,6 +39,38 @@ function abrirEBuscar(termo: string) {
 }
 
 describe('GlobalSearch — módulos', () => {
+  it('remove resultados anteriores assim que o termo muda, antes do debounce', async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: [{ tipo: 'paciente', id: 'p1', titulo: 'Ana Souza', subtitulo: 'Paciente', href: '/pacientes/p1', data_referencia: null }],
+      error: null,
+    });
+    const dialog = abrirEBuscar('ana');
+    expect(await within(dialog).findByRole('option', { name: /ana souza/i })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/nome, cpf/i), { target: { value: 'bruno' } });
+    expect(within(dialog).queryByRole('option', { name: /ana souza/i })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('status')).toHaveTextContent('Buscando');
+  });
+
+  it('ignora resposta antiga recebida durante o debounce de um novo termo', async () => {
+    vi.useFakeTimers();
+    try {
+      let responder!: (value: any) => void;
+      mocks.rpc.mockImplementationOnce(() => new Promise(resolve => { responder = resolve; }));
+      const dialog = abrirEBuscar('ana');
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      fireEvent.change(screen.getByPlaceholderText(/nome, cpf/i), { target: { value: 'b' } });
+      await act(async () => {
+        responder({ data: [{ tipo: 'paciente', id: 'p1', titulo: 'Ana Souza', subtitulo: null, href: '/pacientes/p1', data_referencia: null }], error: null });
+      });
+      expect(within(dialog).queryByRole('option', { name: /ana souza/i })).not.toBeInTheDocument();
+      expect(within(dialog).queryByRole('status')).not.toBeInTheDocument();
+      expect(within(dialog).getByText('Digite pelo menos 2 caracteres.')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rotula destinos como módulo e segue o mesmo filtro do menu real', () => {
     roles = ['financeiro'];
     const dialog = abrirEBuscar('repasses');
