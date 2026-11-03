@@ -1093,11 +1093,12 @@ function AbaFornecedores({ clinicaId, podeGerir, query }: {
       const escrita = editando === 'novo'
         ? supabase.from('fornecedores').insert({ ...dados, clinica_id: clinicaId })
         : supabase.from('fornecedores').update(dados).eq('id', editando!).eq('clinica_id', clinicaId);
-      const { error } = await escrita;
+      const { data, error } = await escrita.select('id');
       if (error) {
         if (error.code === '23505') throw new Error('Já existe um fornecedor com este CNPJ.');
         throw error;
       }
+      if (!data?.length) throw new Error('O fornecedor não está mais disponível para edição. Atualize a lista e confira seu acesso.');
     },
     onSuccess: () => { toast.success('Fornecedor salvo.'); setEditando(null); invalidar(); },
     onError: erro => toast.error(mensagemErroCompras(erro)),
