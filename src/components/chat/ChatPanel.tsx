@@ -276,7 +276,7 @@ function ViewConversa({
     setEnviando(true);
     try {
       const enviado = await onEnviar(texto.trim(), urgente);
-      if (enviado) {
+      if (enviado && inputRef.current?.value === texto) {
         setTexto('');
         setUrgente(false);
         setShowEmojis(false);
