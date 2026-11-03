@@ -48,9 +48,14 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
     await page.goto('/portal-paciente');
+    await page.getByRole('button', { name: 'Tenho um código' }).click();
     await page.getByRole('textbox', { name: 'Código de acesso do paciente' }).fill('codigo-sintetico-qa');
     await page.getByRole('button', { name: 'Acessar Portal' }).click();
     await expect(page.getByRole('heading', { name: /Olá, Ana/ })).toBeVisible();
+    if (width < 768) {
+      const navigation = page.getByRole('navigation', { name: 'Seções do portal no celular' });
+      expect(await navigation.getByRole('button').evaluateAll(buttons => buttons.every(button => button.scrollWidth <= button.clientWidth))).toBe(true);
+    }
     for (const name of ['Consultas', 'Exames']) {
       const section = width < 768
         ? page.getByRole('navigation', { name: 'Seções do portal no celular' }).getByRole('button', { name, exact: true })
@@ -61,7 +66,7 @@ for (const width of [1280, 390]) {
       await page.screenshot({ path: info.outputPath(`portal-${name}-${width}.png`), fullPage: true, animations: 'disabled' });
     }
     await page.getByRole('button', { name: 'Sair do portal do paciente' }).click();
-    await expect(page.getByRole('textbox', { name: 'Código de acesso do paciente' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Tenho um código' })).toBeVisible();
     expect(errors).toEqual([]);
     expect(failedResponses).toEqual([]);
     await info.attach('blocked-external-resources', { body: JSON.stringify(blockedResources), contentType: 'application/json' });

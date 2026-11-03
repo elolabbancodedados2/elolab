@@ -5,14 +5,18 @@ O Portal do Paciente é um espaço seguro para você ver as informações do seu
 ## Como entrar
 
 1. Peça o acesso à recepção da clínica. Ela confirma quem você é e gera um **link individual**.
-2. Abra o link que a clínica enviou. Se a tela pedir, digite o **Código de acesso do paciente** e entre.
+2. Abra o link que a clínica enviou pelo WhatsApp ou e-mail. No primeiro acesso neste aparelho, confirme sua **data de nascimento**. Se você recebeu apenas um código, abra **Tenho um código**.
 3. Se aparecer a mensagem **Token inválido ou expirado**, o link venceu ou foi substituído. Peça um novo à clínica.
 
 Cuidados com o seu acesso:
 
 - O link é só seu. **Não envie para outras pessoas** e não publique em redes sociais.
-- Cada novo link cancela o anterior. O link vale por até um ano.
+- Cada novo link cancela o anterior. Links novos valem até 90 dias; links antigos mantêm a validade original.
+- Após cinco erros de nascimento, o link fica bloqueado por 15 minutos. Aguarde e tente novamente. Se a data não estiver no cadastro, peça à recepção para atualizá-la.
+- O aparelho é lembrado por um comprovante assinado, por até 90 dias e nunca além da validade do link. Não armazenamos o código do link nesse comprovante.
 - Ao terminar em um aparelho que não é seu, clique em **Sair do portal**.
+- As ações registram data/hora, IP e referência da credencial para auditoria da clínica.
+- **Pedir novo link** abre o WhatsApp da clínica quando o endereço identifica a clínica e há telefone cadastrado. Caso contrário, use o contato que você já utiliza com a recepção.
 
 ## O que você encontra
 
@@ -29,6 +33,12 @@ No portal há estas seções:
 | **Documentos** | Abrir os documentos liberados pela clínica. |
 
 Também é possível ver orientações de preparo para a sua consulta e atualizar seus dados de contato.
+
+No celular, os atalhos **Próxima consulta**, **Exames e receitas** e **Falar com a clínica** aparecem no início. Dentro de exames, use **Ver receitas** para abrir as prescrições.
+
+## Avisar sua chegada
+
+No dia da consulta, entre duas horas antes e 30 minutos depois do horário, use **Estou a caminho** ou **Cheguei**. A chegada fica aguardando confirmação do balcão: apresente-se à recepção. Esses avisos não fazem o check-in definitivo nem geram cobrança.
 
 ## Agendar uma consulta
 
@@ -71,8 +81,8 @@ Depois de uma consulta, o portal pode perguntar **Como foi sua última consulta?
 1. Abra **Pacientes > Cadastro e histórico** e a ficha do paciente.
 2. **Confirme a identidade** (nome e documento) antes de gerar o acesso.
 3. Na ficha, clique em **Link do portal**. A tela **Acesso ao Portal do Paciente** mostra o link e um QR code.
-4. Confira o aviso: gerar um novo link **revoga o anterior** e dura até um ano. O link completo só aparece nesta tela.
-5. Entregue o link **somente ao paciente ou ao responsável**, depois de confirmar quem é.
+4. Confira o aviso: gerar um novo link **revoga o anterior** e dura até 90 dias. O link completo só aparece nesta tela.
+5. Use **Enviar por WhatsApp** ou **Enviar por e-mail**. O aplicativo correspondente abre com o contato do cadastro e a mensagem pronta; confira e conclua o envio. A tela também mostra link ativo e último acesso.
 6. O administrador também pode gerar links em **Pacientes > Acesso ao portal do paciente**.
 
 > Cuidado: o link dá acesso a todo o portal do paciente. Nunca envie para outra pessoa nem para um número que você não confirmou. Se o paciente perder o link ou suspeitar que alguém o viu, gere um novo. Isso cancela o antigo. Se a ficha estiver inativa, reative antes de gerar.

@@ -3,7 +3,7 @@ import { installSyntheticClinic } from './helpers/syntheticClinic';
 
 test.use({ serviceWorkers: 'block' });
 
-const clinicId = '00000000-0000-4000-8000-000000000001';
+const clinicId = '00000000-0000-4000-8000-000000000002';
 const patientId = '00000000-0000-4000-8000-000000000004';
 const token = 'a'.repeat(64);
 
@@ -63,6 +63,7 @@ test('geração do Portal tem página própria e mantém token fora da URL e do 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/pacientes', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('textbox', { name: 'Buscar pacientes por nome, CPF, telefone ou e-mail' })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole('button', { name: 'Exportar a página atual em CSV' })).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Buscar pacientes por nome, CPF, telefone ou e-mail' }).fill('Pessoa');
   // No celular a geração do link fica no menu "Mais ações" da ficha na lista.
   // A lista ainda pode re-renderizar após a busca e fechar o menu; reabre até a navegação acontecer (o item só abre a página, sem gravar).
@@ -88,7 +89,12 @@ test('geração do Portal tem página própria e mantém token fora da URL e do 
   await page.getByRole('button', { name: 'Gerar e substituir link anterior' }).click();
   const linkField = page.getByRole('textbox', { name: 'Link de acesso ao portal do paciente' });
   // Só o token sai da resposta do servidor; o endereço é sempre o desta instalação.
-  await expect(linkField).toHaveValue(`${new URL(String(testInfo.project.use.baseURL)).origin}/portal-paciente?token=${token}`);
+  const expectedLink = `${new URL(String(testInfo.project.use.baseURL)).origin}/portal-paciente?clinica=${clinicId}#token=${token}`;
+  await expect(linkField).toHaveValue(expectedLink);
+  const whatsapp = new URL((await page.getByRole('link', { name: 'Enviar por WhatsApp' }).getAttribute('href'))!);
+  expect(whatsapp.pathname).toBe('/5511900000000');
+  expect(whatsapp.searchParams.get('text')).toContain(expectedLink);
+  expect(await page.getByRole('link', { name: 'Enviar por e-mail' }).getAttribute('href')).toContain('mailto:pessoa.qa%40example.test');
   await expect(page.getByText(/Link gerado e copiado/)).toBeVisible();
   expect(page.url()).not.toContain(token);
   const persisted = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage }, history: history.state }));

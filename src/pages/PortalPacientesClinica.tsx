@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 const ETAPAS = [
   { titulo: 'Selecione o paciente', texto: 'Busque por nome, CPF ou telefone.' },
-  { titulo: 'Gere o link individual', texto: 'Vale por até um ano e substitui o anterior.' },
+  { titulo: 'Gere o link individual', texto: 'Vale por até 90 dias e substitui o anterior. No primeiro acesso por aparelho, o paciente confirma a data de nascimento.' },
   { titulo: 'Compartilhe com segurança', texto: 'Copie o link ou mostre o QR code ao paciente.' },
 ];
 

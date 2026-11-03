@@ -70,6 +70,7 @@ test('portal autenticado leva aos registros certos e marca contagens parciais se
   const essentialCookies = page.getByRole('button', { name: 'Apenas Essenciais' });
   await expect(essentialCookies).toBeVisible();
   await essentialCookies.click();
+  await page.getByRole('button', { name: 'Tenho um código' }).click();
   await page.getByRole('textbox', { name: 'Código de acesso do paciente' }).fill('codigo-sintetico-valido');
   await page.getByRole('button', { name: 'Acessar Portal' }).click();
   await initialExamsReadStarted;
