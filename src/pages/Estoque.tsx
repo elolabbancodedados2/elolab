@@ -45,7 +45,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
-import { itensParaCotar } from '@/lib/compras';
+import { itensParaCotar, lerPreco as parseMoneyInput } from '@/lib/compras';
 import { buscarEstoqueEmCompra, criarCotacao, mensagemErroCompras } from '@/lib/comprasApi';
 
 const CATEGORIAS = CATEGORIAS_ESTOQUE;
@@ -78,21 +78,6 @@ const initialForm: FormData = {
   nome: '', categoria: 'medicamentos', unidade: 'unidade',
   quantidade: 0, quantidade_minima: 10, valor_unitario: '0,00', localizacao: '',
 };
-
-function parseMoneyInput(value: string): number | null {
-  const compact = value.trim().replace(/\s/g, '');
-  if (!compact) return null;
-
-  const formatoBrasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
-  const formatoPontoDecimal = /^\d+(?:\.\d{1,2})?$/;
-  if (!formatoBrasileiro.test(compact) && !formatoPontoDecimal.test(compact)) return null;
-
-  const normalizado = compact.includes(',')
-    ? compact.replace(/\./g, '').replace(',', '.')
-    : compact;
-  const valor = Number(normalizado);
-  return Number.isFinite(valor) ? valor : null;
-}
 
 function formatMoneyInput(value: unknown): string {
   const valor = Number(value);
