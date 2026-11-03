@@ -71,7 +71,8 @@ export default function CentralNotificacoes() {
     navigate(i.href);
   };
 
-  if(query.isLoading)return <div className="space-y-5" aria-label="Carregando notificações"><Skeleton className="h-16 max-w-xl"/><Skeleton className="h-10 w-full"/>{[1,2,3,4].map(i=><Skeleton key={i} className="h-24 w-full"/>)}</div>;
+  if(query.isPending&&query.fetchStatus==='paused')return <ErrorState title="Notificações aguardando conexão" description="Ainda não foi possível consultar suas notificações. A leitura será retomada quando a conexão voltar."/>;
+  if(query.isLoading||query.isPending)return <div className="space-y-5" aria-label="Carregando notificações"><Skeleton className="h-16 max-w-xl"/><Skeleton className="h-10 w-full"/>{[1,2,3,4].map(i=><Skeleton key={i} className="h-24 w-full"/>)}</div>;
   if(query.isError)return <ErrorState title="Não foi possível abrir a central" error={query.error} onRetry={()=>query.refetch()}/>;
 
   const indicadores = [

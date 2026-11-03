@@ -269,8 +269,8 @@ function NPSSurvey({ token, chaveEnvio }: { token: string; chaveEnvio: string })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Não foi possível enviar');
       marcarAvaliacaoEnviada(chaveEnvio);
       setSent(true);
-    } catch (e: any) {
-      setSubmitError(e.message);
+    } catch {
+      setSubmitError('Não foi possível enviar sua avaliação. Tente novamente.');
     } finally {
       setSending(false);
     }

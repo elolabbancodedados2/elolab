@@ -28,9 +28,10 @@ for (const width of [1280, 390]) {
       status: 'waiting', expires_at: new Date(Date.now() + 60_000).toISOString(), provider_present: false, guest_present: false,
     } }));
     await page.setViewportSize({ width, height: 844 });
-    for (const path of ['/notificacoes', '/relacionamento?aba=campanhas', '/equipe?aba=funcionarios', '/equipe?aba=convites', '/usuarios']) {
+    for (const path of ['/notificacoes', '/relacionamento?tab=campanhas', '/equipe?aba=funcionarios', '/equipe?aba=convites', '/usuarios']) {
       await page.goto(path);
       await expect(page.locator('#main-content').getByRole('heading', { level: 1 })).toBeVisible();
+      if (path.startsWith('/relacionamento')) await expect(page.getByRole('tab', { name: 'Campanhas', exact: true })).toHaveAttribute('aria-selected', 'true');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`${path.replaceAll(/[/?=]/g, '-')}-${width}.png`), fullPage: true });
     }
