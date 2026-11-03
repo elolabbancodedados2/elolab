@@ -1,3 +1,5 @@
+import { acoesDaEtapa, type AcaoEtapa } from '@/lib/acoesDaEtapa';
+import { AcoesRecepcao, type AcaoRecepcao } from '@/components/recepcao/AcoesRecepcao';
 import { formatCurrency } from '@/lib/formatters';
 import { emCentavos } from '@/lib/dinheiro';
 import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
@@ -712,43 +714,44 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
        ? [{ id: 'faltou', title: 'Não compareceu', subtitle: 'Reagendamentos pendentes', count: stats.faltou, icon: XCircle, items: filtered }]
        : workflowStages.filter(stage => stage.id === activeTab);
 
-   const boardActionFor = (item: any): { label: string; icon: any; run: () => void } | null => {
-     const saldo = item.lanc ? calcularSaldoPagamento(
-       Number(item.lanc.valor || 0),
-       Number(item.lanc.desconto || 0),
-       Number(item.lanc.acrescimo || 0),
-       Number(item.lanc.valor_pago || 0),
-     ) : 0;
-
-     if (item.ag.status === 'faltou' || item.step === 4) {
-       return { label: 'Reagendar', icon: CalendarPlus, run: () => navigate(`/agenda?reagendar=${item.ag.id}`) };
-     }
-     if (item.step === 0) {
-       return { label: 'Fazer check-in', icon: UserCheck, run: () => { void handleCheckin(item.ag.id); } };
-     }
-     if (item.step === 1) {
-       return item.lanc && saldo > 0
-         ? { label: 'Receber pagamento', icon: DollarSign, run: () => { void openPagamento(item.lanc, item.pac); } }
-         : { label: 'Chamar ao balcão', icon: Bell, run: () => { void handleChamarBalcao(item.lanc, item.pac); } };
-     }
-     if (item.step === 2 && item.fila) {
-       if (item.ag.status === 'em_atendimento') {
-         return { label: 'Finalizar atendimento', icon: Check, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) };
-       }
-       if (faltaTriagem(item.ag)) {
-         return { label: 'Abrir triagem', icon: Activity, run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } };
-       }
-       return { label: 'Iniciar atendimento', icon: Play, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } };
-     }
-     if (item.step === 3) {
-       if (item.lanc && saldo > 0) {
-         return { label: 'Receber saldo', icon: DollarSign, run: () => { void openPagamento(item.lanc, item.pac); } };
-       }
-       if (item.fila) {
-         return { label: 'Concluir atendimento', icon: CheckCircle2, run: () => handleConcluir(item.ag.id, item.fila.id) };
-       }
-     }
-     return null;
+   const acoesPara = (item: any): AcaoRecepcao[] => {
+     const nome = item.pac?.nome_social || item.pac?.nome || 'Paciente';
+     const hora = minutosDaHora(item.ag.hora_inicio);
+     const podeTriagem = podeRegistrarTriagem && triagensRegistradasQuery.isSuccess
+       && !triagensRegistradasQuery.data?.includes(item.ag.id);
+     const decisao = acoesDaEtapa({
+       ...item,
+       saldo: item.lanc ? calcularSaldoPagamento(Number(item.lanc.valor || 0), Number(item.lanc.desconto || 0), Number(item.lanc.acrescimo || 0), Number(item.lanc.valor_pago || 0)) : 0,
+       atrasado: hora !== null && hora < minutosAgora,
+       temTelefone: Boolean(linkWhatsApp(item.pac?.telefone, 'Olá')),
+       podeTriagem,
+       faltaTriagem: faltaTriagem(item.ag),
+     });
+     const whatsapp = (mensagem: string) => {
+       const link = linkWhatsApp(item.pac?.telefone, mensagem);
+       if (link) window.open(link, '_blank', 'noopener,noreferrer');
+     };
+     const acoes: Record<AcaoEtapa, Omit<AcaoRecepcao, 'id'>> = {
+       checkin: { label: 'Fazer check-in', run: () => { void handleCheckin(item.ag.id); } },
+       a_caminho: { label: 'Está a caminho?', run: () => whatsapp(`Olá, ${nome}! Sua consulta estava marcada para ${item.ag.hora_inicio?.slice(0, 5)}. Está a caminho?`) },
+       falta: { label: 'Marcar falta', run: () => setMarcandoFalta({ agId: item.ag.id, nome }) },
+       receber: { label: 'Receber pagamento', run: () => { void openPagamento(item.lanc, item.pac); } },
+       receber_saldo: { label: 'Receber saldo', run: () => { void openPagamento(item.lanc, item.pac); } },
+       chamar_balcao: { label: 'Chamar ao balcão', run: () => { void handleChamarBalcao(item.lanc, item.pac); } },
+       retomar_cobranca: { label: item.lanc ? 'Confirmar cobrança' : 'Retomar cobrança', run: () => { void handleCheckin(item.ag.id); } },
+       triagem: { label: 'Abrir triagem', run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } },
+       chamar: { label: 'Chamar paciente', run: () => { void handleChamar(item.fila.id); } },
+       iniciar: { label: 'Iniciar atendimento', run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } },
+       finalizar: { label: 'Finalizar atendimento', run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) },
+       concluir: { label: 'Concluir atendimento', run: () => { void handleConcluir(item.ag.id, item.fila.id); } },
+       reagendar: { label: 'Reagendar', run: () => navigate(`/agenda?reagendar=${item.ag.id}`) },
+       retornos: { label: 'Retornos', run: () => navigate(`/retornos?paciente=${item.ag.paciente_id}`) },
+       exames: { label: 'Exames', run: () => navigate(`/exames?paciente=${item.ag.paciente_id}`) },
+       prontuario: { label: 'Prontuário', run: () => navigate(`/prontuarios?paciente=${item.ag.paciente_id}`) },
+       fila: { label: 'Abrir fila', run: () => navigate('/fila') },
+       whatsapp_reagendar: { label: 'WhatsApp para reagendar', run: () => whatsapp(`Olá, ${nome}. Sentimos sua falta na consulta de hoje. Gostaria de ajuda para reagendar?`) },
+     };
+     return (decisao.principal ? [decisao.principal, ...decisao.secundarias] : []).map(id => ({ id, ...acoes[id] }));
    };
 
    const selectedPatientName = selectedReceptionEntry?.pac?.nome_social || selectedReceptionEntry?.pac?.nome || 'Paciente';
@@ -776,7 +779,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      Number(selectedReceptionEntry.lanc.acrescimo || 0),
      Number(selectedReceptionEntry.lanc.valor_pago || 0),
    ) : 0;
-   const selectedBoardAction = selectedReceptionEntry ? boardActionFor(selectedReceptionEntry) : null;
+   
 
    // Próximo a chamar: quem já pagou, na mesma ordem da Fila (urgente,
    // preferencial e normal; dentro da prioridade, a posição de chegada).
@@ -1764,10 +1767,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                     <Separator />
                     <div className="space-y-2 p-3">
                       <p className="text-xs font-semibold text-foreground">Ações</p>
-                      {selectedBoardAction && <Button type="button" className="w-full justify-center gap-2" onClick={selectedBoardAction.run} disabled={isProcessing}>
-                        <selectedBoardAction.icon aria-hidden="true" data-icon="inline-start" />{selectedBoardAction.label}
-                      </Button>}
-                      {podeRegistrarTriagem && [1, 2].includes(selectedReceptionEntry.step) && selectedReceptionEntry.ag.status !== 'em_atendimento' && triagensRegistradasQuery.isSuccess && !triagensRegistradasQuery.data?.includes(selectedReceptionEntry.ag.id) && selectedBoardAction?.label !== 'Abrir triagem' && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => void handleEncaminharTriagem(selectedReceptionEntry.ag.id, selectedReceptionEntry.ag.paciente_id)} disabled={isProcessing}><Activity aria-hidden="true" className="size-3.5" />Abrir triagem</Button>}
+                      <AcoesRecepcao acoes={acoesPara(selectedReceptionEntry)} disabled={isProcessing} />
                       <div className="grid grid-cols-2 gap-2">
                         {selectedReceptionEntry.ag.paciente_id && <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/prontuarios?paciente=${selectedReceptionEntry.ag.paciente_id}`)}><FileText aria-hidden="true" className="size-3.5" />Prontuário</Button>}
                         <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/agenda?reagendar=${selectedReceptionEntry.ag.id}`)}><CalendarPlus aria-hidden="true" className="size-3.5" />Reagendar</Button>
@@ -2099,7 +2099,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                     const patientName = item.pac?.nome_social || item.pac?.nome || 'Paciente';
                     const { late, text } = statusFor(item);
                     const selected = selectedReceptionEntry?.ag.id === item.ag.id;
-                    const action = boardActionFor(item);
+                    
                     const feito = item.step === 4 || item.ag.status === 'faltou';
                     return (
                       <Fragment key={item.ag.id}>
@@ -2120,11 +2120,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                             </button>
                             {item.fila?.horario_chegada && item.step < 3 && <EsperaIndicador desde={item.fila.horario_chegada} className="text-[11px] font-medium" />}
                             <Badge variant={late || item.ag.status === 'faltou' ? 'destructive' : item.step === 4 ? 'secondary' : 'outline'} className="shrink-0 px-1.5 text-[10px]">{text}</Badge>
-                            {action && (
-                              <Button type="button" size="sm" variant={feito ? 'outline' : 'default'} onClick={action.run} disabled={isProcessing} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-[11px]">
-                                <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
-                              </Button>
-                            )}
+                            <AcoesRecepcao acoes={acoesPara(item)} disabled={isProcessing} />
                           </div>
                         </li>
                       </Fragment>
@@ -2155,7 +2151,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                         const initials = patientName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'PA';
                         const { late, text: statusText } = statusFor(item);
                         const selected = selectedReceptionEntry?.ag.id === item.ag.id;
-                        const action = boardActionFor(item);
+                        
                         const temAlergia = Array.isArray(item.pac?.alergias) ? item.pac.alergias.length > 0 : Boolean(item.pac?.alergias);
                         const temDetalhes = Boolean(item.sala?.nome || (item.fila?.horario_chegada && item.step < 3) || (item.fila?.prioridade && item.fila.prioridade !== 'normal') || temAlergia);
                         return (
@@ -2184,9 +2180,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                 {temAlergia && <Badge variant="destructive" className="px-1.5 py-0 text-[9px]">Alergia</Badge>}
                               </div>}
                             </CardContent>
-                            {action && <CardFooter className="p-2.5 pt-0"><Button type="button" size="sm" onClick={action.run} disabled={isProcessing} className="h-7 w-full justify-center gap-1.5 rounded-md px-2 text-[11px]">
-                                <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
-                            </Button></CardFooter>}
+                            <CardFooter className="p-2.5 pt-0"><AcoesRecepcao acoes={acoesPara(item)} disabled={isProcessing} /></CardFooter>
                           </Card>
                         );
                       })}
@@ -2207,18 +2201,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                 {filtered.map(({ ag, pac, med, sala, fila, lanc, step }) => {
                   const horaMin = minutosDaHora(ag.hora_inicio);
                   const atrasado = step === 0 && horaMin !== null && horaMin < minutosAgora;
-                  const triagemRegistrada = triagensRegistradasQuery.data?.includes(ag.id) ?? false;
-                  const podeAbrirTriagem = podeRegistrarTriagem
-                    && (step === 1 || step === 2)
-                    && ag.status !== 'em_atendimento'
-                    && triagensRegistradasQuery.isSuccess
-                    && !triagemRegistrada;
-                  const linkACaminho = atrasado
-                    ? linkWhatsApp((pac as any)?.telefone, `Olá, ${((pac as any)?.nome_social || pac?.nome || '').split(' ')[0]}! Sua consulta estava marcada para ${ag.hora_inicio?.slice(0, 5)}. Está a caminho?`)
-                    : null;
-                  const linkReagendar = ag.status === 'faltou' && pac?.telefone
-                    ? linkWhatsApp(pac.telefone, `Olá, ${(pac.nome_social || pac.nome || '').split(' ')[0]}. Sentimos sua falta na consulta de hoje às ${ag.hora_inicio?.slice(0, 5)}. Gostaria de ajuda para reagendar?`)
-                    : null;
                   const ehProximo = ag.id === proximoAChamarId;
                   return (
                   <motion.div
@@ -2325,254 +2307,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                 <EsperaIndicador desde={fila.horario_chegada} className="rounded-full border border-current/30 px-2 py-0.5 text-xs font-semibold" />
                               )}
 
-                              {/* Action buttons */}
-                              <div className="flex items-center gap-2 shrink-0">
-                                {step === 0 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleCheckin(ag.id)}
-                                      disabled={isProcessing}
-                                      aria-busy={processingCheckinId === ag.id}
-                                      className="gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                                    >
-                                      {processingCheckinId === ag.id
-                                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Registrando…</>
-                                        : <><UserCheck className="h-3.5 w-3.5" /> Check-in</>}
-                                    </Button>
-                                    {linkACaminho && (
-                                      <Button asChild size="sm" variant="outline" className="gap-1 rounded-full border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
-                                        <a href={linkACaminho} target="_blank" rel="noopener noreferrer" aria-label={`Perguntar no WhatsApp se ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} está a caminho`}>
-                                          <MessageCircle className="h-3.5 w-3.5" /> Está a caminho?
-                                        </a>
-                                      </Button>
-                                    )}
-                                    {atrasado && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => setMarcandoFalta({ agId: ag.id, nome: (pac as any)?.nome_social || pac?.nome || 'Paciente' })}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full text-muted-foreground hover:text-destructive"
-                                        aria-label={`Marcar falta de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
-                                      >
-                                        <UserX className="h-3.5 w-3.5" /> Faltou
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Step 1: Balcão — patient pays before consultation */}
-                                {step === 1 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {podeAbrirTriagem && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full"
-                                        aria-label={`Abrir triagem de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
-                                      >
-                                        <Activity className="h-3.5 w-3.5" /> Triagem
-                                      </Button>
-                                    )}
-                                    {podeRegistrarTriagem && triagemRegistrada && <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Triagem registrada</Badge>}
-                                    {lancamentosErro && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] })}
-                                        className="gap-1"
-                                      >
-                                        <RotateCcw className="h-3.5 w-3.5" /> Tentar carregar cobrança
-                                      </Button>
-                                    )}
-                                    {fila?.cobranca_estado === 'pendente' && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleCheckin(ag.id)}
-                                        disabled={isProcessing}
-                                        className="gap-1"
-                                      >
-                                        <RotateCcw className="h-3.5 w-3.5" />
-                                        {lanc ? 'Confirmar cobrança' : 'Retomar cobrança'}
-                                      </Button>
-                                    )}
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleChamarBalcao(lanc, pac)}
-                                      disabled={isProcessing}
-                                      className="gap-1"
-                                    >
-                                      <Bell className="h-3.5 w-3.5" /> Chamar ao balcão
-                                    </Button>
-                                    {lanc && (
-                                      <Button
-                                        size="sm"
-                                        onClick={() => openPagamento(lanc, pac)}
-                                        disabled={isProcessing}
-                                        className="gap-1.5 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-                                      >
-                                        <DollarSign className="h-3.5 w-3.5" />
-                                        Receber {formatCurrency(calcularSaldoPagamento(
-                                          Number(lanc.valor || 0),
-                                          Number(lanc.desconto || 0),
-                                          Number(lanc.acrescimo || 0),
-                                          Number(lanc.valor_pago || 0),
-                                        ))}
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Step 2: Paid, waiting/in consultation */}
-                                {step === 2 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {podeAbrirTriagem && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full"
-                                        aria-label={`Abrir triagem de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
-                                      >
-                                        <Activity className="h-3.5 w-3.5" /> Triagem
-                                      </Button>
-                                    )}
-                                    {podeRegistrarTriagem && triagemRegistrada && <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Triagem registrada</Badge>}
-                                    {lanc?.status === 'pago' && (
-                                      <Badge className="bg-success/10 text-success border-0 mr-1">
-                                        <CheckCircle2 className="h-3 w-3 mr-1" /> Pago
-                                      </Badge>
-                                    )}
-                                    {fila && ag.status !== 'em_atendimento' && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleChamar(fila.id)}
-                                          disabled={isProcessing}
-                                          className="gap-1"
-                                        >
-                                          <Bell className="h-3.5 w-3.5" /> Chamar
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => handleIniciarAtendimento(ag.id, fila.id)}
-                                          disabled={isProcessing}
-                                          className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                                        >
-                                          <Play className="h-3.5 w-3.5" /> Atender
-                                        </Button>
-                                      </>
-                                    )}
-                                    {ag.status === 'em_atendimento' && fila && (
-                                      <Button
-                                        size="sm"
-                                        variant="default"
-                                        onClick={() => abrirFinalizacao(ag.id, 'recepcao', fila.id)}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                                      >
-                                        <Check className="h-3.5 w-3.5" /> Finalizar
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Step 3: Finalizado — post-consultation actions */}
-                                {step === 3 && (
-                                  <div className="flex flex-col gap-2 w-full sm:w-auto">
-                                    <div className="flex items-center gap-2">
-                                      <Badge className="bg-info/10 text-info border-0 w-fit">
-                                        <Check className="h-3 w-3 mr-1" /> Consulta finalizada
-                                      </Badge>
-                                      {lanc?.status === 'pago' && (
-                                         <Badge className="bg-success/10 text-success border-0">
-                                          <CheckCircle2 className="h-3 w-3 mr-1" /> Pago
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {lanc && lanc.status !== 'pago' && calcularSaldoPagamento(
-                                        Number(lanc.valor || 0),
-                                        Number(lanc.desconto || 0),
-                                        Number(lanc.acrescimo || 0),
-                                        Number(lanc.valor_pago || 0),
-                                      ) > 0 && (
-                                        <Button size="sm" className="h-8 gap-1 text-xs"
-                                          onClick={() => openPagamento(lanc, pac)} disabled={isProcessing}>
-                                          <DollarSign className="h-3 w-3" /> Receber saldo
-                                        </Button>
-                                      )}
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
-                                        <CalendarPlus className="h-3 w-3" /> Reagendar
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/retornos?paciente=${ag.paciente_id}`)}>
-                                        <RotateCcw className="h-3 w-3" /> Retorno
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/exames?paciente=${ag.paciente_id}`)}>
-                                        <FlaskConical className="h-3 w-3" /> Exames
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/prontuarios?paciente=${ag.paciente_id}`)}>
-                                        <ClipboardList className="h-3 w-3" /> Prontuário
-                                      </Button>
-                                      {fila && (!lanc || lanc.status === 'pago') && (
-                                        <Button size="sm" className="ml-auto h-8 gap-1 text-xs"
-                                          onClick={() => handleConcluir(ag.id, fila.id)}
-                                          disabled={isProcessing}>
-                                          <CheckCircle2 className="h-3 w-3" /> Concluir
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Step 4: Concluído */}
-                                {step === 4 && (
-                                  <div className="flex flex-col gap-2 items-end">
-                                    <Badge className="bg-success/10 text-success border-0">
-                                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                                      Concluído {lanc?.forma_pagamento ? `· ${rotuloForma(lanc.forma_pagamento)}` : ''}
-                                    </Badge>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
-                                        <CalendarPlus className="h-3 w-3" /> Reagendar
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/exames?paciente=${ag.paciente_id}`)}>
-                                        <FlaskConical className="h-3 w-3" /> Exames
-                                      </Button>
-                                    </div>
-                                  </div>
-                                )}
-                                {ag.status === 'faltou' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="gap-1"
-                                    onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}
-                                  >
-                                    <CalendarPlus className="h-3.5 w-3.5" /> Reagendar
-                                  </Button>
-                                )}
-                                {linkReagendar && (
-                                  <Button asChild size="sm" variant="outline" className="gap-1">
-                                    <a href={linkReagendar} target="_blank" rel="noopener noreferrer" aria-label={`Abrir WhatsApp para ajudar ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} a reagendar`}>
-                                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp para reagendar
-                                    </a>
-                                  </Button>
-                                )}
-                              </div>
+                              <AcoesRecepcao acoes={acoesPara({ ag, pac, med, sala, fila, lanc, step })} disabled={isProcessing} />
                             </div>
                             {step >= 0 && ag.status !== 'faltou' && (
                               <ChecklistRecepcao

@@ -1,3 +1,5 @@
+import { AGENDAMENTO_STATUS, STATUS_SEM_RESERVA } from './agendamentoStatus';
+
 interface AppointmentStepState {
   status: string;
 }
@@ -18,6 +20,7 @@ export function patientStep(
   billing: BillingStepState | null | undefined,
   billingResolved = true,
 ): number {
+  if (STATUS_SEM_RESERVA.has(appointment.status)) return -1;
   if (appointment.status === 'aguardando_pagamento_adicional') return 3;
   if (
     (appointment.status === 'finalizado' || appointment.status === 'atendimento_finalizado') &&
@@ -37,6 +40,5 @@ export function patientStep(
   // A missing invoice after the query resolves means no balance is due.
   if (queueItem && (!billing || billing.status === 'pago')) return 2;
   if (queueItem && billing.status !== 'pago') return 1;
-  if (['confirmado', 'aguardando', 'agendado'].includes(appointment.status)) return 0;
-  return -1;
+  return AGENDAMENTO_STATUS[appointment.status]?.etapa ?? -1;
 }
