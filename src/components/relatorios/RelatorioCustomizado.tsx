@@ -305,6 +305,9 @@ export default function RelatorioCustomizado() {
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(cfg.columns.map(c => c.key)));
 
   const [rows, setRows] = useState<any[]>([]);
+  const queryFilters = JSON.stringify([dataset, dataInicio, dataFim, statusFilter, medicoFilter, convenioFilter, textoBusca, limite, valorMin, valorMax, tipoLancamento]);
+  const [generatedFilters, setGeneratedFilters] = useState<string | null>(null);
+  const filtersChanged = generatedFilters !== null && generatedFilters !== queryFilters;
   const [reportState, setReportState] = useState<'idle' | 'success' | 'error'>('idle');
   const [haMaisResultados, setHaMaisResultados] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -392,6 +395,7 @@ export default function RelatorioCustomizado() {
     }
     setLoading(true);
     setRows([]);
+    setGeneratedFilters(null);
     setHaMaisResultados(false);
     setReportState('idle');
     try {
@@ -428,6 +432,7 @@ export default function RelatorioCustomizado() {
       const truncado = existeMaisResultadoQueLimite(data.length, limiteNumerico);
       const resultado = data.slice(0, limiteNumerico);
       setRows(resultado);
+      setGeneratedFilters(queryFilters);
       setHaMaisResultados(truncado);
       setReportState('success');
       toast.success(`${resultado.length} registros encontrados${truncado ? ' (há mais resultados; ajuste os filtros para exportar tudo)' : ''}`);
@@ -438,7 +443,7 @@ export default function RelatorioCustomizado() {
     } finally {
       setLoading(false);
     }
-  }, [dataInicio, dataFim, dataset, cfg, statusFilter, medicoFilter, convenioFilter, tipoLancamento, valorMin, valorMax, textoBusca, limite]);
+  }, [dataInicio, dataFim, dataset, cfg, statusFilter, medicoFilter, convenioFilter, tipoLancamento, valorMin, valorMax, textoBusca, limite, queryFilters]);
 
   useEffect(() => {
     const salvo = (location.state as any)?.relatorioSalvo;
@@ -554,7 +559,7 @@ export default function RelatorioCustomizado() {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
     if (haMaisResultados) { toast.error('A impressão foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const w = window.open('', '_blank');
-    if (!w) return;
+    if (!w) { toast.error('Permita pop-ups para abrir a impressão do relatório.'); return; }
     w.document.write(`
       <html><head><title>${escapeHtml(cfg.label)}</title>
       <style>
@@ -772,20 +777,30 @@ export default function RelatorioCustomizado() {
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Gerar relatório
             </Button>
-            <Button variant="outline" onClick={exportExcel} disabled={loading || !rows.length || haMaisResultados}>
+            <Button variant="outline" onClick={exportExcel} disabled={loading || filtersChanged || !rows.length || !visibleColumns.length || haMaisResultados}>
               <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
             </Button>
-            <Button variant="outline" onClick={exportCSV} disabled={loading || !rows.length || haMaisResultados}>
+            <Button variant="outline" onClick={exportCSV} disabled={loading || filtersChanged || !rows.length || !visibleColumns.length || haMaisResultados}>
               <Download className="h-4 w-4 mr-2" /> CSV
             </Button>
-            <Button variant="outline" onClick={printReport} disabled={loading || !rows.length || haMaisResultados}>
+            <Button variant="outline" onClick={printReport} disabled={loading || filtersChanged || !rows.length || !visibleColumns.length || haMaisResultados}>
               <Printer className="h-4 w-4 mr-2" /> Imprimir / PDF
             </Button>
             <Button variant="outline" onClick={openSaveWorkspace}>
               <Star className="h-4 w-4 mr-2" /> {canUpdateSavedReport ? 'Atualizar salvo' : 'Salvar / Agendar'}
             </Button>
           </div>
-          {!loading && rows.length === 0 && (
+          {visibleColumns.length === 0 && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Selecione ao menos uma coluna para exportar ou imprimir o relatório.
+            </p>
+          )}
+          {!loading && filtersChanged && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Os filtros foram alterados. Gere o relatório novamente para atualizar os resultados e exportar.
+            </p>
+          )}
+          {!loading && !filtersChanged && rows.length === 0 && (
             <p role="status" className="text-xs text-muted-foreground">
               {reportState === 'error'
                 ? 'Não foi possível gerar o relatório. Revise os filtros ou tente novamente.'
@@ -797,10 +812,10 @@ export default function RelatorioCustomizado() {
         </CardContent>
       </Card>
 
-      {rows.length > 0 && (
+      {!filtersChanged && rows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
               Resultados
               <Badge variant="secondary">{rows.length} registros</Badge>
               {totalValor && (

@@ -260,7 +260,8 @@ export function lerPreco(texto: string): number | null {
   const compacto = texto.trim().replace(/\s/g, '').replace(/^R\$/i, '');
   if (!compacto) return null;
   if (!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(compacto) && !/^\d+(?:\.\d{1,2})?$/.test(compacto)) return null;
-  const valor = Number(compacto.includes(',') ? compacto.replace(/\./g, '').replace(',', '.') : compacto);
+  const temMilhar = /^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(compacto);
+  const valor = Number(compacto.includes(',') || temMilhar ? compacto.replace(/\./g, '').replace(',', '.') : compacto);
   return Number.isFinite(valor) && valor <= 9_999_999_999.99 ? valor : null;
 }
 

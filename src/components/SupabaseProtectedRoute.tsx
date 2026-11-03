@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useSupabaseAuth, AppRole } from '@/contexts/SupabaseAuthContext';
 import { useState } from 'react';
 import { BrandLoadingScreen } from '@/components/BrandLoadingScreen';
@@ -28,6 +28,11 @@ export function SupabaseProtectedRoute({
   const { user, profile, isLoading, profileError, hasAnyRole, isPlatformAdmin, refreshProfile, signOut } = useSupabaseAuth();
   const location = useLocation();
   const [tentando, setTentando] = useState(false);
+  const atualizarAcesso = () => {
+    if (tentando) return;
+    setTentando(true);
+    void refreshProfile().finally(() => setTentando(false));
+  };
 
   if (isLoading) {
     return <BrandLoadingScreen message="Verificando seu acesso" detail="Estamos preparando seu espaço de trabalho." />;
@@ -47,11 +52,7 @@ export function SupabaseProtectedRoute({
             title="Não foi possível carregar seu acesso"
             error={profileError}
             retryLabel={tentando ? 'Tentando…' : 'Tentar novamente'}
-            onRetry={() => {
-              if (tentando) return;
-              setTentando(true);
-              void refreshProfile().finally(() => setTentando(false));
-            }}
+            onRetry={atualizarAcesso}
           />
           <Button variant="ghost" className="w-full" onClick={() => void signOut()}>
             Sair
@@ -102,6 +103,13 @@ export function SupabaseProtectedRoute({
           <p className="text-sm text-muted-foreground">
             Logado como: {user.email}
           </p>
+          {profileError && <ErrorState compact error={profileError} className="mt-4" />}
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Button onClick={atualizarAcesso} disabled={tentando}>
+              {tentando ? 'Atualizando…' : 'Atualizar acesso'}
+            </Button>
+            <Button variant="outline" onClick={() => void signOut()}>Sair</Button>
+          </div>
         </div>
       </div>
     );
@@ -121,6 +129,7 @@ export function SupabaseProtectedRoute({
           <p className="text-muted-foreground">
             Você não tem permissão para acessar esta página.
           </p>
+          <Button asChild className="mt-6"><Link to="/dashboard">Voltar ao início</Link></Button>
         </div>
       </div>
     );

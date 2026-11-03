@@ -52,7 +52,7 @@ export default function CentralNotificacoes() {
     return events.filter(i=>{
       const withinPeriod = cutoff === null || new Date(i.occurred_at).getTime() >= cutoff;
       const matchesSearch=!normalizedSearch||normalizarTexto(`${i.title} ${i.message}`).includes(normalizedSearch);
-      return (category==='all'||i.category===category)&&(!onlyUnread||!i.is_read)&&(!onlyCritical||i.severity==='error')&&withinPeriod&&matchesSearch;
+      return (category==='all'||i.category===category)&&(!onlyUnread||!i.is_read)&&(!onlyCritical||(i.severity==='error'&&!i.is_read))&&withinPeriod&&matchesSearch;
     });
   },[events,category,onlyUnread,onlyCritical,period,search,now]);
   const unread=events.filter(i=>!i.is_read);
@@ -71,7 +71,8 @@ export default function CentralNotificacoes() {
     navigate(i.href);
   };
 
-  if(query.isLoading)return <div className="space-y-5" aria-label="Carregando notificações"><Skeleton className="h-16 max-w-xl"/><Skeleton className="h-10 w-full"/>{[1,2,3,4].map(i=><Skeleton key={i} className="h-24 w-full"/>)}</div>;
+  if(query.isPending&&query.fetchStatus==='paused')return <ErrorState title="Notificações aguardando conexão" description="Ainda não foi possível consultar suas notificações. A leitura será retomada quando a conexão voltar."/>;
+  if(query.isLoading||query.isPending)return <div className="space-y-5" aria-label="Carregando notificações"><Skeleton className="h-16 max-w-xl"/><Skeleton className="h-10 w-full"/>{[1,2,3,4].map(i=><Skeleton key={i} className="h-24 w-full"/>)}</div>;
   if(query.isError)return <ErrorState title="Não foi possível abrir a central" error={query.error} onRetry={()=>query.refetch()}/>;
 
   const indicadores = [
@@ -103,7 +104,7 @@ export default function CentralNotificacoes() {
         </Button>}
         <Button className="gap-2 rounded-full" onClick={()=>markRead.mutate(unreadVisiveis)} disabled={!unreadVisiveis.length||markRead.isPending}>
           <CheckCheck className="h-4 w-4"/>
-          Marcar {unreadVisiveis.length} visível{unreadVisiveis.length===1?'':'is'} como lida{unreadVisiveis.length===1?'':'s'}
+          Marcar {unreadVisiveis.length} {unreadVisiveis.length===1?'visível':'visíveis'} como lida{unreadVisiveis.length===1?'':'s'}
         </Button>
       </>}
     />

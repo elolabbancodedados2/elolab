@@ -1,4 +1,4 @@
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useEffect } from "react";
 import { Home, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import Logo from "@/components/landing-v2/Logo";
 
 const NotFound = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (import.meta.env.DEV) console.error("404 Error: User attempted to access non-existent route:", location.pathname);
@@ -24,7 +25,10 @@ const NotFound = () => {
           Confira o endereço ou siga por um dos caminhos abaixo.
         </p>
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">
-          <Button variant="outline" onClick={() => window.history.back()} className="h-11 gap-2 rounded-full">
+          <Button variant="outline" onClick={() => {
+            if (window.history.state?.idx > 0) navigate(-1);
+            else navigate('/dashboard', { replace: true });
+          }} className="h-11 gap-2 rounded-full">
             <ArrowLeft className="h-4 w-4" />
             Voltar
           </Button>

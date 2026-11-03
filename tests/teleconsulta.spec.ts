@@ -100,11 +100,19 @@ test('dois participantes consentem e estabelecem vídeo WebRTC com mídia sinté
   await expect(guest.getByText('Chamada conectada')).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => signals.some((signal) => signal.signal_type === 'offer')).toBe(true);
   await expect.poll(() => signals.some((signal) => signal.signal_type === 'answer')).toBe(true);
+  await page.getByRole('button', { name: 'Silenciar microfone' }).click();
+  await page.getByRole('button', { name: 'Desligar câmera' }).click();
   await page.getByRole('button', { name: 'Reconectar' }).click();
   await expect.poll(() => signals.filter((signal) => signal.signal_type === 'offer').length).toBeGreaterThan(1);
   await expect.poll(() => signals.filter((signal) => signal.signal_type === 'answer').length).toBeGreaterThan(1);
   await expect(page.getByText('Chamada conectada')).toBeVisible({ timeout: 20_000 });
   await expect(guest.getByText('Chamada conectada')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Ativar microfone' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Ativar câmera' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.getByLabel('Prévia do seu vídeo').evaluate((video: HTMLVideoElement) => {
+    const stream = video.srcObject as MediaStream;
+    return stream.getTracks().map(track => ({ kind: track.kind, enabled: track.enabled }));
+  })).toEqual(expect.arrayContaining([{ kind: 'audio', enabled: false }, { kind: 'video', enabled: false }]));
   expect(providerConsent).toBe(true);
   expect(guestConsent).toBe(true);
   expect(synthetic.assertAllWritesAreMocked()).toBe(true);

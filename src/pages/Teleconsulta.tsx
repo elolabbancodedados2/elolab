@@ -25,6 +25,7 @@ export default function Teleconsulta() {
   const [connected, setConnected] = useState(false);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const mediaPreferences = useRef({ muted: false, cameraOff: false });
   const localVideo = useRef<HTMLVideoElement>(null);
   const remoteVideo = useRef<HTMLVideoElement>(null);
   const peer = useRef<RTCPeerConnection | null>(null);
@@ -95,6 +96,8 @@ export default function Teleconsulta() {
         setConnected(false);
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      stream.getAudioTracks().forEach(track => { track.enabled = !mediaPreferences.current.muted; });
+      stream.getVideoTracks().forEach(track => { track.enabled = !mediaPreferences.current.cameraOff; });
       localStream.current = stream;
       if (localVideo.current) localVideo.current.srcObject = stream;
       const connection = new RTCPeerConnection({ iceServers: iceServersTeleconsulta(import.meta.env as Record<string, string | undefined>, iceDoServidor.current) });
@@ -213,8 +216,8 @@ export default function Teleconsulta() {
         <div className="flex flex-wrap justify-center gap-3">
           {/* Microfone e câmera desligados são escolha da pessoa, não erro: preto, não vermelho. */}
           <Button variant="outline" className="min-h-11 rounded-full gap-2" onClick={reconnect}><Wifi className="h-4 w-4" />Reconectar</Button>
-          <Button variant="outline" size="icon" aria-pressed={muted} className={`h-11 w-11 rounded-full ${muted ? 'border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background' : ''}`} aria-label={muted ? 'Ativar microfone' : 'Silenciar microfone'} onClick={() => { const next = !muted; localStream.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); setMuted(next); }}>{muted ? <MicOff /> : <Mic />}</Button>
-          <Button variant="outline" size="icon" aria-pressed={cameraOff} className={`h-11 w-11 rounded-full ${cameraOff ? 'border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background' : ''}`} aria-label={cameraOff ? 'Ativar câmera' : 'Desligar câmera'} onClick={() => { const next = !cameraOff; localStream.current?.getVideoTracks().forEach((track) => { track.enabled = !next; }); setCameraOff(next); }}>{cameraOff ? <VideoOff /> : <Video />}</Button>
+          <Button variant="outline" size="icon" aria-pressed={muted} className={`h-11 w-11 rounded-full ${muted ? 'border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background' : ''}`} aria-label={muted ? 'Ativar microfone' : 'Silenciar microfone'} onClick={() => { const next = !muted; mediaPreferences.current.muted = next; localStream.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); setMuted(next); }}>{muted ? <MicOff /> : <Mic />}</Button>
+          <Button variant="outline" size="icon" aria-pressed={cameraOff} className={`h-11 w-11 rounded-full ${cameraOff ? 'border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background' : ''}`} aria-label={cameraOff ? 'Ativar câmera' : 'Desligar câmera'} onClick={() => { const next = !cameraOff; mediaPreferences.current.cameraOff = next; localStream.current?.getVideoTracks().forEach((track) => { track.enabled = !next; }); setCameraOff(next); }}>{cameraOff ? <VideoOff /> : <Video />}</Button>
           <Button variant="destructive" className="min-h-11 rounded-full gap-2" onClick={closeRoom}><PhoneOff className="h-4 w-4" />{isProvider ? 'Encerrar chamada' : 'Sair da sala'}</Button>
         </div>
       </>}

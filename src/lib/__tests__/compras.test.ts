@@ -130,6 +130,8 @@ describe('apoio das compras', () => {
   it('lê preços em formato brasileiro e rejeita texto inválido', () => {
     expect(lerPreco('12,50')).toBe(12.5);
     expect(lerPreco('1.234,56')).toBe(1234.56);
+    expect(lerPreco('1.234')).toBe(1234);
+    expect(lerPreco('1.234.567')).toBe(1234567);
     expect(lerPreco('0.45')).toBe(0.45);
     expect(lerPreco('')).toBeNull();
     expect(lerPreco('12,5,0')).toBeNull();

@@ -706,6 +706,13 @@ html[data-text-size='large'] {
   }
 }
 
+/* O Sonner usa 600px, mas a navegação inferior permanece até o breakpoint lg. */
+@media (max-width: 1023px) {
+  .toaster[data-sonner-toaster][data-y-position='bottom'] {
+    bottom: var(--mobile-offset-bottom);
+  }
+}
+
 /* A agenda se adapta ao espaço disponível entre busca, clínica e ações. */
 .agenda-toolbar {
   container-type: inline-size;

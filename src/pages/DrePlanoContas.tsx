@@ -277,8 +277,12 @@ export default function DrePlanoContas() {
   const mesCarregando = planoCarregando || lancamentosQuery.isLoading || pagamentosQuery.isLoading;
   const anoCarregando = planoCarregando || anoQuery.isLoading;
   const queryComErro = [contasQuery, vinculosQuery, lancamentosQuery, pagamentosQuery, anoQuery].find(q => q.isError);
+  const exportacaoCarregando = [contasQuery, vinculosQuery, ...(aba === 'anual'
+    ? [anoQuery]
+    : [lancamentosQuery, pagamentosQuery])].some(query => query.isPending || query.isFetching || query.isPaused);
 
   const exportar = () => {
+    if (exportacaoCarregando) return;
     if (aba === 'anual') {
       if (!dreAnual) return;
       downloadStringAsFile({
@@ -370,7 +374,7 @@ export default function DrePlanoContas() {
                   <BarChart3 aria-hidden="true" className="h-4 w-4" /> Visão financeira
                 </DropdownMenuItem>
                 {(aba === 'dre' || aba === 'anual') && !semPlano && (
-                  <DropdownMenuItem className="gap-2" onClick={exportar} disabled={aba === 'anual' && !dreAnual}>
+                  <DropdownMenuItem className="gap-2" onClick={exportar} disabled={exportacaoCarregando}>
                     <Download aria-hidden="true" className="h-4 w-4" /> Exportar CSV
                   </DropdownMenuItem>
                 )}
