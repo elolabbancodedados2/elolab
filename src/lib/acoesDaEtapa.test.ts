@@ -22,8 +22,8 @@ describe('ações compartilhadas da recepção', () => {
     expect(acoesDaEtapa({ ...item, step: 3, saldo: 10 }).principal).toBe('receber_saldo');
     expect(acoesDaEtapa({ ...item, step: 3 }).principal).toBe('concluir');
   });
-  it('preserva reagendamento para faltas e concluídos', () => {
-    expect(acoesDaEtapa({ ...item, step: 4 }).principal).toBe('reagendar');
+  it('oferece retorno para concluídos e reagendamento para faltas', () => {
+    expect(acoesDaEtapa({ ...item, step: 4 }).principal).toBe('agendar_retorno');
     expect(acoesDaEtapa({ ...item, step: -1, ag: { status: 'faltou' }, temTelefone: true })).toEqual({ principal: 'reagendar', secundarias: ['whatsapp_reagendar'] });
   });
 });

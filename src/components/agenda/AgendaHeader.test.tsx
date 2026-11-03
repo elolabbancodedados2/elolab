@@ -53,6 +53,10 @@ describe('AgendaHeader', () => {
     expect(screen.getByText('Aguardando triagem')).toBeInTheDocument();
     expect(screen.getByText('Em triagem')).toBeInTheDocument();
     expect(screen.getByText('Aguardando pagamento')).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros (1)' }));
+    expect(screen.getByRole('dialog', { name: 'Filtros da agenda' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog', { name: 'Filtros da agenda' })).getByRole('button', { name: 'Mais opções da agenda' })).toBeInTheDocument();
   });
 
   it('esconde o filtro de médicos para o médico e separa os totais por situação', () => {
@@ -89,6 +93,6 @@ describe('AgendaHeader', () => {
     expect(screen.queryByRole('button', { name: 'Limpar filtros' })).not.toBeInTheDocument();
     expect(screen.getByRole('group', { name: /na semana: 9 no total/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Na clínica/ }));
-    expect(onStatusFilterChange).toHaveBeenCalledWith(['aguardando', 'aguardando_triagem', 'em_triagem', 'fila_atendimento', 'em_atendimento']);
+    expect(onStatusFilterChange).toHaveBeenCalledWith(['aguardando', 'aguardando_triagem', 'em_triagem', 'fila_atendimento', 'em_atendimento', 'aguardando_pagamento', 'pago']);
   });
 });

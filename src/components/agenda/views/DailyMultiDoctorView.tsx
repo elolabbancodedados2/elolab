@@ -157,7 +157,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
 }
 
 function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, onRemarcar, convenioById, columnIndex, inactive = false,
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, onRemarcar, faixasExpediente, convenioById, columnIndex, inactive = false,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
@@ -191,6 +191,10 @@ function DoctorColumn({
             </span>
           </div>
         )}
+        {faixasExpediente?.map(([inicio, fim]: Faixa, index: number) => <div key={index}
+          role="img" aria-label={`Expediente de ${nomeMedico(medico.nome || medico.crm)}: ${fromMinutes(inicio)}–${fromMinutes(fim)}`}
+          className="pointer-events-none absolute inset-x-0 bg-primary/5"
+          style={{ top: minutesToPx(Math.max(inicio, START_HOUR * 60) - START_HOUR * 60), height: minutesToPx(Math.max(0, Math.min(fim, END_HOUR * 60) - Math.max(inicio, START_HOUR * 60))) }} />)}
         {/* Visual hour gridlines */}
         {HOURS.map((h, i) => (
           <div
@@ -428,6 +432,7 @@ export function DailyMultiDoctorView({
                 medico={medico}
                 date={date}
                 columnIndex={idx}
+                faixasExpediente={faixasPorMedico?.[medico.id]}
                 inactive={inactive}
                 agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
                 bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}

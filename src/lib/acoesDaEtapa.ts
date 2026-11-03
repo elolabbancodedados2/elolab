@@ -1,4 +1,4 @@
-export type AcaoEtapa = 'checkin' | 'a_caminho' | 'falta' | 'receber' | 'receber_saldo' | 'chamar_balcao' | 'retomar_cobranca' | 'triagem' | 'chamar' | 'iniciar' | 'finalizar' | 'concluir' | 'reagendar' | 'retornos' | 'exames' | 'prontuario' | 'fila' | 'whatsapp_reagendar';
+export type AcaoEtapa = 'agendar_retorno' | 'checkin' | 'a_caminho' | 'falta' | 'receber' | 'receber_saldo' | 'chamar_balcao' | 'retomar_cobranca' | 'triagem' | 'chamar' | 'iniciar' | 'finalizar' | 'concluir' | 'reagendar' | 'retornos' | 'exames' | 'prontuario' | 'fila' | 'whatsapp_reagendar';
 
 interface ItemEtapa {
   ag: { status: string };
@@ -35,6 +35,6 @@ export function acoesDaEtapa(item: ItemEtapa): { principal: AcaoEtapa | null; se
     return { principal: 'iniciar', secundarias };
   }
   if (item.step === 3) return { principal: item.saldo > 0 ? 'receber_saldo' : item.fila ? 'concluir' : 'fila', secundarias: ['reagendar', 'retornos', 'exames', 'prontuario'] };
-  if (item.step === 4) return { principal: 'reagendar', secundarias: ['exames'] };
+  if (item.step === 4) return { principal: 'agendar_retorno', secundarias: ['exames'] };
   return { principal: null, secundarias };
 }

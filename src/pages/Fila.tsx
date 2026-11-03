@@ -1,10 +1,11 @@
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ACOES_ATENDIMENTO, ETAPAS_RECEPCAO, FILA_ETAPA_ATENDIMENTO } from '@/lib/agendaRecepcaoGlossario';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { Switch } from '@/components/ui/switch';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { nomeMedico } from '@/lib/formatters';
 import { formatCurrency } from '@/lib/formatters';
-import { filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
+import { filaAtualizadaHa, filaRealtimeMessage, filaRealtimeState } from '@/lib/filaRealtimeStatus';
 import { generateFilaShiftHandoff } from '@/lib/filaShiftHandoff';
 import { filaRemovalReasonLabel } from '@/lib/filaRemoval';
 import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
@@ -415,7 +416,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
   // Fila, sempre restritos à clínica da sessão.
   useEffect(() => {
     // Timer update every 30s for wait time display
-    const interval = setInterval(() => setNow(Date.now()), 30000);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
     const clinicaId = profile?.clinica_id;
     if (!clinicaId) return () => clearInterval(interval);
     const filtro = `clinica_id=eq.${clinicaId}`;
@@ -975,29 +976,11 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
               <ClipboardCopy aria-hidden="true" className="h-4 w-4" />
               <span className="hidden sm:inline">Passagem de turno</span>
             </Button>
-            <Badge
-              variant="outline"
-              role="status"
-              aria-live="polite"
-              aria-label={filaRealtimeMessage(queueRealtimeState)}
-              className={cn(
-                'max-w-[min(18rem,45vw)] whitespace-normal text-left text-[10px] leading-tight sm:text-xs',
-                queueRealtimeState === 'connected' && 'border-success/40 text-success',
-                queueRealtimeState === 'connecting' && 'border-muted-foreground/30 text-muted-foreground',
-                queueRealtimeState === 'fallback' && 'border-warning/50 bg-warning/10 text-warning-foreground',
-              )}
-            >
-              <span aria-hidden="true" className={cn(
-                'mr-1.5 h-2 w-2 shrink-0 rounded-full',
-                queueRealtimeState === 'connected' && 'bg-success',
-                queueRealtimeState === 'connecting' && 'animate-pulse bg-muted-foreground',
-                queueRealtimeState === 'fallback' && 'bg-warning',
-              )} />
-              <span className="hidden sm:inline">{filaRealtimeMessage(queueRealtimeState)}</span>
-              <span className="sm:hidden">
-                {queueRealtimeState === 'connected' ? 'Ao vivo' : queueRealtimeState === 'connecting' ? 'Conectando' : 'Manual'}
-              </span>
-            </Badge>
+            <TooltipProvider><Tooltip><TooltipTrigger asChild>
+              <Badge variant="outline" role="status" tabIndex={0} className="text-muted-foreground">
+                {filaAtualizadaHa(filaQuery.dataUpdatedAt, now)}
+              </Badge>
+            </TooltipTrigger><TooltipContent>{filaRealtimeMessage(queueRealtimeState)}</TooltipContent></Tooltip></TooltipProvider>
             {meuMedicoId && (
               <label className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground">
                 <Switch checked={apenasMeus} onCheckedChange={(v) => setApenasMeus(v)} aria-label="Mostrar só meus pacientes" />

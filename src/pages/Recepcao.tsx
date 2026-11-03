@@ -203,7 +203,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }, []);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
-  const [viewMode, setViewMode] = useState<'fluxo' | 'linha' | 'lista'>('fluxo');
+  const [viewMode, setViewMode] = useState<'fluxo' | 'linha' | 'lista'>(() => window.matchMedia('(max-width: 639px)').matches ? 'lista' : 'fluxo');
   const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
   const [medicoFiltro, setMedicoFiltro] = useState('todos');
   const [ordenacao, setOrdenacao] = useState<'horario' | 'espera'>('horario');
@@ -502,20 +502,20 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     },
   });
 
+  const [realtimeRecepcao, setRealtimeRecepcao] = useState('CONNECTING');
   // Check if caixa is open — single source of truth: caixa_diario table
   const { refetch: refetchCaixa } = useQuery({
-    queryKey: ['caixa-estado-recepcao', profile?.clinica_id],
+    queryKey: ['caixa-hoje', today, profile?.clinica_id],
     meta: { suppressGlobalErrorToast: true },
-    initialData: () => Boolean(readCaixaEstadoLocal(profile?.id, profile?.clinica_id)),
     queryFn: async () => {
-      if (!profile?.clinica_id) return false;
+      if (!profile?.clinica_id) return null;
       const todayStr = todaySaoPauloDateOnly();
 
       // localStorage is an initial display hint only. Every action re-reads the
       // database so a close from another terminal takes effect immediately.
       const { data: caixa, error } = await supabase
         .from('caixa_diario')
-        .select('id, aberto, data')
+        .select('*')
         .eq('data', todayStr)
         .eq('clinica_id', profile.clinica_id)
         .maybeSingle();
@@ -528,7 +528,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         const userKey = `caixa_estado_${profile.id}`;
         salvarCacheCaixa(clinicaKey, estado);
         salvarCacheCaixa(userKey, estado);
-        return true;
+        return caixa;
       }
 
       // Caixa is closed — clear localStorage
@@ -536,10 +536,10 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       const userKey = `caixa_estado_${profile.id}`;
       limparCacheCaixa(clinicaKey);
       limparCacheCaixa(userKey);
-      return false;
+      return caixa;
     },
     enabled: !!profile?.clinica_id,
-    refetchInterval: 10000,
+    refetchInterval: realtimeRecepcao === 'SUBSCRIBED' ? false : 10000,
   });
 
   async function checkCaixaAberto(): Promise<boolean> {
@@ -550,7 +550,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       });
       return false;
     }
-    if (!resultado.data) {
+    if (!resultado.data?.aberto) {
       toast.error('Caixa fechado!', {
         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
         action: {
@@ -601,7 +601,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_diario', filter: filtro }, () => {
-        queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       })
       // Recebimentos e estornos também podem ser registrados em outra tela ou
       // por outro operador. Sem este evento, o resumo do balcão só se atualizava
@@ -610,7 +610,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia', clinicaId] });
       });
 
-    const ch = channel.subscribe();
+    const ch = channel.subscribe(setRealtimeRecepcao);
     return () => { supabase.removeChannel(ch); };
   }, [queryClient, profile?.clinica_id]);
 
@@ -747,6 +747,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
        iniciar: { label: ACOES_ATENDIMENTO.iniciar, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } },
        finalizar: { label: ACOES_ATENDIMENTO.finalizar, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) },
        concluir: { label: ACOES_ATENDIMENTO.concluir, run: () => { void handleConcluir(item.ag.id, item.fila.id); } },
+       agendar_retorno: { label: ACOES_ATENDIMENTO.retorno, run: () => navigate(`/agenda/nova?data=${today}`, { state: { returnTo: '/recepcao', initial: { paciente_id: item.ag.paciente_id, medico_id: item.ag.medico_id, tipo: 'retorno' } } }) },
        reagendar: { label: 'Reagendar', run: () => navigate(`/agenda?reagendar=${item.ag.id}`) },
        retornos: { label: 'Retornos', run: () => navigate(`/retornos?paciente=${item.ag.paciente_id}`) },
        exames: { label: 'Exames', run: () => navigate(`/exames?paciente=${item.ag.paciente_id}`) },
@@ -1340,7 +1341,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       }
 
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos', 'receita'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -1390,7 +1391,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       toast.success('Atendimento concluído com sucesso!');
       setConfirmDialogOpen(false);
       setPendingAction(null);
@@ -1922,7 +1923,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         )}
       />
 
-      <div role="group" aria-label="Resumo da recepção" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="group" aria-label="Resumo da recepção" className="hidden gap-2 sm:grid sm:grid-cols-4">
         {[
           { label: 'Agendamentos hoje', value: enriched.length, icon: CalendarDays, tone: 'text-primary' },
           { label: 'Atendidos', value: stats.concluido, icon: CheckCircle2, tone: 'text-success' },
@@ -2027,9 +2028,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
 
       <section aria-label="Fluxo da recepção" className="space-y-3">
         <div className="flex min-w-0 flex-col gap-2">
-          <div role="group" aria-label="Filtrar por etapa do atendimento" className="flex min-w-0 snap-x overflow-x-auto rounded-lg border border-border/80 bg-card">
+          <div role="group" aria-label="Filtrar por etapa do atendimento" className="grid min-w-0 grid-cols-2 rounded-lg border border-border/80 bg-card sm:flex sm:overflow-x-auto">
             {workflowStages.map((stage, index) => (
-              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => stage.id === 'atendimento' ? navigate(FILA_ETAPA_ATENDIMENTO) : setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-[132px] shrink-0 snap-start flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
+              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => stage.id === 'atendimento' ? navigate(FILA_ETAPA_ATENDIMENTO) : setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-0 flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border sm:size-8', activeTab === stage.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted text-muted-foreground')}>
                     <stage.icon aria-hidden="true" className="size-4" />

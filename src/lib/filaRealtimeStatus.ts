@@ -1,5 +1,10 @@
 export type FilaRealtimeState = 'connected' | 'connecting' | 'fallback';
 
+export function filaAtualizadaHa(atualizadoEm: number, agora: number): string {
+  if (!atualizadoEm) return 'Aguardando atualização';
+  return `Atualizado há ${Math.max(0, Math.floor((agora - atualizadoEm) / 1000))}s`;
+}
+
 export function filaRealtimeState(status: string): FilaRealtimeState {
   if (status === 'SUBSCRIBED') return 'connected';
   if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') return 'fallback';
