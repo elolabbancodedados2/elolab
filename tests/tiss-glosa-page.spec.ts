@@ -109,6 +109,43 @@ test('glosa form keeps its save action reachable on mobile', async ({ page }) =>
 });
 
 for (const width of [1280, 390]) {
+  test(`glosa aguarda as guias pausadas sem conexão em ${width}px`, async ({ page }) => {
+    const { synthetic } = await installGlosaContext(page);
+    await page.setViewportSize({ width, height: 844 });
+    await page.routeWebSocket('ws://127.0.0.1:54321/**', () => {});
+    let guideReads = 0;
+    let writes = 0;
+    await page.route('**/rest/v1/lote_tiss_guias**', route => {
+      guideReads++;
+      return route.fulfill({ json: [] });
+    });
+    await page.route('**/rest/v1/rpc/registrar_glosa_convenio', route => {
+      writes++;
+      return route.fulfill({ json: { success: true } });
+    });
+    await page.goto('/faturamento-convenios/glosas/nova');
+    await expect(page.getByLabel('Lote enviado')).toBeVisible();
+    await page.context().setOffline(true);
+    try {
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+      await page.getByLabel('Lote enviado').click();
+      await page.getByRole('option', { name: /QA-GLOSA-2026-01/ }).click();
+      await page.getByLabel('Código da glosa').fill('G-44');
+      await page.getByLabel('Valor glosado (R$)').fill('40');
+      await page.getByLabel('Motivo informado pela operadora').fill('Rascunho preservado enquanto não há conexão.');
+      expect(guideReads).toBe(0);
+      await expect(page.locator('#main-content').getByRole('button', { name: 'Registrar glosa', exact: true })).toBeDisabled();
+      await expect(page.getByLabel('Guia de referência (opcional)')).toBeDisabled();
+      expect(writes).toBe(0);
+    } finally { await page.context().setOffline(false); }
+    await expect.poll(() => guideReads).toBeGreaterThan(0);
+    await expect(page.getByLabel('Motivo informado pela operadora')).toHaveValue('Rascunho preservado enquanto não há conexão.');
+    await expect(page.getByLabel('Guia de referência (opcional)')).toBeEnabled();
+    await expect(page.locator('#main-content').getByRole('button', { name: 'Registrar glosa', exact: true })).toBeEnabled();
+    expect(writes).toBe(0);
+    expect(synthetic.assertAllWritesAreMocked()).toBe(true);
+  });
+
   test(`glosa preserva os dados e exige carregar as guias em ${width}px`, async ({ page }, testInfo) => {
     const { synthetic } = await installGlosaContext(page);
     await page.setViewportSize({ width, height: 844 });
