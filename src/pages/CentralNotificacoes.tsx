@@ -52,7 +52,7 @@ export default function CentralNotificacoes() {
     return events.filter(i=>{
       const withinPeriod = cutoff === null || new Date(i.occurred_at).getTime() >= cutoff;
       const matchesSearch=!normalizedSearch||normalizarTexto(`${i.title} ${i.message}`).includes(normalizedSearch);
-      return (category==='all'||i.category===category)&&(!onlyUnread||!i.is_read)&&(!onlyCritical||i.severity==='error')&&withinPeriod&&matchesSearch;
+      return (category==='all'||i.category===category)&&(!onlyUnread||!i.is_read)&&(!onlyCritical||(i.severity==='error'&&!i.is_read))&&withinPeriod&&matchesSearch;
     });
   },[events,category,onlyUnread,onlyCritical,period,search,now]);
   const unread=events.filter(i=>!i.is_read);
@@ -103,7 +103,7 @@ export default function CentralNotificacoes() {
         </Button>}
         <Button className="gap-2 rounded-full" onClick={()=>markRead.mutate(unreadVisiveis)} disabled={!unreadVisiveis.length||markRead.isPending}>
           <CheckCheck className="h-4 w-4"/>
-          Marcar {unreadVisiveis.length} visível{unreadVisiveis.length===1?'':'is'} como lida{unreadVisiveis.length===1?'':'s'}
+          Marcar {unreadVisiveis.length} {unreadVisiveis.length===1?'visível':'visíveis'} como lida{unreadVisiveis.length===1?'':'s'}
         </Button>
       </>}
     />

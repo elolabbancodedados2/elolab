@@ -128,6 +128,23 @@ describe('CentralNotificacoes — leitura em lote', () => {
     expect(screen.getByText('Nenhuma notificação por enquanto')).toBeInTheDocument();
   });
 
+  it('o atalho de críticas não lidas exclui alertas críticos já lidos', () => {
+    state.data = [
+      item({ severity: 'error', title: 'Crítica pendente' }),
+      item({ source_id: 'critical-read', severity: 'error', title: 'Crítica já lida', is_read: true }),
+    ];
+    render(<CentralNotificacoes />);
+    const indicators = screen.getByRole('group', { name: 'Indicadores e filtros rápidos de notificações' });
+    fireEvent.click(within(indicators).getByRole('button', { name: /Críticas/ }));
+
+    expect(screen.getByRole('button', { name: /Crítica pendente/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Crítica já lida/ })).not.toBeInTheDocument();
+    expect(screen.getByText('1 de 2 notificações')).toBeInTheDocument();
+
+    fireEvent.click(within(indicators).getByRole('button', { name: /Todas/ }));
+    expect(screen.getByRole('button', { name: /Crítica já lida/ })).toBeInTheDocument();
+  });
+
   it('mostra contagem agrupada e abre a origem do evento sem duplicar a leitura', async () => {
     state.data = [item(), item({ message: 'Cópia repetida' })];
     render(<CentralNotificacoes />);
