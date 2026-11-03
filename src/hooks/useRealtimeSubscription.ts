@@ -31,8 +31,9 @@ const BACKOFF_FACTOR = 1.5;
  */
 export function useRealtimeSubscription() {
   const queryClient = useQueryClient();
-  const { user } = useSupabaseAuth();
+  const { user, profile } = useSupabaseAuth();
   const userId = user?.id;
+  const clinicaId = profile?.clinica_id;
   const pollIntervalRef = useRef(INITIAL_POLL_INTERVAL);
   const channelStatusRef = useRef<string>('CONNECTING');
   const isActiveRef = useRef(true);
@@ -45,7 +46,7 @@ export function useRealtimeSubscription() {
   }, [queryClient]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !clinicaId) return;
 
     isActiveRef.current = true;
     pollIntervalRef.current = INITIAL_POLL_INTERVAL;
@@ -57,7 +58,7 @@ export function useRealtimeSubscription() {
     CRITICAL_TABLES.forEach(({ table, queryKeys }) => {
       channel = channel.on(
         'postgres_changes',
-        { event: '*', schema: 'public', table },
+        { event: '*', schema: 'public', table, filter: `clinica_id=eq.${clinicaId}` },
         () => {
           queryKeys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] }));
         }
@@ -121,5 +122,5 @@ export function useRealtimeSubscription() {
       document.removeEventListener('visibilitychange', aoMudarVisibilidade);
       supabase.removeChannel(channel);
     };
-  }, [userId, queryClient, invalidateAll]);
+  }, [userId, clinicaId, queryClient, invalidateAll]);
 }

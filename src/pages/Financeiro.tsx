@@ -1,3 +1,4 @@
+import { formatCurrency as fmt } from '@/lib/formatters';
 import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -38,7 +39,6 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { normalizarCategoria, rotuloCentroCusto, somarPorCategoria } from '@/lib/financeiroRotulos';
 
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtShort = formatarValorAbreviadoFinanceiro;
 
 const statusLiquidadoParcialOuTotal = (status: string | null) => status === 'pago' || status === 'parcial';

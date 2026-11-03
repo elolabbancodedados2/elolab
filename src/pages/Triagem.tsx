@@ -35,7 +35,7 @@ import { pacienteCorresponde } from '@/lib/buscaPaciente';
 import { canalUnico } from '@/lib/realtimeCanal';
 import { ErrorState } from '@/components/ErrorState';
 import { PendentesTriagem } from '@/components/triagem/PendentesTriagem';
-import { dateOnlyInTimeZone, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { dateOnlyInTimeZone, dateRangeInTimeZoneIso, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { buildTriagensFilters, filtrarAgendamentosAguardandoTriagem, temCheckinAtivo } from '@/lib/triageQueue';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
@@ -275,10 +275,9 @@ export default function TriagemPage({ creationPage = false }: { creationPage?: b
     return () => window.clearInterval(timer);
   }, []);
 
-  const inicioDoDia = new Date(`${today}T00:00:00-03:00`).toISOString();
-  const proximoDiaUtc = new Date(`${today}T00:00:00Z`);
-  proximoDiaUtc.setUTCDate(proximoDiaUtc.getUTCDate() + 1);
-  const inicioDoProximoDia = new Date(`${proximoDiaUtc.toISOString().slice(0, 10)}T00:00:00-03:00`).toISOString();
+  const intervaloDoDia = dateRangeInTimeZoneIso(today, today, 'America/Sao_Paulo');
+  const inicioDoDia = intervaloDoDia.gte!;
+  const inicioDoProximoDia = intervaloDoDia.lt!;
   const agendamentosQuery = useAgendamentos(today);
   const { data: agendamentos = [] } = agendamentosQuery;
   const filaQuery = useSupabaseQuery<any>('fila_atendimento', {

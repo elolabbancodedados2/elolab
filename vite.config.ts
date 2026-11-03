@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 import { createViteTestSupabaseDefine } from './scripts/test-supabase-env.ts';
 
@@ -73,7 +72,6 @@ export default defineConfig(({ mode }) => ({
   // ajudam no suporte quando o usuário relata um problema.
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
     // Manifesto único: gerado aqui e injetado no index.html pelo plugin.
     // (Havia também public/manifest.webmanifest com outro nome e outras cores.)
     VitePWA({

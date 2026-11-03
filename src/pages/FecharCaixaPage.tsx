@@ -1,3 +1,4 @@
+import { formatCurrency as moeda } from '@/lib/formatters';
 import { useEffect, useRef, useState } from 'react';
 import { useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,9 +47,6 @@ interface MovimentoCaixa {
   created_at: string;
 }
 
-function moeda(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
 
 const parseValorContado = parseMoneyInput;
 

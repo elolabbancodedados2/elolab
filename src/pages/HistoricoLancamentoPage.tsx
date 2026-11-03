@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, History, RefreshCw } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -21,9 +22,6 @@ function formatDate(value: string) {
   });
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
 
 export default function HistoricoLancamentoPage() {
   const { lancamentoId } = useParams();

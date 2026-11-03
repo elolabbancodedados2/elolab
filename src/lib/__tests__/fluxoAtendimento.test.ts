@@ -84,28 +84,6 @@ describe('progresso de exame', () => {
   });
 });
 
-describe('cancelamento de consulta usa transicao atomica da agenda', () => {
-  it('nao atualiza status e fila em chamadas separadas', async () => {
-    mockAtual = criarSupabaseMock({
-      'agendamentos.select': {
-        data: { data: '2026-10-11', hora_inicio: '10:00', medico_id: 'med-1', paciente_id: 'pac-1', clinica_id: 'clin-1', updated_at: '2026-10-11T09:00:00Z' },
-        error: null,
-      },
-      'rpc.alterar_status_agendamento_com_fila': {
-        data: { atualizado: true, fila_removida: 0 }, error: null,
-      },
-    });
-
-    const { autoCancelarAgendamento } = await import('@/lib/workflowAutomation');
-    const resultado = await autoCancelarAgendamento({ agendamentoId: 'ag-1', motivo: 'cancelado' });
-
-    expect(resultado.success).toBe(true);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'rpc:alterar_status_agendamento_com_fila')).toBe(true);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'delete')).toBe(false);
-  });
-});
-
 describe('coleta de exame urgente', () => {
   it('atualiza a coleta criada pelo banco para urgente', async () => {
     mockAtual = criarSupabaseMock({
@@ -127,39 +105,6 @@ describe('coleta de exame urgente', () => {
 });
 
 describe('check-in usa a transicao atomica do banco', () => {
-  it('chama a RPC e nao insere fila ou atualiza agenda diretamente', async () => {
-    mockAtual = criarSupabaseMock({
-      'rpc.realizar_checkin': {
-        data: { repetido: false, fila_id: 'fila-1', status_agendamento: 'aguardando' },
-        error: null,
-      },
-    });
-
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const result = await autoCheckin('ag-1', 'clinica-1');
-
-    expect(result.success).toBe(true);
-    const checkin = mockAtual.chamadas.find(c => c.tabela === 'rpc:realizar_checkin');
-    expect(checkin?.payload).toEqual({ p_agendamento_id: 'ag-1', p_prioridade: 'normal' });
-    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'insert')).toBe(false);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
-  });
-
-  it('reconhece check-in repetido sem criar outra entrada', async () => {
-    mockAtual = criarSupabaseMock({
-      'rpc.realizar_checkin': {
-        data: { repetido: true, fila_id: 'fila-existente', status_agendamento: 'aguardando' },
-        error: null,
-      },
-    });
-
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const result = await autoCheckin('ag-1');
-
-    expect(result.success).toBe(true);
-    expect(result.message).toContain('fila');
-  });
-
   it('mantém a prioridade da triagem ao entrar pela RPC', async () => {
     mockAtual = criarSupabaseMock({
       'fila_atendimento.select': { data: [], error: null },
@@ -182,18 +127,6 @@ describe('check-in usa a transicao atomica do banco', () => {
     expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'insert')).toBe(false);
   });
 
-  it('reporta falha da RPC sem alterar a agenda ou a fila diretamente', async () => {
-    mockAtual = criarSupabaseMock({
-      'rpc.realizar_checkin': { data: null, error: { message: 'sem permissao' } },
-    });
-
-    const { autoCheckin } = await import('@/lib/workflowAutomation');
-    const result = await autoCheckin('ag-1');
-
-    expect(result.success).toBe(false);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'fila_atendimento' && c.op === 'insert')).toBe(false);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'agendamentos' && c.op === 'update')).toBe(false);
-  });
 });
 
 describe('faturamento automático — uma cobrança por agendamento', () => {

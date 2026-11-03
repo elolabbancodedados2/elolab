@@ -1,3 +1,4 @@
+import { formatCurrency as money } from '@/lib/formatters';
 import { useEffect, useRef, useState } from 'react';
 import { useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,9 +43,6 @@ type ReturnState = { returnTo?: unknown; cashTab?: unknown; cashSearchTerm?: unk
 
 const parseMoney = parseMoneyInput;
 
-function money(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
 
 const movementLabels: Record<MovementType, string> = {
   receita: 'Receita', despesa: 'Despesa', sangria: 'Sangria', suprimento: 'Suprimento',

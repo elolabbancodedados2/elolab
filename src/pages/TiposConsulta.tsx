@@ -1,3 +1,4 @@
+import { formatCurrency as fmt } from '@/lib/formatters';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
@@ -42,8 +43,6 @@ const INDICADORES: { key: FiltroStatus; label: string; legenda: string; icon: ty
   { key: 'sem_convenio', label: 'Sem convênio', legenda: 'só valor particular', icon: Building2, cor: 'bg-secondary text-foreground' },
 ];
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const temNoMaximoDuasCasasDecimais = (valor: number) =>
   Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
 

@@ -1,3 +1,4 @@
+import { formatCurrency as fmt } from '@/lib/formatters';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -350,7 +351,6 @@ export default function CaixaDiario() {
   });
 
   // ─── Helpers ────────────────────────────────────
-  const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtTime = horaSP;
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 

@@ -1,4 +1,4 @@
-import { nomeMedico } from '@/lib/formatters';
+import { nomeMedico, formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useEffect } from 'react';
 import { DoctorDashboard } from '@/components/dashboard/DoctorDashboard';
 import { InicioPainel } from '@/components/dashboard/InicioPainel';
@@ -34,7 +34,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
 } from 'recharts';
-import { dateOnlyInTimeZone, inicioDoDiaEmFusoIso, parseDateOnly, toDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
+import { dateOnlyInTimeZone, dateRangeInTimeZoneIso, inicioDoDiaEmFusoIso, parseDateOnly, toDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { valorRealizado } from '@/lib/lancamentos';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { linkWhatsApp } from '@/lib/whatsapp';
@@ -43,8 +43,6 @@ import { formatarEspera, minutosDeEspera } from '@/lib/filaEspera';
 import { podeIniciarAgendamento, separarFilaAtivaPorData } from '@/lib/filaPorData';
 import { ordenarFilaPorPrioridade } from '@/lib/filaPrioridade';
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
 const formatCurrencyShort = (value: number) => {
   if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)}M`;
@@ -494,10 +492,7 @@ function AdminDashboard() {
     enabled: !!user?.clinica_id && !loadingLancamentos,
     staleTime: 60_000,
     queryFn: async () => {
-      const amanhaDate = new Date(`${hoje}T00:00:00Z`);
-      amanhaDate.setUTCDate(amanhaDate.getUTCDate() + 1);
-      const inicioLocal = inicioDoDiaEmFusoIso(seisMeses, 'America/Sao_Paulo');
-      const fimLocalExclusivo = inicioDoDiaEmFusoIso(amanhaDate.toISOString().slice(0, 10), 'America/Sao_Paulo');
+      const { gte: inicioLocal, lt: fimLocalExclusivo } = dateRangeInTimeZoneIso(seisMeses, hoje, 'America/Sao_Paulo');
       const selecionar = () => supabase.from('pagamentos')
         .select('id, lancamento_id, valor, data_pagamento, estornado_em, lancamentos!inner(agendamento_id, tipo, clinica_id)')
         .eq('clinica_id', user!.clinica_id!)

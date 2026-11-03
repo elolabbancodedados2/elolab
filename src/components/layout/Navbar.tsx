@@ -20,7 +20,6 @@ import type { AppRole } from '@/contexts/SupabaseAuthContext';
 import { cn } from '@/lib/utils';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
-import { useRealtimeNotifications, type AppNotification } from '@/hooks/useRealtimeNotifications';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -77,7 +76,6 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
   const navigationMode = isPlatformAdmin && !profile?.clinica_id
     ? 'platform'
     : getNavigationMode(location.pathname, isPlatformAdmin);
-  const { notifications: systemNotifications, unreadCount: systemUnread } = useRealtimeNotifications();
   const operationalSeenRef = useRef<{ owner: string; initialized: boolean; ids: Set<string> }>({ owner: '', initialized: false, ids: new Set() });
   const roles = profile?.roles ?? [];
   const podeVerEnviados = roles.some(role => PAPEIS_ENVIADOS.includes(role));
@@ -180,7 +178,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
     : 0;
   // A aba Alertas mostra a mesma central operacional da tela de notificações.
   const operationalUnread = operationalNotifications.filter((item) => !item.is_read).length;
-  const alertasUnread = operationalUnread + systemUnread;
+  const alertasUnread = operationalUnread;
   const totalUnread = alertasUnread + queueProblems;
   type OperationalItem = (typeof operationalNotifications)[number];
   const markOperationalRead = useMutation({
@@ -211,11 +209,6 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-  };
-
-  const getNotificationColor = (type: AppNotification['type']) => {
-    const colors = { info: 'bg-info', success: 'bg-success', warning: 'bg-warning', error: 'bg-destructive' };
-    return colors[type];
   };
 
   const getQueueIcon = (tipo: string) => {
@@ -415,25 +408,7 @@ export function Navbar({ onMenuClick, mobileMenuOpen }: NavbarProps) {
                       {!item.is_read && <span className="sr-only">Não lida</span>}
                     </DropdownMenuItem>
                   ))}
-                  {systemNotifications.length > 0 ? systemNotifications.map((notification) => (
-                    <DropdownMenuItem
-                      key={notification.id}
-                      asChild
-                      className={cn(
-                        'flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg mb-0.5 focus:bg-accent/50',
-                        !notification.read && 'bg-accent/30'
-                      )}
-                    >
-                      <Link to="/notificacoes">
-                        <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', getNotificationColor(notification.type))} />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{notification.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{notification.message}</p>
-                          <p className="text-[11px] text-muted-foreground mt-1">{notification.time}</p>
-                        </div>
-                      </Link>
-                    </DropdownMenuItem>
-                  )) : operationalNotifications.length === 0 && !operationalNotificationsError && (
+                  {operationalNotifications.length === 0 && !operationalNotificationsError && (
                     <div className="py-10 text-center text-sm text-muted-foreground">
                       <Bell className="h-7 w-7 mx-auto mb-2 opacity-20" />
                       Sem alertas

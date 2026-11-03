@@ -1,3 +1,4 @@
+import { formatCurrency as currency } from '@/lib/formatters';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -74,7 +75,6 @@ const STATUS: Record<string, { label: string; className: string }> = {
   estornado: { label: STATUS_RECEITA.estornado, className: 'border-border bg-muted text-muted-foreground' },
 };
 
-const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const dateOnly = (value: string | null) => value ? formatWithDatePreference(parseDateOnly(value)!, 'dd/MM/yyyy') : '—';
 const dateTime = (value: string) => dataHoraSP(value);
 

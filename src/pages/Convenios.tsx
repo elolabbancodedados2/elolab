@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/formatters';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Edit, Trash2, Building2, Shield, ExternalLink, User, Phone, Loader2,
@@ -265,8 +266,6 @@ function TabelaExamesConvenio({ convenioId, creationPage, outrosConvenios }: { c
     } finally { exameDeleteLock.current = false; setIsDeletingExame(false); setDeleteExameId(null); }
   };
 
-  const formatCurrency = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   return (
     <div className="space-y-4">
@@ -731,7 +730,6 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
     setFormData(prev => ({ ...prev, tipo_planos: prev.tipo_planos.filter(x => x !== p) }));
   };
 
-  const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   if (isLoading && !taskPage) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96" /></div>;
   if (erroConvenios && !taskPage) return <ErrorState error={erroConvenios} title="Não foi possível carregar os convênios" onRetry={() => { void refetchConvenios(); }} />;

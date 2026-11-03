@@ -106,40 +106,16 @@ async function carregarDadosConta(userId: string): Promise<DadosConta> {
 
   if (profileResult.error) throw comoErro(profileResult.error, 'Não foi possível carregar seu perfil.');
   if (rolesResult.error) throw comoErro(rolesResult.error, 'Não foi possível carregar suas funções.');
-  // Falha em platform_admins não derruba o login de quem é só da clínica,
-  // mas impede o provisionamento automático logo abaixo.
+  // Falha em platform_admins não derruba o login de quem é só da clínica.
   const platformAdminLevel = platformResult.error ? null : ((platformResult.data?.nivel as PlatformAdminLevel | undefined) ?? null);
 
   const profileData = profileResult.data;
   if (!profileData) return { profile: null, platformAdminLevel, isClinicaOwner: false };
 
   const roles = ordenarPapeis((rolesResult.data ?? []).map(r => r.role));
-  let clinicaId = profileData.clinica_id ?? undefined;
-
-  // A conta dona da plataforma pode ter o papel `admin` por legado, mas não
-  // pertence a uma clínica. Na dúvida (falha na leitura), não faça uma
-  // mutação irreversível: o próximo refresh tenta de novo.
-  const isPlatformAccount = Boolean(platformAdminLevel) || Boolean(platformResult.error);
-
-  // Auto-create clinica for admins who don't have one
-  if (!clinicaId && roles.includes('admin') && !isPlatformAccount) {
-    try {
-      const { data: newClinica } = await supabase
-        .from('clinicas')
-        .insert({ nome: 'Minha Clínica', owner_id: userId })
-        .select('id')
-        .single();
-      if (newClinica) {
-        clinicaId = newClinica.id;
-        await supabase
-          .from('profiles')
-          .update({ clinica_id: clinicaId })
-          .eq('id', userId);
-      }
-    } catch (e) {
-      console.error('Error auto-creating clinica:', e);
-    }
-  }
+  // A clínica é provisionada no checkout (provisionar_conta_dona_com_clinica_interna),
+  // nunca no login.
+  const clinicaId = profileData.clinica_id ?? undefined;
 
   let isClinicaOwner = false;
   if (clinicaId) {
