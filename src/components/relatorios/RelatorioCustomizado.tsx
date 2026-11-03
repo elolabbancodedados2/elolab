@@ -554,7 +554,7 @@ export default function RelatorioCustomizado() {
     if (!rows.length) { toast.error('Gere o relatório primeiro'); return; }
     if (haMaisResultados) { toast.error('A impressão foi bloqueada porque há mais resultados que o limite selecionado.'); return; }
     const w = window.open('', '_blank');
-    if (!w) return;
+    if (!w) { toast.error('Permita pop-ups para abrir a impressão do relatório.'); return; }
     w.document.write(`
       <html><head><title>${escapeHtml(cfg.label)}</title>
       <style>
@@ -772,19 +772,24 @@ export default function RelatorioCustomizado() {
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Gerar relatório
             </Button>
-            <Button variant="outline" onClick={exportExcel} disabled={loading || !rows.length || haMaisResultados}>
+            <Button variant="outline" onClick={exportExcel} disabled={loading || !rows.length || !visibleColumns.length || haMaisResultados}>
               <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
             </Button>
-            <Button variant="outline" onClick={exportCSV} disabled={loading || !rows.length || haMaisResultados}>
+            <Button variant="outline" onClick={exportCSV} disabled={loading || !rows.length || !visibleColumns.length || haMaisResultados}>
               <Download className="h-4 w-4 mr-2" /> CSV
             </Button>
-            <Button variant="outline" onClick={printReport} disabled={loading || !rows.length || haMaisResultados}>
+            <Button variant="outline" onClick={printReport} disabled={loading || !rows.length || !visibleColumns.length || haMaisResultados}>
               <Printer className="h-4 w-4 mr-2" /> Imprimir / PDF
             </Button>
             <Button variant="outline" onClick={openSaveWorkspace}>
               <Star className="h-4 w-4 mr-2" /> {canUpdateSavedReport ? 'Atualizar salvo' : 'Salvar / Agendar'}
             </Button>
           </div>
+          {visibleColumns.length === 0 && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Selecione ao menos uma coluna para exportar ou imprimir o relatório.
+            </p>
+          )}
           {!loading && rows.length === 0 && (
             <p role="status" className="text-xs text-muted-foreground">
               {reportState === 'error'
@@ -800,7 +805,7 @@ export default function RelatorioCustomizado() {
       {rows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
               Resultados
               <Badge variant="secondary">{rows.length} registros</Badge>
               {totalValor && (
