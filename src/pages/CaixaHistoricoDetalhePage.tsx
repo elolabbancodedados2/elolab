@@ -12,9 +12,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
 import { calcularSaldoGaveta, calcularTotaisCaixa } from '@/lib/caixaDiario';
 import { cn } from '@/lib/utils';
-import { dataHoraSP, horaSP, rotuloForma, textoSeguroCsv } from '@/lib/caixaFormatacao';
+import { dataHoraSP, horaSP, rotuloForma } from '@/lib/caixaFormatacao';
 import { abrirJanelaDeImpressao, montarRelatorioCaixaHtml, textoDiferenca } from '@/lib/relatorioCaixa';
 import { diferencaEmReais } from '@/lib/dinheiro';
+import { formatCsvCell } from '@/lib/csv';
 
 type CashRecord = {
   id: string;
@@ -59,22 +60,20 @@ const movementLabel: Record<CashMovement['tipo'], string> = {
 };
 
 function exportMovementsCsv(movements: CashMovement[], date: string) {
-  const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-  const safeText = textoSeguroCsv;
   const rows = [
     ['Data', 'Hora', 'Tipo', 'Descrição', 'Paciente', 'Forma de pagamento', 'Categoria', 'Valor'],
     ...movements.map(item => [
       item.data,
       horaSP(item.created_at),
       movementLabel[item.tipo],
-      safeText(item.descricao),
-      safeText(item.paciente_nome || ''),
-      safeText(rotuloForma(item.forma_pagamento)),
-      safeText(item.categoria),
+      item.descricao,
+      item.paciente_nome || '',
+      rotuloForma(item.forma_pagamento),
+      item.categoria,
       ((item.tipo === 'receita' || item.tipo === 'suprimento') ? item.valor : -item.valor).toFixed(2).replace('.', ','),
     ]),
   ];
-  const csv = rows.map(row => row.map(escapeCsv).join(';')).join('\r\n');
+  const csv = rows.map(row => row.map(formatCsvCell).join(';')).join('\r\n');
   const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }));
   const anchor = document.createElement('a');
   anchor.href = url;

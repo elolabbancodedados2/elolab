@@ -86,6 +86,9 @@ Deno.serve(async (req) => {
         .select('id, nome, email, data_nascimento, clinica_id')
         .not('email', 'is', null)
         .not('data_nascimento', 'is', null)
+        // Respeita paciente inativo e quem recusou e-mail.
+        .eq('ativo', true)
+        .in('preferencia_canal_lembrete', ['ambos', 'email'])
         .order('clinica_id', { ascending: true })
         .order('id', { ascending: true })
         .range(inicio, fim)
@@ -100,6 +103,7 @@ Deno.serve(async (req) => {
     if (pacientesComNascimento.length === limitePacientes) {
       let consultaExtra = supabase.from('pacientes').select('id')
         .not('email', 'is', null).not('data_nascimento', 'is', null)
+        .eq('ativo', true).in('preferencia_canal_lembrete', ['ambos', 'email'])
         .order('clinica_id', { ascending: true }).order('id', { ascending: true })
         .range(limitePacientes, limitePacientes)
       if (clinicaAlvo) consultaExtra = consultaExtra.eq('clinica_id', clinicaAlvo)
