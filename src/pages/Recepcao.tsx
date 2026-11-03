@@ -1,3 +1,8 @@
+import { FecharDiaDialog } from '@/components/recepcao/FecharDiaDialog';
+import { marcarFaltasSelecionadas } from '@/lib/fecharDia';
+import { ACOES_ATENDIMENTO, ETAPAS_RECEPCAO, FILA_ETAPA_ATENDIMENTO } from '@/lib/agendaRecepcaoGlossario';
+import { acoesDaEtapa, type AcaoEtapa } from '@/lib/acoesDaEtapa';
+import { AcoesRecepcao, type AcaoRecepcao } from '@/components/recepcao/AcoesRecepcao';
 import { formatCurrency } from '@/lib/formatters';
 import { emCentavos } from '@/lib/dinheiro';
 import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
@@ -17,7 +22,7 @@ import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { primeiraFalhaCheckin, validarCheckin } from '@/lib/checkinValidacao';
 import { chamarPacienteNaFila } from '@/lib/filaChamada';
 import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
-import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { ChecklistRecepcao } from '@/components/recepcao/ChecklistRecepcao';
 import { ErrorState } from '@/components/ErrorState';
@@ -86,7 +91,7 @@ const FORMAS_PAGAMENTO = [
 ];
 const PARCELAS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-const STEP_LABELS = ['Check-in', 'Balcão', 'Atendimento', 'Finalizado', 'Concluído'] as const;
+const STEP_LABELS = ETAPAS_RECEPCAO;
 
 const STATUS_LANCAMENTO: Record<string, string> = {
   pendente: 'Pendente',
@@ -198,7 +203,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }, []);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
-  const [viewMode, setViewMode] = useState<'fluxo' | 'linha' | 'lista'>('fluxo');
+  const [viewMode, setViewMode] = useState<'fluxo' | 'linha' | 'lista'>(() => window.matchMedia('(max-width: 639px)').matches ? 'lista' : 'fluxo');
   const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
   const [medicoFiltro, setMedicoFiltro] = useState('todos');
   const [ordenacao, setOrdenacao] = useState<'horario' | 'espera'>('horario');
@@ -497,20 +502,20 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
     },
   });
 
+  const [realtimeRecepcao, setRealtimeRecepcao] = useState('CONNECTING');
   // Check if caixa is open — single source of truth: caixa_diario table
   const { refetch: refetchCaixa } = useQuery({
-    queryKey: ['caixa-estado-recepcao', profile?.clinica_id],
+    queryKey: ['caixa-hoje', today, profile?.clinica_id],
     meta: { suppressGlobalErrorToast: true },
-    initialData: () => Boolean(readCaixaEstadoLocal(profile?.id, profile?.clinica_id)),
     queryFn: async () => {
-      if (!profile?.clinica_id) return false;
+      if (!profile?.clinica_id) return null;
       const todayStr = todaySaoPauloDateOnly();
 
       // localStorage is an initial display hint only. Every action re-reads the
       // database so a close from another terminal takes effect immediately.
       const { data: caixa, error } = await supabase
         .from('caixa_diario')
-        .select('id, aberto, data')
+        .select('*')
         .eq('data', todayStr)
         .eq('clinica_id', profile.clinica_id)
         .maybeSingle();
@@ -523,7 +528,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         const userKey = `caixa_estado_${profile.id}`;
         salvarCacheCaixa(clinicaKey, estado);
         salvarCacheCaixa(userKey, estado);
-        return true;
+        return caixa;
       }
 
       // Caixa is closed — clear localStorage
@@ -531,10 +536,10 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       const userKey = `caixa_estado_${profile.id}`;
       limparCacheCaixa(clinicaKey);
       limparCacheCaixa(userKey);
-      return false;
+      return caixa;
     },
     enabled: !!profile?.clinica_id,
-    refetchInterval: 10000,
+    refetchInterval: realtimeRecepcao === 'SUBSCRIBED' ? false : 10000,
   });
 
   async function checkCaixaAberto(): Promise<boolean> {
@@ -545,7 +550,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       });
       return false;
     }
-    if (!resultado.data) {
+    if (!resultado.data?.aberto) {
       toast.error('Caixa fechado!', {
         description: 'Abra o Caixa Diário antes de realizar pagamentos.',
         action: {
@@ -596,7 +601,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_diario', filter: filtro }, () => {
-        queryClient.invalidateQueries({ queryKey: ['caixa-estado-recepcao'] });
+        queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       })
       // Recebimentos e estornos também podem ser registrados em outra tela ou
       // por outro operador. Sem este evento, o resumo do balcão só se atualizava
@@ -605,7 +610,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         queryClient.invalidateQueries({ queryKey: ['pagamentos-do-dia', clinicaId] });
       });
 
-    const ch = channel.subscribe();
+    const ch = channel.subscribe(setRealtimeRecepcao);
     return () => { supabase.removeChannel(ch); };
   }, [queryClient, profile?.clinica_id]);
 
@@ -700,10 +705,10 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    );
 
    const workflowStages = [
-     { id: 'checkin', title: 'Check-in', subtitle: 'Pacientes chegando', count: stats.aguardando, icon: Clock, items: filtered.filter(item => item.step === 0) },
-     { id: 'balcao', title: 'Balcão', subtitle: 'Aguardando liberação', count: stats.balcao, icon: Banknote, items: filtered.filter(item => item.step === 1) },
-     { id: 'atendimento', title: 'Atendimento', subtitle: 'Na clínica', count: stats.atendimento, icon: Stethoscope, items: filtered.filter(item => item.step === 2 || item.step === 3) },
-     { id: 'concluido', title: 'Concluído', subtitle: 'Atendimentos finalizados', count: stats.concluido, icon: CheckCircle2, items: filtered.filter(item => item.step === 4) },
+     { id: 'checkin', title: ETAPAS_RECEPCAO[0], subtitle: 'Pacientes chegando', count: stats.aguardando, icon: Clock, items: filtered.filter(item => item.step === 0) },
+     { id: 'balcao', title: ETAPAS_RECEPCAO[1], subtitle: 'Aguardando liberação', count: stats.balcao, icon: Banknote, items: filtered.filter(item => item.step === 1) },
+     { id: 'atendimento', title: ETAPAS_RECEPCAO[2], subtitle: 'Na clínica', count: stats.atendimento, icon: Stethoscope, items: filtered.filter(item => item.step === 2 || item.step === 3) },
+     { id: 'concluido', title: ETAPAS_RECEPCAO[4], subtitle: 'Atendimentos finalizados', count: stats.concluido, icon: CheckCircle2, items: filtered.filter(item => item.step === 4) },
    ];
 
    const boardColumns = activeTab === 'todos'
@@ -712,43 +717,45 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
        ? [{ id: 'faltou', title: 'Não compareceu', subtitle: 'Reagendamentos pendentes', count: stats.faltou, icon: XCircle, items: filtered }]
        : workflowStages.filter(stage => stage.id === activeTab);
 
-   const boardActionFor = (item: any): { label: string; icon: any; run: () => void } | null => {
-     const saldo = item.lanc ? calcularSaldoPagamento(
-       Number(item.lanc.valor || 0),
-       Number(item.lanc.desconto || 0),
-       Number(item.lanc.acrescimo || 0),
-       Number(item.lanc.valor_pago || 0),
-     ) : 0;
-
-     if (item.ag.status === 'faltou' || item.step === 4) {
-       return { label: 'Reagendar', icon: CalendarPlus, run: () => navigate(`/agenda?reagendar=${item.ag.id}`) };
-     }
-     if (item.step === 0) {
-       return { label: 'Fazer check-in', icon: UserCheck, run: () => { void handleCheckin(item.ag.id); } };
-     }
-     if (item.step === 1) {
-       return item.lanc && saldo > 0
-         ? { label: 'Receber pagamento', icon: DollarSign, run: () => { void openPagamento(item.lanc, item.pac); } }
-         : { label: 'Chamar ao balcão', icon: Bell, run: () => { void handleChamarBalcao(item.lanc, item.pac); } };
-     }
-     if (item.step === 2 && item.fila) {
-       if (item.ag.status === 'em_atendimento') {
-         return { label: 'Finalizar atendimento', icon: Check, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) };
-       }
-       if (faltaTriagem(item.ag)) {
-         return { label: 'Abrir triagem', icon: Activity, run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } };
-       }
-       return { label: 'Iniciar atendimento', icon: Play, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } };
-     }
-     if (item.step === 3) {
-       if (item.lanc && saldo > 0) {
-         return { label: 'Receber saldo', icon: DollarSign, run: () => { void openPagamento(item.lanc, item.pac); } };
-       }
-       if (item.fila) {
-         return { label: 'Concluir atendimento', icon: CheckCircle2, run: () => handleConcluir(item.ag.id, item.fila.id) };
-       }
-     }
-     return null;
+   const acoesPara = (item: any): AcaoRecepcao[] => {
+     const nome = item.pac?.nome_social || item.pac?.nome || 'Paciente';
+     const hora = minutosDaHora(item.ag.hora_inicio);
+     const podeTriagem = podeRegistrarTriagem && triagensRegistradasQuery.isSuccess
+       && !triagensRegistradasQuery.data?.includes(item.ag.id);
+     const decisao = acoesDaEtapa({
+       ...item,
+       saldo: item.lanc ? calcularSaldoPagamento(Number(item.lanc.valor || 0), Number(item.lanc.desconto || 0), Number(item.lanc.acrescimo || 0), Number(item.lanc.valor_pago || 0)) : 0,
+       atrasado: hora !== null && hora < minutosAgora,
+       temTelefone: Boolean(linkWhatsApp(item.pac?.telefone, 'Olá')),
+       podeTriagem,
+       faltaTriagem: faltaTriagem(item.ag),
+     });
+     const whatsapp = (mensagem: string) => {
+       const link = linkWhatsApp(item.pac?.telefone, mensagem);
+       if (link) window.open(link, '_blank', 'noopener,noreferrer');
+     };
+     const acoes: Record<AcaoEtapa, Omit<AcaoRecepcao, 'id'>> = {
+       checkin: { label: ACOES_ATENDIMENTO.checkin, run: () => { void handleCheckin(item.ag.id); } },
+       a_caminho: { label: 'Está a caminho?', run: () => whatsapp(`Olá, ${nome}! Sua consulta estava marcada para ${item.ag.hora_inicio?.slice(0, 5)}. Está a caminho?`) },
+       falta: { label: 'Marcar falta', run: () => setMarcandoFalta({ agId: item.ag.id, nome }) },
+       receber: { label: 'Receber pagamento', run: () => { void openPagamento(item.lanc, item.pac); } },
+       receber_saldo: { label: 'Receber saldo', run: () => { void openPagamento(item.lanc, item.pac); } },
+       chamar_balcao: { label: 'Chamar ao balcão', run: () => { void handleChamarBalcao(item.lanc, item.pac); } },
+       retomar_cobranca: { label: item.lanc ? 'Confirmar cobrança' : 'Retomar cobrança', run: () => { void handleCheckin(item.ag.id); } },
+       triagem: { label: ACOES_ATENDIMENTO.triagem, run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } },
+       chamar: { label: ACOES_ATENDIMENTO.chamar, run: () => { void handleChamar(item.fila.id); } },
+       iniciar: { label: ACOES_ATENDIMENTO.iniciar, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } },
+       finalizar: { label: ACOES_ATENDIMENTO.finalizar, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) },
+       concluir: { label: ACOES_ATENDIMENTO.concluir, run: () => { void handleConcluir(item.ag.id, item.fila.id); } },
+       agendar_retorno: { label: ACOES_ATENDIMENTO.retorno, run: () => navigate(`/agenda/nova?data=${today}`, { state: { returnTo: '/recepcao', initial: { paciente_id: item.ag.paciente_id, medico_id: item.ag.medico_id, tipo: 'retorno' } } }) },
+       reagendar: { label: 'Reagendar', run: () => navigate(`/agenda?reagendar=${item.ag.id}`) },
+       retornos: { label: 'Retornos', run: () => navigate(`/retornos?paciente=${item.ag.paciente_id}`) },
+       exames: { label: 'Exames', run: () => navigate(`/exames?paciente=${item.ag.paciente_id}`) },
+       prontuario: { label: 'Prontuário', run: () => navigate(`/prontuarios?paciente=${item.ag.paciente_id}`) },
+       fila: { label: 'Abrir fila', run: () => navigate(FILA_ETAPA_ATENDIMENTO) },
+       whatsapp_reagendar: { label: 'WhatsApp para reagendar', run: () => whatsapp(`Olá, ${nome}. Sentimos sua falta na consulta de hoje. Gostaria de ajuda para reagendar?`) },
+     };
+     return (decisao.principal ? [decisao.principal, ...decisao.secundarias] : []).map(id => ({ id, ...acoes[id] }));
    };
 
    const selectedPatientName = selectedReceptionEntry?.pac?.nome_social || selectedReceptionEntry?.pac?.nome || 'Paciente';
@@ -776,7 +783,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      Number(selectedReceptionEntry.lanc.acrescimo || 0),
      Number(selectedReceptionEntry.lanc.valor_pago || 0),
    ) : 0;
-   const selectedBoardAction = selectedReceptionEntry ? boardActionFor(selectedReceptionEntry) : null;
+
 
    // Próximo a chamar: quem já pagou, na mesma ordem da Fila (urgente,
    // preferencial e normal; dentro da prioridade, a posição de chegada).
@@ -844,7 +851,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
        const proximo = Math.min(filtered.length - 1, Math.max(0, (atual < 0 ? 0 : atual + passo)));
        setSelectedAgendamentoId(filtered[proximo].ag.id);
      },
-     acao: () => { if (!isProcessing) selectedBoardAction?.run(); },
+     acao: () => { if (!isProcessing && selectedReceptionEntry) acoesPara(selectedReceptionEntry)[0]?.run(); },
      encaixe: () => abrirEncaixe(),
    };
 
@@ -904,9 +911,11 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      if (!profile?.clinica_id) return;
      setIsProcessing(true);
      try {
-       const resultado = await atomicMarkNoShow(agId, profile.clinica_id);
-       if (!resultado.success) throw new Error(resultado.message);
-       toast.success('Falta registrada', { description: resultado.message });
+       const consulta = todayAgendamentos.find(a => a.id === agId);
+       if (!consulta) throw new Error('Consulta não encontrada.');
+       const resultado = await marcarFaltasSelecionadas([consulta], profile.clinica_id);
+       if (resultado.falhas.length) throw new Error(resultado.falhas[0].motivo);
+       toast.success('Falta registrada');
        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
        queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
@@ -946,6 +955,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           clinicaId: profile?.clinica_id,
         });
         if (!result.success) throw new Error(result.message);
+        if (result.avisoRetorno) toast.warning(result.avisoRetorno);
 
        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
@@ -1332,7 +1342,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       }
 
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos', 'receita'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos-caixa'] });
@@ -1382,7 +1392,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       await queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
       await queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
       queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
-      queryClient.invalidateQueries({ queryKey: ['caixa-diario'] });
+      queryClient.invalidateQueries({ queryKey: ['caixa-hoje'] });
       toast.success('Atendimento concluído com sucesso!');
       setConfirmDialogOpen(false);
       setPendingAction(null);
@@ -1764,10 +1774,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                     <Separator />
                     <div className="space-y-2 p-3">
                       <p className="text-xs font-semibold text-foreground">Ações</p>
-                      {selectedBoardAction && <Button type="button" className="w-full justify-center gap-2" onClick={selectedBoardAction.run} disabled={isProcessing}>
-                        <selectedBoardAction.icon aria-hidden="true" data-icon="inline-start" />{selectedBoardAction.label}
-                      </Button>}
-                      {podeRegistrarTriagem && [1, 2].includes(selectedReceptionEntry.step) && selectedReceptionEntry.ag.status !== 'em_atendimento' && triagensRegistradasQuery.isSuccess && !triagensRegistradasQuery.data?.includes(selectedReceptionEntry.ag.id) && selectedBoardAction?.label !== 'Abrir triagem' && <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" onClick={() => void handleEncaminharTriagem(selectedReceptionEntry.ag.id, selectedReceptionEntry.ag.paciente_id)} disabled={isProcessing}><Activity aria-hidden="true" className="size-3.5" />Abrir triagem</Button>}
+                      <AcoesRecepcao acoes={acoesPara(selectedReceptionEntry)} disabled={isProcessing} />
                       <div className="grid grid-cols-2 gap-2">
                         {selectedReceptionEntry.ag.paciente_id && <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/prontuarios?paciente=${selectedReceptionEntry.ag.paciente_id}`)}><FileText aria-hidden="true" className="size-3.5" />Prontuário</Button>}
                         <Button type="button" variant="outline" size="sm" className="gap-1.5 px-2 text-[11px]" onClick={() => navigate(`/agenda?reagendar=${selectedReceptionEntry.ag.id}`)}><CalendarPlus aria-hidden="true" className="size-3.5" />Reagendar</Button>
@@ -1898,6 +1905,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         description={`Acompanhe o fluxo de pacientes de hoje · ${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })}`}
         actions={(
           <div className="flex flex-wrap gap-2">
+            {podeGerenciarRecepcao && <FecharDiaDialog consultas={todayAgendamentos} fila={filaItems} clinicaId={profile?.clinica_id ?? ''}
+              disabled={isProcessing || loadingAg || filaRecepcaoQuery.isLoading || filaRecepcaoQuery.isError}
+              onConcluido={() => { void queryClient.invalidateQueries({ queryKey: ['agendamentos'] }); }} />}
             <Button type="button" variant="outline" className="gap-2" onClick={() => navigate('/agenda')}>
               <CalendarDays aria-hidden="true" data-icon="inline-start" />Ver agenda do dia
             </Button>
@@ -1914,7 +1924,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         )}
       />
 
-      <div role="group" aria-label="Resumo da recepção" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="group" aria-label="Resumo da recepção" className="hidden gap-2 sm:grid sm:grid-cols-4">
         {[
           { label: 'Agendamentos hoje', value: enriched.length, icon: CalendarDays, tone: 'text-primary' },
           { label: 'Atendidos', value: stats.concluido, icon: CheckCircle2, tone: 'text-success' },
@@ -2019,9 +2029,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
 
       <section aria-label="Fluxo da recepção" className="space-y-3">
         <div className="flex min-w-0 flex-col gap-2">
-          <div role="group" aria-label="Filtrar por etapa do atendimento" className="flex min-w-0 snap-x overflow-x-auto rounded-lg border border-border/80 bg-card">
+          <div role="group" aria-label="Filtrar por etapa do atendimento" className="grid min-w-0 grid-cols-2 rounded-lg border border-border/80 bg-card sm:flex sm:overflow-x-auto">
             {workflowStages.map((stage, index) => (
-              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-[132px] shrink-0 snap-start flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
+              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => stage.id === 'atendimento' ? navigate(FILA_ETAPA_ATENDIMENTO) : setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-0 flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border sm:size-8', activeTab === stage.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted text-muted-foreground')}>
                     <stage.icon aria-hidden="true" className="size-4" />
@@ -2099,7 +2109,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                     const patientName = item.pac?.nome_social || item.pac?.nome || 'Paciente';
                     const { late, text } = statusFor(item);
                     const selected = selectedReceptionEntry?.ag.id === item.ag.id;
-                    const action = boardActionFor(item);
+
                     const feito = item.step === 4 || item.ag.status === 'faltou';
                     return (
                       <Fragment key={item.ag.id}>
@@ -2120,11 +2130,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                             </button>
                             {item.fila?.horario_chegada && item.step < 3 && <EsperaIndicador desde={item.fila.horario_chegada} className="text-[11px] font-medium" />}
                             <Badge variant={late || item.ag.status === 'faltou' ? 'destructive' : item.step === 4 ? 'secondary' : 'outline'} className="shrink-0 px-1.5 text-[10px]">{text}</Badge>
-                            {action && (
-                              <Button type="button" size="sm" variant={feito ? 'outline' : 'default'} onClick={action.run} disabled={isProcessing} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-[11px]">
-                                <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
-                              </Button>
-                            )}
+                            <AcoesRecepcao acoes={acoesPara(item)} disabled={isProcessing} />
                           </div>
                         </li>
                       </Fragment>
@@ -2155,7 +2161,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                         const initials = patientName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'PA';
                         const { late, text: statusText } = statusFor(item);
                         const selected = selectedReceptionEntry?.ag.id === item.ag.id;
-                        const action = boardActionFor(item);
+
                         const temAlergia = Array.isArray(item.pac?.alergias) ? item.pac.alergias.length > 0 : Boolean(item.pac?.alergias);
                         const temDetalhes = Boolean(item.sala?.nome || (item.fila?.horario_chegada && item.step < 3) || (item.fila?.prioridade && item.fila.prioridade !== 'normal') || temAlergia);
                         return (
@@ -2184,9 +2190,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                 {temAlergia && <Badge variant="destructive" className="px-1.5 py-0 text-[9px]">Alergia</Badge>}
                               </div>}
                             </CardContent>
-                            {action && <CardFooter className="p-2.5 pt-0"><Button type="button" size="sm" onClick={action.run} disabled={isProcessing} className="h-7 w-full justify-center gap-1.5 rounded-md px-2 text-[11px]">
-                                <action.icon aria-hidden="true" data-icon="inline-start" />{action.label}
-                            </Button></CardFooter>}
+                            <CardFooter className="p-2.5 pt-0"><AcoesRecepcao acoes={acoesPara(item)} disabled={isProcessing} /></CardFooter>
                           </Card>
                         );
                       })}
@@ -2207,18 +2211,6 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                 {filtered.map(({ ag, pac, med, sala, fila, lanc, step }) => {
                   const horaMin = minutosDaHora(ag.hora_inicio);
                   const atrasado = step === 0 && horaMin !== null && horaMin < minutosAgora;
-                  const triagemRegistrada = triagensRegistradasQuery.data?.includes(ag.id) ?? false;
-                  const podeAbrirTriagem = podeRegistrarTriagem
-                    && (step === 1 || step === 2)
-                    && ag.status !== 'em_atendimento'
-                    && triagensRegistradasQuery.isSuccess
-                    && !triagemRegistrada;
-                  const linkACaminho = atrasado
-                    ? linkWhatsApp((pac as any)?.telefone, `Olá, ${((pac as any)?.nome_social || pac?.nome || '').split(' ')[0]}! Sua consulta estava marcada para ${ag.hora_inicio?.slice(0, 5)}. Está a caminho?`)
-                    : null;
-                  const linkReagendar = ag.status === 'faltou' && pac?.telefone
-                    ? linkWhatsApp(pac.telefone, `Olá, ${(pac.nome_social || pac.nome || '').split(' ')[0]}. Sentimos sua falta na consulta de hoje às ${ag.hora_inicio?.slice(0, 5)}. Gostaria de ajuda para reagendar?`)
-                    : null;
                   const ehProximo = ag.id === proximoAChamarId;
                   return (
                   <motion.div
@@ -2325,254 +2317,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                 <EsperaIndicador desde={fila.horario_chegada} className="rounded-full border border-current/30 px-2 py-0.5 text-xs font-semibold" />
                               )}
 
-                              {/* Action buttons */}
-                              <div className="flex items-center gap-2 shrink-0">
-                                {step === 0 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleCheckin(ag.id)}
-                                      disabled={isProcessing}
-                                      aria-busy={processingCheckinId === ag.id}
-                                      className="gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                                    >
-                                      {processingCheckinId === ag.id
-                                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Registrando…</>
-                                        : <><UserCheck className="h-3.5 w-3.5" /> Check-in</>}
-                                    </Button>
-                                    {linkACaminho && (
-                                      <Button asChild size="sm" variant="outline" className="gap-1 rounded-full border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
-                                        <a href={linkACaminho} target="_blank" rel="noopener noreferrer" aria-label={`Perguntar no WhatsApp se ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} está a caminho`}>
-                                          <MessageCircle className="h-3.5 w-3.5" /> Está a caminho?
-                                        </a>
-                                      </Button>
-                                    )}
-                                    {atrasado && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => setMarcandoFalta({ agId: ag.id, nome: (pac as any)?.nome_social || pac?.nome || 'Paciente' })}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full text-muted-foreground hover:text-destructive"
-                                        aria-label={`Marcar falta de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
-                                      >
-                                        <UserX className="h-3.5 w-3.5" /> Faltou
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Step 1: Balcão — patient pays before consultation */}
-                                {step === 1 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {podeAbrirTriagem && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full"
-                                        aria-label={`Abrir triagem de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
-                                      >
-                                        <Activity className="h-3.5 w-3.5" /> Triagem
-                                      </Button>
-                                    )}
-                                    {podeRegistrarTriagem && triagemRegistrada && <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Triagem registrada</Badge>}
-                                    {lancamentosErro && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] })}
-                                        className="gap-1"
-                                      >
-                                        <RotateCcw className="h-3.5 w-3.5" /> Tentar carregar cobrança
-                                      </Button>
-                                    )}
-                                    {fila?.cobranca_estado === 'pendente' && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleCheckin(ag.id)}
-                                        disabled={isProcessing}
-                                        className="gap-1"
-                                      >
-                                        <RotateCcw className="h-3.5 w-3.5" />
-                                        {lanc ? 'Confirmar cobrança' : 'Retomar cobrança'}
-                                      </Button>
-                                    )}
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleChamarBalcao(lanc, pac)}
-                                      disabled={isProcessing}
-                                      className="gap-1"
-                                    >
-                                      <Bell className="h-3.5 w-3.5" /> Chamar ao balcão
-                                    </Button>
-                                    {lanc && (
-                                      <Button
-                                        size="sm"
-                                        onClick={() => openPagamento(lanc, pac)}
-                                        disabled={isProcessing}
-                                        className="gap-1.5 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-                                      >
-                                        <DollarSign className="h-3.5 w-3.5" />
-                                        Receber {formatCurrency(calcularSaldoPagamento(
-                                          Number(lanc.valor || 0),
-                                          Number(lanc.desconto || 0),
-                                          Number(lanc.acrescimo || 0),
-                                          Number(lanc.valor_pago || 0),
-                                        ))}
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Step 2: Paid, waiting/in consultation */}
-                                {step === 2 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {podeAbrirTriagem && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleEncaminharTriagem(ag.id, ag.paciente_id)}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full"
-                                        aria-label={`Abrir triagem de ${(pac as any)?.nome_social || pac?.nome || 'paciente'}`}
-                                      >
-                                        <Activity className="h-3.5 w-3.5" /> Triagem
-                                      </Button>
-                                    )}
-                                    {podeRegistrarTriagem && triagemRegistrada && <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Triagem registrada</Badge>}
-                                    {lanc?.status === 'pago' && (
-                                      <Badge className="bg-success/10 text-success border-0 mr-1">
-                                        <CheckCircle2 className="h-3 w-3 mr-1" /> Pago
-                                      </Badge>
-                                    )}
-                                    {fila && ag.status !== 'em_atendimento' && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleChamar(fila.id)}
-                                          disabled={isProcessing}
-                                          className="gap-1"
-                                        >
-                                          <Bell className="h-3.5 w-3.5" /> Chamar
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => handleIniciarAtendimento(ag.id, fila.id)}
-                                          disabled={isProcessing}
-                                          className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                                        >
-                                          <Play className="h-3.5 w-3.5" /> Atender
-                                        </Button>
-                                      </>
-                                    )}
-                                    {ag.status === 'em_atendimento' && fila && (
-                                      <Button
-                                        size="sm"
-                                        variant="default"
-                                        onClick={() => abrirFinalizacao(ag.id, 'recepcao', fila.id)}
-                                        disabled={isProcessing}
-                                        className="gap-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                                      >
-                                        <Check className="h-3.5 w-3.5" /> Finalizar
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Step 3: Finalizado — post-consultation actions */}
-                                {step === 3 && (
-                                  <div className="flex flex-col gap-2 w-full sm:w-auto">
-                                    <div className="flex items-center gap-2">
-                                      <Badge className="bg-info/10 text-info border-0 w-fit">
-                                        <Check className="h-3 w-3 mr-1" /> Consulta finalizada
-                                      </Badge>
-                                      {lanc?.status === 'pago' && (
-                                         <Badge className="bg-success/10 text-success border-0">
-                                          <CheckCircle2 className="h-3 w-3 mr-1" /> Pago
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {lanc && lanc.status !== 'pago' && calcularSaldoPagamento(
-                                        Number(lanc.valor || 0),
-                                        Number(lanc.desconto || 0),
-                                        Number(lanc.acrescimo || 0),
-                                        Number(lanc.valor_pago || 0),
-                                      ) > 0 && (
-                                        <Button size="sm" className="h-8 gap-1 text-xs"
-                                          onClick={() => openPagamento(lanc, pac)} disabled={isProcessing}>
-                                          <DollarSign className="h-3 w-3" /> Receber saldo
-                                        </Button>
-                                      )}
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
-                                        <CalendarPlus className="h-3 w-3" /> Reagendar
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/retornos?paciente=${ag.paciente_id}`)}>
-                                        <RotateCcw className="h-3 w-3" /> Retorno
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/exames?paciente=${ag.paciente_id}`)}>
-                                        <FlaskConical className="h-3 w-3" /> Exames
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/prontuarios?paciente=${ag.paciente_id}`)}>
-                                        <ClipboardList className="h-3 w-3" /> Prontuário
-                                      </Button>
-                                      {fila && (!lanc || lanc.status === 'pago') && (
-                                        <Button size="sm" className="ml-auto h-8 gap-1 text-xs"
-                                          onClick={() => handleConcluir(ag.id, fila.id)}
-                                          disabled={isProcessing}>
-                                          <CheckCircle2 className="h-3 w-3" /> Concluir
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Step 4: Concluído */}
-                                {step === 4 && (
-                                  <div className="flex flex-col gap-2 items-end">
-                                    <Badge className="bg-success/10 text-success border-0">
-                                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                                      Concluído {lanc?.forma_pagamento ? `· ${rotuloForma(lanc.forma_pagamento)}` : ''}
-                                    </Badge>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}>
-                                        <CalendarPlus className="h-3 w-3" /> Reagendar
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
-                                        onClick={() => navigate(`/exames?paciente=${ag.paciente_id}`)}>
-                                        <FlaskConical className="h-3 w-3" /> Exames
-                                      </Button>
-                                    </div>
-                                  </div>
-                                )}
-                                {ag.status === 'faltou' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="gap-1"
-                                    onClick={() => navigate(`/agenda?reagendar=${ag.id}`)}
-                                  >
-                                    <CalendarPlus className="h-3.5 w-3.5" /> Reagendar
-                                  </Button>
-                                )}
-                                {linkReagendar && (
-                                  <Button asChild size="sm" variant="outline" className="gap-1">
-                                    <a href={linkReagendar} target="_blank" rel="noopener noreferrer" aria-label={`Abrir WhatsApp para ajudar ${(pac as any)?.nome_social || pac?.nome || 'o paciente'} a reagendar`}>
-                                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp para reagendar
-                                    </a>
-                                  </Button>
-                                )}
-                              </div>
+                              <AcoesRecepcao acoes={acoesPara({ ag, pac, med, sala, fila, lanc, step })} disabled={isProcessing} />
                             </div>
                             {step >= 0 && ag.status !== 'faltou' && (
                               <ChecklistRecepcao

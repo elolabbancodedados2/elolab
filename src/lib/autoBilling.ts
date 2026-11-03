@@ -5,6 +5,7 @@
  */
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { daysBetweenDateOnly, isValidDateOnly } from './dateOnly';
 
 export interface AutoBillingParams {
   agendamentoId: string;
@@ -24,11 +25,56 @@ function isGenericExamType(value?: string | null): boolean {
   return GENERIC_EXAM_TYPES.has((value || '').trim().toLocaleLowerCase('pt-BR'));
 }
 
-function isReturnConsultationType(value?: string | null): boolean {
+export function isReturnConsultationType(value?: string | null): boolean {
   const normalized = normalizeServiceName(value);
   return normalized === 'retorno' ||
     normalized === 'consulta retorno' ||
     normalized === 'consulta de retorno';
+}
+
+export function retornoDentroDoPrazo({ dataRetorno, medicoId, ultimaConsulta, prazoDias }: {
+  dataRetorno: string; medicoId: string;
+  ultimaConsulta: { data: string; medico_id: string } | null;
+  prazoDias: number | null;
+}): boolean {
+  if (!medicoId || !ultimaConsulta || ultimaConsulta.medico_id !== medicoId
+    || !isValidDateOnly(dataRetorno) || !isValidDateOnly(ultimaConsulta.data)) return false;
+  const dias = daysBetweenDateOnly(ultimaConsulta.data, dataRetorno);
+  return dias >= 0 && (prazoDias === null || (Number.isInteger(prazoDias) && prazoDias >= 0 && dias <= prazoDias));
+}
+
+/** Só uma consulta efetivamente atendida e paga pode originar gratuidade. */
+export async function avaliarRetorno(params: { clinicaId: string; pacienteId: string; medicoId: string; data: string; agendamentoId?: string }) {
+  if (!params.clinicaId || !params.pacienteId || !params.medicoId || !isValidDateOnly(params.data)) {
+    throw new Error('Informe paciente, médico e data para conferir o retorno.');
+  }
+  let query = supabase.from('agendamentos')
+    .select('id, data, medico_id, tipo, lancamentos!inner(id)')
+    .eq('clinica_id', params.clinicaId).eq('paciente_id', params.pacienteId).eq('medico_id', params.medicoId)
+    .in('status', ['finalizado', 'atendimento_finalizado'])
+    .eq('lancamentos.clinica_id', params.clinicaId).eq('lancamentos.status', 'pago')
+    .eq('lancamentos.categoria', 'consulta').gt('lancamentos.valor_pago', 0)
+    .lte('data', params.data).order('data', { ascending: false }).order('hora_inicio', { ascending: false }).limit(1);
+  if (params.agendamentoId) query = query.neq('id', params.agendamentoId);
+  const { data: anteriores, error } = await query;
+  if (error) throw error;
+  const anterior = anteriores?.[0];
+  const ultimaConsulta = anterior?.medico_id === params.medicoId ? anterior : null;
+  let prazoDias: number | null = 30;
+  if (ultimaConsulta?.tipo) {
+    const { data: tipo, error: tipoError } = await supabase.from('tipos_consulta')
+      .select('prazo_retorno_dias').eq('clinica_id', params.clinicaId).ilike('nome', ultimaConsulta.tipo).limit(1).maybeSingle();
+    if (tipoError) throw tipoError;
+    if (tipo?.prazo_retorno_dias !== undefined) prazoDias = tipo.prazo_retorno_dias;
+  }
+  const gratuito = retornoDentroDoPrazo({ dataRetorno: params.data, medicoId: params.medicoId, ultimaConsulta, prazoDias });
+  return {
+    gratuito,
+    tipoCobranca: ultimaConsulta?.tipo && !isReturnConsultationType(ultimaConsulta.tipo) ? ultimaConsulta.tipo : 'Consulta',
+    aviso: gratuito ? null : ultimaConsulta
+      ? `Retorno fora do prazo de ${prazoDias} dias. Será cobrado como consulta.`
+      : 'Não há consulta paga anterior com este médico. O retorno será cobrado como consulta.',
+  };
 }
 
 function toMoney(value: unknown): number {
@@ -294,6 +340,18 @@ export async function createAutoBillingDetailed(params: AutoBillingParams): Prom
    */
   let precoCadastrado = false;
   const isExam = Boolean(tipoExame?.trim()) || isGenericExamType(tipoConsulta);
+  let tipoParaPreco = tipoConsulta;
+  const retorno = !isExam && isReturnConsultationType(tipoConsulta);
+  if (retorno) {
+    const { data: consulta, error: consultaError } = await supabase.from('agendamentos')
+      .select('medico_id, data').eq('id', agendamentoId).eq('clinica_id', resolvedClinicaId!)
+      .eq('paciente_id', pacienteId).maybeSingle();
+    if (consultaError) throw consultaError;
+    if (!consulta) throw new Error('Não foi possível conferir a consulta de retorno.');
+    const regra = await avaliarRetorno({ clinicaId: resolvedClinicaId!, pacienteId, medicoId: consulta.medico_id, data: consulta.data, agendamentoId });
+    if (regra.gratuito) return 'free';
+    tipoParaPreco = regra.tipoCobranca;
+  }
 
   if (isExam) {
     const examName = tipoExame?.trim() || (!isGenericExamType(tipoConsulta) ? tipoConsulta?.trim() : '');
@@ -311,17 +369,13 @@ export async function createAutoBillingDetailed(params: AutoBillingParams): Prom
   }
 
   // Try to find price from tipos_consulta
-  if (tipoConsulta && !isExam) {
-    // The return workflow may store "consulta de retorno", while the standard
-    // catalog entry is simply named "Retorno". They are the same service.
-    const catalogName = isReturnConsultationType(tipoConsulta) ? 'Retorno' : tipoConsulta;
+  if (tipoParaPreco && !isExam) {
+    // Retorno vencido usa o preço do tipo da consulta de referência.
+    const catalogName = tipoParaPreco;
     let tcQuery = (supabase as any)
       .from('tipos_consulta')
       .select('id, nome, valor_particular')
-      // `ilike` sem curinga é igualdade sem diferenciar maiúsculas. O
-      // agendamento guarda o tipo em minúsculas ("retorno") e o catálogo tem
-      // "Retorno" — com `eq` a busca não achava nada, e os 17 agendamentos de
-      // retorno caíam no erro de "preço não cadastrado".
+      // O agendamento pode guardar o tipo com capitalização diferente do catálogo.
       .ilike('nome', catalogName)
       .eq('ativo', true);
     if (resolvedClinicaId) tcQuery = tcQuery.eq('clinica_id', resolvedClinicaId);
@@ -362,22 +416,10 @@ export async function createAutoBillingDetailed(params: AutoBillingParams): Prom
     if (conv?.valor_consulta) valor = toMoney(conv.valor_consulta);
   }
 
-  // ─── Zero cadastrado é diferente de preço esquecido ───
-  //
-  // Havia aqui um `throw` para todo valor <= 0, para impedir cobrança de R$ 0
-  // criada por preço não cadastrado. A intenção é certa, mas o efeito era
-  // barrar o check-in de atendimento que é gratuito DE PROPÓSITO: hoje três
-  // tipos ativos têm valor zero — "Retorno" e as duas coletas de laboratório.
-  // Nenhum paciente de retorno conseguiria ser atendido.
-  //
-  // A distinção honesta é pela origem do zero:
-  //   tipo encontrado no catálogo com valor 0  → gratuito, não gera cobrança
-  //   tipo não encontrado                      → preço esquecido, erro
+  // Serviços cadastrados a zero continuam gratuitos. Retorno vencido exige
+  // preço positivo; a gratuidade por prazo já foi decidida antes desta consulta.
   if (valor <= 0) {
-    if (precoCadastrado) {
-      // Sem cobrança e sem erro. Como não há lançamento, também não há saldo
-      // devedor — é assim que retorno gratuito atravessa a trava de pagamento
-      // da etapa 4 sem precisar de exceção escrita em lugar nenhum.
+    if (precoCadastrado && !retorno) {
       return 'free';
     }
     throw new Error(

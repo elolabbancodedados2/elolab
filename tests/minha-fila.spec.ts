@@ -11,7 +11,7 @@ test('fila pessoal respeita o escopo da clínica, responsável e permite conclui
   });
 
   await page.goto('/minha-fila');
-  await expect(page.getByRole('heading', { name: 'Minha fila de trabalho' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Minhas tarefas' })).toBeVisible();
   for (const viewport of [
     { width: 1280, height: 800, name: 'desktop' },
     { width: 390, height: 844, name: 'mobile' },

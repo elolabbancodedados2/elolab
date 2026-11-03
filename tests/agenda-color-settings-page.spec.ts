@@ -46,6 +46,7 @@ test('esquema de cores da agenda tem página própria e preserva retorno à vis�
 
   await page.getByRole('button', { name: 'Voltar à agenda' }).click();
   await expect(page).toHaveURL('/agenda?data=2026-10-30&view=weekly');
+  await page.getByRole('button', { name: /^Filtros \(/ }).click();
   await page.getByRole('button', { name: 'Mais opções da agenda' }).click();
   await page.getByRole('menuitem', { name: /Definir visão atual como padrão/ }).click();
   await expect.poll(() => writes.length).toBe(2);

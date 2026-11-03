@@ -57,7 +57,7 @@ type FichaMobile =
   | { tipo: 'bloqueio'; hora: string; bloqueio: any }
   | { tipo: 'livre'; hora: string; medicoId: string };
 
-function MobileDailyAppointments({
+export function MobileDailyAppointments({
   appointments,
   medicoById,
   onCardClick,
@@ -103,6 +103,7 @@ function MobileDailyAppointments({
       <div className={cn('rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center', visibilidade)}>
         <p className="font-medium text-foreground">Nenhuma consulta neste dia</p>
         <p className="mt-1 text-sm text-muted-foreground">Escolha outra data ou crie um novo agendamento.</p>
+        {onNovaConsulta && <Button className="mt-3" onClick={() => onNovaConsulta({})}>Nova consulta</Button>}
       </div>
     );
   }
@@ -1167,7 +1168,7 @@ export function AgendaPage() {
                   onSlotClick={novaConsultaBloqueada ? undefined : handleSlotClick}
                   sempreVisivel={listaNoDesktop}
                   comAcoes
-                  onNovaConsulta={abrirNovaConsulta}
+                  onNovaConsulta={novaConsultaBloqueada ? undefined : abrirNovaConsulta}
                   onRemarcar={remarcarConsulta}
                   onCardClick={(appointment) => setDialogState({ open: true, initial: appointment })}
                 />

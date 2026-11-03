@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/operationalTransitions', () => ({ atomicCheckin: mocks.atomicCheckin }));
-vi.mock('@/lib/autoBilling', () => ({ createAutoBillingDetailed: mocks.createAutoBillingDetailed }));
+vi.mock('@/lib/autoBilling', async (importOriginal) => ({ ...await importOriginal<typeof import('@/lib/autoBilling')>(), createAutoBillingDetailed: mocks.createAutoBillingDetailed }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: mocks.from, rpc: mocks.rpc } }));
 
 import { checkinComCobranca } from '@/lib/checkinWithBilling';
@@ -33,6 +33,12 @@ function queryChain(result: unknown) {
 }
 
 describe('check-in com cobrança', () => {
+  it('avisa que o retorno foi cobrado e não apresenta esse aviso no retorno gratuito', async () => {
+    const cobrado = await checkinComCobranca({ ...cobranca, tipoConsulta: 'retorno' });
+    expect(cobrado.avisoRetorno).toContain('fora do prazo');
+    mocks.createAutoBillingDetailed.mockResolvedValue('free');
+    expect((await checkinComCobranca({ ...cobranca, tipoConsulta: 'retorno' })).avisoRetorno).toBeUndefined();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.atomicCheckin.mockResolvedValue({

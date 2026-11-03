@@ -1,4 +1,5 @@
-const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
+import { STATUS_FINALIZADO } from '@/lib/agendamentoStatus';
+
 
 export function calculateAttendanceRate(appointments: readonly { status: string }[]) {
   const attended = appointments.filter((appointment) => STATUS_FINALIZADO.has(appointment.status)).length;

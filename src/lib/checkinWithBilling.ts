@@ -1,11 +1,12 @@
 import { supabase } from '@/integrations/supabase/client';
-import { createAutoBillingDetailed, type AutoBillingOutcome, type AutoBillingParams } from '@/lib/autoBilling';
+import { createAutoBillingDetailed, isReturnConsultationType, type AutoBillingOutcome, type AutoBillingParams } from '@/lib/autoBilling';
 import { atomicCheckin, type OperationalTransitionResult } from '@/lib/operationalTransitions';
 
 type PrioridadeFila = 'normal' | 'preferencial' | 'urgente';
 
 export type CheckinWithBillingResult = OperationalTransitionResult & {
   billingOutcome?: AutoBillingOutcome;
+  avisoRetorno?: string;
 };
 
 /**
@@ -38,7 +39,7 @@ export async function checkinComCobranca(
       p_gratuito: billingOutcome === 'free',
     });
     if (estadoError) throw estadoError;
-    return { ...checkin, billingOutcome };
+    return { ...checkin, billingOutcome, ...(isReturnConsultationType(cobranca.tipoConsulta) && billingOutcome !== 'free' ? { avisoRetorno: 'Retorno sem gratuidade: fora do prazo ou sem consulta paga anterior com este médico. Cobrança de consulta confirmada.' } : {}) };
   } catch (billingError) {
     const detalhe = billingError instanceof Error ? billingError.message : 'Erro desconhecido ao gerar a cobrança.';
 

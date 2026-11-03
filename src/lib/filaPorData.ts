@@ -1,16 +1,15 @@
+import { STATUS_ENCERRADOS } from './agendamentoStatus';
 export interface ItemFilaComData {
   agendamento_id: string;
   status: string;
   agendamentos?: { data?: string | null } | null;
 }
 
-const STATUS_TERMINAL_AGENDAMENTO = new Set([
-  'cancelado', 'faltou', 'finalizado', 'atendimento_finalizado', 'aguardando_pagamento_adicional',
-]);
+
 
 export function podeIniciarAgendamento(status: string | null | undefined): boolean {
   if (!status) return false;
-  return !STATUS_TERMINAL_AGENDAMENTO.has(status);
+  return !STATUS_ENCERRADOS.has(status);
 }
 
 export function separarFilaAtivaPorData<T extends ItemFilaComData>(

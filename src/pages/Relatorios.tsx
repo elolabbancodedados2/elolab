@@ -1,3 +1,4 @@
+import { STATUS_FINALIZADO } from '@/lib/agendamentoStatus';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -84,7 +85,7 @@ const CHART_COLORS = [
   'hsl(var(--chart-6))',
 ];
 const GRID_COLOR = 'hsl(var(--border))';
-const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
+
 const dateOnlyFromValue = (value: string) => value.includes('T') || value.includes(' ')
   ? dateOnlyInTimeZone(new Date(value), 'America/Sao_Paulo')
   : value.slice(0, 10);

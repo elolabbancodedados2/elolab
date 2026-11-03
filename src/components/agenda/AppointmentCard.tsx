@@ -1,3 +1,4 @@
+import { STATUS_DOT, rotuloStatusAgendamento } from '@/lib/agendamentoStatus';
 import { Fragment } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
@@ -25,33 +26,6 @@ interface Props {
   onRemarcar?: (agendamento: any) => void;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  agendado: 'Agendado',
-  confirmado: 'Confirmado',
-  aguardando: 'Aguardando',
-  em_atendimento: 'Em atendimento',
-  finalizado: 'Finalizado',
-  cancelado: 'Cancelado',
-  faltou: 'Faltou',
-  aguardando_pagamento: 'Aguardando pagamento',
-  pago: 'Pago',
-  atendimento_finalizado: 'Atendimento finalizado',
-  aguardando_pagamento_adicional: 'Falta pagar o adicional',
-};
-
-const STATUS_DOT: Record<string, string> = {
-  agendado: 'bg-primary',
-  confirmado: 'bg-success',
-  aguardando: 'bg-warning',
-  em_atendimento: 'bg-primary animate-pulse',
-  finalizado: 'bg-muted-foreground/30',
-  cancelado: 'bg-destructive/70',
-  faltou: 'bg-warning/70',
-  aguardando_pagamento: 'bg-warning',
-  pago: 'bg-success',
-  atendimento_finalizado: 'bg-muted-foreground/30',
-  aguardando_pagamento_adicional: 'bg-destructive',
-};
 
 function initials(name?: string) {
   if (!name) return '?';
@@ -120,7 +94,7 @@ export function AppointmentCard({ agendamento, color, minutesToPx, onClick, conv
   const cancelled = agendamento.status === 'cancelado';
   const done = agendamento.status === 'finalizado';
   const tipoLabel = TIPO_LABEL[agendamento.tipo as string] || agendamento.tipo;
-  const statusLabel = STATUS_LABEL[agendamento.status] || agendamento.status;
+  const statusLabel = rotuloStatusAgendamento(agendamento.status);
   // Cards de 15/20 min têm menos de 30px: horário e paciente vão numa linha só.
   const compact = duration < 30;
   const horaInicio = agendamento.hora_inicio.slice(0, 5);

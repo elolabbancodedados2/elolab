@@ -160,7 +160,7 @@ export default function MinhaFilaTarefas() {
   return (
     <div className="space-y-5 pb-8">
       <PageHeader
-        title="Minha fila de trabalho"
+        title="Minhas tarefas"
         description="Tarefas atribuídas a você, organizadas por prazo."
         icon={<ListTodo />}
         actions={(

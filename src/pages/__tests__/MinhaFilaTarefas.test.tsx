@@ -80,7 +80,7 @@ function renderPage() {
   return render(<QueryClientProvider client={client}><MemoryRouter><MinhaFilaTarefas /></MemoryRouter></QueryClientProvider>);
 }
 
-describe('Minha fila de trabalho', () => {
+describe('Minhas tarefas', () => {
   beforeEach(() => {
     mocks.rows = [makeTask()];
     mocks.readFilters = [];
@@ -96,7 +96,7 @@ describe('Minha fila de trabalho', () => {
   it('consulta somente a clínica e as tarefas atribuídas à pessoa autenticada', async () => {
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: 'Minha fila de trabalho' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Minhas tarefas' })).toBeInTheDocument();
     expect(mocks.readFilters).toEqual(expect.arrayContaining([
       ['clinica_id', 'clinic-1'],
       ['responsavel_id', 'staff-1'],

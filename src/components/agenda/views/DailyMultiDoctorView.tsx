@@ -1,3 +1,4 @@
+import { STATUS_SEM_RESERVA as STATUS_SEM_RESERVA } from '@/lib/agendamentoStatus';
 import { nomeMedico } from '@/lib/formatters';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
@@ -63,7 +64,7 @@ function proximaVagaLivre(agendamentos: any[], bloqueios: any[], fromMin: number
   });
 }
 
-const STATUS_SEM_RESERVA = new Set(['cancelado', 'faltou']);
+
 
 /** Consultas que começam ou terminam fora da grade de 06:00 a 22:00. */
 export function contarForaDaGrade(agendamentos: Array<{ hora_inicio?: string | null; hora_fim?: string | null }>): number {
@@ -156,7 +157,7 @@ function DoctorHeader({ medico, date, agendamentos, agendamentosDoDia, bloqueios
 }
 
 function DoctorColumn({
-  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, onRemarcar, convenioById, columnIndex, inactive = false,
+  medico, date, agendamentos, bloqueios, colorFor, onSlotClick, onCardClick, onNovaConsulta, onRemarcar, faixasExpediente, convenioById, columnIndex, inactive = false,
 }: any) {
   const minutesToPx = (m: number) => (m / SLOT_MINUTES) * SLOT_PX;
   const columnRef = useRef<HTMLDivElement>(null);
@@ -190,6 +191,10 @@ function DoctorColumn({
             </span>
           </div>
         )}
+        {faixasExpediente?.map(([inicio, fim]: Faixa, index: number) => <div key={index}
+          role="img" aria-label={`Expediente de ${nomeMedico(medico.nome || medico.crm)}: ${fromMinutes(inicio)}–${fromMinutes(fim)}`}
+          className="pointer-events-none absolute inset-x-0 bg-primary/5"
+          style={{ top: minutesToPx(Math.max(inicio, START_HOUR * 60) - START_HOUR * 60), height: minutesToPx(Math.max(0, Math.min(fim, END_HOUR * 60) - Math.max(inicio, START_HOUR * 60))) }} />)}
         {/* Visual hour gridlines */}
         {HOURS.map((h, i) => (
           <div
@@ -427,6 +432,7 @@ export function DailyMultiDoctorView({
                 medico={medico}
                 date={date}
                 columnIndex={idx}
+                faixasExpediente={faixasPorMedico?.[medico.id]}
                 inactive={inactive}
                 agendamentos={agendamentos.filter((a: any) => a.medico_id === medico.id)}
                 bloqueios={bloqueios.filter((b: any) => b.medico_id === medico.id && date >= b.data_inicio && date <= b.data_fim)}

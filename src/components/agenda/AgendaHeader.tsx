@@ -1,3 +1,4 @@
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from '@/components/ui/sheet';
 import { nomeMedico } from '@/lib/formatters';
 import { format, addDays, addWeeks, addMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -104,6 +105,108 @@ export function AgendaHeader(p: Props) {
     .filter(([, total]) => total > 0)
     .map(([iso]) => parseISO(iso));
 
+  const opcoes = (<>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className={cn('h-11 w-11 shrink-0 sm:h-10 sm:w-10', pill)} aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent data-elo-font-preview="agenda" align="end" className="w-56 rounded-xl">
+              <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
+              {p.onBuscarVaga && <DropdownMenuItem onSelect={p.onBuscarVaga}><Search className="mr-2 h-4 w-4" /> Buscar vaga</DropdownMenuItem>}
+              {p.onOpenConfirmacoes && <DropdownMenuItem onSelect={p.onOpenConfirmacoes}><CalendarCheck className="mr-2 h-4 w-4" /> Confirmar consultas de amanhã</DropdownMenuItem>}
+              <DropdownMenuItem onSelect={p.onOpenColorScheme}><Palette className="mr-2 h-4 w-4" /> Esquema de cores</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => (p.onPrint ? p.onPrint() : window.print())}><Printer className="mr-2 h-4 w-4" /> Imprimir agenda</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => p.onSetDefaultView(p.view)}>
+                <Pin className="mr-2 h-4 w-4" />
+                Definir visão atual como padrão
+                {p.defaultView === p.view && <Badge variant="secondary" className="ml-auto text-[10px]">Atual</Badge>}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-xs text-muted-foreground focus:bg-transparent" disabled>
+                <Keyboard className="mr-2 h-3.5 w-3.5" />
+                <span className="flex-1 leading-relaxed">← → navega · T hoje · N nova<br />D/W/M visão · / busca</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+</>);
+  const filtros = (<>
+{!p.hideMedicoFilter && <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.medicoFilter.length > 0 && 'border-primary/40 text-primary')}>
+                <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
+                {p.medicoFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.medicoFilter.length}</Badge>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent data-elo-font-preview="agenda" className="max-h-80 w-64 overflow-y-auto rounded-xl p-2">
+              <div className="mb-1 flex items-center justify-between border-b pb-2">
+                <span className="text-xs font-medium">Filtrar médicos</span>
+                {p.medicoFilter.length > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => p.onMedicoFilterChange([])}>Limpar</Button>
+                )}
+              </div>
+              {p.medicos.map((m: any) => (
+                <label key={m.id} className="flex cursor-pointer items-center gap-2 rounded p-1.5 hover:bg-muted/50">
+                  <Checkbox
+                    checked={p.medicoFilter.includes(m.id)}
+                    onCheckedChange={(v) => p.onMedicoFilterChange(v
+                      ? [...p.medicoFilter, m.id]
+                      : p.medicoFilter.filter(x => x !== m.id))}
+                  />
+                  <span className="text-sm">{nomeMedico(m.nome || m.crm)}</span>
+                </label>
+              ))}
+            </PopoverContent>
+          </Popover>}
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.statusFilter.length > 0 && 'border-primary/40 text-primary')}>
+                <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
+                {p.statusFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.statusFilter.length}</Badge>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent data-elo-font-preview="agenda" className="w-56 rounded-xl p-2">
+              <div className="mb-1 flex items-center justify-between border-b pb-2">
+                <span className="text-xs font-medium">Filtrar status</span>
+                {p.statusFilter.length > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => p.onStatusFilterChange([])}>Limpar</Button>
+                )}
+              </div>
+              {STATUSES.map(([k, l]) => (
+                <label key={k} className="flex cursor-pointer items-center gap-2 rounded p-1.5 hover:bg-muted/50">
+                  <Checkbox
+                    checked={p.statusFilter.includes(k)}
+                    onCheckedChange={(v) => p.onStatusFilterChange(v
+                      ? [...p.statusFilter, k]
+                      : p.statusFilter.filter(x => x !== k))}
+                  />
+                  <span className="text-sm">{l}</span>
+                </label>
+              ))}
+            </PopoverContent>
+          </Popover>
+</>);
+  const legenda = (<>
+{p.legend && p.legend.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-9 shrink-0 rounded-full px-3 text-xs text-muted-foreground">Legenda</Button>
+            </PopoverTrigger>
+            <PopoverContent data-elo-font-preview="agenda" align="end" className="w-64 rounded-xl p-3">
+              <ul aria-label="Legenda de cores da agenda" className="grid gap-1.5 text-xs text-muted-foreground">
+                {p.legend.map(item => (
+                  <li key={`${item.label}-${item.color}`} className="inline-flex items-center gap-2">
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: item.color }} />
+                    {item.label}
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
+</>);
+
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-3 py-3 shadow-xs sm:px-4">
       {/* Linha 1 (protótipo aprovado): título e visualização | data e ações */}
@@ -189,29 +292,7 @@ export function AgendaHeader(p: Props) {
             </Link>
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className={cn('h-11 w-11 shrink-0 sm:h-10 sm:w-10', pill)} aria-label="Mais opções da agenda"><MoreHorizontal className="h-4 w-4" /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent data-elo-font-preview="agenda" align="end" className="w-56 rounded-xl">
-              <DropdownMenuItem onSelect={p.onNewBlock}><Ban className="mr-2 h-4 w-4" /> Bloquear horário</DropdownMenuItem>
-              {p.onBuscarVaga && <DropdownMenuItem onSelect={p.onBuscarVaga}><Search className="mr-2 h-4 w-4" /> Buscar vaga</DropdownMenuItem>}
-              {p.onOpenConfirmacoes && <DropdownMenuItem onSelect={p.onOpenConfirmacoes}><CalendarCheck className="mr-2 h-4 w-4" /> Confirmar consultas de amanhã</DropdownMenuItem>}
-              <DropdownMenuItem onSelect={p.onOpenColorScheme}><Palette className="mr-2 h-4 w-4" /> Esquema de cores</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => (p.onPrint ? p.onPrint() : window.print())}><Printer className="mr-2 h-4 w-4" /> Imprimir agenda</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => p.onSetDefaultView(p.view)}>
-                <Pin className="mr-2 h-4 w-4" />
-                Definir visão atual como padrão
-                {p.defaultView === p.view && <Badge variant="secondary" className="ml-auto text-[10px]">Atual</Badge>}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-xs text-muted-foreground focus:bg-transparent" disabled>
-                <Keyboard className="mr-2 h-3.5 w-3.5" />
-                <span className="flex-1 leading-relaxed">← → navega · T hoje · N nova<br />D/W/M visão · / busca</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="hidden sm:block">{opcoes}</div>
 
           <Button size="sm" onClick={p.onNewAppointment} disabled={p.newAppointmentDisabled} aria-label="Nova consulta"className="h-11 flex-1 shrink-0 rounded-full bg-primary text-primary-foreground shadow-md hover:brightness-110 sm:h-10 sm:flex-none sm:px-4">
             <Plus className="mr-1.5 h-4 w-4" /> <span className="whitespace-nowrap">Nova consulta</span>
@@ -246,62 +327,14 @@ export function AgendaHeader(p: Props) {
             )}
           </div>
 
-          {!p.hideMedicoFilter && <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.medicoFilter.length > 0 && 'border-primary/40 text-primary')}>
-                <Filter className="h-3.5 w-3.5 mr-1.5" /> Médicos
-                {p.medicoFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.medicoFilter.length}</Badge>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent data-elo-font-preview="agenda" className="max-h-80 w-64 overflow-y-auto rounded-xl p-2">
-              <div className="mb-1 flex items-center justify-between border-b pb-2">
-                <span className="text-xs font-medium">Filtrar médicos</span>
-                {p.medicoFilter.length > 0 && (
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => p.onMedicoFilterChange([])}>Limpar</Button>
-                )}
-              </div>
-              {p.medicos.map((m: any) => (
-                <label key={m.id} className="flex cursor-pointer items-center gap-2 rounded p-1.5 hover:bg-muted/50">
-                  <Checkbox
-                    checked={p.medicoFilter.includes(m.id)}
-                    onCheckedChange={(v) => p.onMedicoFilterChange(v
-                      ? [...p.medicoFilter, m.id]
-                      : p.medicoFilter.filter(x => x !== m.id))}
-                  />
-                  <span className="text-sm">{nomeMedico(m.nome || m.crm)}</span>
-                </label>
-              ))}
-            </PopoverContent>
-          </Popover>}
-
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={cn('h-10 sm:h-9', pill, p.statusFilter.length > 0 && 'border-primary/40 text-primary')}>
-                <Filter className="h-3.5 w-3.5 mr-1.5" /> Status
-                {p.statusFilter.length > 0 && <Badge className="ml-1.5 h-4 border-transparent bg-primary px-1 text-[10px] text-primary-foreground hover:bg-primary">{p.statusFilter.length}</Badge>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent data-elo-font-preview="agenda" className="w-56 rounded-xl p-2">
-              <div className="mb-1 flex items-center justify-between border-b pb-2">
-                <span className="text-xs font-medium">Filtrar status</span>
-                {p.statusFilter.length > 0 && (
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => p.onStatusFilterChange([])}>Limpar</Button>
-                )}
-              </div>
-              {STATUSES.map(([k, l]) => (
-                <label key={k} className="flex cursor-pointer items-center gap-2 rounded p-1.5 hover:bg-muted/50">
-                  <Checkbox
-                    checked={p.statusFilter.includes(k)}
-                    onCheckedChange={(v) => p.onStatusFilterChange(v
-                      ? [...p.statusFilter, k]
-                      : p.statusFilter.filter(x => x !== k))}
-                  />
-                  <span className="text-sm">{l}</span>
-                </label>
-              ))}
-            </PopoverContent>
-          </Popover>
-
+          <Sheet>
+            <SheetTrigger asChild><Button variant="outline" className="sm:hidden">Filtros ({activeFilters})</Button></SheetTrigger>
+            <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto">
+              <SheetHeader><SheetTitle>Filtros da agenda</SheetTitle><SheetDescription>Escolha médicos, status e opções da agenda.</SheetDescription></SheetHeader>
+              <div className="mt-4 flex flex-wrap items-center gap-3">{filtros}{opcoes}{legenda}</div>
+            </SheetContent>
+          </Sheet>
+          <div className="hidden items-center gap-2 sm:flex">{filtros}</div>
           {p.onOnlineFilterChange && (p.onlineFilter || (p.onlineCount ?? 0) > 0) && (
             <Button
               variant="outline"
@@ -329,23 +362,7 @@ export function AgendaHeader(p: Props) {
           <Stat label="Na clínica" value={p.totals.naClinica} active={sameFilter(p.statusFilter, TOTAL_FILTERS.naClinica)} onClick={() => toggleTotal('naClinica')} />
           <Stat label="Canc." value={p.totals.cancelados} tone="destructive" active={sameFilter(p.statusFilter, TOTAL_FILTERS.cancelados)} onClick={() => toggleTotal('cancelados')} />
         </div>
-        {p.legend && p.legend.length > 0 && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-9 shrink-0 rounded-full px-3 text-xs text-muted-foreground">Legenda</Button>
-            </PopoverTrigger>
-            <PopoverContent data-elo-font-preview="agenda" align="end" className="w-64 rounded-xl p-3">
-              <ul aria-label="Legenda de cores da agenda" className="grid gap-1.5 text-xs text-muted-foreground">
-                {p.legend.map(item => (
-                  <li key={`${item.label}-${item.color}`} className="inline-flex items-center gap-2">
-                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: item.color }} />
-                    {item.label}
-                  </li>
-                ))}
-              </ul>
-            </PopoverContent>
-          </Popover>
-        )}
+        <div className="hidden sm:block">{legenda}</div>
       </div>
     </div>
   );
