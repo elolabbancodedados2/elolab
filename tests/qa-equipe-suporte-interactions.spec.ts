@@ -55,10 +55,18 @@ test('platform support status keyboard and internal note work without losing foc
       return;
     }
     if (url.pathname === '/rest/v1/clinicas' && request.method() === 'GET') {
+      if (url.searchParams.get('id') === `eq.${synthetic.clinicId}`) {
+        await route.fallback();
+        return;
+      }
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: clinicId, nome: 'Clínica QA sintética' }]) });
       return;
     }
     if (url.pathname === '/rest/v1/profiles' && request.method() === 'GET') {
+      if (url.searchParams.get('id') === `eq.${synthetic.userId}`) {
+        await route.fallback();
+        return;
+      }
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: requesterId, nome: 'Solicitante QA', email: 'qa@elolab.test' }]) });
       return;
     }
