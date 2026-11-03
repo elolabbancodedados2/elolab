@@ -49,6 +49,12 @@ function renderCard(agendamento: Record<string, unknown>, extra: { onClick?: () 
 }
 
 describe('AppointmentCard', () => {
+  it.each(['aguardando_triagem', 'em_triagem', 'fila_atendimento'])('exibe %s sem código cru', (status) => {
+    renderCard({ hora_inicio: '10:00:00', hora_fim: '11:00:00', status });
+    const card = document.querySelector('[data-agendamento-id="ag-ficticio-1"]')!;
+    expect(card.getAttribute('aria-label')).not.toContain('_');
+    expect(card.textContent).not.toContain('_');
+  });
   it.each([
     ['15', '09:00:00', '09:15:00'],
     ['20', '09:00:00', '09:20:00'],

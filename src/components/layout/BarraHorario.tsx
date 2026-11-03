@@ -1,3 +1,4 @@
+import { STATUS_SEM_RESERVA } from '@/lib/agendamentoStatus';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -22,7 +23,7 @@ interface Consulta {
   medicos?: (Pessoa & { intervalo_consulta?: number | null }) | null;
 }
 
-const STATUS_FORA = ['cancelado', 'faltou'];
+const STATUS_FORA = [...STATUS_SEM_RESERVA];
 const DIAS_A_FRENTE = 30;
 const CAMPOS = 'id, medico_id, data, hora_inicio, hora_fim, status, pacientes(nome, foto_url), medicos(nome, foto_url, intervalo_consulta)';
 const MEDIA_DESKTOP = '(min-width: 1024px)';

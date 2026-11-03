@@ -1,3 +1,4 @@
+import { STATUS_ENCERRADOS as STATUS_AGENDAMENTO_ENCERRADOS } from './agendamentoStatus';
 /**
  * Regras de exibição e conferência da ficha do paciente.
  *
@@ -168,7 +169,7 @@ export function situacaoCarteirinha(
   return null;
 }
 
-const STATUS_ENCERRADOS = new Set(['cancelado', 'faltou', 'finalizado', 'concluido', 'realizado', 'atendimento_finalizado']);
+const STATUS_ENCERRADOS = new Set([...STATUS_AGENDAMENTO_ENCERRADOS, 'concluido', 'realizado']);
 
 /** Separa "Próximas" (mais cedo primeiro) do "Histórico" (mais recente primeiro). */
 export function separarConsultas<T extends { data: string; hora_inicio?: string | null; status?: string | null }>(

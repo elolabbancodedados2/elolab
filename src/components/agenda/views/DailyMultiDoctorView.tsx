@@ -1,3 +1,4 @@
+import { STATUS_SEM_RESERVA as STATUS_SEM_RESERVA } from '@/lib/agendamentoStatus';
 import { nomeMedico } from '@/lib/formatters';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
@@ -63,7 +64,7 @@ function proximaVagaLivre(agendamentos: any[], bloqueios: any[], fromMin: number
   });
 }
 
-const STATUS_SEM_RESERVA = new Set(['cancelado', 'faltou']);
+
 
 /** Consultas que começam ou terminam fora da grade de 06:00 a 22:00. */
 export function contarForaDaGrade(agendamentos: Array<{ hora_inicio?: string | null; hora_fim?: string | null }>): number {

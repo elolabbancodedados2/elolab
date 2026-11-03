@@ -1,3 +1,4 @@
+import { STATUS_ENCERRADOS } from './agendamentoStatus';
 import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 
 type AgendamentoCheckin = {
@@ -21,7 +22,7 @@ export type ItemValidacaoCheckin = {
   detalhe: string;
 };
 
-const STATUS_ENCERRADOS = ['cancelado', 'faltou', 'finalizado', 'atendimento_finalizado'];
+
 
 /**
  * Pré-validação exibida antes do check-in. Espelha `realizar_checkin` e o
@@ -46,7 +47,7 @@ export function validarCheckin({ agendamento, paciente, clinicaId, hoje }: {
     ? 'Agendamento não encontrado.'
     : agendamento.data !== hoje
       ? 'O agendamento não é de hoje.'
-      : STATUS_ENCERRADOS.includes(status)
+      : STATUS_ENCERRADOS.has(status)
         ? `O agendamento está como “${formatAppointmentStatus(status).toLocaleLowerCase('pt-BR')}” e não aceita check-in.`
         : status === 'em_atendimento'
           ? 'O atendimento já foi iniciado.'

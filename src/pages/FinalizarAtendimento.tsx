@@ -42,25 +42,7 @@ type AppointmentContext = {
 
 const RETORNO_OPCOES = [7, 15, 30, 60, 90, 180] as const;
 const ROTAS_DE_RETORNO = ['/fila', '/recepcao', '/agenda'];
-const STATUS_ROTULO: Record<string, string> = {
-  em_atendimento: 'Em atendimento',
-  finalizado: 'Já finalizado',
-  atendimento_finalizado: 'Já finalizado',
-  aguardando: 'Aguardando',
-  confirmado: 'Confirmado',
-  agendado: 'Agendado',
-  faltou: 'Faltou',
-  cancelado: 'Cancelado',
-  aguardando_triagem: 'Aguardando triagem',
-  em_triagem: 'Em triagem',
-  fila_atendimento: 'Na fila de atendimento',
-  aguardando_pagamento: 'Aguardando pagamento',
-  aguardando_pagamento_adicional: 'Aguardando pagamento adicional',
-  pago: 'Pago',
-};
-
-/** Rótulo legível do status; nunca mostra o código cru do banco. */
-const rotuloStatus = (status: string) => STATUS_ROTULO[status] ?? formatAppointmentStatus(status);
+const rotuloStatus = formatAppointmentStatus;
 
 function relacaoUnica<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
