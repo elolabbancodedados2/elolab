@@ -222,19 +222,18 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
 
   /**
    * Zero no catálogo é decisão da clínica; zero por ausência é esquecimento.
-   * Tratar os dois como erro barrava o check-in de retorno — que é gratuito por
-   * convenção no Brasil e tem 17 agendamentos na base.
+   * Retornos têm regra própria; outros serviços gratuitos mantêm o zero explícito.
    */
   it('atendimento cadastrado como gratuito não gera cobrança nem erro', async () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },
-      'tipos_consulta.select': { data: { id: 't-retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
+      'tipos_consulta.select': { data: { id: 't-retorno', nome: 'Coleta', valor_particular: 0 }, error: null },
     });
 
     const { createAutoBilling, createAutoBillingDetailed } = await import('@/lib/autoBilling');
     const params = {
       agendamentoId: 'ag-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
-      tipoConsulta: 'retorno', data: '2026-08-14', clinicaId: 'cli-1',
+      tipoConsulta: 'Coleta', data: '2026-08-14', clinicaId: 'cli-1',
     };
 
     expect(await createAutoBillingDetailed(params)).toBe('free');
@@ -246,33 +245,25 @@ describe('faturamento automático — uma cobrança por agendamento', () => {
     ).toBe(false);
   });
 
-  it('consulta de retorno usa o item Retorno do catálogo', async () => {
-    mockAtual = criarSupabaseMock({
-      'lancamentos.select': { data: [], error: null },
-      'tipos_consulta.select': { data: { id: 't-retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
-    });
-
+  it('consulta de retorno exige consulta de referência antes da gratuidade', async () => {
     const { createAutoBilling } = await import('@/lib/autoBilling');
-    const criou = await createAutoBilling({
+    await expect(createAutoBilling({
       agendamentoId: 'ag-retorno-1', pacienteId: 'pac-1', pacienteNome: 'Maria',
       tipoConsulta: 'Consulta de retorno', data: '2026-08-26', clinicaId: 'cli-1',
-    });
-
-    expect(criou).toBe(false);
-    expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
+    })).rejects.toThrow('Não foi possível conferir a consulta de retorno');
   });
 
   it('preserva preço zero explícito mesmo com valor padrão do convênio', async () => {
     mockAtual = criarSupabaseMock({
       'lancamentos.select': { data: [], error: null },
-      'tipos_consulta.select': { data: { id: 'retorno', nome: 'Retorno', valor_particular: 0 }, error: null },
+      'tipos_consulta.select': { data: { id: 'retorno', nome: 'Coleta', valor_particular: 0 }, error: null },
       'precos_consulta_convenio.select': { data: { valor: 0 }, error: null },
       'convenios.select': { data: { valor_consulta: 150 }, error: null },
     });
     const { createAutoBilling } = await import('@/lib/autoBilling');
     expect(await createAutoBilling({
       agendamentoId: 'ag-gratis', pacienteId: 'pac-1', pacienteNome: 'Teste',
-      tipoConsulta: 'Retorno', data: '2026-09-06', clinicaId: 'cli-1', convenioId: 'conv-1',
+      tipoConsulta: 'Coleta', data: '2026-09-06', clinicaId: 'cli-1', convenioId: 'conv-1',
     })).toBe(false);
     expect(mockAtual.chamadas.some(c => c.tabela === 'lancamentos' && c.op === 'insert')).toBe(false);
   });

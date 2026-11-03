@@ -66,6 +66,7 @@ interface TipoConsulta {
   cor: string;
   ativo: boolean;
   valor_particular: number;
+  prazo_retorno_dias: number | null;
   created_at: string;
 }
 
@@ -85,11 +86,13 @@ interface TipoForm {
   cor: string;
   ativo: boolean;
   valor_particular: number | '';
+  prazo_retorno_dias: number | '';
+  retorno_sem_prazo: boolean;
 }
 
 const initialForm: TipoForm = {
   nome: '', descricao: '', instrucoes_preparo: '', duracao_minutos: 30,
-  cor: '#3B3E44', ativo: true, valor_particular: 0,
+  cor: '#3B3E44', ativo: true, valor_particular: 0, prazo_retorno_dias: 30, retorno_sem_prazo: false,
 };
 
 export default function TiposConsulta({ creationPage = false, pricesPage = false, embedded = false }: { creationPage?: boolean; pricesPage?: boolean; embedded?: boolean }) {
@@ -195,7 +198,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
   useEffect(() => {
     if (!taskPage || initialized.current || (consultationTypeId && !recordQuery.data)) return;
     const t = recordQuery.data;
-    const value: TipoForm = t ? { nome: t.nome, descricao: t.descricao || '', duracao_minutos: t.duracao_minutos, instrucoes_preparo: t.instrucoes_preparo || '', cor: t.cor, ativo: t.ativo, valor_particular: t.valor_particular } : initialForm;
+    const value: TipoForm = t ? { nome: t.nome, descricao: t.descricao || '', duracao_minutos: t.duracao_minutos, instrucoes_preparo: t.instrucoes_preparo || '', cor: t.cor, ativo: t.ativo, valor_particular: t.valor_particular, prazo_retorno_dias: t.prazo_retorno_dias ?? 30, retorno_sem_prazo: t.prazo_retorno_dias === null } : initialForm;
     baseline.current = JSON.stringify(value);
     initialized.current = true;
     setEditTarget(t ?? null);
@@ -224,6 +227,9 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
     if (typeof valorParticular !== 'number' || !Number.isFinite(valorParticular) || valorParticular < 0) { toast.error('Informe um valor particular válido, igual ou maior que zero.'); return; }
     if (Math.abs(valorParticular * 100 - Math.round(valorParticular * 100)) > 1e-7) { toast.error('Informe o valor particular com no máximo duas casas decimais.'); return; }
     if (form.instrucoes_preparo.length > 2000) { toast.error('As instruções de preparo podem ter até 2.000 caracteres.'); return; }
+    if (!form.retorno_sem_prazo && (typeof form.prazo_retorno_dias !== 'number' || !Number.isInteger(form.prazo_retorno_dias) || form.prazo_retorno_dias < 0 || form.prazo_retorno_dias > 2147483647)) {
+      toast.error('Informe um prazo inteiro igual ou maior que zero, ou marque sem prazo.'); return;
+    }
     saveLock.current = true;
     setSaving(true);
     try {
@@ -235,6 +241,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
         cor: form.cor,
         ativo: form.ativo,
         valor_particular: valorParticular,
+        prazo_retorno_dias: form.retorno_sem_prazo ? null : Number(form.prazo_retorno_dias),
       };
       if (editTarget) {
         const { data, error } = await supabase.from('tipos_consulta').update(payload).eq('id', editTarget.id).eq('clinica_id', profile.clinica_id).select('id').maybeSingle();
@@ -295,7 +302,7 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
     try {
       const { data, error } = await supabase.from('tipos_consulta').insert({
         nome: nomeDaCopia(tipo.nome, tipos.map(t => t.nome)), descricao: tipo.descricao, instrucoes_preparo: tipo.instrucoes_preparo,
-        duracao_minutos: tipo.duracao_minutos, cor: tipo.cor, ativo: false, valor_particular: tipo.valor_particular, clinica_id: profile.clinica_id,
+        duracao_minutos: tipo.duracao_minutos, cor: tipo.cor, ativo: false, valor_particular: tipo.valor_particular, prazo_retorno_dias: tipo.prazo_retorno_dias, clinica_id: profile.clinica_id,
       }).select('id').single();
       if (error) throw error;
       const precosDoTipo = precos.filter(p => p.tipo_consulta_id === tipo.id);
@@ -573,6 +580,13 @@ function TiposConsultaWorkspace({ creationPage, pricesPage, embedded }: { creati
                 <Label htmlFor="tipo-valor-particular" className="text-xs">Valor Particular (R$)</Label>
                 <Input id="tipo-valor-particular" type="number" min={0} step="0.01" value={form.valor_particular} onChange={e => setForm({ ...form, valor_particular: e.target.value === '' ? '' : Number(e.target.value) })} />
               </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="tipo-prazo-retorno">Prazo do retorno gratuito (dias)</Label>
+              <Input id="tipo-prazo-retorno" type="number" min={0} max={2147483647} step={1} disabled={form.retorno_sem_prazo}
+                value={form.prazo_retorno_dias} onChange={e => setForm({ ...form, prazo_retorno_dias: e.target.value === '' ? '' : Number(e.target.value) })} />
+              <div className="flex items-center gap-2"><Switch id="tipo-retorno-sem-prazo" checked={form.retorno_sem_prazo} onCheckedChange={value => setForm({ ...form, retorno_sem_prazo: value })} /><Label htmlFor="tipo-retorno-sem-prazo">Sem prazo</Label></div>
+              <p className="text-xs text-muted-foreground">Contado da última consulta paga deste tipo com o mesmo médico. Fora do prazo, vale o preço da consulta.</p>
             </div>
             <div className="space-y-1.5">
               <Label id="tipo-cor-rotulo" className="text-xs">Cor</Label>

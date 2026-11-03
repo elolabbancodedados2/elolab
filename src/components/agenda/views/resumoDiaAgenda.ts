@@ -1,7 +1,8 @@
+import { STATUS_SEM_RESERVA as STATUS_FORA_DA_CONTAGEM } from '@/lib/agendamentoStatus';
 import { nomeMedico } from '@/lib/formatters';
 
 /** Status que não ocupam a agenda: aparecem riscados, mas não entram nas contagens. */
-const STATUS_FORA_DA_CONTAGEM = new Set(['cancelado', 'faltou']);
+
 
 export function contaNaAgenda(agendamento: { status?: string | null }): boolean {
   return !STATUS_FORA_DA_CONTAGEM.has(String(agendamento.status ?? ''));

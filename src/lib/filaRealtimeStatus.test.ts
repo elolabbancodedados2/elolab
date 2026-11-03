@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { filaRealtimeMessage, filaRealtimeState } from './filaRealtimeStatus';
+import { filaRealtimeMessage, filaRealtimeState, filaAtualizadaHa } from './filaRealtimeStatus';
 import { readFileSync } from 'node:fs';
 
 describe('filaRealtimeState', () => {
+  it('informa a idade real dos dados, sem inventar atualização antes da primeira carga', () => {
+    expect(filaAtualizadaHa(1000, 16500)).toBe('Atualizado há 15s');
+    expect(filaAtualizadaHa(0, 16500)).toBe('Aguardando atualização');
+    expect(filaAtualizadaHa(20000, 16500)).toBe('Atualizado há 0s');
+  });
   it('distinguishes active, connecting and fallback states', () => {
     expect(filaRealtimeState('SUBSCRIBED')).toBe('connected');
     expect(filaRealtimeState('CHANNEL_ERROR')).toBe('fallback');

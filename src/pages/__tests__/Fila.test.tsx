@@ -124,11 +124,17 @@ function item(id: string, appointment: AppointmentFixture, status = 'aguardando'
   };
 }
 
-function setup() {
-  return render(<MemoryRouter initialEntries={['/fila?tab=fila']}><LocationOutput /><Fila /></MemoryRouter>);
+function setup(rota = '/fila?tab=fila') {
+  return render(<MemoryRouter initialEntries={[rota]}><LocationOutput /><Fila /></MemoryRouter>);
 }
 
 describe('Fila de atendimento', () => {
+  it('abre a etapa de atendimento vinda da recepção sem misturar pendências do balcão', () => {
+    setup('/fila?etapa=atendimento');
+    expect(screen.getByText('Paciente de hoje')).toBeInTheDocument();
+    expect(screen.queryByText('Paciente aguardando balcão')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver todas as etapas' })).toBeInTheDocument();
+  });
   it('abre a liberação excepcional em página própria e preserva o retorno à fila', () => {
     mocks.role = 'admin';
     setup();

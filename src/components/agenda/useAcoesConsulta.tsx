@@ -1,3 +1,4 @@
+import { ACOES_ATENDIMENTO, ETAPAS_RECEPCAO, FILA_ETAPA_ATENDIMENTO } from '@/lib/agendaRecepcaoGlossario';
 import { useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -118,6 +119,7 @@ export function useAcoesConsulta(agendamento: any, { onAbrir, onNovaConsulta, on
         const checkin = await fazerCheckin();
         void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
         if (!checkin.success) throw new Error(checkin.message);
+        if (checkin.avisoRetorno) toast.warning(checkin.avisoRetorno);
         toast.success('Paciente encaminhado para a fila', {
           description: somenteMedico ? 'A recepção deve confirmar a cobrança antes do atendimento.' : checkin.actions.join(' • '),
         });
@@ -296,16 +298,16 @@ export function useAcoesConsulta(agendamento: any, { onAbrir, onNovaConsulta, on
       disabled: !linkConfirmacao, title: linkConfirmacao ? undefined : 'Paciente sem telefone cadastrado',
       onSelect: () => { if (linkConfirmacao) window.open(linkConfirmacao, '_blank', 'noopener,noreferrer'); },
     }] : []),
-    { id: 'fila', label: 'Enviar para a fila', grupo: 4, disabled: ocupado || !agendamento.paciente_id || !ATIVOS.includes(status), onSelect: () => { void setStatus('aguardando'); } },
+    { id: 'fila', label: ACOES_ATENDIMENTO.checkin, grupo: 4, disabled: ocupado || !agendamento.paciente_id || !ATIVOS.includes(status), onSelect: () => { void setStatus('aguardando'); } },
     {
-      id: 'iniciar', label: 'Iniciar atendimento', icon: PlayCircle, grupo: 4,
+      id: 'iniciar', label: ACOES_ATENDIMENTO.iniciar, icon: PlayCircle, grupo: 4,
       disabled: ocupado || aguardaTriagem || !agendamento.paciente_id || !ATIVOS.includes(status),
       title: aguardaTriagem ? 'A clínica exige triagem antes do atendimento' : undefined,
       hint: aguardaTriagem ? 'exige triagem' : undefined,
       onSelect: () => { void iniciarAtendimento(); },
     },
     ...(status === 'em_atendimento' ? [{
-      id: 'finalizar', label: 'Finalizar', grupo: 4, disabled: ocupado,
+      id: 'finalizar', label: ACOES_ATENDIMENTO.finalizar, grupo: 4, disabled: ocupado,
       onSelect: () => navigate(`/atendimentos/${agendamento.id}/finalizar?origem=agenda`, { state: { returnTo: `${location.pathname}${location.search}` } }),
     }] : []),
     ...(['faltou', 'em_atendimento'].includes(status) ? [{

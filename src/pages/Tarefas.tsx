@@ -672,7 +672,7 @@ function TarefasWorkspace({ task }: { task?: 'new' | 'edit' }) {
               </Button>
             </div>
             <Button asChild variant="outline" className="h-11 w-full gap-2 rounded-full px-4 sm:w-auto">
-              <RouterLink to="/minha-fila"><Inbox className="h-4 w-4" aria-hidden="true" /> Minha fila</RouterLink>
+              <RouterLink to="/minha-fila"><Inbox className="h-4 w-4" aria-hidden="true" /> Minhas tarefas</RouterLink>
             </Button>
             <Button onClick={abrirNova} className="h-11 w-full gap-2 rounded-full bg-gradient-primary px-5 text-white shadow-md hover:brightness-110 sm:w-auto">
               <Plus className="h-4 w-4" /> Nova Tarefa

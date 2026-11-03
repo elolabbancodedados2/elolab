@@ -1,3 +1,4 @@
+import { STATUS_FINALIZADO } from '@/lib/agendamentoStatus';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { nomeMedico } from '@/lib/formatters';
 import { useState, useMemo } from 'react';
@@ -35,7 +36,7 @@ import { calculateAttendanceRate } from '@/lib/analyticsKpis';
 import { AccessibleChartTable } from '@/components/analytics/AccessibleChartTable';
 
 const COR_GRADE = 'hsl(var(--border))';
-const STATUS_FINALIZADO = new Set(['finalizado', 'atendimento_finalizado']);
+
 
 function diaFinanceiro(value?: string | null): string | null {
   if (!value) return null;

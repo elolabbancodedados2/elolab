@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { patientStep } from '@/lib/receptionWorkflow';
 
 describe('patientStep', () => {
+  it.each([['pago', 2], ['aguardando_pagamento', 1], ['aguardando_triagem', 2], ['em_triagem', 2], ['fila_atendimento', 2]] as const)('mantém %s visível sem fila', (status, etapa) => {
+    expect(patientStep({ status }, null, null)).toBe(etapa);
+  });
+  it('não reabre um paciente cancelado por causa de uma fila antiga', () => {
+    expect(patientStep({ status: 'cancelado' }, { status: 'aguardando' }, null)).toBe(-1);
+  });
   it('sends a queued free appointment directly to the ready-to-attend step', () => {
     expect(patientStep({ status: 'aguardando' }, { status: 'aguardando' }, null)).toBe(2);
   });

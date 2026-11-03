@@ -1,3 +1,4 @@
+import { rotuloStatusAgendamento } from './agendamentoStatus';
 import { appointmentCancellationReasonLabel } from './appointmentCancellation';
 
 export interface AuditAppointmentChange {
@@ -21,21 +22,6 @@ const FIELD_LABELS: Record<string, string> = {
   motivo_cancelamento: 'Motivo do cancelamento',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  agendado: 'Agendado',
-  confirmado: 'Confirmado',
-  aguardando: 'Aguardando',
-  aguardando_triagem: 'Aguardando triagem',
-  em_triagem: 'Em triagem',
-  em_atendimento: 'Em atendimento',
-  finalizado: 'Finalizado',
-  cancelado: 'Cancelado',
-  faltou: 'Faltou',
-  aguardando_pagamento: 'Aguardando pagamento',
-  aguardando_pagamento_adicional: 'Aguardando pagamento adicional',
-  atendimento_finalizado: 'Atendimento finalizado',
-  pago: 'Pago',
-};
 
 function displayValue(field: string, value: unknown, references: AuditAppointmentReferences): string {
   if (value === null || value === undefined || value === '') return field === 'sala_id' ? 'Sem sala' : '—';
@@ -43,7 +29,7 @@ function displayValue(field: string, value: unknown, references: AuditAppointmen
 
   if (field === 'medico_id') return references.medicos.get(text) ?? 'Profissional indisponível';
   if (field === 'sala_id') return references.salas.get(text) ?? 'Sala indisponível';
-  if (field === 'status') return STATUS_LABELS[text] ?? text;
+  if (field === 'status') return rotuloStatusAgendamento(text);
   if (field === 'motivo_cancelamento') return appointmentCancellationReasonLabel(text) ?? 'Outro';
   if (field === 'hora_inicio' || field === 'hora_fim') return /^\d{2}:\d{2}(?::\d{2})?$/.test(text) ? text.slice(0, 5) : text;
   if (field === 'data' && /^\d{4}-\d{2}-\d{2}$/.test(text)) {

@@ -4208,14 +4208,14 @@ isOneToOne: false
                   ]
                 },"tipos_consulta": {
                   Row: {
-                    "ativo": boolean | null,"clinica_id": string | null,"cor": string | null,"created_at": string | null,"descricao": string | null,"duracao_minutos": number | null,"id": string,"instrucoes_preparo": string | null,"nome": string,"updated_at": string | null,"valor_particular": number | null
+                    "ativo": boolean | null,"clinica_id": string | null,"cor": string | null,"created_at": string | null,"descricao": string | null,"duracao_minutos": number | null,"id": string,"instrucoes_preparo": string | null,"nome": string,"updated_at": string | null,"prazo_retorno_dias": number | null,"valor_particular": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "ativo"?: boolean | null,"clinica_id"?: string | null,"cor"?: string | null,"created_at"?: string | null,"descricao"?: string | null,"duracao_minutos"?: number | null,"id"?: string,"instrucoes_preparo"?: string | null,"nome": string,"updated_at"?: string | null,"valor_particular"?: number | null
+                    "ativo"?: boolean | null,"clinica_id"?: string | null,"cor"?: string | null,"created_at"?: string | null,"descricao"?: string | null,"duracao_minutos"?: number | null,"id"?: string,"instrucoes_preparo"?: string | null,"nome": string,"updated_at"?: string | null,"prazo_retorno_dias"?: number | null,"valor_particular"?: number | null
                   }
                   Update: {
-                    "ativo"?: boolean | null,"clinica_id"?: string | null,"cor"?: string | null,"created_at"?: string | null,"descricao"?: string | null,"duracao_minutos"?: number | null,"id"?: string,"instrucoes_preparo"?: string | null,"nome"?: string,"updated_at"?: string | null,"valor_particular"?: number | null
+                    "ativo"?: boolean | null,"clinica_id"?: string | null,"cor"?: string | null,"created_at"?: string | null,"descricao"?: string | null,"duracao_minutos"?: number | null,"id"?: string,"instrucoes_preparo"?: string | null,"nome"?: string,"updated_at"?: string | null,"prazo_retorno_dias"?: number | null,"valor_particular"?: number | null
                   }
                   Relationships: [
                     {

@@ -21,11 +21,13 @@ describe('DailyMultiDoctorView', () => {
           colorFor={() => '#005ECC'}
           onSlotClick={onSlotClick}
           onCardClick={vi.fn()}
+          faixasPorMedico={{ 'med-1': [[8 * 60, 12 * 60]] }}
         />
       </DndContext>,
     );
 
     expect(screen.getByTestId('agenda-doctor-header-strip').closest('.sticky')).toHaveClass('top-0');
+    expect(screen.getByLabelText('Expediente de Dr(a). Ana Silva: 08:00–12:00')).toBeInTheDocument();
 
     const firstTabStop = screen.getByRole('button', { name: 'Criar consulta 06:00 com Dr(a). Ana Silva' });
     expect(firstTabStop).toHaveAttribute('tabindex', '0');
