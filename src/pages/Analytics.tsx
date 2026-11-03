@@ -383,7 +383,7 @@ export default function Analytics() {
   const agPorDia = useMemo(() => {
     const points = chartInterval === 'week'
       ? days.filter((_, i) => i % 7 === 0).map(start => ({ start, end: addDays(start, 6) > range.to ? range.to : addDays(start, 6) }))
-      : days.slice(-14).map(day => ({ start: day, end: day }));
+      : days.map(day => ({ start: day, end: day }));
     return points.map(({ start, end }) => {
       const inicio = format(start, 'yyyy-MM-dd');
       const fim = format(end, 'yyyy-MM-dd');
@@ -421,7 +421,7 @@ export default function Analytics() {
   const fluxoCaixa = useMemo(() => {
     const points = chartInterval === 'week'
       ? days.filter((_, i) => i % 7 === 0).map(start => ({ start, end: addDays(start, 6) > range.to ? range.to : addDays(start, 6) }))
-      : days.slice(-14).map(day => ({ start: day, end: day }));
+      : days.map(day => ({ start: day, end: day }));
     return points.map(({ start, end }) => {
       const inicio = format(start, 'yyyy-MM-dd');
       const fim = format(end, 'yyyy-MM-dd');
@@ -741,7 +741,7 @@ export default function Analytics() {
             <Card className="shadow-xs">
               <CardHeader>
                 <CardTitle>Agendamentos por Dia</CardTitle>
-                <CardDescription>{showComparison ? 'Atual vs Período Anterior' : `Últimos ${Math.min(14, rangeDays)} dias`}</CardDescription>
+                <CardDescription>{showComparison ? 'Atual vs Período Anterior' : `${rangeDays} dias do período selecionado${chartInterval === 'week' ? ', agrupados por semana' : ''}`}</CardDescription>
               </CardHeader>
               <CardContent>
                 {agPorDia.length === 0 ? (
