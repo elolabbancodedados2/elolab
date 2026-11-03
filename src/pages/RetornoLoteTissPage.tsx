@@ -90,7 +90,7 @@ export default function RetornoLoteTissPage() {
   const valor = Number(valorRecebido);
   const totalAtual = Number(lote?.valor_pago || 0);
   const conciliadoAtual = Number(lote?.valor_conciliado_financeiro || 0);
-  const valorValido = Number.isFinite(valor) && valor >= 0 && valor <= Number(lote?.valor_apresentado || 0)
+  const valorValido = valorRecebido.trim() !== '' && Number.isFinite(valor) && valor >= 0 && valor <= Number(lote?.valor_apresentado || 0)
     && Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-7;
   const precisaMotivo = valor < totalAtual || (conciliarFinanceiro && valor < conciliadoAtual);
   const semAlteracao = !!lote?.retorno_em && valor === totalAtual && (!conciliarFinanceiro || valor === conciliadoAtual);

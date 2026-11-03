@@ -800,10 +800,10 @@ function ConveniosWorkspace({ creationPage, examTablePage, examCreationPage }: {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                      <h3 className={cn('text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
                       <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
                     </div>
-                    <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                    <p className={cn('text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
                   </div>
                 </div>
               </button>
