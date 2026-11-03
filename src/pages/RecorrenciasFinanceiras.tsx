@@ -81,7 +81,7 @@ export default function RecorrenciasFinanceiras() {
     }
   };
 
-  const novaConta = <Button onClick={() => navigate('/contas/pagar/nova', { state: { returnTo: '/contas?tab=pagar' } })} className="gap-2"><Plus aria-hidden="true" className="h-4 w-4" />Nova conta recorrente</Button>;
+  const novaConta = <Button onClick={() => navigate('/contas/pagar/nova', { state: { returnTo: '/contas?tab=pagar', initial: { recorrente: true } } })} className="gap-2"><Plus aria-hidden="true" className="h-4 w-4" />Nova conta recorrente</Button>;
 
   return (
     <div className="space-y-6 pb-8">

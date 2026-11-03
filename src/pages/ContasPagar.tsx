@@ -111,7 +111,7 @@ const novoFormDataDespesa = (): FormData => {
 
 /**
  * Aceita `location.state.initial` (ex.: conta gerada por um pedido de compra
- * recebido). Só campos de texto e valor conhecidos são aproveitados.
+ * recebido). Só campos conhecidos e com o tipo esperado são aproveitados.
  */
 const formDataComInicial = (initial: unknown): FormData => {
   const base = novoFormDataDespesa();
@@ -129,6 +129,7 @@ const formDataComInicial = (initial: unknown): FormData => {
     numero_documento: texto('numero_documento'),
     observacoes: texto('observacoes'),
     valor,
+    recorrente: dados.recorrente === true,
   };
 };
 
@@ -637,7 +638,7 @@ export default function ContasPagar() {
         title="Contas a pagar"
         description={stats.total === 0
           ? 'Despesas, fornecedores e controle de vencimentos'
-          : `${formatCurrency(stats.total)} total${selectedMonth ? ` em ${format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}` : ''} · ${monthFilteredContas.filter(c => c.vencida).length} vencida${monthFilteredContas.filter(c => c.vencida).length === 1 ? '' : 's'} · ${formatCurrency(stats.pendente)} em aberto`}
+          : `${formatCurrency(stats.total)} total${selectedMonth ? ` em ${format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}` : ''} · ${monthFilteredContas.filter(c => c.vencida).length} vencida${monthFilteredContas.filter(c => c.vencida).length === 1 ? '' : 's'} · ${formatCurrency(stats.pendente + stats.atrasado)} em aberto`}
         icon={<TrendingDown />}
         actions={
           <>
