@@ -63,7 +63,6 @@ import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/li
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { isPatientTimelineSummaryNavigation } from '@/lib/patientTimelineSummaryNavigation';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
-import { formatCsvCell } from '@/lib/csv';
 import {
   TIPOS_AGENDAMENTO, cpfMascarado, diferencasCadastro, duracaoDoTipo, formatarCpf, juntarLista, nomesDoPaciente,
   rotuloMotivoDuplicidade, rotuloStatusAgendamento, rotuloStatusExame, rotuloTipoAgendamento, separarConsultas,

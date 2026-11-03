@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/medicalAttachmentPath.ts';
-import { attachPortalPreparationInstructions } from '../../../src/lib/portalAppointmentPreparation.ts';
+import { attachPortalPreparationInstructions } from '../_shared/portalAppointmentPreparation.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
 import { assinarDocumentosPortal } from '../_shared/portalDocuments.ts';
