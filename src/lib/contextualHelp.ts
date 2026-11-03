@@ -82,6 +82,26 @@ const HELP_BY_ROUTE: Record<string, ContextualHelpEntry> = {
     roleTips: { admin: 'Faça alterações estruturais fora dos horários de maior movimento.' },
     links: [{ label: 'Primeiros passos', href: '/onboarding', roles: ['admin'] }, { label: 'Falar com o suporte', href: '/suporte', roles: ['admin'] }],
   },
+  '/caixa-diario': {
+    title: 'Caixa diário',
+    summary: 'Controle o dinheiro do dia: abertura, vendas, despesas, sangria, suprimento e fechamento.',
+    steps: ['Abra o caixa informando o valor inicial da gaveta.', 'Registre cada movimentação no momento em que ela acontece.', 'No fechamento, conte a gaveta e descreva qualquer diferença.'],
+    roleTips: { recepcao: 'Receba e confira as cobranças em aberto antes de fechar.', financeiro: 'Reabra o caixa só quando precisar corrigir um lançamento.' },
+    links: [{ label: 'Tutorial do caixa', href: '/treinamento/caixa-diario', roles: ['admin', 'recepcao', 'financeiro'] }],
+  },
+  '/prontuarios': {
+    title: 'Prontuário do paciente',
+    summary: 'Registre a evolução clínica no paciente correto e revise antes de finalizar.',
+    steps: ['Busque o paciente e confirme a identidade.', 'Preencha a evolução e salve.', 'Use Salvar e finalizar só depois de revisar tudo.'],
+    roleTips: { medico: 'Confira alergias e medicamentos em uso antes de prescrever.' },
+    links: [{ label: 'Tutorial de prontuário e prescrição', href: '/treinamento/prontuario-prescricao', roles: ['admin', 'medico'] }],
+  },
+  '/estoque': {
+    title: 'Controle de estoque',
+    summary: 'Acompanhe materiais e medicamentos, com entradas, saídas e validade.',
+    steps: ['Confira itens com estoque baixo ou vencidos.', 'Registre entradas e saídas no item correto.', 'Use o inventário para corrigir diferenças de contagem.'],
+    links: [{ label: 'Tutorial de estoque e compras', href: '/treinamento/estoque-rotina', roles: ['admin', 'enfermagem'] }],
+  },
   '/onboarding': {
     title: 'Primeiros passos da clínica',
     summary: 'Conclua a configuração essencial na ordem indicada para liberar um fluxo consistente.',

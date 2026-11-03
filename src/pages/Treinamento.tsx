@@ -14,60 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/PageHeader';
-
-type TutorialStep = { title: string; description: string; href?: string; action?: string; roles?: AppRole[] };
-type Tutorial = { key: string; title: string; description: string; minutes: number; roles: AppRole[]; steps: TutorialStep[] };
-
-const tutorials: Tutorial[] = [
-  { key: 'rotina-diaria', title: 'Comece o dia com segurança', description: 'Aprenda a identificar prioridades e pendências sem alterar registros.', minutes: 3, roles: ['admin','medico','recepcao','enfermagem','financeiro'], steps: [
-    { title: 'Leia seu painel', description: 'Os atalhos e indicadores são adaptados à sua função. Comece pelas pendências que exigem atenção.', href: '/dashboard', action: 'Abrir dashboard' },
-    { title: 'Confira as notificações', description: 'Use filtros e marque como lido somente o que você já conferiu.', href: '/notificacoes', action: 'Ver notificações' },
-    { title: 'Organize as tarefas', description: 'Revise responsável, prazo e contexto antes de concluir uma tarefa.', href: '/tarefas', action: 'Abrir tarefas' },
-  ]},
-  { key: 'agenda-recepcao', title: 'Agenda e chegada do paciente', description: 'Pratique a sequência administrativa correta para um atendimento.', minutes: 4, roles: ['admin','recepcao'], steps: [
-    { title: 'Pesquise antes de cadastrar', description: 'Procure nome e documento para evitar pacientes duplicados.', href: '/pacientes', action: 'Abrir pacientes' },
-    { title: 'Confirme antes de agendar', description: 'Revise paciente, profissional, data e horário antes de salvar.', href: '/agenda', action: 'Abrir agenda' },
-    { title: 'Registre a chegada', description: 'Encaminhe para a fila somente quando a presença estiver confirmada.', href: '/recepcao', action: 'Abrir recepção' },
-  ]},
-  { key: 'fluxo-clinico', title: 'Fluxo clínico responsável', description: 'Revise as etapas de triagem, atendimento e documentação.', minutes: 5, roles: ['admin','medico','enfermagem'], steps: [
-    { title: 'Confirme a pessoa atendida', description: 'Antes de registrar qualquer dado, confira paciente e atendimento selecionados.' },
-    { title: 'Finalize sua etapa', description: 'Só avance a fila depois de concluir e revisar as informações da etapa atual.', href: '/fila', action: 'Abrir fila' },
-    { title: 'Revise documentos', description: 'Assine ou finalize documentos clínicos somente após a revisão completa.', href: '/documentos-clinicos', action: 'Abrir documentos', roles: ['admin', 'medico'] },
-  ]},
-  { key: 'financeiro-seguro', title: 'Rotina financeira confiável', description: 'Confira valores e estados antes de registrar movimentações.', minutes: 4, roles: ['admin','financeiro'], steps: [
-    { title: 'Defina o período', description: 'Confirme datas e filtros para interpretar os totais corretamente.', href: '/financeiro', action: 'Abrir financeiro' },
-    { title: 'Revise os dados', description: 'Confira valor, vencimento, favorecido e situação antes de uma baixa.', href: '/contas', action: 'Abrir contas' },
-    { title: 'Valide o resultado', description: 'Após salvar, confirme a mensagem de sucesso e o novo estado do registro.' },
-  ]},
-  { key: 'fluxo-laboratorio', title: 'Pedido, coleta e laudo', description: 'Entenda como acompanhar um exame desde a solicitação até a liberação do resultado.', minutes: 4, roles: ['admin','enfermagem'], steps: [
-    { title: 'Confira os pedidos', description: 'Revise paciente, exames e prioridade antes de preparar a coleta.', href: '/exames', action: 'Ver solicitações' },
-    { title: 'Organize a coleta', description: 'Use o mapa para conferir tubos, status e necessidade de recoleta.', href: '/mapa-coleta', action: 'Abrir mapa de coleta' },
-    { title: 'Acompanhe os resultados', description: 'Registre resultados e confira se foram validados e liberados para consulta.', href: '/laudos-lab', action: 'Abrir laudos' },
-  ]},
-  { key: 'convenios-glosas', title: 'Convênios, lotes e glosas', description: 'Registre o acompanhamento administrativo e saiba o que precisa ser enviado fora do sistema.', minutes: 4, roles: ['admin','financeiro'], steps: [
-    { title: 'Confira o cadastro do convênio', description: 'Revise registro ANS, versão TISS e tabela de preços antes de abrir um lote.', href: '/convenios', action: 'Abrir convênios' },
-    { title: 'Registre e exporte o lote', description: 'O XML disponível é um resumo operacional; valide o arquivo no padrão exigido e transmita pelo canal oficial da operadora.', href: '/faturamento-convenios', action: 'Abrir TISS e glosas' },
-    { title: 'Acompanhe a glosa', description: 'Registre código, motivo e valor; prepare e marque o recurso depois de enviá-lo pelo canal da operadora.' },
-  ]},
-  { key: 'repasses-medicos', title: 'Fechamento de repasses médicos', description: 'Concilie recebimentos e registre corretamente o pagamento ao profissional.', minutes: 3, roles: ['admin','financeiro'], steps: [
-    { title: 'Confira as regras', description: 'Revise a regra de valor fixo ou percentual de cada médico antes de conciliar.', href: '/repasses-medicos', action: 'Revisar repasses' },
-    { title: 'Concilie a competência', description: 'Selecione o mês e confira a base de receitas efetivamente quitadas e o valor calculado.' },
-    { title: 'Registre o pagamento', description: 'Faça a transferência fora desta tela. Depois, registre o status no EloLab para manter a conciliação atualizada.' },
-  ]},
-  { key: 'relatorios', title: 'Relatórios da clínica', description: 'Consulte dados de cada área e reaproveite relatórios personalizados.', minutes: 3, roles: ['admin','financeiro'], steps: [
-    { title: 'Explore por área', description: 'Use relatórios para consultar atendimento, pacientes, médicos, estoque e financeiro.', href: '/relatorios', action: 'Abrir relatórios' },
-    { title: 'Reaproveite um relatório', description: 'Salve filtros úteis e revise destinatários e frequência antes de agendar envios.', href: '/relatorios/salvos', action: 'Ver relatórios salvos' },
-  ]},
-  { key: 'indicadores-clinica', title: 'Indicadores da clínica', description: 'Compare períodos e acompanhe tendências operacionais e financeiras.', minutes: 3, roles: ['admin'], steps: [
-    { title: 'Defina o período', description: 'Escolha uma janela coerente e compare com o período anterior quando precisar avaliar mudanças.', href: '/analytics', action: 'Abrir indicadores' },
-    { title: 'Aprofunde no relatório', description: 'Para listas detalhadas e exportações por área, continue em Relatórios.', href: '/relatorios', action: 'Abrir relatórios' },
-  ]},
-  { key: 'privacidade-conta', title: 'Privacidade e segurança da conta', description: 'Boas práticas para proteger acessos e informações sensíveis.', minutes: 3, roles: ['admin','medico','recepcao','enfermagem','financeiro'], steps: [
-    { title: 'Use sua própria conta', description: 'Nunca compartilhe senha ou sessão. Cada ação precisa ter autoria identificável.' },
-    { title: 'Confira permissões', description: 'Se uma função não deveria acessar algo, informe o administrador em vez de compartilhar dados.' },
-    { title: 'Proteja a sessão', description: 'Bloqueie ou encerre a sessão ao se afastar de um dispositivo compartilhado.', href: '/seguranca', action: 'Revisar segurança' },
-  ]},
-];
+import { tutorials, type Tutorial } from '@/lib/treinamentoTutoriais';
 
 export default function Treinamento() {
   const { user, profile } = useSupabaseAuth();
