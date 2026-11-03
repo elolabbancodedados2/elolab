@@ -1,3 +1,5 @@
+import { FecharDiaDialog } from '@/components/recepcao/FecharDiaDialog';
+import { marcarFaltasSelecionadas } from '@/lib/fecharDia';
 import { ACOES_ATENDIMENTO, ETAPAS_RECEPCAO, FILA_ETAPA_ATENDIMENTO } from '@/lib/agendaRecepcaoGlossario';
 import { acoesDaEtapa, type AcaoEtapa } from '@/lib/acoesDaEtapa';
 import { AcoesRecepcao, type AcaoRecepcao } from '@/components/recepcao/AcoesRecepcao';
@@ -20,7 +22,7 @@ import { checkinComCobranca } from '@/lib/checkinWithBilling';
 import { primeiraFalhaCheckin, validarCheckin } from '@/lib/checkinValidacao';
 import { chamarPacienteNaFila } from '@/lib/filaChamada';
 import { EsperaIndicador } from '@/components/fila/EsperaIndicador';
-import { atomicConcludeQueue, atomicMarkNoShow, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
+import { atomicConcludeQueue, atomicStartAppointment as autoIniciarAtendimento } from '@/lib/operationalTransitions';
 import { linkWhatsApp } from '@/lib/whatsapp';
 import { ChecklistRecepcao } from '@/components/recepcao/ChecklistRecepcao';
 import { ErrorState } from '@/components/ErrorState';
@@ -908,9 +910,11 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      if (!profile?.clinica_id) return;
      setIsProcessing(true);
      try {
-       const resultado = await atomicMarkNoShow(agId, profile.clinica_id);
-       if (!resultado.success) throw new Error(resultado.message);
-       toast.success('Falta registrada', { description: resultado.message });
+       const consulta = todayAgendamentos.find(a => a.id === agId);
+       if (!consulta) throw new Error('Consulta não encontrada.');
+       const resultado = await marcarFaltasSelecionadas([consulta], profile.clinica_id);
+       if (resultado.falhas.length) throw new Error(resultado.falhas[0].motivo);
+       toast.success('Falta registrada');
        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
        queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje'] });
@@ -1899,6 +1903,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         description={`Acompanhe o fluxo de pacientes de hoje · ${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })}`}
         actions={(
           <div className="flex flex-wrap gap-2">
+            {podeGerenciarRecepcao && <FecharDiaDialog consultas={todayAgendamentos} fila={filaItems} clinicaId={profile?.clinica_id ?? ''}
+              disabled={isProcessing || loadingAg || filaRecepcaoQuery.isLoading || filaRecepcaoQuery.isError}
+              onConcluido={() => { void queryClient.invalidateQueries({ queryKey: ['agendamentos'] }); }} />}
             <Button type="button" variant="outline" className="gap-2" onClick={() => navigate('/agenda')}>
               <CalendarDays aria-hidden="true" data-icon="inline-start" />Ver agenda do dia
             </Button>
