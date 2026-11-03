@@ -22,7 +22,9 @@ export function RouteAccessibility({ mainId = 'main-content' }: { mainId?: strin
       const main = document.getElementById(mainId);
       const activeElement = document.activeElement;
       const destinationHasFocus = main?.contains(activeElement) && activeElement !== main;
-      if (!destinationHasFocus) main?.focus({ preventScroll: true });
+      // Menus e diálogos em portal ficam fora do main, mas já pertencem à interação atual.
+      const overlayHasFocus = activeElement?.closest('[role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"]');
+      if (!destinationHasFocus && !overlayHasFocus) main?.focus({ preventScroll: true });
       if (main && 'scrollTo' in main) main.scrollTo({ top: 0, behavior: 'auto' });
       setAnnouncement(getRouteAnnouncement(pathname));
     }, 0);

@@ -66,10 +66,8 @@ async function installPageMocks(page: Page, pageRecord = record, chartChanges: {
 async function selectResponsibleDoctor(page: Page) {
   const select = page.getByLabel('Médico responsável pela evolução *');
   await select.click();
-  await select.press('ArrowDown');
-  await select.press('Enter');
-  await select.press('Escape');
-  await expect(page.getByRole('option', { name: 'Dra. Marina Ribeiro' })).toHaveCount(0);
+  await page.getByRole('option', { name: 'Dra. Marina Ribeiro', exact: true }).click();
+  await expect(select).toHaveText('Dra. Marina Ribeiro');
 }
 
 test('retorno clínico abre em página, grava contexto do prontuário e volta ao paciente', async ({ page }, info) => {
@@ -272,6 +270,7 @@ test('biblioteca de protocolos ocupa a página e aplica só sugestões explícit
   await page.getByRole('button', { name: 'Novo Atendimento', exact: true }).first().click();
   await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
   await page.getByRole('tab', { name: 'Conduta' }).click();
+  await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&nova=1&secao=conduta`);
   await page.getByRole('button', { name: 'Aplicar Protocolo Clínico' }).click();
 
   await expect(page).toHaveURL(/\/prontuarios\/atendimento\?.*tela=protocolos/);

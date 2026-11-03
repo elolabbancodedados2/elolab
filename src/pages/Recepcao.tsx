@@ -1732,7 +1732,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Observações do agendamento</p>
                           <p className="mt-1 text-xs text-foreground">{selectedReceptionEntry.ag.observacoes || 'Nenhuma observação registrada.'}</p>
                         </div>
-                        {selectedReceptionEntry.step >= 0 && selectedReceptionEntry.ag.status !== 'faltou' && <ChecklistRecepcao appointment={selectedReceptionEntry.ag} patient={selectedReceptionEntry.pac} clinicId={profile?.clinica_id ?? ''} today={today} onEditPatient={() => navigate(`/pacientes/${encodeURIComponent(selectedReceptionEntry.ag.paciente_id)}/editar`, { state: { returnTo: '/recepcao' } })} />}
+                        {selectedReceptionEntry.step >= 0 && selectedReceptionEntry.ag.status !== 'faltou' && <ChecklistRecepcao key={selectedReceptionEntry.ag.id} appointment={selectedReceptionEntry.ag} patient={selectedReceptionEntry.pac} clinicId={profile?.clinica_id ?? ''} today={today} onEditPatient={() => navigate(`/pacientes/${encodeURIComponent(selectedReceptionEntry.ag.paciente_id)}/editar`, { state: { returnTo: '/recepcao' } })} />}
                       </TabsContent>
                       <TabsContent value="agenda" className="mt-3 space-y-3 text-xs">
                         <dl className="grid gap-2">
@@ -1892,7 +1892,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
   }
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-2 pb-8 sm:space-y-4">
       <PageHeader
         title="Recepção"
         description={`Acompanhe o fluxo de pacientes de hoje · ${format(parseDateOnly(today)!, "EEEE, d 'de' MMMM", { locale: ptBR })}`}
@@ -1934,8 +1934,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
       </div>
 
       {/* Search + Tabs */}
-      <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col gap-2 lg:flex-row lg:items-center">
-        <div className="flex min-w-0 gap-2 lg:flex-1">
+      <motion.div variants={fadeUp} initial="hidden" animate="visible" className="flex flex-col gap-2">
+        <div className="flex min-w-0 gap-2">
           <div className="relative min-w-0 flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -1958,9 +1958,9 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
             <span className="hidden sm:inline">Encaixe sem agendamento</span>
           </Button>
         </div>
-        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap lg:flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={medicoFiltro} onValueChange={setMedicoFiltro}>
-            <SelectTrigger aria-label="Filtrar por médico" className="h-10 min-w-0 flex-1 rounded-full sm:w-[190px] sm:flex-none">
+            <SelectTrigger aria-label="Filtrar por médico" className="h-10 min-w-[150px] flex-1 rounded-full sm:w-[190px] sm:flex-none">
               <Stethoscope className="mr-1.5 hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" />
               <SelectValue placeholder="Todos os médicos" />
             </SelectTrigger>
@@ -1972,7 +1972,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
             </SelectContent>
           </Select>
           <Select value={ordenacao} onValueChange={(v) => setOrdenacao(v as 'horario' | 'espera')}>
-            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 min-w-0 flex-1 rounded-full sm:w-[170px] sm:flex-none">
+            <SelectTrigger aria-label="Ordenar pacientes" className="h-10 min-w-[150px] flex-1 rounded-full sm:w-[170px] sm:flex-none">
               <ArrowUpDown className="mr-1.5 hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" />
               <SelectValue />
             </SelectTrigger>

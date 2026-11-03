@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { createPortal } from 'react-dom';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RouteAccessibility } from '@/components/RouteAccessibility';
 import { getRouteAnnouncement } from '@/config/routeLabels';
 
-function NavigationHarness() {
+function NavigationHarness({ overlayRole }: { overlayRole?: 'menu' | 'dialog' | 'alertdialog' | 'listbox' }) {
   const navigate = useNavigate();
   const location = useLocation();
   return (
@@ -13,12 +14,28 @@ function NavigationHarness() {
       <main id="main-content" tabIndex={-1}>
         {location.pathname === '/agenda' && <button>Ação da agenda</button>}
       </main>
+      {location.pathname === '/agenda' && overlayRole && createPortal(
+        <div role={overlayRole}><button>Ação da sobreposição</button></div>, document.body,
+      )}
       <RouteAccessibility />
     </>
   );
 }
 
 describe('RouteAccessibility', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each(['menu', 'dialog', 'alertdialog', 'listbox'] as const)('preserva foco no %s aberto em portal na página de destino', async overlayRole => {
+    vi.useFakeTimers();
+    render(<MemoryRouter initialEntries={['/dashboard']}><NavigationHarness overlayRole={overlayRole} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir agenda' }));
+    const action = screen.getByRole('button', { name: 'Ação da sobreposição' });
+    action.focus();
+    await act(async () => vi.runAllTimers());
+    expect(action).toHaveFocus();
+    expect(screen.getByTestId('route-announcer')).toHaveTextContent('Agenda carregado');
+  });
+
   it('gera nomes legíveis inclusive para rotas sem rótulo cadastrado', () => {
     expect(getRouteAnnouncement('/pacientes')).toBe('Pacientes carregado');
     expect(getRouteAnnouncement('/admin/relatorios-agendados')).toBe('Relatórios agendados carregado');

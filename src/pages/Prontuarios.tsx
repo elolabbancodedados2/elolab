@@ -2995,7 +2995,7 @@ export default function Prontuarios() {
       {/* ═══════════════════════════════════════════════════════ */}
       {/* ─── Workspace do prontuário ───────────────────────── */}
       {/* ═══════════════════════════════════════════════════════ */}
-      {isProntuarioOpen && <section
+      {isEvolucaoWorkspace && isProntuarioOpen && <section
         data-testid="prontuario-workspace"
         aria-labelledby="prontuario-workspace-title"
         className="flex h-[calc(100dvh-15rem)] min-h-[24rem] flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-sm"

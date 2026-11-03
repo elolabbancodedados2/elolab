@@ -138,7 +138,7 @@ export function DigitalSignature({
         tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
+        className="flex min-w-0 max-w-full items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
       >
         <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
         <div className="flex-1 min-w-0">
@@ -160,7 +160,7 @@ export function DigitalSignature({
         tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
+        className="flex min-w-0 max-w-full items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2"
       >
         <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
         <div className="flex-1 min-w-0">
