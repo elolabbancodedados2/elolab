@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { DndContext, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppointmentCard } from './AppointmentCard';
+import { useAcoesConsulta } from './useAcoesConsulta';
 
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
 vi.mock('@/contexts/SupabaseAuthContext', () => ({
@@ -49,6 +50,12 @@ function renderCard(agendamento: Record<string, unknown>, extra: { onClick?: () 
 }
 
 describe('AppointmentCard', () => {
+  it('nomeia a ação que faz check-in sem prometer apenas envio à fila', () => {
+    const { result } = renderHook(() => useAcoesConsulta({ id: 'ag', status: 'confirmado', paciente_id: 'pac' }, { onAbrir: vi.fn() }), {
+      wrapper: ({ children }) => <QueryClientProvider client={new QueryClient()}><MemoryRouter>{children}</MemoryRouter></QueryClientProvider>,
+    });
+    expect(result.current.acoes.find(acao => acao.id === 'fila')?.label).toBe('Fazer check-in');
+  });
   it.each(['aguardando_triagem', 'em_triagem', 'fila_atendimento'])('exibe %s sem código cru', (status) => {
     renderCard({ hora_inicio: '10:00:00', hora_fim: '11:00:00', status });
     const card = document.querySelector('[data-agendamento-id="ag-ficticio-1"]')!;

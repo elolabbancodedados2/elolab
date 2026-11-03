@@ -1,3 +1,4 @@
+import { ACOES_ATENDIMENTO, ETAPAS_RECEPCAO, FILA_ETAPA_ATENDIMENTO } from '@/lib/agendaRecepcaoGlossario';
 import { acoesDaEtapa, type AcaoEtapa } from '@/lib/acoesDaEtapa';
 import { AcoesRecepcao, type AcaoRecepcao } from '@/components/recepcao/AcoesRecepcao';
 import { formatCurrency } from '@/lib/formatters';
@@ -88,7 +89,7 @@ const FORMAS_PAGAMENTO = [
 ];
 const PARCELAS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-const STEP_LABELS = ['Check-in', 'Balcão', 'Atendimento', 'Finalizado', 'Concluído'] as const;
+const STEP_LABELS = ETAPAS_RECEPCAO;
 
 const STATUS_LANCAMENTO: Record<string, string> = {
   pendente: 'Pendente',
@@ -702,10 +703,10 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    );
 
    const workflowStages = [
-     { id: 'checkin', title: 'Check-in', subtitle: 'Pacientes chegando', count: stats.aguardando, icon: Clock, items: filtered.filter(item => item.step === 0) },
-     { id: 'balcao', title: 'Balcão', subtitle: 'Aguardando liberação', count: stats.balcao, icon: Banknote, items: filtered.filter(item => item.step === 1) },
-     { id: 'atendimento', title: 'Atendimento', subtitle: 'Na clínica', count: stats.atendimento, icon: Stethoscope, items: filtered.filter(item => item.step === 2 || item.step === 3) },
-     { id: 'concluido', title: 'Concluído', subtitle: 'Atendimentos finalizados', count: stats.concluido, icon: CheckCircle2, items: filtered.filter(item => item.step === 4) },
+     { id: 'checkin', title: ETAPAS_RECEPCAO[0], subtitle: 'Pacientes chegando', count: stats.aguardando, icon: Clock, items: filtered.filter(item => item.step === 0) },
+     { id: 'balcao', title: ETAPAS_RECEPCAO[1], subtitle: 'Aguardando liberação', count: stats.balcao, icon: Banknote, items: filtered.filter(item => item.step === 1) },
+     { id: 'atendimento', title: ETAPAS_RECEPCAO[2], subtitle: 'Na clínica', count: stats.atendimento, icon: Stethoscope, items: filtered.filter(item => item.step === 2 || item.step === 3) },
+     { id: 'concluido', title: ETAPAS_RECEPCAO[4], subtitle: 'Atendimentos finalizados', count: stats.concluido, icon: CheckCircle2, items: filtered.filter(item => item.step === 4) },
    ];
 
    const boardColumns = activeTab === 'todos'
@@ -732,23 +733,23 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
        if (link) window.open(link, '_blank', 'noopener,noreferrer');
      };
      const acoes: Record<AcaoEtapa, Omit<AcaoRecepcao, 'id'>> = {
-       checkin: { label: 'Fazer check-in', run: () => { void handleCheckin(item.ag.id); } },
+       checkin: { label: ACOES_ATENDIMENTO.checkin, run: () => { void handleCheckin(item.ag.id); } },
        a_caminho: { label: 'Está a caminho?', run: () => whatsapp(`Olá, ${nome}! Sua consulta estava marcada para ${item.ag.hora_inicio?.slice(0, 5)}. Está a caminho?`) },
        falta: { label: 'Marcar falta', run: () => setMarcandoFalta({ agId: item.ag.id, nome }) },
        receber: { label: 'Receber pagamento', run: () => { void openPagamento(item.lanc, item.pac); } },
        receber_saldo: { label: 'Receber saldo', run: () => { void openPagamento(item.lanc, item.pac); } },
        chamar_balcao: { label: 'Chamar ao balcão', run: () => { void handleChamarBalcao(item.lanc, item.pac); } },
        retomar_cobranca: { label: item.lanc ? 'Confirmar cobrança' : 'Retomar cobrança', run: () => { void handleCheckin(item.ag.id); } },
-       triagem: { label: 'Abrir triagem', run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } },
-       chamar: { label: 'Chamar paciente', run: () => { void handleChamar(item.fila.id); } },
-       iniciar: { label: 'Iniciar atendimento', run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } },
-       finalizar: { label: 'Finalizar atendimento', run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) },
-       concluir: { label: 'Concluir atendimento', run: () => { void handleConcluir(item.ag.id, item.fila.id); } },
+       triagem: { label: ACOES_ATENDIMENTO.triagem, run: () => { void handleEncaminharTriagem(item.ag.id, item.ag.paciente_id); } },
+       chamar: { label: ACOES_ATENDIMENTO.chamar, run: () => { void handleChamar(item.fila.id); } },
+       iniciar: { label: ACOES_ATENDIMENTO.iniciar, run: () => { void handleIniciarAtendimento(item.ag.id, item.fila.id); } },
+       finalizar: { label: ACOES_ATENDIMENTO.finalizar, run: () => abrirFinalizacao(item.ag.id, 'recepcao', item.fila.id) },
+       concluir: { label: ACOES_ATENDIMENTO.concluir, run: () => { void handleConcluir(item.ag.id, item.fila.id); } },
        reagendar: { label: 'Reagendar', run: () => navigate(`/agenda?reagendar=${item.ag.id}`) },
        retornos: { label: 'Retornos', run: () => navigate(`/retornos?paciente=${item.ag.paciente_id}`) },
        exames: { label: 'Exames', run: () => navigate(`/exames?paciente=${item.ag.paciente_id}`) },
        prontuario: { label: 'Prontuário', run: () => navigate(`/prontuarios?paciente=${item.ag.paciente_id}`) },
-       fila: { label: 'Abrir fila', run: () => navigate('/fila') },
+       fila: { label: 'Abrir fila', run: () => navigate(FILA_ETAPA_ATENDIMENTO) },
        whatsapp_reagendar: { label: 'WhatsApp para reagendar', run: () => whatsapp(`Olá, ${nome}. Sentimos sua falta na consulta de hoje. Gostaria de ajuda para reagendar?`) },
      };
      return (decisao.principal ? [decisao.principal, ...decisao.secundarias] : []).map(id => ({ id, ...acoes[id] }));
@@ -779,7 +780,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      Number(selectedReceptionEntry.lanc.acrescimo || 0),
      Number(selectedReceptionEntry.lanc.valor_pago || 0),
    ) : 0;
-   
+
 
    // Próximo a chamar: quem já pagou, na mesma ordem da Fila (urgente,
    // preferencial e normal; dentro da prioridade, a posição de chegada).
@@ -2021,7 +2022,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
         <div className="flex min-w-0 flex-col gap-2">
           <div role="group" aria-label="Filtrar por etapa do atendimento" className="flex min-w-0 snap-x overflow-x-auto rounded-lg border border-border/80 bg-card">
             {workflowStages.map((stage, index) => (
-              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-[132px] shrink-0 snap-start flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
+              <Button key={stage.id} type="button" variant="ghost" aria-pressed={activeTab === stage.id} onClick={() => stage.id === 'atendimento' ? navigate(FILA_ETAPA_ATENDIMENTO) : setActiveTab(stage.id)} className={cn('relative h-auto min-h-11 min-w-[132px] shrink-0 snap-start flex-1 justify-between gap-2 rounded-none border-r border-border/70 px-3 py-1.5 text-left last:border-r-0 sm:min-h-[3.75rem] sm:min-w-[190px] sm:py-2', activeTab === stage.id && 'bg-primary/5 text-primary hover:bg-primary/10')}>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border sm:size-8', activeTab === stage.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted text-muted-foreground')}>
                     <stage.icon aria-hidden="true" className="size-4" />
@@ -2099,7 +2100,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                     const patientName = item.pac?.nome_social || item.pac?.nome || 'Paciente';
                     const { late, text } = statusFor(item);
                     const selected = selectedReceptionEntry?.ag.id === item.ag.id;
-                    
+
                     const feito = item.step === 4 || item.ag.status === 'faltou';
                     return (
                       <Fragment key={item.ag.id}>
@@ -2151,7 +2152,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                         const initials = patientName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase() || 'PA';
                         const { late, text: statusText } = statusFor(item);
                         const selected = selectedReceptionEntry?.ag.id === item.ag.id;
-                        
+
                         const temAlergia = Array.isArray(item.pac?.alergias) ? item.pac.alergias.length > 0 : Boolean(item.pac?.alergias);
                         const temDetalhes = Boolean(item.sala?.nome || (item.fila?.horario_chegada && item.step < 3) || (item.fila?.prioridade && item.fila.prioridade !== 'normal') || temAlergia);
                         return (
