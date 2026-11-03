@@ -1,3 +1,5 @@
+import { isValidDateOnly as dataRetornoValida } from '@/lib/dateOnly';
+import { avaliarRetorno, isReturnConsultationType } from '@/lib/autoBilling';
 import { nomeMedico } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
@@ -101,6 +103,11 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
   }, [open, initial]);
 
   const { data: paciente } = usePacienteResumo(form.paciente_id);
+  const retornoQuery = useQuery({
+    queryKey: ['agenda-regra-retorno', profile?.clinica_id, form.paciente_id, form.medico_id, form.data, initial?.id],
+    enabled: open && isReturnConsultationType(form.tipo) && !!profile?.clinica_id && !!form.paciente_id && !!form.medico_id && dataRetornoValida(form.data),
+    queryFn: () => avaliarRetorno({ clinicaId: profile!.clinica_id!, pacienteId: form.paciente_id, medicoId: form.medico_id, data: form.data, agendamentoId: initial?.id }),
+  });
   const ultimoAtendimentoQuery = useQuery({
     queryKey: ['agenda-ultimo-atendimento', profile?.clinica_id, form.paciente_id, initial?.id ?? null],
     enabled: open && !!profile?.clinica_id && !!form.paciente_id,
@@ -845,6 +852,9 @@ export function AppointmentForm({ open, onOpenChange, initial, medicos, tipos, s
                   Sem término informado: será salvo até <span className="font-semibold text-foreground">{terminoPrevisto.hora}</span> ({terminoPrevisto.duracao} min pelo tipo escolhido).
                 </p>
               )}
+              {isReturnConsultationType(form.tipo) && <div role="status" className="rounded-lg border border-border p-3 text-sm">
+                {retornoQuery.isError ? 'Não foi possível conferir o prazo do retorno. A cobrança será verificada no check-in.' : retornoQuery.isLoading ? 'Conferindo prazo do retorno…' : retornoQuery.data?.aviso || (retornoQuery.data?.gratuito ? 'Retorno dentro do prazo: sem cobrança.' : 'Selecione paciente, médico e data para conferir o prazo.')}
+              </div>}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="appointment-type">Tipo</Label>

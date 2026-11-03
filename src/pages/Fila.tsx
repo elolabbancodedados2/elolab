@@ -579,6 +579,7 @@ export default function Fila({ creationPage = false }: { creationPage?: boolean 
         clinicaId: profile?.clinica_id,
       }, prioridade, { deferBilling: isMedicoOnly });
       if (!result.success) throw new Error(result.message);
+        if (result.avisoRetorno) toast.warning(result.avisoRetorno);
       refresh();
       formCompleted.current = true;
       setSelectedAgendamento('');

@@ -851,7 +851,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
        const proximo = Math.min(filtered.length - 1, Math.max(0, (atual < 0 ? 0 : atual + passo)));
        setSelectedAgendamentoId(filtered[proximo].ag.id);
      },
-     acao: () => { if (!isProcessing) selectedBoardAction?.run(); },
+     acao: () => { if (!isProcessing && selectedReceptionEntry) acoesPara(selectedReceptionEntry)[0]?.run(); },
      encaixe: () => abrirEncaixe(),
    };
 
@@ -955,6 +955,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
           clinicaId: profile?.clinica_id,
         });
         if (!result.success) throw new Error(result.message);
+        if (result.avisoRetorno) toast.warning(result.avisoRetorno);
 
        queryClient.invalidateQueries({ queryKey: ['agendamentos'] });
        queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });

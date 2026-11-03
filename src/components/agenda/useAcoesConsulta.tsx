@@ -119,6 +119,7 @@ export function useAcoesConsulta(agendamento: any, { onAbrir, onNovaConsulta, on
         const checkin = await fazerCheckin();
         void queryClient.invalidateQueries({ queryKey: ['lancamentos'] });
         if (!checkin.success) throw new Error(checkin.message);
+        if (checkin.avisoRetorno) toast.warning(checkin.avisoRetorno);
         toast.success('Paciente encaminhado para a fila', {
           description: somenteMedico ? 'A recepção deve confirmar a cobrança antes do atendimento.' : checkin.actions.join(' • '),
         });
