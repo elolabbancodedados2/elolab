@@ -154,7 +154,7 @@ function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
                   />
                 </div>
                 <p id="patient-access-code-hint" className="text-xs text-muted-foreground">
-                  Código enviado pela sua clínica
+                  Código enviado pela sua clínica. Perdeu o código ou ele expirou? Entre em contato com sua clínica e peça um novo código de acesso.
                 </p>
               </div>
 
