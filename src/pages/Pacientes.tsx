@@ -1,5 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
+import { formatCsvCell } from '@/lib/csv';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
@@ -62,7 +63,6 @@ import { canViewPatientClinicalTimeline, canViewPatientFinancialTab } from '@/li
 import { autorizarLeituraHistoricoPaciente } from '@/lib/prontuarioAudit';
 import { isPatientTimelineSummaryNavigation } from '@/lib/patientTimelineSummaryNavigation';
 import { revokePatientPortalLinks } from '@/lib/patientPortalAccess';
-import { formatCsvCell } from '@/lib/csv';
 import {
   TIPOS_AGENDAMENTO, cpfMascarado, diferencasCadastro, duracaoDoTipo, formatarCpf, juntarLista, nomesDoPaciente,
   rotuloMotivoDuplicidade, rotuloStatusAgendamento, rotuloStatusExame, rotuloTipoAgendamento, separarConsultas,
@@ -430,7 +430,7 @@ export default function Pacientes() {
     }
     const { data, error } = await supabase
       .from('prontuarios')
-      .select('id, data, assinado, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
+      .select('id, data, assinado, updated_at, queixa_principal, hipotese_diagnostica, diagnostico_principal, conduta, sinais_vitais, plano_terapeutico, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, exame_cabeca_pescoco, exame_torax, exame_abdomen, exame_membros, exame_neurologico, exame_pele, orientacoes_paciente, observacoes_internas, diagnosticos_secundarios, medico_id, paciente_id, medicos(nome, crm, especialidade)')
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false })
       .order('id', { ascending: false })
@@ -653,13 +653,18 @@ export default function Pacientes() {
 
       let prontuarioId = activeProntuario?.id;
       if (activeProntuario?.id) {
+        if (!activeProntuario.updated_at) {
+          throw new Error('Não foi possível confirmar a versão deste prontuário. Feche e abra o registro novamente antes de editar.');
+        }
+        // Trava otimista igual à de Prontuarios.tsx: não sobrescreve edição feita em outra sessão.
         const { data, error } = await supabase.from('prontuarios')
           .update(payload)
           .eq('id', activeProntuario.id)
+          .eq('updated_at', activeProntuario.updated_at)
           .select('id')
           .maybeSingle();
         if (error) throw error;
-        if (!data) throw new Error('O prontuário não foi localizado para atualização. Atualize o histórico e tente novamente.');
+        if (!data) throw new Error('Este prontuário foi alterado ou removido em outra sessão. Suas alterações continuam nesta tela; recarregue o registro e confira o histórico antes de salvar novamente.');
       } else {
         if (!authProfile?.clinica_id) {
           throw new Error('Clínica não identificada. Recarregue a página e tente novamente.');

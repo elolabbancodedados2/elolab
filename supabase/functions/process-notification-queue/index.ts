@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
         const dadosExtras = notif.dados_extras || {}
         const lembreteDeConsulta = dadosExtras.tipo_notificacao === 'confirmacao_agendamento'
           || ['24h', '24h_whatsapp', '2h', '2h_whatsapp'].includes(String(dadosExtras.tipo_lembrete || ''))
+          || dadosExtras.tipo === 'vaga_lista_espera'
         // Campanhas também revalidam preferência e janela no envio, porque podem ficar agendadas.
         if (lembreteDeConsulta || mensagemDeCampanha(dadosExtras)) {
           if (!notif.destinatario_id || !notif.clinica_id) throw new Error('Não foi possível confirmar as preferências do destinatário.')

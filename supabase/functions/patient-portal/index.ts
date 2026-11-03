@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checarRateLimit, clientIp } from "../_shared/rateLimit.ts";
 import { corsPadrao } from '../_shared/cors.ts';
 import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/medicalAttachmentPath.ts';
-import { attachPortalPreparationInstructions } from '../../../src/lib/portalAppointmentPreparation.ts';
+import { attachPortalPreparationInstructions } from '../_shared/portalAppointmentPreparation.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
 import { assinarDocumentosPortal } from '../_shared/portalDocuments.ts';
@@ -227,6 +227,8 @@ Deno.serve(async (req) => {
         const { lista_espera_id } = body;
         if (!lista_espera_id) return new Response(JSON.stringify({ error: "lista_espera_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const { data: novoId, error } = await supabase.rpc("aceitar_oferta_lista_espera", { p_lista_espera_id: lista_espera_id, p_paciente_id: pacienteId });
+        // 23P01: a constraint de sobreposição achou outra consulta no mesmo horário.
+        if (error?.code === "23P01") return new Response(JSON.stringify({ error: "Este horário acabou de ser ocupado. A vaga não está mais disponível." }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (error) throw error;
         if (!novoId) return new Response(JSON.stringify({ error: "A vaga expirou ou já foi preenchida" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         result = { success: true, agendamento_id: novoId, message: "Vaga reservada e consulta confirmada" };
@@ -236,13 +238,13 @@ Deno.serve(async (req) => {
       case "confirm_retorno": {
         const { retorno_id } = body;
         if (!retorno_id) return new Response(JSON.stringify({ error: "retorno_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const { data: atual } = await supabase.from("retornos").select("historico").eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).single();
+        const { data: atual } = await supabase.from("retornos").select("historico").eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).in("status", ["pendente", "agendado"]).maybeSingle();
         const historico = Array.isArray(atual?.historico) ? atual.historico : [];
         const confirmadoEm = new Date().toISOString();
         const { data, error } = await supabase.from("retornos").update({ status: "confirmado", confirmado_em: confirmadoEm,
           historico: [...historico, { evento: "confirmado_pelo_paciente", em: confirmadoEm }] })
-          .eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).select("id").single();
-        if (error || !data) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          .eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).in("status", ["pendente", "agendado"]).select("id").maybeSingle();
+        if (error || !data) return new Response(JSON.stringify({ error: "Retorno não encontrado ou não pode mais ser confirmado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         result = { success: true, message: "Retorno confirmado" };
         break;
       }
@@ -256,12 +258,12 @@ Deno.serve(async (req) => {
         const { data: retorno, error: retornoError } = await supabase.from("retornos").select("id, data_retorno_prevista, historico, status")
           .eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).single();
         if (retornoError || !retorno) return new Response(JSON.stringify({ error: "Retorno não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        if (!["pendente", "agendado"].includes(retorno.status)) {
+        if (retorno.status !== "pendente") {
           return new Response(JSON.stringify({ error: "Este retorno não pode mais ser remarcado pelo portal" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         const historico = Array.isArray(retorno.historico) ? retorno.historico : [];
         const { data: remarcado, error } = await supabase.from("retornos").update({ data_retorno_prevista: nova_data, status: "pendente", confirmado_em: null, lembrete_enviado: false,
-          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).in("status", ["pendente", "agendado"]).select("id").maybeSingle();
+          historico: [...historico, { evento: "remarcado_pelo_paciente", de: retorno.data_retorno_prevista, para: nova_data, em: new Date().toISOString() }] }).eq("id", retorno_id).eq("paciente_id", pacienteId).eq("clinica_id", pacienteClinicaId).eq("status", "pendente").select("id").maybeSingle();
         if (error) throw error;
         if (!remarcado) return new Response(JSON.stringify({ error: "O retorno foi atualizado. Recarregue a página e tente novamente." }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         result = { success: true, message: "Retorno remarcado" };
@@ -373,14 +375,17 @@ Deno.serve(async (req) => {
       case "get_prescricoes": {
         const { data, error } = await supabase
           .from("prescricoes")
-          .select("id, medicamento, dosagem, posologia, quantidade, duracao, observacoes, tipo, data_emissao, medicos:medico_id(nome, especialidade)")
+          .select("id, medicamento, dosagem, posologia, quantidade, duracao, observacoes, tipo, data_emissao, prontuario_id, prontuarios:prontuario_id(assinado), medicos:medico_id(nome, especialidade)")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data_emissao", { ascending: false })
           .order("id", { ascending: true })
           .range(offset, offset + 49);
         if (error) throw error;
-        result = data || [];
+        // Receita de prontuário em rascunho não é documento emitido; avulsa (sem prontuário) já nasce emitida.
+        result = (data || [])
+          .filter((p: any) => !p.prontuario_id || p.prontuarios?.assinado === true)
+          .map(({ prontuarios: _prontuario, ...p }: any) => p);
         break;
       }
 
@@ -464,10 +469,10 @@ Deno.serve(async (req) => {
       }
 
       case "create_agendamento": {
-        const { medico_id, data, hora_inicio, tipo } = body;
-        if (!medico_id || !data || !hora_inicio || !tipo) {
+        const { medico_id, data, hora_inicio } = body;
+        if (!medico_id || !data || !hora_inicio) {
           return new Response(
-            JSON.stringify({ error: "medico_id, data, hora_inicio, tipo são obrigatórios" }),
+            JSON.stringify({ error: "medico_id, data, hora_inicio são obrigatórios" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -526,6 +531,24 @@ Deno.serve(async (req) => {
             JSON.stringify({ error: "Este horário já está ocupado. Por favor, selecione outro." }),
             { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
+        }
+
+        // Tipo vem de texto livre do portal: só aceita um tipo ativo da clínica.
+        const tipoInformado = String(body.tipo || "").trim().toLowerCase();
+        const { data: tiposAtivos, error: tiposError } = await supabase.from("tipos_consulta").select("nome")
+          .eq("clinica_id", pacienteClinicaId).eq("ativo", true);
+        if (tiposError) throw tiposError;
+        const tipo = (tiposAtivos || []).find((t: { nome: string }) => t.nome.trim().toLowerCase() === tipoInformado)?.nome ?? "Consulta";
+
+        // Mesmo limite do link público: o paciente não acumula vários pedidos pendentes.
+        const { count: pendentes, error: pendentesError } = await supabase.from("agendamentos").select("id", { count: "exact", head: true })
+          .eq("clinica_id", pacienteClinicaId).eq("paciente_id", pacienteId).eq("status", "agendado").gte("data", todayISO());
+        if (pendentesError) throw pendentesError;
+        if ((pendentes ?? 0) >= 2) {
+          return new Response(JSON.stringify({ error: "Você já tem consultas aguardando confirmação. Entre em contato com a clínica para marcar outra.", code: "booking_unavailable" }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
 
         const endTime = addMinutes(hora_inicio, slot.duration);
