@@ -1,5 +1,11 @@
 # Documentacao do EloLab
 
+## Manual do usuario
+
+- [Manual do EloLab (indice e primeiros passos)](manual/README.md)
+- Guias por perfil: [recepcao](manual/recepcao.md), [medico](manual/medico.md), [enfermagem](manual/enfermagem.md), [laboratorio](manual/laboratorio.md), [financeiro](manual/financeiro.md), [administrador](manual/administrador.md)
+- [Portal do paciente](manual/portal-paciente.md) e [perguntas frequentes](manual/perguntas-frequentes.md)
+
 ## Operacao atual
 
 - [Deploy na VPS pelo EasyPanel](EASYPANEL-VPS.md)
