@@ -18,6 +18,7 @@ import { formatWithDatePreference } from '@/lib/datePreference';
 import { formatAppointmentStatus } from '@/components/dashboard/appointmentStatus';
 import { buscarNomeClinica, imprimirDeclaracaoComparecimento } from '@/lib/documentosRecepcao';
 import { horaSP } from '@/lib/caixaFormatacao';
+import { chamarProximoDoMedico } from '@/lib/filaChamada';
 
 type PatientSummary = {
   nome: string | null;
@@ -250,6 +251,17 @@ export default function FinalizarAtendimento() {
         queryClient.invalidateQueries({ queryKey: ['retornos'] }),
       ]);
       paginaConcluida.current = true;
+      if (profile?.roles?.includes('medico') && appointment.medico_id && appointment.data === todaySaoPauloDateOnly()) {
+        try {
+          const chamada = await chamarProximoDoMedico(clinicaId, appointment.medico_id);
+          if (chamada === 'chamado') result.actions.push('Próximo paciente chamado');
+          else if (chamada === 'mudou') avisos.push('A fila mudou; confira o próximo paciente na fila.');
+          else result.actions.push('Nenhum paciente aguardando na fila deste médico');
+          await queryClient.invalidateQueries({ queryKey: ['fila_atendimento'] });
+        } catch {
+          avisos.push('Atendimento concluído, mas não foi possível chamar o próximo paciente. Abra a fila e tente novamente.');
+        }
+      }
       const toastOptions = {
         description: [...result.actions, ...avisos].join(' • '),
         ...(origem === 'fila' && podeAbrirCaixa

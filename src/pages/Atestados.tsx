@@ -716,55 +716,8 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
       )}
 
       {/* Indicadores por tipo (filtram a lista) */}
-      <section role="group" aria-label="Resumo por tipo de documento" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
-        {([
-          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
-          ...TIPOS_ATESTADO.map(tipo => ({
-            key: tipo.value,
-            icon: tipo.icon,
-            label: tipo.label.replace(/^(Atestado|Declaração) (de |Médico )?/, '').replace(/^\((.*)\)$/, '$1'),
-            value: stats.porTipo[tipo.value] ?? 0,
-            caption: tipo.value === 'afastamento' && stats.vigentes > 0 ? `${stats.vigentes} em vigor` : 'emitidos',
-            color: tipo.value === 'afastamento' ? 'text-warning' : tipo.value === 'aptidao' ? 'text-success' : tipo.value === 'comparecimento' ? 'text-primary' : 'text-foreground',
-            surface: tipo.value === 'afastamento' ? 'bg-warning/10' : tipo.value === 'aptidao' ? 'bg-success/10' : tipo.value === 'comparecimento' ? 'bg-primary/10' : 'bg-muted',
-            escuro: false,
-          })),
-        ]).map(s => {
-          const Icon = s.icon;
-          const ativo = s.key === 'hoje' ? periodoFiltro === 'hoje' : tipoFiltro === s.key;
-          const alternar = () => {
-            if (s.key === 'hoje') setPeriodoFiltro(ativo ? 'todos' : 'hoje');
-            else setTipoFiltro(ativo ? 'todos' : s.key);
-          };
-          return (
-            <button
-              key={s.key}
-              type="button"
-              aria-pressed={ativo}
-              onClick={alternar}
-              className={cn(
-                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                s.escuro && 'border-transparent bg-primary text-primary-foreground',
-                ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
-                ativo && s.escuro && 'ring-2 ring-primary/60',
-              )}
-            >
-              <div className="flex min-h-[96px] items-center gap-3 p-3">
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
-                  <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
-                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
-                  </div>
-                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </section>
+      <div className="flex flex-col gap-6">
+
 
       {/* Documentos emitidos */}
       <Card className="rounded-2xl border-border/60 shadow-xs">
@@ -927,6 +880,56 @@ export default function Atestados({ creationPage = false }: { creationPage?: boo
           </div>
         </CardContent>
       </Card>
+      <section role="group" aria-label="Resumo por tipo de documento" className="md:-order-1 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+        {([
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidos hoje', color: 'text-foreground', surface: 'bg-secondary', escuro: false },
+          ...TIPOS_ATESTADO.map(tipo => ({
+            key: tipo.value,
+            icon: tipo.icon,
+            label: tipo.label.replace(/^(Atestado|Declaração) (de |Médico )?/, '').replace(/^\((.*)\)$/, '$1'),
+            value: stats.porTipo[tipo.value] ?? 0,
+            caption: tipo.value === 'afastamento' && stats.vigentes > 0 ? `${stats.vigentes} em vigor` : 'emitidos',
+            color: tipo.value === 'afastamento' ? 'text-warning' : tipo.value === 'aptidao' ? 'text-success' : tipo.value === 'comparecimento' ? 'text-primary' : 'text-foreground',
+            surface: tipo.value === 'afastamento' ? 'bg-warning/10' : tipo.value === 'aptidao' ? 'bg-success/10' : tipo.value === 'comparecimento' ? 'bg-primary/10' : 'bg-muted',
+            escuro: false,
+          })),
+        ]).map(s => {
+          const Icon = s.icon;
+          const ativo = s.key === 'hoje' ? periodoFiltro === 'hoje' : tipoFiltro === s.key;
+          const alternar = () => {
+            if (s.key === 'hoje') setPeriodoFiltro(ativo ? 'todos' : 'hoje');
+            else setTipoFiltro(ativo ? 'todos' : s.key);
+          };
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={ativo}
+              onClick={alternar}
+              className={cn(
+                'rounded-2xl border border-border/60 bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                s.escuro && 'border-transparent bg-primary text-primary-foreground',
+                ativo && !s.escuro && 'border-primary/50 ring-1 ring-primary/30',
+                ativo && s.escuro && 'ring-2 ring-primary/60',
+              )}
+            >
+              <div className="flex min-h-[96px] items-center gap-3 p-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', s.surface)}>
+                  <Icon aria-hidden="true" className={cn('h-5 w-5', s.color)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={cn('truncate text-xs font-semibold', s.escuro ? 'text-white/80' : 'text-foreground')}>{s.label}</h3>
+                    <span className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</span>
+                  </div>
+                  <p className={cn('truncate text-[11px]', s.escuro ? 'text-white/60' : 'text-muted-foreground')}>{s.caption}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </section>
+      </div>
 
       </>}
       {creationPage && <section className="mx-auto max-w-5xl space-y-6 pb-6" aria-busy={isSaving}>

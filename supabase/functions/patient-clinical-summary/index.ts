@@ -1,3 +1,4 @@
+import { clinicalSummaryContext } from "../_shared/clinicalSummaryContext.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsPadrao } from '../_shared/cors.ts';
 import { createNvidiaChatCompletion, DEFAULT_NVIDIA_CHAT_MODEL } from '../_shared/nvidia.ts';
@@ -101,14 +102,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    const ctx = {
-      paciente: pac.data,
+    const ctx = clinicalSummaryContext(pac.data, {
       consultas: pront.data,
       prescricoes: presc.data,
       exames: exam.data,
       atestados: atest.data,
       comorbidades: comorb.data,
-    };
+    });
 
     const nvidiaApiKey = Deno.env.get("NVIDIA_API_KEY");
     if (!nvidiaApiKey) throw new Error("NVIDIA_API_KEY não configurada");

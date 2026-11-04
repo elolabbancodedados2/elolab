@@ -10,7 +10,7 @@ import { motion } from 'framer-motion';
 
 import { ptBR } from 'date-fns/locale';
 // Tipo apenas: o runtime entra por import() dentro de buildReceitaPdf.
-import type jsPDF from 'jspdf';
+import { buildReceitaPdf, enderecoDoPaciente, tipoDeReceita } from '@/lib/receitaPdf';
 import { useQuery } from '@tanstack/react-query';
 import {
   Pill, Plus, Search, FileDown, ExternalLink, Clipboard, AlertTriangle, Loader2,
@@ -33,8 +33,8 @@ import { useCurrentMedico } from '@/hooks/useCurrentMedico';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { ClinicalAlertsDisplay, useClinicalAlerts } from '@/components/ClinicalAlertsDisplay';
-import { consolidateAlerts, ClinicalAlert } from '@/lib/clinicalAlerts';
-import { allergyOverrideJustificationError, requiresAllergyOverrideJustification } from '@/lib/allergyOverride';
+import { evaluateMedicationSafety, ClinicalAlert } from '@/lib/clinicalAlerts';
+import { allergyOverrideJustificationError, requiresAllergyOverrideJustification, prescriptionSafetyRecord } from '@/lib/allergyOverride';
 import { registrarAcessoDocumentoClinico } from '@/lib/clinicalDocumentAudit';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ErrorState } from '@/components/ErrorState';
@@ -119,248 +119,9 @@ async function loadMemedPrescriptionScript(
   });
 }
 
-async function imageToDataUrl(url?: string): Promise<string | null> {
-  if (!url) return null;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
-/* ─── PDF Builder ─── */
-type TipoReceita = 'simples' | 'controle_especial' | 'antimicrobiano';
-
-const TITULO_RECEITA: Record<TipoReceita, string> = {
-  simples: 'RECEITUÁRIO MÉDICO',
-  controle_especial: 'RECEITUÁRIO DE CONTROLE ESPECIAL',
-  antimicrobiano: 'RECEITUÁRIO DE ANTIMICROBIANO',
-};
-
-const tipoDeReceita = (valor: unknown): TipoReceita =>
-  valor === 'controle_especial' || valor === 'antimicrobiano' ? valor : 'simples';
-
-/**
- * Controle especial (Portaria SVS/MS 344/1998) e antimicrobiano (RDC 471/2021)
- * saem em duas vias: a primeira fica retida na farmácia e a segunda volta com
- * o paciente. A receita simples continua em via única.
- */
-const VIAS_RECEITA: Record<TipoReceita, string[]> = {
-  simples: [''],
-  controle_especial: ['1ª via — retenção da farmácia', '2ª via — orientação ao paciente'],
-  antimicrobiano: ['1ª via — retenção da farmácia', '2ª via — paciente'],
-};
-
-/** Endereço do paciente para o receituário de controle especial. */
-const enderecoDoPaciente = (paciente: Record<string, any> | null | undefined): string | undefined => {
-  if (!paciente) return undefined;
-  const rua = [paciente.logradouro, paciente.numero].filter(Boolean).join(', ');
-  const cidade = [paciente.cidade, paciente.estado].filter(Boolean).join('/');
-  return [rua, paciente.bairro, cidade].filter(Boolean).join(' — ') || undefined;
-};
-
-async function buildReceitaPdf(data: {
-  pacienteNome: string;
-  cpf: string;
-  dataEmissao: string;
-  medicoNome: string;
-  crm: string;
-  especialidade: string;
-  medicamentosTexto: string;
-  tipo?: TipoReceita;
-  pacienteEndereco?: string;
-  clinicaNome?: string;
-  clinicaEndereco?: string;
-  clinicaTelefone?: string;
-  clinicaCnpj?: string;
-  clinicaCnes?: string;
-  logoUrl?: string;
-  rodapeReceita?: string;
-  mostrarLogo?: boolean;
-  mostrarCRM?: boolean;
-  mostrarCNES?: boolean;
-  /** Prévia antes de emitir: marca todas as páginas e não tem validade. */
-  previa?: boolean;
-}): Promise<jsPDF> {
-  // Carrega as ~660 KB do jsPDF só quando o médico gera a receita,
-  // em vez de ao abrir a tela.
-  const { default: JsPDF } = await import('jspdf');
-  const doc = new JsPDF({ unit: 'mm', format: 'a4' });
-  const w = 210;
-  const margin = 20;
-  const tipo = tipoDeReceita(data.tipo);
-  const logoDataUrl = data.mostrarLogo === false ? null : await imageToDataUrl(data.logoUrl);
-
-  // Preto e grafite: o azul antigo saiu do padrão e some em impressão P&B.
-  const desenharVia = (via: string) => {
-    if (logoDataUrl) {
-      try { doc.addImage(logoDataUrl, 'PNG', margin, 14, 24, 24, undefined, 'FAST'); } catch { /* logo opcional */ }
-    }
-
-    // ── Border ──
-    doc.setDrawColor(60);
-    doc.setLineWidth(0.5);
-    doc.rect(10, 10, w - 20, 277);
-
-    // ── Header / letterhead ──
-    doc.setFontSize(18);
-    doc.setTextColor(17, 18, 20);
-    doc.setFont('helvetica', 'bold');
-    doc.text(data.clinicaNome || 'Clínica Médica', w / 2, 25, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-
-    doc.setFontSize(9);
-    doc.setTextColor(90);
-    if (data.clinicaEndereco) doc.text(data.clinicaEndereco, w / 2, 31, { align: 'center' });
-    const contato = [data.clinicaTelefone && `Tel: ${data.clinicaTelefone}`, data.clinicaCnpj && `CNPJ: ${data.clinicaCnpj}`].filter(Boolean).join(' | ');
-    if (contato) doc.text(contato, w / 2, 36, { align: 'center' });
-    if (data.mostrarCNES && data.clinicaCnes) {
-      doc.text(`CNES: ${data.clinicaCnes}`, w / 2, 40, { align: 'center' });
-    }
-
-    doc.setDrawColor(60);
-    doc.setLineWidth(0.4);
-    doc.line(margin, 42, w - margin, 42);
-
-    // ── Title ──
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'bold');
-    doc.text(TITULO_RECEITA[tipo], w / 2, 52, { align: 'center' });
-    if (via) {
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(70);
-      doc.text(via, w / 2, 57, { align: 'center' });
-      doc.setTextColor(0);
-    }
-
-    // ── Patient info ──
-    let y = via ? 66 : 64;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-
-    const addField = (label: string, value: string) => {
-      doc.setFont('helvetica', 'bold');
-      doc.text(label, margin, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(value, margin + doc.getTextWidth(label) + 2, y);
-      y += 6;
-    };
-
-    addField('Paciente: ', data.pacienteNome);
-    if (data.cpf) addField('CPF: ', data.cpf);
-    if (tipo === 'controle_especial') addField('Endereço: ', data.pacienteEndereco || '________________________________________________');
-    addField('Data: ', data.dataEmissao);
-
-    y += 4;
-    doc.setDrawColor(200);
-    doc.setLineWidth(0.2);
-    doc.line(margin, y, w - margin, y);
-    y += 8;
-
-    // ── Medications ──
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Medicamentos e posologia', margin, y);
-    y += 8;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const limiteTexto = tipo === 'controle_especial' ? 190 : 240;
-    const lines = doc.splitTextToSize(data.medicamentosTexto, w - margin * 2);
-    for (const line of lines) {
-      if (y > limiteTexto) {
-        doc.addPage();
-        y = 25;
-      }
-      doc.text(line, margin, y);
-      y += 5.5;
-    }
-
-    // ── Doctor signature area ──
-    y = Math.max(y + 20, tipo === 'controle_especial' ? 196 : 210);
-    if (y > 250) { doc.addPage(); y = 60; }
-
-    doc.setDrawColor(0);
-    doc.setLineWidth(0.3);
-    doc.line(w / 2 - 40, y, w / 2 + 40, y);
-    y += 5;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(data.medicoNome, w / 2, y, { align: 'center' });
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    if (data.mostrarCRM !== false && data.crm) {
-      doc.text(`CRM: ${data.crm}${data.especialidade ? ` — ${data.especialidade}` : ''}`, w / 2, y, { align: 'center' });
-    }
-
-    // ── Controle especial: identificação do comprador e do fornecedor ──
-    if (tipo === 'controle_especial') {
-      const topo = Math.max(y + 8, 222);
-      const largura = (w - margin * 2 - 6) / 2;
-      doc.setDrawColor(120);
-      doc.setLineWidth(0.3);
-      doc.rect(margin, topo, largura, 42);
-      doc.rect(margin + largura + 6, topo, largura, 42);
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
-      doc.text('IDENTIFICAÇÃO DO COMPRADOR', margin + 2, topo + 5);
-      doc.text('IDENTIFICAÇÃO DO FORNECEDOR', margin + largura + 8, topo + 5);
-      doc.setFont('helvetica', 'normal');
-      ['Nome:', 'RG:            Órgão emissor:', 'Endereço:', 'Cidade:            UF:', 'Telefone:'].forEach((rotulo, indice) => {
-        doc.text(rotulo, margin + 2, topo + 12 + indice * 6);
-      });
-      ['', 'Assinatura do farmacêutico', '', 'Data:     /     /'].forEach((rotulo, indice) => {
-        if (rotulo) doc.text(rotulo, margin + largura + 8, topo + 18 + indice * 7);
-      });
-    }
-
-    // ── Rodapé ──
-    // O texto nunca afirma assinatura digital: o PDF é gerado antes de
-    // qualquer assinatura, e o médico assina depois (gov.br ou de próprio punho).
-    const footerY = 280;
-    doc.setFontSize(7);
-    doc.setTextColor(110);
-    if (data.rodapeReceita?.trim()) {
-      const customFooter = doc.splitTextToSize(data.rodapeReceita.trim(), w - margin * 2).slice(0, 2);
-      customFooter.forEach((line: string, index: number) => doc.text(line, w / 2, footerY - 8 + index * 3, { align: 'center' }));
-    }
-    doc.text(
-      'Documento sem assinatura digital. Assine no portal gov.br ou de próprio punho para ter validade.',
-      w / 2, footerY, { align: 'center' },
-    );
-    doc.text(
-      `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
-      w / 2, footerY + 4, { align: 'center' },
-    );
-    doc.setTextColor(0);
-  };
-
-  VIAS_RECEITA[tipo].forEach((via, indice) => {
-    if (indice > 0) doc.addPage();
-    desenharVia(via);
-  });
-
-  if (data.previa) {
-    const { marcarComoPrevia } = await import('@/lib/pdfGenerator');
-    marcarComoPrevia(doc);
-  }
-
-  return doc;
-}
-
 type FiltroOrigem = 'todos' | 'hoje' | 'pdf' | 'memed' | 'sem_pdf';
 type FiltroPeriodo = 'todos' | '7d' | '30d';
+
 
 const receitaMemedExcluida = (prescricao: Record<string, any>) =>
   String(prescricao.observacoes || '').startsWith('Prescrição excluída na Memed. Memed:');
@@ -728,10 +489,7 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
     }
 
     const medicationLines = form.medicamentos_texto.split('\n').filter(line => line.trim());
-    const alerts: ClinicalAlert[] = [];
-
-    for (const line of medicationLines) {
-      const lineAlerts = consolidateAlerts(line, {
+    const alerts = evaluateMedicationSafety(medicationLines, {
         alergias: toList(pAny.alergias),
         // Não passamos `idade`: a conta aqui era `anoAtual - anoNascimento`, sem
         // ajuste de aniversário, e tinha precedência sobre o cálculo correto do
@@ -742,8 +500,7 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
         amamentando: !!pAny.amamentando,
         comorbidades: (comorbidades || []).map((c: any) => c.descricao).filter(Boolean),
       });
-      alerts.push(...lineAlerts);
-    }
+
 
     // Se há QUALQUER alerta, abrir dialog e aguardar confirmação explícita do médico.
     // A prescrição só é salva no botão "Confirmar e Gerar Receita" do dialog (ou aqui sem alertas).
@@ -756,12 +513,12 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
     }
 
     // Sem alertas: salvar direto
-    await executeSaveAndPdf(paciente, medico);
+    await executeSaveAndPdf(paciente, medico, alerts);
   };
 
   // Função extraída: salva no DB e gera PDF. Chamada quando não há alertas
   // ou após o médico confirmar no dialog de alertas.
-  const executeSaveAndPdf = async (paciente: any, medico: any) => {
+  const executeSaveAndPdf = async (paciente: any, medico: any, alertsToSave = clinicalAlerts) => {
     if (savePrescriptionLock.current) {
       toast.info('A receita já está sendo processada. Aguarde a conclusão.');
       return;
@@ -842,12 +599,7 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
         data_emissao: form.data_emissao,
         tipo: form.tipo,
         arquivo_pdf: arquivoPdfPath,
-        alertas_seguranca: clinicalAlerts.map(({ id, severity, title, message, action, canIgnore }) => ({
-          id, severity, title, message, action: action ?? null, canIgnore,
-        })),
-        justificativa_alerta: requiresAllergyOverrideJustification(clinicalAlerts)
-          ? allergyOverrideJustification.trim()
-          : null,
+        ...prescriptionSafetyRecord(alertsToSave, allergyOverrideJustification),
       }).select('id').single();
       if (error) throw error;
       if (!prescricaoSalva?.id) throw new Error('A receita foi salva sem retornar seu identificador. Atualize o histórico antes de baixar.');
@@ -1334,45 +1086,8 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
       )}
 
       {/* Atalhos para a fila de prescrições */}
-      <section role="group" aria-label="Resumo das prescrições" className="grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-card md:grid-cols-5 md:divide-x md:divide-y-0">
-        {([
-          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje' },
-          { key: 'pdf', icon: FileText, label: 'Com PDF', value: stats.pdf, caption: 'prontas para baixar' },
-          { key: 'sem_pdf', icon: CloudOff, label: 'Sem PDF', value: stats.semPdf, caption: 'precisam gerar arquivo' },
-          { key: 'memed', icon: ExternalLink, label: 'Memed', value: stats.memed, caption: 'gerenciadas na Memed' },
-          { key: 'todos', icon: Pill, label: 'Total', value: stats.total, caption: `${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}` },
-        ] as const).map(s => {
-          const Icon = s.icon;
-          const ativo = filtroOrigem === s.key;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              aria-pressed={ativo}
-              aria-label={`Filtrar: ${s.label}, ${s.value} ${s.value === 1 ? 'receita' : 'receitas'}`}
-              onClick={() => setFiltroOrigem(ativo && s.key !== 'todos' ? 'todos' : s.key)}
-              className={cn(
-                'min-w-0 border-border px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
-                'border-b last:border-b-0 md:border-b-0',
-                s.key === 'hoje' || s.key === 'sem_pdf' ? 'border-r' : '',
-                s.key === 'todos' ? 'col-span-2 md:col-span-1' : '',
-                ativo && 'bg-primary/5',
-              )}
-            >
-              <div className="flex min-h-12 items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <Icon aria-hidden="true" className={cn('h-4 w-4 shrink-0', ativo ? 'text-primary' : '')} />
-                    <span className="truncate">{s.label}</span>
-                  </span>
-                  <span className="hidden truncate text-[11px] text-muted-foreground sm:mt-1 sm:block">{s.caption}</span>
-                </div>
-                <span className={cn('text-xl font-semibold tabular-nums', ativo ? 'text-primary' : 'text-foreground')}>{s.value}</span>
-              </div>
-            </button>
-          );
-        })}
-      </section>
+      <div className="flex flex-col gap-6">
+
 
       {/* Histórico */}
       <Card className="rounded-2xl border-border/60 shadow-xs">
@@ -1598,6 +1313,46 @@ export default function Prescricoes({ creationPage = false }: { creationPage?: b
           />
         </CardContent>
       </Card>
+      <section role="group" aria-label="Resumo das prescrições" className="md:-order-1 grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-card md:grid-cols-5 md:divide-x md:divide-y-0">
+        {([
+          { key: 'hoje', icon: CalendarCheck, label: 'Hoje', value: stats.hoje, caption: 'emitidas hoje' },
+          { key: 'pdf', icon: FileText, label: 'Com PDF', value: stats.pdf, caption: 'prontas para baixar' },
+          { key: 'sem_pdf', icon: CloudOff, label: 'Sem PDF', value: stats.semPdf, caption: 'precisam gerar arquivo' },
+          { key: 'memed', icon: ExternalLink, label: 'Memed', value: stats.memed, caption: 'gerenciadas na Memed' },
+          { key: 'todos', icon: Pill, label: 'Total', value: stats.total, caption: `${stats.pacientes} paciente${stats.pacientes === 1 ? '' : 's'}` },
+        ] as const).map(s => {
+          const Icon = s.icon;
+          const ativo = filtroOrigem === s.key;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={ativo}
+              aria-label={`Filtrar: ${s.label}, ${s.value} ${s.value === 1 ? 'receita' : 'receitas'}`}
+              onClick={() => setFiltroOrigem(ativo && s.key !== 'todos' ? 'todos' : s.key)}
+              className={cn(
+                'min-w-0 border-border px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                'border-b last:border-b-0 md:border-b-0',
+                s.key === 'hoje' || s.key === 'sem_pdf' ? 'border-r' : '',
+                s.key === 'todos' ? 'col-span-2 md:col-span-1' : '',
+                ativo && 'bg-primary/5',
+              )}
+            >
+              <div className="flex min-h-12 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Icon aria-hidden="true" className={cn('h-4 w-4 shrink-0', ativo ? 'text-primary' : '')} />
+                    <span className="truncate">{s.label}</span>
+                  </span>
+                  <span className="hidden truncate text-[11px] text-muted-foreground sm:mt-1 sm:block">{s.caption}</span>
+                </div>
+                <span className={cn('text-xl font-semibold tabular-nums', ativo ? 'text-primary' : 'text-foreground')}>{s.value}</span>
+              </div>
+            </button>
+          );
+        })}
+      </section>
+      </div>
 
       </>}
 

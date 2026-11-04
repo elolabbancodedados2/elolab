@@ -3,6 +3,42 @@ import { readFile } from 'node:fs/promises';
 import { installSyntheticClinic } from './helpers/syntheticClinic';
 
 test.use({ serviceWorkers: 'block' });
+
+for (const [medicamentos, gestante, mensagem] of [
+  ['Varfarina 5 mg\nAAS 100 mg', false, 'Risco aumentado de sangramento'],
+  ['Isotretinoína 20 mg', true, 'é CONTRAINDICADO em gravidez'],
+] as const) {
+  test(`motor da receita alerta para ${medicamentos.replace('\n', ' + ')}`, async ({ page }, info) => {
+    await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), role: 'medico', platformAdmin: false, prontuarioPopulated: true });
+    await page.route('**/rest/v1/pacientes*', route => route.fulfill({ json: [{ id: patientId, clinica_id: '00000000-0000-4000-8000-000000000002', nome: 'Pessoa Exemplo QA', gestante, alergias: [], data_nascimento: '1990-01-01' }] }));
+    await page.goto(createUrl);
+    await page.getByLabel('Medicamentos e Posologia').fill(medicamentos);
+    await page.getByRole('button', { name: 'Gerar Receita PDF', exact: true }).click();
+    await expect(page.getByText(mensagem, { exact: false })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Confirmar e gerar receita' })).toHaveCount(0);
+  });
+}
+
+test('receita grava justificativa clínica de override no registro emitido', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), role: 'medico', platformAdmin: false, prontuarioPopulated: true });
+  const writes: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/pacientes*', route => route.fulfill({ json: [{ id: patientId, clinica_id: '00000000-0000-4000-8000-000000000002', nome: 'Pessoa Exemplo QA', alergias: ['penicilina'] }] }));
+  await page.route('**/storage/v1/object/medical-attachments/**', route => route.fulfill({ json: { Key: 'synthetic.pdf' } }));
+  await page.route('**/rest/v1/prescricoes*', route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: { id: '00000000-0000-4000-8000-000000000099' } });
+  });
+  await page.goto(createUrl);
+  await page.getByLabel('Medicamentos e Posologia').fill('Cefalexina 500 mg');
+  await page.getByRole('button', { name: 'Gerar Receita PDF', exact: true }).click();
+  const reason = 'Histórico revisado, risco avaliado e monitoramento programado.';
+  await page.locator('#prescricao-justificativa-alergia').fill(reason);
+  await page.getByRole('button', { name: 'Confirmar e gerar receita' }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].justificativa_alerta).toBe(reason);
+  expect(writes[0].alertas_seguranca).toEqual(expect.arrayContaining([expect.objectContaining({ id: expect.stringContaining('allergy-cross-') })]));
+});
 test.setTimeout(60_000);
 const patientId = '00000000-0000-4000-8000-000000000004';
 const doctorId = '00000000-0000-4000-8000-000000000003';

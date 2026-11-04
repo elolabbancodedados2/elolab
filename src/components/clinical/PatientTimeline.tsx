@@ -26,6 +26,7 @@ import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { timelineEventAction, type TimelineEventType } from '@/lib/patientTimelineActions';
 
 interface PatientTimelineProps {
+  summaryOnly?: boolean;
   pacienteId: string;
   className?: string;
   maxItems?: number;
@@ -63,7 +64,7 @@ function validTimelineDate(date: Date | null | undefined): Date | null {
   return date && Number.isFinite(date.getTime()) ? date : null;
 }
 
-export function PatientTimeline({ pacienteId, className, maxItems = 50 }: PatientTimelineProps) {
+export function PatientTimeline({ pacienteId, className, maxItems = 50, summaryOnly = false }: PatientTimelineProps) {
   const { user, profile } = useSupabaseAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,7 +73,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiError, setAiError] = useState(false);
-  const aiOpen = searchParams.get('timeline') === 'summary';
+  const aiOpen = summaryOnly || searchParams.get('timeline') === 'summary';
   const summaryHeading = useRef<HTMLHeadingElement>(null);
   const summaryTrigger = useRef<HTMLButtonElement>(null);
   const wasSummaryOpen = useRef(false);
@@ -85,6 +86,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
   }, { replace: !open });
 
   useEffect(() => {
+    if (summaryOnly) return;
     if (aiOpen) {
       summaryHeading.current?.focus({ preventScroll: true });
       summaryHeading.current?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
@@ -93,7 +95,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
       summaryTrigger.current?.focus();
       wasSummaryOpen.current = false;
     }
-  }, [aiOpen]);
+  }, [aiOpen, summaryOnly]);
 
   const { data: events, isLoading, error, refetch } = useQuery({
     queryKey: ['patient-timeline', user?.id ?? null, profile?.clinica_id ?? null, pacienteId, maxItems],
@@ -349,7 +351,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
         return b.date.getTime() - a.date.getTime();
       });
     },
-    enabled: !!pacienteId && !!user && !!profile?.clinica_id,
+    enabled: !summaryOnly && !!pacienteId && !!user && !!profile?.clinica_id,
   });
 
   const counts = useMemo(() => {
@@ -433,7 +435,7 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
     setAiLoading(true);
     setAiSummary(null);
     setAiError(false);
-    setAiOpen(true);
+    if (!summaryOnly) setAiOpen(true);
     try {
       const { data, error } = await supabase.functions.invoke('patient-clinical-summary', {
         body: { paciente_id: pacienteId },
@@ -503,12 +505,12 @@ export function PatientTimeline({ pacienteId, className, maxItems = 50 }: Patien
 
   if (aiOpen) {
     return (
-      <section className={`mx-auto w-full max-w-4xl space-y-5 pb-28 sm:pb-8 ${className || ''}`} aria-labelledby="patient-summary-heading">
+      <section className={`mx-auto w-full max-w-4xl space-y-5 ${summaryOnly ? 'py-4' : 'pb-28 sm:pb-8'} ${className || ''}`} aria-labelledby="patient-summary-heading">
         <header className="space-y-3 border-b border-border pb-5">
-          <Button type="button" variant="ghost" className="-ml-3 min-h-11 gap-2" onClick={() => setAiOpen(false)}>
+          {!summaryOnly && <Button type="button" variant="ghost" className="-ml-3 min-h-11 gap-2" onClick={() => setAiOpen(false)}>
             <ArrowLeft className="h-4 w-4" />
             Voltar ao histórico
-          </Button>
+          </Button>}
           <div>
             <p className="text-sm font-medium text-primary">Apoio à revisão profissional</p>
             <h1

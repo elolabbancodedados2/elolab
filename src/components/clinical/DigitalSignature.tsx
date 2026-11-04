@@ -24,6 +24,7 @@ interface DigitalSignatureProps {
   fullPage?: boolean;
   onOpenReview?: () => void;
   onCloseReview?: () => void;
+  skipLabel?: string;
   triggerId?: string;
   patientName?: string;
 }
@@ -58,6 +59,7 @@ export function DigitalSignature({
   fullPage = false,
   onOpenReview,
   onCloseReview,
+  skipLabel,
   triggerId,
   patientName,
 }: DigitalSignatureProps) {
@@ -86,7 +88,7 @@ export function DigitalSignature({
           title="Documento já assinado"
           description={`Paciente: ${patientName || 'Paciente atual'}`}
           icon={<FileKey />}
-          actions={<Button variant="outline" onClick={onCloseReview} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao prontuário</Button>}
+          actions={<Button variant="outline" onClick={onCloseReview} disabled={signing} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />{skipLabel ? 'Continuar sem assinar' : 'Voltar ao prontuário'}</Button>}
         />
         <div role="status" className="space-y-2 rounded-lg border border-success/30 bg-success/5 p-5">
           <p className="font-semibold">Assinatura eletrônica registrada</p>
@@ -187,7 +189,7 @@ export function DigitalSignature({
           title="Assinatura eletrônica do prontuário"
           description={`Paciente: ${patientName || 'Paciente atual'}`}
           icon={<FileKey />}
-          actions={<Button variant="outline" onClick={onCloseReview} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />Voltar ao prontuário</Button>}
+          actions={<Button variant="outline" onClick={onCloseReview} disabled={signing} className="min-h-10"><ArrowLeft className="mr-2 h-4 w-4" />{skipLabel ? 'Continuar sem assinar' : 'Voltar ao prontuário'}</Button>}
         />
         <section aria-labelledby="signature-review-heading" className="space-y-4 rounded-lg border bg-card p-5">
           <div>
@@ -206,7 +208,7 @@ export function DigitalSignature({
           {disabledReason && <p role="alert" className="text-sm text-destructive">{disabledReason}</p>}
           {signError && <p role="alert" className="text-sm text-destructive">A assinatura não foi confirmada: {signError}. Revise o estado do prontuário antes de tentar novamente.</p>}
           <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={onCloseReview} disabled={signing}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={onCloseReview} disabled={signing}>{skipLabel || 'Cancelar'}</Button>
             <Button type="button" onClick={() => void handleSign()} disabled={signing || Boolean(disabledReason)} className="min-h-10">
               {signing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileKey className="mr-2 h-4 w-4" />}
               Assinar e fechar o documento

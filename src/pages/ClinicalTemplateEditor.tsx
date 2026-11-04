@@ -102,7 +102,7 @@ function Editor({ kind }: { kind: 'prescription' | 'certificate' }) {
 
         if (error) throw error;
         if (!data) throw new Error('Este modelo foi alterado ou removido. Seu texto foi preservado; volte à lista e reabra a versão atual antes de salvar.');
-        toast.success('Template atualizado com sucesso');
+        toast.success('Modelo atualizado com sucesso');
       } else {
         const { error } = await supabase
           .from('templates_prescricao')
@@ -116,7 +116,7 @@ function Editor({ kind }: { kind: 'prescription' | 'certificate' }) {
           });
 
         if (error) throw error;
-        toast.success('Template criado com sucesso');
+        toast.success('Modelo criado com sucesso');
       }
 
       queryClient.invalidateQueries({ queryKey: ['templates_prescricao'] });
@@ -167,7 +167,7 @@ function Editor({ kind }: { kind: 'prescription' | 'certificate' }) {
 
         if (error) throw error;
         if (!data) throw new Error('Este modelo foi alterado ou removido. Seu texto foi preservado; volte à lista e reabra a versão atual antes de salvar.');
-        toast.success('Template atualizado com sucesso');
+        toast.success('Modelo atualizado com sucesso');
       } else {
         const { error } = await supabase
           .from('templates_atestado')
@@ -182,7 +182,7 @@ function Editor({ kind }: { kind: 'prescription' | 'certificate' }) {
           });
 
         if (error) throw error;
-        toast.success('Template criado com sucesso');
+        toast.success('Modelo criado com sucesso');
       }
 
       queryClient.invalidateQueries({ queryKey: ['templates_atestado'] });

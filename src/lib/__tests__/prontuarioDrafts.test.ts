@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { filtrarRascunhosAbertos, nomeAutorRascunho } from '../prontuarioDrafts';
+import { filtrarRascunhosAbertos, nomeAutorRascunho, rascunhoAntigo } from '../prontuarioDrafts';
 
 describe('fila de rascunhos de prontuário', () => {
+  it('destaca apenas rascunhos com mais de 24h desde a criação, mesmo após autosave', () => {
+    const now = Date.parse('2026-11-03T12:00:00Z');
+    expect(rascunhoAntigo({ assinado: false, created_at: '2026-11-02T11:59:59Z', updated_at: '2026-11-03T11:00:00Z' }, now)).toBe(true);
+    expect(rascunhoAntigo({ assinado: false, created_at: '2026-11-02T12:00:00Z' }, now)).toBe(false);
+    expect(rascunhoAntigo({ assinado: true, created_at: '2026-11-01T12:00:00Z' }, now)).toBe(false);
+    expect(rascunhoAntigo({ assinado: false, created_at: 'inválida' }, now)).toBe(false);
+  });
   it('mostra somente rascunhos do médico autenticado e ordena os mais recentes primeiro', () => {
     const result = filtrarRascunhosAbertos([
       { id: 'old', medico_id: 'med-1', assinado: false, updated_at: '2026-10-09T12:00:00Z' },

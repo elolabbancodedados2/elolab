@@ -1,19 +1,24 @@
 /**
  * Drug Interaction Checker
- * Integração com OpenFDA para verificar interações medicamentosas
- * Fallback para base de dados local se API indisponível
+ * Regras locais compartilhadas pelo motor clinicalAlerts.
  */
 
 /**
- * Base de dados local de interações (fallback se OpenFDA down)
+ * Base única de interações locais (cobertura limitada)
  * Formato: [drug1, drug2] → interação
  */
 const LOCAL_INTERACTIONS: Record<string, { severity: 'major' | 'moderate' | 'minor', description: string }> = {
+  'warfarin-ibuprofen': { severity: 'major', description: 'Risco aumentado de sangramento gastrointestinal' },
+  'enalapril-spironolactone': { severity: 'moderate', description: 'Risco de hipercalemia' },
+  'losartan-spironolactone': { severity: 'moderate', description: 'Risco de hipercalemia' },
+  'simvastatin-amiodarone': { severity: 'major', description: 'Risco aumentado de miopatia/rabdomiólise' },
+  'fluoxetine-tramadol': { severity: 'major', description: 'Risco de síndrome serotoninérgica' },
+  'ciprofloxacin-theophylline': { severity: 'moderate', description: 'Aumento dos níveis de teofilina' },
   'warfarin-aspirin': {
     severity: 'major',
-    description: 'Aumento significativo do risco de sangramento',
+    description: 'Risco aumentado de sangramento',
   },
-  'metformin-iodinated-contrast': {
+  'metformin-iodinatedcontrast': {
     severity: 'major',
     description: 'Risco de acidose láctica com contraste iodado',
   },
@@ -67,7 +72,20 @@ export interface DrugInteraction {
  * Normalizar nome de medicamento
  */
 function normalizeDrugName(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, '').replace(/[^\w]/g, '');
+  let value = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const aliases: Record<string, string> = {
+    varfarina: 'warfarin', aas: 'aspirin', aspirina: 'aspirin', 'acido acetilsalicilico': 'aspirin',
+    metformina: 'metformin', 'contraste iodado': 'iodinatedcontrast', lisinopril: 'lisinopril', potassio: 'potassium',
+    sinvastatina: 'simvastatin', claritromicina: 'clarithromycin', metotrexato: 'methotrexate', aines: 'nsaid',
+    digoxina: 'digoxin', amiodarona: 'amiodarone', omeprazol: 'omeprazole', metoprolol: 'metoprolol',
+    ibuprofeno: 'ibuprofen', paracetamol: 'acetaminophen', enalapril: 'enalapril',
+    espironolactona: 'spironolactone', losartana: 'losartan', fluoxetina: 'fluoxetine',
+    ciprofloxacino: 'ciprofloxacin', teofilina: 'theophylline',
+  };
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    value = value.replace(new RegExp(`(^|\\b)${alias}(?=\\b|[0-9])`, 'g'), canonical);
+  }
+  return value.replace(/\s+/g, '').replace(/[^\w]/g, '');
 }
 
 /**
@@ -96,62 +114,9 @@ function checkLocalInteractions(drug1: string, drug2: string): DrugInteraction |
 }
 
 /**
- * Buscar na OpenFDA (com cache)
- * Em produção, implementar rate limiting + cache
- */
-async function checkOpenFDAInteractions(drug1: string, drug2: string): Promise<DrugInteraction | null> {
-  try {
-    // OpenFDA Drug Interactions API
-    // Docs: https://open.fda.gov/apis/drug/drugsfda/
-    const query = `(${drug1} AND ${drug2})`;
-    const url = `https://api.fda.gov/drug/label.json?search=openfda_rxcui:${encodeURIComponent(drug1)}&limit=10`;
-
-    // AbortSignal.timeout não existe em alguns navegadores/WebViews. Use a
-    // API compatível de AbortController para manter o fallback local.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    let response: Response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    if (!response.ok) {
-      return null; // OpenFDA failed, use local
-    }
-
-    const data = await response.json();
-
-    // Parse resposta (implementação simplificada)
-    if (data.results && data.results.length > 0) {
-      const warnings = data.results[0].warnings || [];
-      const hasInteraction = warnings.some((w: string) =>
-        w.toLowerCase().includes(drug2.toLowerCase())
-      );
-
-      if (hasInteraction) {
-        return {
-          drug1,
-          drug2,
-          severity: 'major',
-          description: `Possível interação detectada via OpenFDA. Consulte bula completa.`,
-          source: 'openfda',
-        };
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.warn('OpenFDA check failed, using local database:', error);
-    return null;
-  }
-}
-
-/**
  * Check interações entre múltiplos medicamentos
  */
-export async function checkDrugInteractions(medications: string[]): Promise<DrugInteraction[]> {
+export function checkDrugInteractions(medications: string[]): DrugInteraction[] {
   const interactions: DrugInteraction[] = [];
   const seen = new Set<string>();
 
@@ -165,13 +130,7 @@ export async function checkDrugInteractions(medications: string[]): Promise<Drug
       if (seen.has(key)) continue;
       seen.add(key);
 
-      // Tentar local primeiro (rápido)
-      let interaction = checkLocalInteractions(drug1, drug2);
-
-      // Se não encontrou, tentar OpenFDA
-      if (!interaction) {
-        interaction = await checkOpenFDAInteractions(drug1, drug2);
-      }
+      const interaction = checkLocalInteractions(drug1, drug2);
 
       if (interaction) {
         interactions.push(interaction);

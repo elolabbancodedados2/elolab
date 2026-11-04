@@ -4,11 +4,14 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { evaluateMedicationSafety, type PatientInfo, type ClinicalAlert } from '@/lib/clinicalAlerts';
 import { cn } from '@/lib/utils';
 
 interface DrugInteractionCheckerProps {
   medicamentos: string[];
   alergias: string[];
+  patientInfo?: PatientInfo;
+  alerts?: ClinicalAlert[];
   className?: string;
   fullPage?: boolean;
   patientName?: string;
@@ -27,101 +30,11 @@ interface Interaction {
   recommendation: string;
 }
 
-// Common drug-allergy relationships (simplified for demo)
-const DRUG_ALLERGY_MAP: Record<string, string[]> = {
-  // Penicilinas e derivados
-  'amoxicilina': ['penicilina', 'ampicilina', 'amoxicilina', 'cefalosporinas'],
-  'ampicilina': ['penicilina', 'amoxicilina', 'ampicilina', 'cefalosporinas'],
-  'penicilina': ['penicilina', 'amoxicilina', 'ampicilina'],
-  'cefalexina': ['cefalosporinas', 'penicilina'],
-  'ceftriaxona': ['cefalosporinas', 'penicilina'],
-  
-  // AINEs
-  'dipirona': ['dipirona', 'metamizol', 'aines', 'anti-inflamatórios'],
-  'ibuprofeno': ['aines', 'anti-inflamatórios', 'ibuprofeno', 'aas'],
-  'diclofenaco': ['aines', 'anti-inflamatórios', 'diclofenaco'],
-  'nimesulida': ['aines', 'anti-inflamatórios', 'nimesulida', 'sulfonamidas'],
-  'aas': ['aines', 'aspirina', 'aas', 'salicilatos'],
-  'aspirina': ['aines', 'aspirina', 'aas', 'salicilatos'],
-  
-  // Sulfonamidas
-  'sulfametoxazol': ['sulfonamidas', 'sulfa', 'bactrim'],
-  'bactrim': ['sulfonamidas', 'sulfa', 'sulfametoxazol'],
-  
-  // Outros
-  'paracetamol': ['paracetamol', 'acetaminofeno'],
-  'tramadol': ['opioides', 'tramadol'],
-  'codeina': ['opioides', 'codeína'],
-  'morfina': ['opioides', 'morfina'],
-};
-
-// Common drug-drug interactions (simplified)
-const DRUG_INTERACTIONS: { drugs: string[]; severity: 'alta' | 'media' | 'baixa'; message: string; recommendation: string }[] = [
-  {
-    drugs: ['varfarina', 'aas'],
-    severity: 'alta',
-    message: 'Risco aumentado de sangramento',
-    recommendation: 'Evitar uso concomitante ou monitorar INR frequentemente',
-  },
-  {
-    drugs: ['varfarina', 'ibuprofeno'],
-    severity: 'alta',
-    message: 'Risco aumentado de sangramento gastrointestinal',
-    recommendation: 'Considerar alternativa analgésica como paracetamol',
-  },
-  {
-    drugs: ['metformina', 'contraste iodado'],
-    severity: 'alta',
-    message: 'Risco de acidose lática',
-    recommendation: 'Suspender metformina 48h antes e após uso de contraste',
-  },
-  {
-    drugs: ['enalapril', 'espironolactona'],
-    severity: 'media',
-    message: 'Risco de hipercalemia',
-    recommendation: 'Monitorar níveis de potássio sérico',
-  },
-  {
-    drugs: ['losartana', 'espironolactona'],
-    severity: 'media',
-    message: 'Risco de hipercalemia',
-    recommendation: 'Monitorar níveis de potássio sérico',
-  },
-  {
-    drugs: ['sinvastatina', 'amiodarona'],
-    severity: 'alta',
-    message: 'Risco aumentado de miopatia/rabdomiólise',
-    recommendation: 'Limitar dose de sinvastatina a 20mg/dia',
-  },
-  {
-    drugs: ['fluoxetina', 'tramadol'],
-    severity: 'alta',
-    message: 'Risco de síndrome serotoninérgica',
-    recommendation: 'Evitar uso concomitante ou monitorar sinais de síndrome serotoninérgica',
-  },
-  {
-    drugs: ['omeprazol', 'clopidogrel'],
-    severity: 'media',
-    message: 'Redução da eficácia do clopidogrel',
-    recommendation: 'Considerar pantoprazol como alternativa',
-  },
-  {
-    drugs: ['ciprofloxacino', 'teofilina'],
-    severity: 'media',
-    message: 'Aumento dos níveis de teofilina',
-    recommendation: 'Monitorar níveis de teofilina e ajustar dose',
-  },
-  {
-    drugs: ['digoxina', 'amiodarona'],
-    severity: 'alta',
-    message: 'Aumento dos níveis de digoxina',
-    recommendation: 'Reduzir dose de digoxina em 50%',
-  },
-];
-
 export function DrugInteractionChecker({
   medicamentos,
   alergias,
+  patientInfo,
+  alerts,
   className,
   fullPage = false,
   patientName,
@@ -130,43 +43,13 @@ export function DrugInteractionChecker({
   onCloseReview,
   onRetry,
 }: DrugInteractionCheckerProps) {
-  const interactions = useMemo(() => {
-    const found: Interaction[] = [];
-    const normalizedMeds = medicamentos.map(m => m.toLowerCase().trim());
-    const normalizedAllergies = alergias.map(a => a.toLowerCase().trim());
-
-    normalizedMeds.forEach(med => {
-      const relatedAllergies = DRUG_ALLERGY_MAP[med] || [];
-      normalizedAllergies.forEach(allergy => {
-        if (med.includes(allergy) || allergy.includes(med) || relatedAllergies.some(ra => allergy.includes(ra) || ra.includes(allergy))) {
-          found.push({
-            type: 'alergia',
-            severity: 'alta',
-            drug1: med,
-            message: `Paciente tem alergia conhecida a "${allergy}"`,
-            recommendation: 'NÃO PRESCREVER este medicamento. Considerar alternativas.',
-          });
-        }
-      });
-    });
-
-    DRUG_INTERACTIONS.forEach(interaction => {
-      const matchingDrugs = interaction.drugs.filter(d =>
-        normalizedMeds.some(m => m.includes(d) || d.includes(m))
-      );
-      if (matchingDrugs.length >= 2) {
-        found.push({
-          type: 'interacao',
-          severity: interaction.severity,
-          drug1: matchingDrugs[0],
-          drug2: matchingDrugs[1],
-          message: interaction.message,
-          recommendation: interaction.recommendation,
-        });
-      }
-    });
-    return found;
-  }, [medicamentos, alergias]);
+  const interactions = useMemo(() => (alerts ?? evaluateMedicationSafety(medicamentos, { ...patientInfo, alergias })).map((alert): Interaction => ({
+    type: alert.id.startsWith('allergy-') ? 'alergia' : alert.id.startsWith('interaction-') ? 'interacao' : 'contraindicacao',
+    severity: alert.severity === 'critical' ? 'alta' : alert.severity === 'warning' ? 'media' : 'baixa',
+    drug1: alert.title,
+    message: alert.message,
+    recommendation: alert.action || 'Revisar a prescrição com o profissional responsável.',
+  })), [medicamentos, alergias, patientInfo, alerts]);
 
   const hasHighSeverity = interactions.some(i => i.severity === 'alta');
   const getSeverityBadge = (severity: Interaction['severity']) => {
@@ -176,9 +59,7 @@ export function DrugInteractionChecker({
       case 'baixa': return <Badge variant="secondary">Baixa</Badge>;
     }
   };
-  const interactionName = (interaction: Interaction) => interaction.type === 'alergia'
-    ? `Alergia: ${interaction.drug1}`
-    : `${interaction.drug1} + ${interaction.drug2}`;
+  const interactionName = (interaction: Interaction) => interaction.drug1;
   const safetyNote = 'As regras locais são simplificadas e não abrangem todos os medicamentos, doses, condições clínicas ou fontes atualizadas. A ausência de alertas não confirma ausência de risco. Revise os dados e valide qualquer decisão com o profissional responsável e referências farmacológicas atualizadas.';
 
   if (fullPage) {

@@ -7,7 +7,7 @@
  * - Drug interactions (básico)
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { checkDrugInteractions, interactionsToAlerts } from './drugInteractionChecker';
 import { parseDateOnly } from './dateOnly';
 
 export interface ClinicalAlert {
@@ -87,6 +87,14 @@ interface Medicamento {
  * Em produção, integrar com API (OpenFDA, DrugBank, Anvisa).
  */
 const DRUG_DATABASE: Record<string, Medicamento> = {
+  // Protocolo do Ministério da Saúde: isotretinoína no tratamento da acne grave.
+  // https://www.gov.br/conitec/pt-br/midias/protocolos/protocolo_uso/protocolouso_isotretinoina_2015.pdf
+  isotretinoina: {
+    nome: 'Isotretinoína',
+    sinonimos: ['isotretinoina', 'isotretinoin', 'roacutan'],
+    contraindicacoes: ['gravidez', 'amamentacao'],
+    idadeMinimaMeses: null,
+  },
   // AINEs — evitar no 3º trimestre, úlcera ativa
   ibuprofeno: {
     nome: 'Ibuprofeno',
@@ -201,7 +209,7 @@ const TERMOS_COMORBIDADE: Record<string, string[]> = {
   plaquetopenia: ['plaquetopenia', 'trombocitopenia', 'plaquetas baixas'],
 };
 
-interface PatientInfo {
+export interface PatientInfo {
   idade?: number; // em anos
   dataNascimento?: string;
   gestante?: boolean;
@@ -475,33 +483,14 @@ export function consolidateAlerts(
 /**
  * Consolidar alertas COM verificação de interações (async)
  */
-export async function consolidateAlertsWithInteractions(
-  medications: string[],
-  patientInfo: PatientInfo
-): Promise<ClinicalAlert[]> {
-  const { checkDrugInteractions, interactionsToAlerts } = await import('./drugInteractionChecker');
-
-  const allAlerts: ClinicalAlert[] = [];
-
-  // Alertas por medicamento
-  for (const med of medications) {
-    allAlerts.push(...consolidateAlerts(med, patientInfo));
-  }
-
-  // Alertas de interação
-  if (medications.length > 1) {
-    const interactions = await checkDrugInteractions(medications);
-    const interactionAlerts = interactionsToAlerts(interactions);
-    allAlerts.push(...interactionAlerts);
-  }
-
-  // Remover duplicatas
-  const seen = new Set<string>();
-  return allAlerts.filter(alert => {
-    if (seen.has(alert.id)) return false;
-    seen.add(alert.id);
-    return true;
-  });
+export function evaluateMedicationSafety(medications: string[], patientInfo: PatientInfo): ClinicalAlert[] {
+  const unique = [...new Set(medications.map(m => m.trim()).filter(Boolean))];
+  return [
+    ...unique.flatMap(med => consolidateAlerts(med, patientInfo).map(alert => ({
+      ...alert, id: `${alert.id}-${normalizar(med)}`,
+    }))),
+    ...interactionsToAlerts(checkDrugInteractions(unique)),
+  ];
 }
 
 /**

@@ -70,6 +70,42 @@ async function selectResponsibleDoctor(page: Page) {
   await expect(select).toHaveText('Dra. Marina Ribeiro');
 }
 
+test('prontuário grava justificativa e snapshot do alerta junto do rascunho', async ({ page }, info) => {
+  await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+  const updates: Record<string, unknown>[] = [];
+  await installPageMocks(page, { ...record, assinado: false }, { updates });
+  await page.route('**/rest/v1/pacientes*', route => route.fulfill({ json: [{ id: patient, clinica_id: clinic, nome: 'Pessoa Exemplo QA', alergias: ['penicilina'] }] }));
+  await page.goto(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
+  await selectResponsibleDoctor(page);
+  await page.getByRole('textbox', { name: 'Queixa principal' }).fill('Avaliação sintética');
+  await page.getByRole('button', { name: 'Receita', exact: true }).click();
+  await page.getByRole('button', { name: 'Adicionar', exact: true }).click();
+  await page.getByLabel('Medicamento 1: nome', { exact: true }).fill('Cefalexina 500 mg');
+  const reason = 'Histórico revisado, risco avaliado e monitoramento programado.';
+  await page.getByLabel('Justificativa clínica para prosseguir com os alertas').fill(reason);
+  await page.keyboard.press('Control+s');
+  await expect.poll(() => updates.at(-1)?.justificativa_alerta).toBe(reason);
+  expect(updates.at(-1)?.alertas_seguranca).toEqual(expect.arrayContaining([expect.objectContaining({ id: expect.stringContaining('allergy-cross-') })]));
+});
+
+for (const shortcut of ['Receita', 'Pedido de exame', 'Atestado', 'Encaminhamento']) {
+  test(`atalho ${shortcut} salva a evolução antes de sair sem descartar`, async ({ page }, info) => {
+    await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
+    const creates: Record<string, unknown>[] = [];
+    await installPageMocks(page, { ...record, assinado: false }, { creates });
+    await page.goto(`/prontuarios/atendimento?paciente=${patient}&nova=1`);
+    await selectResponsibleDoctor(page);
+    await page.getByRole('textbox', { name: 'Queixa principal' }).fill('Texto preservado pelo atalho');
+    await page.getByRole('group', { name: 'Inserir documento no atendimento' }).getByRole('button', { name: shortcut, exact: true }).click();
+    await expect.poll(() => creates.length).toBe(1);
+    expect(creates[0].queixa_principal).toBe('Texto preservado pelo atalho');
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    if (shortcut === 'Receita') await expect(page).toHaveURL(/secao=prescricao/);
+    else if (shortcut === 'Pedido de exame') await expect(page).toHaveURL(new RegExp(`/exames/nova\\?.*prontuario=${recordId}.*voltar=prontuario`));
+    else await expect(page).toHaveURL(new RegExp(`/documentos-clinicos/novo-${shortcut === 'Atestado' ? 'atestado' : 'encaminhamento'}`));
+  });
+}
+
 test('retorno clínico abre em página, grava contexto do prontuário e volta ao paciente', async ({ page }, info) => {
   await installSyntheticClinic(page, { appOrigin: String(info.project.use.baseURL), platformAdmin: false, role: 'admin', prontuarioPopulated: true });
   const writes = await installPageMocks(page);
@@ -343,7 +379,7 @@ test('alertas de medicamentos abrem em tela propria e retornam a prescricao', as
   await page.goto(`/prontuarios?paciente=${patient}&prontuario=${recordId}&secao=prescricao`);
   await expect(page.getByTestId('prontuario-workspace')).toBeVisible();
   await expect(page.getByLabel('Medicamento 1: nome')).toHaveValue('varfarina');
-  const reviewTrigger = page.getByRole('button', { name: 'Ver todos os 1 alertas de medicamentos' });
+  const reviewTrigger = page.getByRole('button', { name: 'Ver todos os 3 alertas de medicamentos' });
   await expect(reviewTrigger).toBeVisible();
   await reviewTrigger.click();
 
@@ -352,6 +388,7 @@ test('alertas de medicamentos abrem em tela propria e retornam a prescricao', as
   await expect(page.getByRole('heading', { name: 'Alertas de medicamentos', exact: true })).toBeVisible();
   await expect(page.getByRole('note')).toContainText('confirma');
   await expect(page.getByText('Risco aumentado de sangramento')).toBeVisible();
+  await expect(page.getByText(/Aumento de INR com doses altas/)).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('drug-interaction-review-mobile-top.png'), fullPage: true, animations: 'disabled' });
   const resultRow = page.getByRole('listitem').filter({ hasText: 'Risco aumentado de sangramento' });
@@ -374,7 +411,7 @@ test('alertas de medicamentos abrem em tela propria e retornam a prescricao', as
 
   await page.getByRole('button', { name: /Voltar/ }).click();
   await expect(page).toHaveURL(`/prontuarios/atendimento?paciente=${patient}&prontuario=${recordId}&secao=prescricao`);
-  await expect(page.getByRole('button', { name: 'Ver todos os 1 alertas de medicamentos' })).toBeFocused();
+  await expect(reviewTrigger).toBeFocused();
 });
 
 test('document sharing in the patient portal uses a contextual page and returns focus to the attachment', async ({ page }, info) => {

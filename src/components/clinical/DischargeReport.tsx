@@ -57,11 +57,6 @@ export function DischargeReport({
   clinicaTelefone = '',
   clinicaCNPJ = '',
 }: DischargeReportProps) {
-  const calcularIdade = (dataNascimento?: string) => {
-    if (!dataNascimento) return null;
-    return ageFromDateOnly(dataNascimento);
-  };
-
   const drawHeader = (doc: jsPDF, pageWidth: number): number => {
     let y = 15;
 
@@ -187,7 +182,7 @@ export function DischargeReport({
     doc.setFontSize(9);
     const infoItems: string[] = [];
     if (data.paciente.cpf) infoItems.push(`CPF: ${data.paciente.cpf}`);
-    const idade = calcularIdade(data.paciente.dataNascimento);
+    const idade = data.paciente.dataNascimento ? ageFromDateOnly(data.paciente.dataNascimento) : null;
     if (idade) infoItems.push(`Idade: ${idade} anos`);
     if (infoItems.length > 0) {
       doc.text(infoItems.join('   |   '), 22, y + 11);
@@ -288,7 +283,7 @@ export function DischargeReport({
     doc.save(`relatorio-alta-${data.paciente.nome.replace(/\s+/g, '-')}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
-  const idade = calcularIdade(data.paciente.dataNascimento);
+  const idade = data.paciente.dataNascimento ? ageFromDateOnly(data.paciente.dataNascimento) : null;
   const dataAtendimento = parseDateOnly(data.consulta.data);
   const dataRetorno = data.retorno?.data ? parseDateOnly(data.retorno.data) : null;
 

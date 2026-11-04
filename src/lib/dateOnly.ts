@@ -217,8 +217,9 @@ export function appointmentStartHasPassed(date: string, time: string, instant: D
 }
 
 /** Idade completa, preservando o dia civil de nascimento vindo de uma coluna DATE. */
-export function ageFromDateOnly(value: string, referenceDate: Date = new Date()): number {
+export function ageFromDateOnly(value: string | null | undefined, referenceDate: Date = new Date()): number {
   const birthDate = parseDateOnly(value);
+  if (!birthDate || !Number.isFinite(birthDate.getTime())) return Number.NaN;
   let age = referenceDate.getFullYear() - birthDate.getFullYear();
   const monthDifference = referenceDate.getMonth() - birthDate.getMonth();
   if (

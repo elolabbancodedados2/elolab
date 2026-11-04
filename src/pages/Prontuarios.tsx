@@ -1,3 +1,5 @@
+import { calcularIMC } from '@/lib/vitalSigns';
+import { VitalInput } from '@/components/clinical/VitalInput';
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
 import { useState, useMemo, useEffect, useCallback, useRef, useId } from 'react';
@@ -62,7 +64,7 @@ import { DispensacaoConfirmacao, type ItemDispensacaoConfirmado } from '@/compon
 import type { PlanoDispensacaoItem } from '@/lib/workflowAutomation';
 import { ExportacaoClinicaProtegida } from '@/components/clinical/ExportacaoClinicaProtegida';
 import { buscarEmBlocos, LIMITE_BUSCA_EM_BLOCOS } from '@/lib/buscarEmBlocos';
-import { filtrarRascunhosAbertos, nomeAutorRascunho } from '@/lib/prontuarioDrafts';
+import { filtrarRascunhosAbertos, nomeAutorRascunho, rascunhoAntigo } from '@/lib/prontuarioDrafts';
 import { needsPatientContextChangeConfirmation } from '@/lib/patientContextChange';
 import { atualizarEvolucaoNoHistorico } from '@/lib/historicoEvolucoes';
 import {
@@ -73,6 +75,9 @@ import { classeSeloNivelVital, classificarSinalVital, piorNivelVital, type Sinal
 import { BotaoDitado, juntarTextoDitado } from '@/components/clinical/BotaoDitado';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { evaluateMedicationSafety, isMedicationSafe } from '@/lib/clinicalAlerts';
+import { enderecoDoPaciente, tipoDeReceita } from '@/lib/receitaPdf';
+import { allergyOverrideJustificationError, prescriptionSafetyRecord, requiresAllergyOverrideJustification } from '@/lib/allergyOverride';
 
 const COLUNAS_HISTORICO_EVOLUCOES = 'id, data, queixa_principal, historia_doenca_atual, historia_patologica_pregressa, historia_familiar, historia_social, revisao_sistemas, alergias_relatadas, medicamentos_em_uso, exames_fisicos, hipotese_diagnostica, conduta, sinais_vitais, diagnostico_principal, diagnosticos_secundarios, plano_terapeutico, assinado, assinado_em, assinado_por, crm_assinante, medicos(nome, crm, especialidade)';
 
@@ -158,24 +163,6 @@ const emptyProntuario = {
 };
 
 // ─── Helpers ───────────────────────────────────────────────
-function calcularIdade(dn: string | null) {
-  if (!dn) return 0;
-  return ageFromDateOnly(dn);
-}
-
-function calcularIMC(peso: string, altura: string) {
-  const numero = (valor: string) => {
-    const normalizado = valor.trim().replace(',', '.');
-    if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalizado)) return Number.NaN;
-    return Number(normalizado);
-  };
-  const p = numero(peso), a = numero(altura);
-  if (!Number.isFinite(p) || !Number.isFinite(a) || p <= 0 || a <= 0) return '';
-  const altM = a > 3 ? a / 100 : a;
-  const imc = p / (altM * altM);
-  return Number.isFinite(imc) ? imc.toFixed(1) : '';
-}
-
 function classificarIMC(imc: string) {
   const v = parseFloat(imc);
   if (!v) return null;
@@ -190,7 +177,7 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
   const update = (field: keyof SinaisVitais, value: string) => {
     const next = { ...sinais, [field]: value };
     if (field === 'peso' || field === 'altura') {
-      next.imc = calcularIMC(field === 'peso' ? value : next.peso, field === 'altura' ? value : next.altura);
+      next.imc = calcularIMC(field === 'peso' ? value : next.peso, field === 'altura' ? value : next.altura)?.toFixed(1) || '';
     }
     onChange(next);
   };
@@ -232,11 +219,11 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
           const nivel = nivelDoCampo(f);
           return (
             <div key={f.key} className={cn('rounded-xl border bg-card p-2.5 space-y-1', bordaDoNivel(nivel))}>
-              <Label htmlFor={f.dual ? undefined : `vital-${f.key}`} className={cn('text-xs font-semibold flex items-center gap-1', nivel === 'alerta' ? 'text-destructive' : nivel === 'atencao' ? 'text-warning-foreground' : 'text-muted-foreground')}>
+              {f.dual && <Label htmlFor={undefined} className={cn('text-xs font-semibold flex items-center gap-1', nivel === 'alerta' ? 'text-destructive' : nivel === 'atencao' ? 'text-warning-foreground' : 'text-muted-foreground')}>
                 <Icon className="h-3 w-3" aria-hidden="true" />{f.label}
                 {nivel === 'alerta' && <span className="sr-only"> (valor em alerta)</span>}
                 {nivel === 'atencao' && <span className="sr-only"> (fora da faixa usual)</span>}
-              </Label>
+              </Label>}
               {f.dual ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
@@ -249,7 +236,7 @@ function VitalSignsInput({ sinais, onChange, disabled = false }: { sinais: Sinai
                   </div>
                 </div>
               ) : (
-                <Input id={`vital-${f.key}`} aria-label={f.label} placeholder={f.placeholder} value={(sinais as any)[f.field!] || ''} onChange={e => update(f.field!, e.target.value)} inputMode={['peso', 'altura', 'temperatura', 'glicemia', 'circunferencia_abdominal', 'circunferencia_craniana'].includes(f.field!) ? 'decimal' : 'numeric'} className="h-9 px-2 text-sm" disabled={disabled} />
+                <VitalInput icon={Icon} label={f.label} color={nivel === 'alerta' ? 'text-destructive' : nivel === 'atencao' ? 'text-warning-foreground' : undefined} placeholder={f.placeholder} value={(sinais as any)[f.field!] || ''} onChange={value => update(f.field!, value)} inputMode={['peso', 'altura', 'temperatura', 'glicemia', 'circunferencia_abdominal', 'circunferencia_craniana'].includes(f.field!) ? 'decimal' : 'numeric'} disabled={disabled} />
               )}
             </div>
           );
@@ -321,7 +308,7 @@ function Section({ icon: Icon, title, children, collapsible = false, bloqueado =
 
 // ─── Patient File Card ─────────────────────────────────────
 function FichaPaciente({ paciente, convenioNome }: { paciente: any; convenioNome: string }) {
-  const idade = calcularIdade(paciente.data_nascimento);
+  const idade = ageFromDateOnly(paciente.data_nascimento);
   const idadeTexto = idadePorExtenso(paciente.data_nascimento);
   const isMenor = paciente.data_nascimento ? idade < 18 : false;
 
@@ -1149,7 +1136,7 @@ export default function Prontuarios() {
     enabled: !!user?.clinica_id && !!medicoId,
     queryFn: () => buscarEmBlocos<RascunhoNaFila>(() => (supabase as any)
       .from('prontuarios')
-      .select('id, paciente_id, medico_id, data, queixa_principal, updated_at, assinado, pacientes(nome, nome_social)')
+      .select('id, paciente_id, medico_id, data, queixa_principal, created_at, updated_at, assinado, pacientes(nome, nome_social)')
       .eq('clinica_id', user!.clinica_id)
       .eq('medico_id', medicoId!)
       .eq('assinado', false)
@@ -1232,6 +1219,16 @@ export default function Prontuarios() {
     ],
   });
   const selectedPaciente = pacienteSelecionadoQuery.data?.[0] ?? null;
+  const comorbidadesQuery = useQuery({
+    queryKey: ['prontuario-comorbidades', user?.clinica_id, selectedPacienteId],
+    enabled: !!selectedPacienteId && !!user?.clinica_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('paciente_comorbidades').select('descricao')
+        .eq('paciente_id', selectedPacienteId!).eq('clinica_id', user!.clinica_id!).eq('ativo', true);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
   // A checagem de interações cruza o que está sendo prescrito com o que o
   // paciente já usa; ignorar "medicamentos em uso" deixava passar a interação
   // mais comum na prática (novo remédio x uso contínuo).
@@ -1251,6 +1248,22 @@ export default function Prontuarios() {
     currentProntuario.alergias_relatadas,
     selectedPaciente?.alergias,
   ]);
+  const alertasMedicamentos = evaluateMedicationSafety(medicamentosParaChecagem, {
+    alergias: alergiasParaChecagem,
+    dataNascimento: selectedPaciente?.data_nascimento,
+    gestante: !!selectedPaciente?.gestante,
+    amamentando: !!selectedPaciente?.amamentando,
+    comorbidades: comorbidadesQuery.data?.map(c => c.descricao),
+  });
+  const validarEmissaoReceita = () => {
+    const erro = comorbidadesQuery.isPending || comorbidadesQuery.isError || pacienteSelecionadoQuery.isError
+      ? 'Aguarde ou recarregue os dados clínicos antes de emitir a receita.'
+      : !isMedicationSafe(alertasMedicamentos)
+        ? 'Revise os alertas impeditivos antes de emitir a receita.'
+        : allergyOverrideJustificationError(alertasMedicamentos, currentProntuario.justificativa_alerta || '');
+    if (erro) toast.error(erro);
+    return !erro;
+  };
   const routePacienteNaoEncontrado = Boolean(
     routePacienteId && routePacienteId === selectedPacienteId && !pacienteSelecionadoQuery.isLoading
     && !pacienteSelecionadoQuery.isError && !selectedPaciente,
@@ -1786,6 +1799,8 @@ export default function Prontuarios() {
     try {
       const savingVersion = changeVersionRef.current;
       const payload = {
+        ...prescriptionSafetyRecord(alertasMedicamentos, currentProntuario.justificativa_alerta || ''),
+        tipo_receita: tipoDeReceita(currentProntuario.tipo_receita),
         queixa_principal: queixaPrincipal,
         historia_doenca_atual: currentProntuario.historia_doenca_atual,
         historia_patologica_pregressa: currentProntuario.historia_patologica_pregressa,
@@ -1864,7 +1879,7 @@ export default function Prontuarios() {
               quantidade: presc.quantidade || null,
               observacoes: presc.observacoes || null,
               data_emissao: presc.data_emissao || dataDaEvolucao,
-              tipo: 'simples',
+              tipo: tipoDeReceita(currentProntuario.tipo_receita),
             })),
           }
         );
@@ -1925,29 +1940,39 @@ export default function Prontuarios() {
   // Trava de duplo clique no salvar: sem ela, dois cliques rápidos inseriam a
   // evolução duas vezes (o id só é conhecido depois do primeiro insert).
   const [salvandoProntuario, setSalvandoProntuario] = useState(false);
+  const [finalizacaoPendente, setFinalizacaoPendente] = useState<{ agendamentoId: string; origem: string; voltarPara: string } | null>(null);
+  const continuarFinalizacao = () => {
+    if (!finalizacaoPendente) return;
+    navigationAllowedRef.current = true;
+    navigate(`/atendimentos/${encodeURIComponent(finalizacaoPendente.agendamentoId)}/finalizar?origem=${finalizacaoPendente.origem}`, { state: { returnTo: finalizacaoPendente.voltarPara } });
+    setFinalizacaoPendente(null);
+  };
   /** Confirmação antes de descartar a evolução não salva. */
   const [perguntandoDescartar, setPerguntandoDescartar] = useState(false);
   /** No celular, as faixas de contexto do atendimento começam recolhidas. */
   const [contextoAtendimentoAberto, setContextoAtendimentoAberto] = useState(false);
-  const handleScheduleReturn = async () => {
-    if (!selectedPaciente?.id || salvandoProntuario) return;
-
-    let savedProntuarioId = currentProntuario.id || null;
-    if (hasUnsavedChanges) {
-      const versionBeforeSave = changeVersionRef.current;
-      setSalvandoProntuario(true);
-      try {
-        savedProntuarioId = await performSave(true);
-        if (!savedProntuarioId || changeVersionRef.current !== versionBeforeSave) {
-          toast.error('Não foi possível sair do prontuário com segurança', {
-            description: 'Revise a queixa principal e o médico responsável. O atendimento continua aberto; nenhuma alteração foi descartada.',
-          });
-          return;
-        }
-      } finally {
-        setSalvandoProntuario(false);
+  const salvarAntesDoDocumento = async (): Promise<string | null | false> => {
+    if (salvandoProntuario || saveInProgressRef.current) return false;
+    if (!hasUnsavedChanges) return currentProntuario.id || null;
+    const versionBeforeSave = changeVersionRef.current;
+    setSalvandoProntuario(true);
+    try {
+      const id = await performSave(true);
+      if (!id || changeVersionRef.current !== versionBeforeSave) {
+        toast.error('Não foi possível sair do prontuário com segurança', {
+          description: 'Revise a queixa principal e o médico responsável. O atendimento continua aberto; nenhuma alteração foi descartada.',
+        });
+        return false;
       }
+      return id;
+    } finally {
+      setSalvandoProntuario(false);
     }
+  };
+  const handleScheduleReturn = async () => {
+    if (!selectedPaciente?.id) return;
+    const savedProntuarioId = await salvarAntesDoDocumento();
+    if (savedProntuarioId === false) return;
 
     const responsibleDoctorId = currentProntuario.medico_id || medicoId || user?.id;
     if (!responsibleDoctorId) {
@@ -1985,8 +2010,9 @@ export default function Prontuarios() {
       const routeState = location.state as { returnTo?: unknown } | null;
       const voltarPara = rotaOperacional(routeState?.returnTo) ? routeState.returnTo : '/fila';
       const origem = voltarPara.startsWith('/recepcao') ? 'recepcao' : voltarPara.startsWith('/agenda') ? 'agenda' : 'fila';
-      navigationAllowedRef.current = true;
-      navigate(`/atendimentos/${encodeURIComponent(agendamentoId)}/finalizar?origem=${origem}`, { state: { returnTo: voltarPara } });
+      setFinalizacaoPendente({ agendamentoId, origem, voltarPara });
+      setIsEditing(false);
+      openProntuarioTool('assinatura-eletronica');
     } finally {
       setSalvandoProntuario(false);
     }
@@ -2183,22 +2209,6 @@ export default function Prontuarios() {
     }
   };
 
-  // ─── Exam solicitation ───
-  const handleSolicitarExame = () => {
-    if (!currentProntuario.id || !medicoId || !selectedPacienteId) {
-      toast.error('Não foi possível identificar o paciente, o médico ou salvar a evolução antes de solicitar exames.');
-      return;
-    }
-    const params = new URLSearchParams({
-      paciente: selectedPacienteId,
-      prontuario: currentProntuario.id,
-      novo: '1',
-      voltar: 'prontuario',
-    });
-    if (contextoAgendamento?.id) params.set('agendamento', contextoAgendamento.id);
-    navigate(`/exames?${params.toString()}`);
-  };
-
   const handleApplyProtocol = (protocol: any) => {
     if (protocol.medicamentos_sugeridos?.length > 0) {
       const novas = protocol.medicamentos_sugeridos.map((med: any) => ({
@@ -2317,6 +2327,7 @@ export default function Prontuarios() {
     if (telaProntuario === 'alertas-medicamentos') {
       return (
         <DrugInteractionChecker
+          alerts={alertasMedicamentos}
           fullPage
           patientName={selectedPaciente.nome_social || selectedPaciente.nome}
           medicamentos={medicamentosParaChecagem}
@@ -2346,7 +2357,8 @@ export default function Prontuarios() {
             ? 'Salve as alterações e reabra o prontuário para assinar a versão atual.'
             : undefined}
           onSigned={handleProntuarioSigned}
-          onCloseReview={closeSignatureReview}
+          onCloseReview={finalizacaoPendente ? continuarFinalizacao : closeSignatureReview}
+          skipLabel={finalizacaoPendente ? 'Pular assinatura e finalizar' : undefined}
         />
       );
     }
@@ -2435,6 +2447,8 @@ export default function Prontuarios() {
   // Receita do atendimento: só os medicamentos, no receituário — antes o
   // botão "Receita PDF" imprimia o prontuário inteiro.
   const gerarReceitaDoAtendimento = async () => {
+    if (!validarEmissaoReceita()) return;
+    if (hasUnsavedChanges && await salvarAntesDoDocumento() === false) return;
     const itens = prescricoes.filter(p => p.medicamento.trim());
     if (itens.length === 0) {
       toast.info('Adicione ao menos um medicamento para gerar a receita.');
@@ -2443,11 +2457,11 @@ export default function Prontuarios() {
     if (!await auditarExportacaoPdf('PDF')) return;
     try {
       const pdf = await gerarReceita(
-        { nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined, dataNascimento: selectedPaciente?.data_nascimento || undefined },
+        { nome: selectedPaciente?.nome || '', cpf: selectedPaciente?.cpf || undefined, dataNascimento: selectedPaciente?.data_nascimento || undefined, endereco: enderecoDoPaciente(selectedPaciente) },
         { nome: medicoDoPdf?.nome || user?.nome || 'Médico', crm: medicoDoPdf?.crm, especialidade: medicoDoPdf?.especialidade, crmUf: medicoDoPdf?.crm_uf, rqe: medicoDoPdf?.rqe },
         itens.map(p => ({ nome: p.medicamento.trim(), dosagem: p.dosagem, via: '', frequencia: p.posologia, duracao: p.duracao, quantidade: p.quantidade, observacoes: p.observacoes || undefined })),
         currentProntuario.orientacoes_paciente || '',
-        'simples',
+        tipoDeReceita(currentProntuario.tipo_receita),
         { dataEmissao: currentProntuario.data },
       );
       downloadPDF(pdf, `receita-${selectedPaciente?.nome?.replace(/\s+/g, '-') || 'paciente'}`);
@@ -2467,7 +2481,7 @@ export default function Prontuarios() {
   // ─── RENDER ─────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-24 sm:pb-0">
       {erroMedicos && <ErrorState compact error={erroMedicos} title="Lista de médicos indisponível" description="Não é possível iniciar um atendimento ou assinar um prontuário sem carregar os dados do médico." onRetry={() => { void refetchMedicos(); }} />}
       {erroConvenios && <ErrorState compact error={erroConvenios} title="Convênios indisponíveis" description="A ficha pode ser consultada, mas o convênio do paciente não será identificado até atualizar os dados." onRetry={() => { void refetchConvenios(); }} />}
       {!isProntuarioOpen && <>
@@ -2612,8 +2626,9 @@ export default function Prontuarios() {
                   <section aria-labelledby="open-medical-drafts" className="border-b border-border bg-secondary p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h2 id="open-medical-drafts" className="text-xs font-bold text-foreground">Rascunhos em aberto</h2>
-                      <Badge variant="outline" className="h-5 border-border bg-white text-xs text-primary">
+                      <Badge variant="outline" className={cn('h-5 text-xs', rascunhosAbertos.some(draft => rascunhoAntigo(draft)) ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-border bg-white text-primary')}>
                         {rascunhosAbertos.length}
+                        {rascunhosAbertos.some(draft => rascunhoAntigo(draft)) && ` · ${rascunhosAbertos.filter(draft => rascunhoAntigo(draft)).length} há mais de 24 h`}
                       </Badge>
                     </div>
                     {rascunhosQuery.isError ? (
@@ -2631,7 +2646,7 @@ export default function Prontuarios() {
                               key={draft.id}
                               type="button"
                               variant="ghost"
-                              className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border bg-white px-2.5 py-2 text-left hover:border-foreground/25 hover:bg-secondary"
+                              className={cn('h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border px-2.5 py-2 text-left hover:border-foreground/25', rascunhoAntigo(draft) ? 'border-amber-400 bg-amber-50 hover:bg-amber-100' : 'border-border bg-white hover:bg-secondary')}
                               onClick={() => {
                                 setRascunhoParaAbrir(draft);
                                 requestPatientContextChange(draft.paciente_id, 'picker');
@@ -2640,7 +2655,7 @@ export default function Prontuarios() {
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center justify-between gap-2">
                                   <span className="truncate text-xs font-semibold text-foreground">{paciente?.nome_social || paciente?.nome || 'Paciente'}</span>
-                                  <span className="shrink-0 text-xs text-primary">Retomar</span>
+                                  <span className="shrink-0 text-xs text-primary">{rascunhoAntigo(draft) ? 'Há mais de 24 h · Retomar' : 'Retomar'}</span>
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                   {draft.queixa_principal?.trim() || 'Evolução sem queixa principal'}
@@ -3038,7 +3053,6 @@ export default function Prontuarios() {
                     <DropdownMenuItem className="min-h-11" onSelect={() => { void gerarPdfAuditado('whatsapp'); }}><MessageCircle className="mr-2 h-4 w-4" />Enviar por WhatsApp</DropdownMenuItem>
                   </>}
                   <DropdownMenuItem className="min-h-11" onSelect={() => openProntuarioTool('relatorio-alta')}><FileCheck className="mr-2 h-4 w-4" />Relatório de alta</DropdownMenuItem>
-                  <DropdownMenuItem className="min-h-11" disabled={!currentProntuario.id || !medicoId} onSelect={handleSolicitarExame}><TestTube className="mr-2 h-4 w-4" />Solicitar exame</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -3081,6 +3095,12 @@ export default function Prontuarios() {
             <ChevronDown aria-hidden="true" className={`h-4 w-4 text-muted-foreground transition-transform ${contextoAtendimentoAberto ? 'rotate-180' : ''}`} />
           </button>
           <div id="prontuario-contexto-atendimento" className={cn('flex-shrink-0 space-y-2 px-3 pt-2 sm:block sm:px-0 sm:pt-0', contextoAtendimentoAberto ? 'block' : 'hidden')}>
+          {selectedPacienteId && (
+            <details className="mx-3 rounded-lg border border-border bg-card p-3 sm:mx-0">
+              <summary className="cursor-pointer text-sm font-semibold">Resumo por IA</summary>
+              <PatientTimeline key={selectedPacienteId} pacienteId={selectedPacienteId} summaryOnly />
+            </details>
+          )}
           {/* Patient summary strip */}
           {selectedPaciente && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 bg-muted/30 rounded-xl text-xs border border-border/40">
@@ -3180,12 +3200,17 @@ export default function Prontuarios() {
           )}
 
           {(currentProntuario.paciente_id || selectedPacienteId) && (
-            <div className={cn('flex-shrink-0 flex-wrap items-center justify-between gap-2 px-3 sm:flex sm:px-0', contextoAtendimentoAberto ? 'flex' : 'hidden')}>
+            <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 px-3 sm:px-0">
               {!isReadOnly && (
                 <AtalhosDocumentos
                   pacienteId={(currentProntuario.paciente_id || selectedPacienteId)!}
                   prontuarioId={currentProntuario.id ?? null}
                   agendamentoId={currentProntuario.agendamento_id ?? null}
+                  beforeOpen={salvarAntesDoDocumento}
+                  onNavigate={(destino, returnTo) => {
+                    navigationAllowedRef.current = true;
+                    navigate(destino, { state: { returnTo } });
+                  }}
                   onReceita={() => changeProntuarioSection('prescricao')}
                 />
               )}
@@ -3386,6 +3411,15 @@ export default function Prontuarios() {
                 {/* ─── Prescrição ─── */}
                 <TabsContent value="prescricao" className="space-y-3 pt-1">
                   <fieldset disabled={bloqueado} className="min-w-0 space-y-3">
+                  <Label htmlFor="prontuario-tipo-receita">Tipo de receita</Label>
+                  <Select value={tipoDeReceita(currentProntuario.tipo_receita)} disabled={bloqueado} onValueChange={value => updateField('tipo_receita', value)}>
+                    <SelectTrigger id="prontuario-tipo-receita"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="simples">Simples</SelectItem>
+                      <SelectItem value="controle_especial">Controle especial</SelectItem>
+                      <SelectItem value="antimicrobiano">Antimicrobiano</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <div className="flex flex-wrap justify-between items-center gap-2">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                       <Pill aria-hidden="true" className="h-3.5 w-3.5" />Receituário digital
@@ -3472,11 +3506,22 @@ export default function Prontuarios() {
 
                   </fieldset>
                   {medicamentosParaChecagem.length > 0 && (
+                    <>
+                    {comorbidadesQuery.isError && <ErrorState compact error={comorbidadesQuery.error} title="Comorbidades não carregaram" onRetry={() => void comorbidadesQuery.refetch()} />}
+                    {requiresAllergyOverrideJustification(alertasMedicamentos) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="prontuario-justificativa-alerta">Justificativa clínica para prosseguir com os alertas</Label>
+                        <Textarea id="prontuario-justificativa-alerta" maxLength={1000} disabled={bloqueado} value={currentProntuario.justificativa_alerta || ''} onChange={e => updateField('justificativa_alerta', e.target.value)} />
+                        <p className="text-xs text-muted-foreground">Mínimo de 20 caracteres. O rascunho pode ser salvo antes de concluir a revisão.</p>
+                      </div>
+                    )}
                     <DrugInteractionChecker
+                      alerts={alertasMedicamentos}
                       medicamentos={medicamentosParaChecagem}
                       alergias={alergiasParaChecagem}
                       onOpenReview={() => openProntuarioTool('alertas-medicamentos')}
                     />
+                    </>
                   )}
                 </TabsContent>
 
@@ -3659,9 +3704,7 @@ export default function Prontuarios() {
                     Ctrl+S salva · Ctrl+Enter salva e fecha · Alt+1 a 9 troca de seção
                   </p>
                 )}
-                <Button variant="outline" size="sm" onClick={handleSolicitarExame} disabled={!currentProntuario.id || !medicoId} title={!currentProntuario.id ? 'Salve a evolução antes de solicitar o exame.' : !medicoId ? 'A solicitação exige um médico responsável vinculado à sua sessão.' : undefined} className="hidden min-h-9 gap-1.5 rounded-xl text-xs sm:inline-flex">
-                  <TestTube aria-hidden="true" className="h-3.5 w-3.5" />Solicitar exame
-                </Button>
+
                 <Button variant="outline" onClick={() => handleProntuarioOpenChange(false)} disabled={salvandoProntuario} size="sm" className="hidden min-h-9 rounded-xl text-xs sm:inline-flex">Cancelar</Button>
                 {!isReadOnly && currentProntuario.agendamento_id && (
                   <Button variant="outline" onClick={() => { void handleSalvarEFinalizar(); }} size="sm" className="min-h-11 gap-1.5 rounded-xl text-xs sm:min-h-9" disabled={salvandoProntuario}><CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />Salvar e finalizar</Button>

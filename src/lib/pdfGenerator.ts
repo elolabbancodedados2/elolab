@@ -1,3 +1,5 @@
+import { idadePorExtenso } from './prontuarioEvolucao';
+import { buildReceitaPdf } from './receitaPdf';
 // `import type` é apagado na compilação: dá o tipo sem puxar as ~660 KB do
 // jsPDF para o bundle de quem só precisa da assinatura da função.
 import type jsPDF from 'jspdf';
@@ -247,7 +249,7 @@ function documentReference(...parts: unknown[]): string {
 
 // Gerar receita médica
 export async function gerarReceita(
-  paciente: { nome: string; cpf?: string; dataNascimento?: string },
+  paciente: { nome: string; cpf?: string; dataNascimento?: string; endereco?: string },
   medico: { nome: string; crm?: string; especialidade?: string; crmUf?: string; rqe?: string },
   medicamentos: Array<{
     nome: string;
@@ -262,137 +264,22 @@ export async function gerarReceita(
   tipo: 'simples' | 'controle_especial' | 'antimicrobiano' = 'simples',
   opcoes: { dataEmissao?: string } = {},
 ) {
-  const { JsPDF } = await carregarPdfLib();
-  const doc = new JsPDF();
-
-  const tipoLabel = {
-    simples: 'RECEITUÁRIO SIMPLES',
-    controle_especial: 'RECEITUÁRIO DE CONTROLE ESPECIAL',
-    antimicrobiano: 'RECEITUÁRIO DE ANTIMICROBIANOS',
-  };
-
-  // Sem `await` o cabeçalho (assíncrono por causa do logo) podia sair depois
-  // do corpo ou nem sair.
-  await addHeader(doc, tipoLabel[tipo]);
-
-  // Data de emissão do documento (a da evolução, quando retroativa).
-  const dataEmissao = opcoes.dataEmissao && parseDateOnly(opcoes.dataEmissao) && !Number.isNaN(parseDateOnly(opcoes.dataEmissao)!.getTime())
-    ? parseDateOnly(opcoes.dataEmissao)!
-    : new Date();
-  doc.setFontSize(10);
-  doc.setTextColor(0, 0, 0);
-  doc.text(`Data: ${format(dataEmissao, 'dd/MM/yyyy')}`, 20, 60);
-  const referencia = documentReference(paciente, medico, medicamentos, orientacoes, tipo);
-  doc.text(`Ref.: ${referencia}`, 170, 60, { align: 'right' });
-
-  // Dados do paciente
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PACIENTE', 20, 75);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text(`Nome: ${paciente.nome}`, 20, 82);
-  if (paciente.cpf) doc.text(`CPF: ${paciente.cpf}`, 120, 82);
-  if (paciente.dataNascimento) {
-    doc.text(`Data Nasc.: ${format(parseDateOnly(paciente.dataNascimento), 'dd/MM/yyyy')}`, 20, 89);
-  }
-
-  // Linha separadora
-  doc.line(20, 95, 190, 95);
-
-  // Medicamentos
-  let yPos = 105;
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PRESCRIÇÃO', 20, yPos);
-  yPos += 10;
-
-  medicamentos.forEach((med, index) => {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text(`${index + 1}. ${[med.nome, med.dosagem].filter(Boolean).join(' ')}`, 25, yPos);
-    yPos += 6;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    // Partes vazias ficam de fora em vez de imprimir "Via:  |  | ".
-    const uso = [med.via && `Via: ${med.via}`, med.frequencia, med.duracao].filter(Boolean).join(' | ');
-    if (uso) {
-      const linhasUso = doc.splitTextToSize(uso, 150);
-      doc.text(linhasUso, 30, yPos);
-      yPos += linhasUso.length * 5;
-    }
-    if (med.quantidade) {
-      doc.text(`Quantidade: ${med.quantidade}`, 30, yPos);
-      yPos += 5;
-    }
-
-    if (med.observacoes) {
-      const linhasObs = doc.splitTextToSize(`Obs: ${med.observacoes}`, 150);
-      doc.text(linhasObs, 30, yPos);
-      yPos += linhasObs.length * 5;
-    }
-    yPos += 5;
-
-    if (yPos > 230) {
-      doc.addPage();
-      yPos = 30;
-    }
+  const clinica = await getClinicaInfo();
+  const data = parseDateOnly(opcoes.dataEmissao) || new Date();
+  const texto = medicamentos.map((med, i) => [
+    `${i + 1}. ${[med.nome, med.dosagem].filter(Boolean).join(' ')}`,
+    [med.via && `Via: ${med.via}`, med.frequencia, med.duracao].filter(Boolean).join(' | '),
+    med.quantidade && `Quantidade: ${med.quantidade}`,
+    med.observacoes && `Obs: ${med.observacoes}`,
+  ].filter(Boolean).join('\n')).join('\n\n');
+  return buildReceitaPdf({
+    pacienteNome: paciente.nome, cpf: paciente.cpf || '', pacienteEndereco: paciente.endereco,
+    medicoNome: medico.nome, crm: medico.crm || '', especialidade: medico.especialidade || '',
+    dataEmissao: format(data, 'dd/MM/yyyy'), tipo,
+    medicamentosTexto: [texto, orientacoes && `Orientações: ${orientacoes}`].filter(Boolean).join('\n\n'),
+    clinicaNome: clinica.nome, clinicaEndereco: clinica.endereco,
+    clinicaTelefone: clinica.telefone, clinicaCnpj: clinica.cnpj, logoUrl: clinica.logoUrl,
   });
-
-  // Orientações
-  if (orientacoes) {
-    yPos += 5;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('ORIENTAÇÕES:', 20, yPos);
-    yPos += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const lines = doc.splitTextToSize(orientacoes, 160);
-    doc.text(lines, 20, yPos);
-  }
-
-  // QR Code de validação
-  const qrData = JSON.stringify({
-    tipo: tipoLabel[tipo],
-    paciente: paciente.nome,
-    medico: medico.nome,
-    crm: medico.crm,
-    data: format(dataEmissao, 'yyyy-MM-dd'),
-    medicamentos: medicamentos.map(m => m.nome).join(', '),
-    referencia,
-  });
-
-  try {
-    const qrDataUrl = await QRCode.toDataURL(qrData, { width: 80, margin: 1 });
-    doc.addImage(qrDataUrl, 'PNG', 160, 240, 25, 25);
-    doc.setFontSize(6);
-    doc.setTextColor(120, 120, 120);
-    doc.text('Validação digital', 172.5, 267, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
-  } catch { /* QR generation failed silently */ }
-
-  // Assinatura do médico
-  const assinaturaY = 250;
-  doc.line(40, assinaturaY, 140, assinaturaY);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text(medico.nome, 90, assinaturaY + 6, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  const crmReceita = linhaCrmMedico(medico);
-  if (crmReceita) doc.text(crmReceita, 90, assinaturaY + 12, { align: 'center' });
-  doc.setFontSize(7);
-  doc.setTextColor(100, 100, 100);
-  // "pendente" sugeria um processo de assinatura em andamento no sistema, que
-  // não existe: não há integração com ICP-Brasil em lugar nenhum do app.
-  doc.text('Assine acima ou pelo assinador gov.br', 90, assinaturaY + 17, { align: 'center' });
-  doc.setTextColor(0, 0, 0);
-
-  addFooter(doc);
-
-  return doc;
 }
 
 // Gerar atestado médico
@@ -1285,19 +1172,6 @@ function isResultadoAlterado(resultado: { resultado: string; valorReferenciaMin?
   );
 }
 
-function calcularIdade(dataNascimento: string): string {
-  try {
-    const nasc = parseDateOnly(dataNascimento);
-    const hoje = new Date();
-    let anos = hoje.getFullYear() - nasc.getFullYear();
-    let meses = hoje.getMonth() - nasc.getMonth();
-    const dias = hoje.getDate() - nasc.getDate();
-    if (dias < 0) { meses--; }
-    if (meses < 0) { anos--; meses += 12; }
-    return `${anos} anos ${meses} meses`;
-  } catch { return ''; }
-}
-
 function formatSexo(sexo?: string): string {
   if (!sexo) return '';
   const s = sexo.toLowerCase();
@@ -1357,7 +1231,7 @@ export async function gerarLaudoPDF(dados: LaudoData): Promise<jsPDF> {
   const infoLines: string[] = [];
   if (dados.pacienteDataNascimento) {
     const nascFormatado = format(parseDateOnly(dados.pacienteDataNascimento), 'dd/MM/yyyy');
-    const idade = calcularIdade(dados.pacienteDataNascimento);
+    const idade = idadePorExtenso(dados.pacienteDataNascimento) || '';
     const sexo = formatSexo(dados.pacienteSexo);
     infoLines.push(`Nasc: ${nascFormatado} - Idade: ${idade}${sexo ? ` - Sexo: ${sexo}` : ''}`);
   }

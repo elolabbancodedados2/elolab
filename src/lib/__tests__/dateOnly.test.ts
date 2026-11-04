@@ -162,6 +162,11 @@ describe('appointmentStartHasPassed', () => {
 });
 
 describe('ageFromDateOnly', () => {
+  it('não derruba a ficha nem inventa idade quando o nascimento está ausente ou inválido', () => {
+    expect(ageFromDateOnly(null)).toBeNaN();
+    expect(ageFromDateOnly(undefined)).toBeNaN();
+    expect(ageFromDateOnly('inválida')).toBeNaN();
+  });
   it('não antecipa o aniversário por causa do parsing UTC', () => {
     const referenceDate = new Date(2026, 8, 1, 8, 0, 0);
     expect(ageFromDateOnly('2008-09-02', referenceDate)).toBe(17);
