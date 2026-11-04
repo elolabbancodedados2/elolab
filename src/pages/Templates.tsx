@@ -112,7 +112,7 @@ export default function Templates() {
       if (error) throw error;
       if (!data) throw new Error('Este modelo não pertence à clínica atual ou já foi removido.');
       queryClient.invalidateQueries({ queryKey: [table] });
-      toast.success('Template excluído');
+      toast.success('Modelo excluído');
       setDeleteDialog({ open: false, type: 'prescription', id: '' });
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error deleting template:', error);
@@ -143,7 +143,7 @@ export default function Templates() {
 
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: [table] });
-      toast.success('Template duplicado');
+      toast.success('Modelo duplicado');
     } catch (error) {
       if (import.meta.env.DEV) console.error('Error duplicating template:', error);
       toast.error('Erro ao duplicar template', { description: mensagemDeErro(error) });
@@ -174,7 +174,7 @@ export default function Templates() {
 
   if (prescriptionQuery.isError || certificateQuery.isError) {
     const failedQuery = prescriptionQuery.isError ? prescriptionQuery : certificateQuery;
-    return <ErrorState title="Não foi possível carregar os templates clínicos" error={failedQuery.error} onRetry={() => {
+    return <ErrorState title="Não foi possível carregar os modelos clínicos" error={failedQuery.error} onRetry={() => {
       void prescriptionQuery.refetch();
       void certificateQuery.refetch();
     }} />;
@@ -266,7 +266,7 @@ export default function Templates() {
             value={activeSearch}
             onChange={event => setActiveSearch(event.target.value)}
             placeholder={clinicalTab === 'prescriptions' ? 'Buscar nome, tipo ou medicamento...' : 'Buscar nome, tipo, CID ou conteúdo...'}
-            aria-label={clinicalTab === 'prescriptions' ? 'Buscar templates de prescrição' : 'Buscar templates de atestado'}
+            aria-label={clinicalTab === 'prescriptions' ? 'Buscar modelos de prescrição' : 'Buscar modelos de atestado'}
             className="h-10 rounded-full pl-9 focus-visible:ring-primary"
           />
         </div>
@@ -295,12 +295,12 @@ export default function Templates() {
             </span>
             <p className="font-medium text-foreground">
               {activeTotal === 0
-                ? (clinicalTab === 'prescriptions' ? 'Nenhum template de prescrição criado' : 'Nenhum template de atestado criado')
-                : 'Nenhum template corresponde à busca'}
+                ? (clinicalTab === 'prescriptions' ? 'Nenhum modelo de prescrição criado' : 'Nenhum modelo de atestado criado')
+                : 'Nenhum modelo corresponde à busca'}
             </p>
             <p className="mt-1 text-sm">
               {activeTotal === 0
-                ? (clinicalTab === 'prescriptions' ? 'Crie templates para agilizar suas prescrições' : 'Crie templates para agilizar seus atestados')
+                ? (clinicalTab === 'prescriptions' ? 'Crie modelos para agilizar suas prescrições' : 'Crie modelos para agilizar seus atestados')
                 : (clinicalTab === 'prescriptions' ? 'Tente outro nome, tipo ou medicamento.' : 'Tente outro nome, tipo, CID ou conteúdo.')}
             </p>
             {activeTotal === 0 ? (
@@ -433,9 +433,9 @@ export default function Templates() {
       <AlertDialog open={deleteDialog.open} onOpenChange={(open) => { if (!isDeletingTemplate) setDeleteDialog((current) => ({ ...current, open })); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir template?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir modelo?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O template será removido permanentemente.
+              Esta ação não pode ser desfeita. O modelo será removido permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

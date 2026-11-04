@@ -6,6 +6,11 @@ export interface RascunhoProntuario {
   [key: string]: unknown;
 }
 
+export function rascunhoAntigo(registro: { assinado?: boolean | null; created_at?: string | null; updated_at?: string | null }, agora = Date.now()): boolean {
+  const criado = Date.parse(registro.created_at || registro.updated_at || '');
+  return registro.assinado !== true && Number.isFinite(criado) && agora - criado > 24 * 60 * 60 * 1000;
+}
+
 export function nomeAutorRascunho(
   medicoId: string | null | undefined,
   medicos: Array<{ id: string; nome?: string | null }>,

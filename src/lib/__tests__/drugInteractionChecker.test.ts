@@ -31,12 +31,12 @@ describe('checkDrugInteractions', () => {
     expect(result[0].severity).toBe('major');
   });
 
-  it('NÃO detecta interação quando nomes estão em português (limitação conhecida)', async () => {
+  it('detecta interação também com nomes em português', async () => {
     // Documenta o bug: prescrição em português não bate com DB em inglês.
     // Quando o code switcher de medicamentos PT→EN for adicionado, este teste falha
     // e deve ser invertido.
     const result = await checkDrugInteractions(['Varfarina', 'Aspirina']);
-    expect(result).toEqual([]);
+    expect(result[0]?.severity).toBe('major');
   });
 
   it('retorna vazio para medicamentos sem interação conhecida', async () => {

@@ -6,6 +6,14 @@ vi.mock('@/lib/avisos', () => ({ avisar: vi.fn() }));
 import { DigitalSignature } from '@/components/clinical/DigitalSignature';
 
 describe('signature safety', () => {
+  it('permite pular a assinatura sugerida sem assinar', () => {
+    const close = vi.fn();
+    const signed = vi.fn();
+    render(<DigitalSignature fullPage documentId="record-12345678" documentType="prontuario" signerName="Dra. Ana" skipLabel="Pular assinatura e finalizar" onCloseReview={close} onSigned={signed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pular assinatura e finalizar' }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(signed).not.toHaveBeenCalled();
+  });
   it('blocks signing and explains why while there are unsaved changes', () => {
     render(
       <DigitalSignature

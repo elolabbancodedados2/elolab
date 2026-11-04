@@ -1,3 +1,5 @@
+import { calcularIMC } from '@/lib/vitalSigns';
+import { VitalInput } from '@/components/clinical/VitalInput';
 import React, { useState, useMemo, useCallback, useId, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -139,15 +141,6 @@ const parseValorClinico = (valor: string): number => {
   return Number(normalizado);
 };
 
-const calcularIMC = (peso: string, altura: string): number | null => {
-  const p = parseValorClinico(peso);
-  const a = parseValorClinico(altura);
-  if (!(p > 0) || !(a > 0)) return null;
-  const h = a > 3 ? a / 100 : a; // aceita cm e metros
-  const imc = p / (h * h);
-  return Number.isFinite(imc) ? Number(imc.toFixed(1)) : null;
-};
-
 const imcClassification = (imc: number): { label: string; color: string } => {
   if (imc < 18.5) return { label: 'Abaixo do peso', color: 'text-warning' };
   if (imc < 25) return { label: 'Peso normal', color: 'text-success' };
@@ -205,37 +198,6 @@ const emptyForm: TriagemForm = {
 };
 
 // ─── Vital Sign Input ──────────────────────────────────────
-function VitalInput({ icon: Icon, label, value, onChange, placeholder, unit, color, inputMode = 'decimal' }: {
-  icon: any; label: string; value: string;
-  onChange: (v: string) => void; placeholder?: string; unit?: string; color?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
-}) {
-  const inputId = useId();
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={inputId} className="flex items-center gap-1.5 text-xs">
-        <Icon className={cn('h-3.5 w-3.5', color || 'text-muted-foreground')} />
-        {label}
-      </Label>
-      <div className="relative">
-        <Input
-          id={inputId}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          inputMode={inputMode}
-          className="pr-10 text-sm"
-        />
-        {unit && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-medium">
-            {unit}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Risk Badge ────────────────────────────────────────────
 function RiscoBadge({ risco, size = 'sm' }: { risco: Risco; size?: 'sm' | 'lg' }) {
   const cfg = RISCO[risco];

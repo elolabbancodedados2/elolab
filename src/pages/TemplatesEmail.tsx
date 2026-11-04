@@ -193,7 +193,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
       }
     },
     onSuccess: () => {
-      toast.success(editId ? 'Template atualizado!' : 'Template criado!');
+      toast.success(editId ? 'Modelo atualizado!' : 'Modelo criado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       completed.current = true;
       back();
@@ -222,7 +222,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
       if (!data) throw new Error('Este modelo não pertence à clínica atual ou não está mais disponível.');
     },
     onSuccess: () => {
-      toast.success('Template atualizado!');
+      toast.success('Modelo atualizado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       if (task === 'activate') { completed.current = true; back(); }
     },
@@ -243,7 +243,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
       if (!data) throw new Error('Este modelo não pertence à clínica atual ou já foi removido.');
     },
     onSuccess: () => {
-      toast.success('Template deletado!');
+      toast.success('Modelo excluído!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       setDeleteId(null);
     },
@@ -274,7 +274,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success('Template duplicado!');
+      toast.success('Modelo duplicado!');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
     },
     onError: (error: any) => toast.error(error.message),
@@ -608,7 +608,7 @@ function EmailWorkspace({ task }: { task?: EmailTask }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Templates de e-mail"
+        title="Modelos de e-mail"
         description={stats.total > 0
           ? `${stats.total} modelo${stats.total === 1 ? '' : 's'} · ${stats.ativos} ativo${stats.ativos === 1 ? '' : 's'}${stats.pendencias > 0 ? ` · ${stats.pendencias} com pendência` : ''}`
           : 'Mensagens reutilizáveis da clínica com variáveis e pré-visualização.'}

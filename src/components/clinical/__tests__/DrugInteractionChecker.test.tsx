@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { DrugInteractionChecker } from '../DrugInteractionChecker';
 
 describe('DrugInteractionChecker', () => {
+  it('mostra contraindicação de gestação com o mesmo motor da receita', () => {
+    render(<DrugInteractionChecker fullPage medicamentos={['Isotretinoína 20mg']} alergias={[]} patientInfo={{ gestante: true }} />);
+    expect(screen.getByText(/é CONTRAINDICADO em gravidez/)).toBeInTheDocument();
+  });
   it('abre a revisão em uma página de contexto sem modal', () => {
     const onOpenReview = vi.fn();
     render(<DrugInteractionChecker medicamentos={['varfarina', 'aas']} alergias={[]} onOpenReview={onOpenReview} />);
