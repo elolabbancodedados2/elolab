@@ -784,3 +784,9 @@ html[data-text-size='large'] {
   background-color: hsl(var(--primary) / 0.1);
   color: hsl(var(--primary));
 }
+
+@media (max-width: 767px) {
+  .portal-simple :is(p, span, label, button, input, a, summary) {
+    font-size: max(1rem, 1em);
+  }
+}

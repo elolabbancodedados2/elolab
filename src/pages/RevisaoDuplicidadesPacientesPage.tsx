@@ -39,6 +39,7 @@ function valorLegivel(campo: MergeField, valor: unknown): string {
 }
 
 interface ReturnState {
+  comparePatientIds?: unknown;
   patientReturnTo?: unknown;
   patientReturnState?: unknown;
 }
@@ -64,6 +65,7 @@ export default function RevisaoDuplicidadesPacientesPage() {
   const [usarOrigem, setUsarOrigem] = useState<Set<MergeField>>(new Set());
   const [motivo, setMotivo] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const initialComparisonOpened = useRef(false);
 
   const pares = useQuery({
     queryKey: ['duplicidades-pacientes', limiar],
@@ -119,6 +121,16 @@ export default function RevisaoDuplicidadesPacientesPage() {
   };
 
   const destino = fichas?.[destinoIndex];
+  useEffect(() => {
+    const ids = returnState?.comparePatientIds;
+    if (initialComparisonOpened.current || !Array.isArray(ids) || ids.length !== 2 || ids[0] === ids[1] ||
+        !ids.every(id => typeof id === 'string' && /^[a-f0-9-]{36}$/i.test(id))) return;
+    initialComparisonOpened.current = true;
+    void abrirPar({ paciente_a: ids[0], paciente_b: ids[1], nome_a: '', nome_b: '', nascimento_a: null,
+      nascimento_b: null, telefone_final_a: null, telefone_final_b: null, pontuacao: 0, motivos: [] });
+    // IDs recebidos da ficha são consultados novamente sob RLS antes da comparação.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnState?.comparePatientIds]);
   const origem = fichas?.[destinoIndex === 0 ? 1 : 0];
   const diferencas = destino && origem ? diffPatientFields(destino, origem) : [];
   const motivoValido = motivo.trim().length >= 10 && motivo.trim().length <= 500;

@@ -17,8 +17,8 @@ import { checarRateLimit, clientIp } from '../_shared/rateLimit.ts';
 import { corsPadrao } from '../_shared/cors.ts';
 import { horariosLivres, validarHorario, agoraEmBrasilia, dataValida } from '../_shared/horarios.ts';
 
-// Versão do texto do aceite em src/pages/AgendamentoOnline.tsx; mude junto com o texto.
-const TERMO_AGENDAMENTO_ONLINE_VERSAO = 'agendamento-online-2026-11-02';
+import { cadastroPedidoOnline } from '../_shared/publicBookingRequest.ts';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function hashHoldToken(token: string): Promise<string> {
@@ -76,17 +76,6 @@ function cpfValido(cpf: string): boolean {
     return r === 10 ? 0 : r;
   };
   return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
-}
-
-const mascararCpf = (d: string) => `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-
-async function buscarPacientePorCpf(db: any, clinicaId: string, cpf: string): Promise<string | null> {
-  const { data, error } = await db.rpc('find_patient_id_by_normalized_cpf', {
-    p_clinica_id: clinicaId,
-    p_cpf: cpf,
-  });
-  if (error) throw error;
-  return typeof data === 'string' ? data : null;
 }
 
 Deno.serve(async (req) => {
@@ -236,7 +225,7 @@ Deno.serve(async (req) => {
       const email = String(body.email || '').trim().toLowerCase().slice(0, 160);
       const nascimento = String(body.data_nascimento || '');
 
-      if (!body.aceite_lgpd) return json({ error: 'É preciso aceitar o uso dos dados para o agendamento.' }, 400);
+      if (body.aceite_lgpd !== true) return json({ error: 'É preciso aceitar o uso dos dados para o agendamento.' }, 400);
       if (nome.split(' ').length < 2) return json({ error: 'Informe nome e sobrenome.' }, 400);
       if (!cpfValido(cpfDigitos)) return json({ error: 'CPF inválido.' }, 400);
       if (telefone.replace(/\D/g, '').length < 10) return json({ error: 'Informe um telefone com DDD.' }, 400);
@@ -256,63 +245,14 @@ Deno.serve(async (req) => {
         return json({ error: 'Limite de agendamentos atingido. Entre em contato com a clínica.' }, 429);
       }
 
-      // Paciente: reaproveita pelo CPF (com ou sem máscara) dentro da clínica.
-      const cpfMascarado = mascararCpf(cpfDigitos);
-      let pacienteId = await buscarPacientePorCpf(db, clinicaId, cpfDigitos);
-
-      if (!pacienteId) {
-        const { data: novo, error: erroPaciente } = await db.from('pacientes').insert({
-          clinica_id: clinicaId,
-          nome,
-          cpf: cpfMascarado,
-          telefone,
-          email: email || null,
-          data_nascimento: nascimento || null,
-        }).select('id').single();
-        if (erroPaciente?.code === '23505') {
-          // Outra aba pode ter criado o mesmo CPF após a consulta inicial.
-          const concorrente = await buscarPacientePorCpf(db, clinicaId, cpfDigitos);
-          if (!concorrente) throw erroPaciente;
-          pacienteId = concorrente;
-        } else if (erroPaciente) {
-          throw erroPaciente;
-        } else {
-          pacienteId = novo.id;
-        }
-      }
-
-      // Registro do aceite exigido acima (LGPD art. 8º): quem, quando, de onde e qual texto.
-      const { error: erroConsentimento } = await db.from('consentimentos_lgpd').insert({
-        paciente_id: pacienteId,
-        clinica_id: clinicaId,
-        tipo_consentimento: 'agendamento_online',
-        versao_termo: TERMO_AGENDAMENTO_ONLINE_VERSAO,
-        aceito: true,
-        data_aceite: new Date().toISOString(),
-        ip_aceite: ip && ip !== 'unknown' ? ip : null,
-      });
-      if (erroConsentimento) throw erroConsentimento;
-
-      // Um paciente não acumula vários pedidos pendentes pelo link.
-      const { count: pendentes } = await db.from('agendamentos').select('id', { count: 'exact', head: true })
-        .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId).eq('status', 'agendado')
-        .gte('data', agoraEmBrasilia().data).ilike('observacoes', '%[agendamento online]%');
-      if ((pendentes ?? 0) >= 2) {
-        return json({
-          error: 'Não foi possível concluir este pedido online. Entre em contato com a clínica para continuar.',
-          code: 'booking_unavailable',
-        }, 409);
-      }
-
-      const { data: resultadoAgendamento, error: erroAgendamento } = await db.rpc('agendar_consulta_online_atomico', {
+      const { data: resultadoAgendamento, error: erroAgendamento } = await db.rpc('solicitar_agendamento_online_atomico', {
         p_clinica_id: clinicaId,
-        p_paciente_id: pacienteId,
         p_medico_id: medicoId,
         p_data: data,
         p_hora_inicio: hora,
         p_duracao_minutos: slot.duration,
-        p_observacoes: `[agendamento online] Marcado pelo paciente no link público. Confirmar com o paciente.\nNome informado: ${nome}\nTelefone informado: ${telefone}${email ? `\nE-mail informado: ${email}` : ''}`,
         p_hold_token_hash: await hashHoldToken(holdToken),
+        p_cadastro: cadastroPedidoOnline(body, ip),
       });
       if (erroAgendamento) {
         if (erroAgendamento.code === '23P01' || String(erroAgendamento.message).includes('sobreposicao')) {

@@ -1,6 +1,6 @@
 import { formatWithDatePreference as format } from '@/lib/datePreference';
 import { formatDate, nomeMedico } from '@/lib/formatters';
-import { formatCsvCell } from '@/lib/csv';
+import { prepararCsvPacientes } from '@/lib/patientCsv';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard';
@@ -793,6 +793,18 @@ export default function Pacientes() {
 
   const filteredPacientes = pacientes;
   const selectedPaciente = patientId ? pacienteDeepLink : pacienteSelecionadoDetalhe ?? pacientes.find((p) => p.id === selectedPacienteId) ?? pacienteDeepLink ?? null;
+  const fichaDuplicidades = useQuery({
+    queryKey: ['ficha-possiveis-duplicados', authProfile?.clinica_id, selectedPaciente?.id, selectedPaciente?.updated_at],
+    enabled: Boolean(isAdmin() && selectedPaciente?.id && patientId && !editPatientPage && selectedPaciente?.ativo !== false),
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('buscar_possiveis_duplicidades_paciente', {
+        p_nome: selectedPaciente!.nome, p_data_nascimento: selectedPaciente!.data_nascimento || null,
+        p_telefone: selectedPaciente!.telefone || '', p_excluir: selectedPaciente!.id,
+      });
+      if (error) throw error;
+      return data || [];
+    },
+  });
   const navigateToConsentTask = (path: string) => {
     if (!selectedPaciente) return;
     const params = new URLSearchParams(location.search);
@@ -852,14 +864,19 @@ export default function Pacientes() {
     void queryClient.invalidateQueries({ queryKey: ['paciente-deep-link'] });
     void queryClient.invalidateQueries({ queryKey: ['pacientes-estatisticas'] });
   };
-  const exportarPacientesCsv = () => {
-    const linhas = filteredPacientes.map((p: any) => [
-      p.nome, p.nome_social || '', p.cpf || '', p.telefone || '', p.email || '',
-      p.data_nascimento ? formatDate(p.data_nascimento, 'short') : '', getConvenioNome(p.convenio_id), p.ativo === false ? 'Inativo' : 'Ativo',
-    ]);
-    const csv = [['Nome', 'Nome social', 'CPF', 'Telefone', 'E-mail', 'Nascimento', 'Convênio', 'Status'], ...linhas]
-      .map(cols => cols.map(formatCsvCell).join(';'))
-      .join('\r\n');
+  const [incluirCpfCompleto, setIncluirCpfCompleto] = useState(false);
+  const [exportandoCsv, setExportandoCsv] = useState(false);
+  const exportarPacientesCsv = async () => {
+    if (!isAdmin() || exportandoCsv) return;
+    setExportandoCsv(true);
+    try {
+    const csv = await prepararCsvPacientes(filteredPacientes.map((p: any) => ({
+      ...p, nascimento: p.data_nascimento ? formatDate(p.data_nascimento, 'short') : '', convenio: getConvenioNome(p.convenio_id),
+    })), isAdmin(), incluirCpfCompleto, (quantidade, cpfCompleto) => logAudit({
+      action: 'access', collection: 'pacientes', recordId: authProfile?.clinica_id || '',
+      recordName: 'Exportação CSV de pacientes', userId: authProfile?.id,
+      changes: [{ field: 'quantidade_linhas', newValue: quantidade }, { field: 'cpf_completo', newValue: cpfCompleto }],
+    }));
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -869,6 +886,7 @@ export default function Pacientes() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    } catch (error) { toast.error(mensagemDeErro(error)); } finally { setExportandoCsv(false); }
   };
 
   const clearPatientFilters = () => {
@@ -1701,18 +1719,21 @@ export default function Pacientes() {
                   </span>
                 )}
               </Button>
+              {isAdmin() && <>
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={incluirCpfCompleto} onCheckedChange={value => setIncluirCpfCompleto(value === true)} />Incluir CPF completo</label>
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 onClick={exportarPacientesCsv}
-                disabled={filteredPacientes.length === 0}
+                disabled={filteredPacientes.length === 0 || exportandoCsv}
                 className="h-11 w-11 shrink-0 rounded-full"
                 aria-label="Exportar a página atual em CSV"
                 title="Exportar a página atual em CSV"
               >
                 <FileSpreadsheet className="h-4 w-4" />
               </Button>
+              </>}
             </div>
           </div>
 
@@ -2263,6 +2284,15 @@ export default function Pacientes() {
           </header>
           {selectedPaciente && (
             <div className="min-w-0 space-y-4">
+              {isAdmin() && fichaDuplicidades.data?.map(duplicate => (
+                <div key={duplicate.id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/5 p-4">
+                  <p>Possível duplicado de {duplicate.nome_social || duplicate.nome}</p>
+                  <Button variant="outline" onClick={() => navigate('/pacientes/duplicidades', { state: {
+                    patientReturnTo: `/pacientes/${selectedPaciente.id}`, comparePatientIds: [selectedPaciente.id, duplicate.id],
+                  } })}>Comparar e mesclar</Button>
+                </div>
+              ))}
+              {isAdmin() && fichaDuplicidades.isError && <p role="status" className="text-sm text-muted-foreground">Não foi possível conferir possíveis duplicados. <Button variant="link" onClick={() => void fichaDuplicidades.refetch()}>Tentar novamente</Button></p>}
               {fichaUnificadaEm && (
                 <div role="status" className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <div>

@@ -1,5 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
 
+export function lerTokenPortal(search: string, hash: string): string {
+  return new URLSearchParams(hash.replace(/^#/, '')).get('token') || new URLSearchParams(search).get('token') || '';
+}
+
 /**
  * Único jeito de transformar a resposta de `link_portal_paciente` no link que
  * a clínica compartilha. Antes cada tela montava do seu jeito: uma aceitava
@@ -8,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
  * Só o token sai da resposta; o endereço é sempre o desta instalação. Assim
  * uma resposta adulterada não consegue mandar o paciente para outro site.
  */
-export function montarLinkPortal(valor: unknown, origem: string = window.location.origin): string {
+export function montarLinkPortal(valor: unknown, origem: string = window.location.origin, clinicaId?: string): string {
   if (typeof valor !== 'string' || !valor.trim()) throw new Error('O servidor não retornou um link válido.');
   let url: URL;
   try {
@@ -16,12 +20,14 @@ export function montarLinkPortal(valor: unknown, origem: string = window.locatio
   } catch {
     throw new Error('O servidor retornou um link inválido.');
   }
-  const token = url.searchParams.get('token');
+  const token = lerTokenPortal(url.search, url.hash);
   if (url.pathname !== '/portal-paciente' || !token || !/^[a-f0-9]{64}$/i.test(token)) {
     throw new Error('O servidor retornou um link em formato inesperado. O acesso não foi exibido.');
   }
   const link = new URL('/portal-paciente', origem);
-  link.searchParams.set('token', token);
+  const clinic = clinicaId || url.searchParams.get('clinica');
+  if (clinic && /^[a-f0-9-]{36}$/i.test(clinic)) link.searchParams.set('clinica', clinic);
+  link.hash = new URLSearchParams({ token }).toString();
   return link.toString();
 }
 

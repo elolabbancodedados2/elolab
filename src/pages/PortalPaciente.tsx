@@ -31,6 +31,11 @@ import { horaSP } from '@/lib/caixaFormatacao';
 import { rotuloTipoAgendamento, sexoPorExtenso } from '@/lib/pacienteFicha';
 import { abrirUrlSegura, checkoutUrlSeguro, storageUrlSeguro } from '@/lib/safeUrl';
 import { cn } from '@/lib/utils';
+import { lerTokenPortal } from '@/lib/patientPortalAccess';
+import { lerAparelhoPortal, lembrarAparelhoPortal, esquecerAparelhoPortal } from '@/lib/portalDeviceStorage';
+import { linkWhatsApp } from '@/lib/whatsapp';
+import { podeCheckinPortal } from '../../supabase/functions/_shared/portalCheckin';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // ─── Status helpers ────────────────────────────────────────
 const statusConfig: Record<string, { bg: string; label: string }> = {
@@ -100,11 +105,14 @@ function calcularIdade(dn: string | null) {
 }
 
 // ─── Login Screen ──────────────────────────────────────────
-function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
+function LoginScreen({ token, setToken, clearError, onLogin, loading, error, clinicPhone }: {
   token: string; setToken: (v: string) => void;
   clearError: () => void;
   onLogin: () => void; loading: boolean; error: string;
+  clinicPhone: string;
 }) {
+  const [showCode, setShowCode] = useState(false);
+  const requestLink = linkWhatsApp(clinicPhone, 'Olá! Preciso de um novo link para acessar meu Portal do Paciente.');
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground">
       <div className="w-full max-w-md">
@@ -121,6 +129,15 @@ function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
           </CardHeader>
 
           <CardContent className="space-y-4 pt-2">
+            <p className="text-base">Abra o link que a clínica enviou pelo WhatsApp ou e-mail</p>
+            {requestLink ? <Button asChild className="h-12 w-full text-base"><a href={requestLink} target="_blank" rel="noopener noreferrer">Pedir novo link</a></Button> : <>
+              <Button className="h-12 w-full text-base" disabled>Pedir novo link</Button>
+              <p className="text-base text-muted-foreground">Abra o endereço enviado pela clínica para identificar o contato, ou fale com a recepção pelo número que você já utiliza.</p>
+            </>}
+            {error && <p id="patient-portal-access-error" role="alert" className="text-base text-destructive">{error}</p>}
+            <Collapsible open={showCode} onOpenChange={setShowCode}>
+              <CollapsibleTrigger asChild><Button variant="outline" className="h-12 w-full text-base">Tenho um código</Button></CollapsibleTrigger>
+              <CollapsibleContent className="pt-4">
             <form
               className="space-y-4"
               aria-busy={loading}
@@ -143,7 +160,7 @@ function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
                     autoCorrect="off"
                     spellCheck={false}
                     required
-                    placeholder="Digite seu código de acesso"
+                    placeholder="Cole o código recebido"
                     value={token}
                     onChange={(e) => {
                       setToken(e.target.value);
@@ -158,11 +175,6 @@ function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
                 </p>
               </div>
 
-              {error && (
-                <p id="patient-portal-access-error" role="alert" className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                  {error}
-                </p>
-              )}
 
               <Button
                 type="submit"
@@ -177,6 +189,8 @@ function LoginScreen({ token, setToken, clearError, onLogin, loading, error }: {
                 {loading ? 'Verificando…' : 'Acessar Portal'}
               </Button>
             </form>
+              </CollapsibleContent>
+            </Collapsible>
 
             <div className="flex items-center justify-center gap-2 border-t border-border pt-4 text-xs text-muted-foreground">
               <Shield aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -264,7 +278,7 @@ function NPSSurvey({ token, chaveEnvio }: { token: string; chaveEnvio: string })
     setSubmitError('');
     try {
       const { data, error } = await supabase.functions.invoke('patient-portal', {
-        body: { action: 'submit_feedback', token, nota, comentario },
+        body: { action: 'submit_feedback', token, device_proof: lerAparelhoPortal(), nota, comentario },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Não foi possível enviar');
       marcarAvaliacaoEnviada(chaveEnvio);
@@ -349,8 +363,17 @@ export default function PortalPaciente() {
   const [searchParams, setSearchParams] = useSearchParams();
   const autoLoginAttempted = useRef(false);
   const portalSessionRef = useRef(0);
-  const [token, setToken] = useState(searchParams.get('token') || '');
+  const [token, setToken] = useState(() => lerTokenPortal(searchParams.toString(), window.location.hash));
   const [authenticated, setAuthenticated] = useState(false);
+  const [needsBirthDate, setNeedsBirthDate] = useState(false);
+  const [birthDate, setBirthDate] = useState('');
+  const [clinicPhone, setClinicPhone] = useState('');
+  const [checkinNow, setCheckinNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!authenticated) return;
+    const timer = window.setInterval(() => setCheckinNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [authenticated]);
   const [loading, setLoading] = useState(false);
   const [portalDataLoading, setPortalDataLoading] = useState(false);
   const [portalDataReady, setPortalDataReady] = useState(false);
@@ -466,7 +489,7 @@ export default function PortalPaciente() {
 
   const fetchData = async (accessToken: string, action: string, bodyData?: any) => {
     const { data, error } = await supabase.functions.invoke('patient-portal', {
-      body: { action, token: accessToken, ...bodyData },
+      body: { action, token: accessToken, device_proof: lerAparelhoPortal(), ...bodyData },
     });
     if (error) {
       let message = error.message;
@@ -616,6 +639,13 @@ export default function PortalPaciente() {
         setError(profileData?.error || 'Token inválido ou expirado');
         return;
       }
+      if (profileData.requires_birth_date) {
+        setNeedsBirthDate(true);
+        setClinicPhone(profileData.clinica_telefone || '');
+        return;
+      }
+      setNeedsBirthDate(false);
+      setClinicPhone(profileData.clinica_telefone || '');
       setProfile(profileData);
       setContactForm({ telefone: profileData.telefone || '', email: profileData.email || '' });
       setAuthenticated(true);
@@ -626,10 +656,24 @@ export default function PortalPaciente() {
       // ajuda o paciente e revela detalhes internos. Para autenticação por
       // token, toda falha deve ser indistinguível de token ausente/revogado.
       if (import.meta.env.DEV) console.error('Falha ao validar acesso do portal:', err);
-      setError('Token inválido ou expirado');
+      setError(err.code === 'device_locked' ? err.message : 'Token inválido ou expirado');
     } finally {
       if (sessionId === portalSessionRef.current) setLoading(false);
     }
+  };
+
+  const confirmBirthDate = async () => {
+    if (loading || !birthDate) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetchData(token, 'verify_device', { data_nascimento: birthDate });
+      if (typeof response?.device_proof !== 'string') throw new Error('Não foi possível confirmar o aparelho.');
+      lembrarAparelhoPortal(response.device_proof);
+      setBirthDate('');
+      await handleLogin();
+    } catch (err: any) { setError(err.message || 'Não foi possível confirmar. Tente novamente.'); }
+    finally { setLoading(false); }
   };
 
   const loadAvailableSlots = async (medico_id: string, data: string) => {
@@ -924,6 +968,9 @@ export default function PortalPaciente() {
   };
 
   const handleLogout = () => {
+    esquecerAparelhoPortal();
+    setNeedsBirthDate(false);
+    setBirthDate('');
     portalSessionRef.current += 1;
     setAuthenticated(false);
     setToken('');
@@ -942,6 +989,18 @@ export default function PortalPaciente() {
     setPortalUnavailableActions([]);
     setError('');
     setPortalDataError('');
+  };
+
+  const signalArrival = async (appointmentId: string, sinal: 'a_caminho' | 'chegou') => {
+    if (actionLoading) return;
+    setActionLoading(true);
+    setActionError('');
+    try {
+      const response = await fetchData(token, 'online_checkin', { agendamento_id: appointmentId, sinal });
+      setAgendamentos(items => items.map(a => a.id === appointmentId ? { ...a, portal_checkin_status: response.portal_checkin_status } : a));
+      setActionNotice(response.portal_checkin_status === 'chegou' ? 'Chegada avisada. Aguarde a confirmação do balcão; apresente-se à recepção.' : 'A clínica foi avisada de que você está a caminho.');
+    } catch (error: any) { setActionError(error.message || 'Não foi possível avisar a chegada.'); }
+    finally { setActionLoading(false); }
   };
 
   const handleUpdateContact = async () => {
@@ -1049,7 +1108,12 @@ export default function PortalPaciente() {
   };
 
   useEffect(() => {
-    const urlToken = searchParams.get('token');
+    const clinic = searchParams.get('clinica');
+    if (clinic && /^[a-f0-9-]{36}$/i.test(clinic)) {
+      void supabase.functions.invoke('patient-portal', { body: { action: 'get_access_help', clinica_id: clinic } })
+        .then(({ data }) => { if (typeof data?.telefone === 'string') setClinicPhone(data.telefone); });
+    }
+    const urlToken = lerTokenPortal(searchParams.toString(), window.location.hash);
     if (urlToken && !autoLoginAttempted.current) {
       autoLoginAttempted.current = true;
       // O link pode chegar por e-mail/WhatsApp, mas o segredo não deve
@@ -1057,6 +1121,9 @@ export default function PortalPaciente() {
       // O estado React mantém o token apenas em memória durante esta sessão.
       const sanitizedUrl = new URL(window.location.href);
       sanitizedUrl.searchParams.delete('token');
+      const fragment = new URLSearchParams(sanitizedUrl.hash.slice(1));
+      fragment.delete('token');
+      sanitizedUrl.hash = fragment.toString();
       window.history.replaceState({}, '', `${sanitizedUrl.pathname}${sanitizedUrl.search}${sanitizedUrl.hash}`);
       setToken(urlToken);
       void handleLogin(urlToken);
@@ -1066,7 +1133,22 @@ export default function PortalPaciente() {
 
   // ─── Login ────────────────────────────────────────────────
   if (!authenticated) {
-    return <LoginScreen token={token} setToken={setToken} clearError={() => setError('')} onLogin={handleLogin} loading={loading} error={error} />;
+    if (needsBirthDate) return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-4 text-base">
+        <Card className="w-full max-w-md"><CardHeader><CardTitle>Confirme seu acesso</CardTitle>
+          <CardDescription className="text-base">No primeiro acesso neste aparelho, confirme sua data de nascimento. Após cinco erros, o link fica bloqueado por 15 minutos.</CardDescription></CardHeader>
+          <CardContent><form className="space-y-4" onSubmit={event => { event.preventDefault(); void confirmBirthDate(); }}>
+            <Label htmlFor="portal-birth-date">Data de nascimento</Label>
+            <Input id="portal-birth-date" type="date" value={birthDate} onChange={event => setBirthDate(event.target.value)} required disabled={loading} className="h-12 text-base" />
+            {error && <p role="alert" className="text-destructive">{error}</p>}
+            {linkWhatsApp(clinicPhone, 'Olá! Preciso de ajuda para confirmar meu acesso ao Portal do Paciente.') &&
+              <Button asChild variant="outline" className="h-12 w-full text-base"><a href={linkWhatsApp(clinicPhone, 'Olá! Preciso de ajuda para confirmar meu acesso ao Portal do Paciente.')!} target="_blank" rel="noopener noreferrer">Falar com a clínica</a></Button>}
+            <Button type="submit" className="h-12 w-full text-base" disabled={loading || !birthDate}>{loading ? 'Verificando…' : 'Confirmar e acessar'}</Button>
+            <p className="text-base text-muted-foreground">Este aparelho será lembrado por até 90 dias. Em aparelho compartilhado, use Sair do portal ao terminar.</p>
+          </form></CardContent></Card>
+      </main>
+    );
+    return <LoginScreen token={token} setToken={setToken} clearError={() => setError('')} onLogin={handleLogin} loading={loading} error={error} clinicPhone={clinicPhone} />;
   }
 
   if (!portalDataReady && portalDataLoading) {
@@ -1109,7 +1191,7 @@ export default function PortalPaciente() {
     : undefined;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="portal-simple min-h-screen bg-background text-foreground">
       <AlertDialog
         open={agendamentoParaCancelar !== null}
         onOpenChange={(open) => {
@@ -1194,7 +1276,7 @@ export default function PortalPaciente() {
               <p className="text-sm font-semibold">{nomeExibido}</p>
               <p className="text-[11px] text-muted-foreground">
                 {idade && `${idade} anos`}
-                {profile?.cpf && ` • CPF: ***${profile.cpf.slice(-5)}`}
+                {profile?.cpf && ` • CPF: ${profile.cpf}`}
               </p>
             </div>
             <div className="p-2 rounded-full bg-primary/10">
@@ -1384,7 +1466,25 @@ export default function PortalPaciente() {
           {actionError && <p role="alert" className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{actionError}</p>}
 
           <section aria-label="Resumo do seu cuidado" className="space-y-4">
+            <div className="grid gap-3 md:hidden" aria-label="Acesso rápido">
+              <Button className="h-16 justify-start gap-3 text-base" onClick={() => abrirSecaoPortal('consultas')}><Calendar className="h-6 w-6" />Próxima consulta</Button>
+              <Button variant="outline" className="h-16 justify-start gap-3 text-base" onClick={() => abrirSecaoPortal('exames')}><FlaskConical className="h-6 w-6" />Exames e receitas</Button>
+              {linkWhatsApp(clinicPhone, 'Olá! Preciso falar com a clínica sobre meu atendimento.') ?
+                <Button asChild variant="outline" className="h-16 justify-start gap-3 text-base"><a href={linkWhatsApp(clinicPhone, 'Olá! Preciso falar com a clínica sobre meu atendimento.')!} target="_blank" rel="noopener noreferrer"><Phone className="h-6 w-6" />Falar com a clínica</a></Button> :
+                <><Button variant="outline" className="h-16 text-base" disabled>Falar com a clínica</Button><p className="text-base text-muted-foreground">Peça o contato à recepção da clínica.</p></>}
+            </div>
             <NextAppointmentHero agendamentos={agendamentos} />
+            {agendamentos.filter(a => podeCheckinPortal(a, checkinNow)).map(a => (
+              <Card key={a.id}><CardContent className="space-y-3 p-4">
+                <p className="text-base font-medium">Avise sua chegada · {a.hora_inicio?.slice(0, 5)}</p>
+                <p className="text-base text-muted-foreground">O balcão precisa confirmar sua chegada. Este aviso não gera cobrança.</p>
+                <div className="flex flex-wrap gap-3">
+                  <Button variant="outline" className="h-12 text-base" disabled={actionLoading || Boolean(a.portal_checkin_status)} onClick={() => void signalArrival(a.id, 'a_caminho')}>Estou a caminho</Button>
+                  <Button className="h-12 text-base" disabled={actionLoading || a.portal_checkin_status === 'chegou'} onClick={() => void signalArrival(a.id, 'chegou')}>Cheguei</Button>
+                </div>
+                {a.portal_checkin_status && <p className="text-base">{a.portal_checkin_status === 'chegou' ? 'Aguardando confirmação do balcão' : 'A caminho'}</p>}
+              </CardContent></Card>
+            ))}
 
             {/* ─── Resumo do paciente ─── */}
             <div role="group" aria-label="Atalhos para seus registros" className="grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-card sm:grid-cols-3 sm:divide-x sm:divide-y-0">
@@ -1780,6 +1880,7 @@ export default function PortalPaciente() {
 
               {/* ─── Exames Tab ─── */}
               <TabsContent value="exames" className="mt-4 space-y-3">
+                <Button variant="outline" className="mb-4 h-12 text-base md:hidden" onClick={() => setPortalTab('prescricoes')}>Ver receitas</Button>
                 {portalUnavailableActions.includes('get_exames') ? (
                   <PortalSectionUnavailable section="seus exames e laudos" />
                 ) : !exames.length ? (
@@ -2140,7 +2241,7 @@ export default function PortalPaciente() {
             </p>
           </div>
           <nav aria-label="Seções do portal no celular" className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 md:hidden">
-            <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+            <div className="mx-auto grid max-w-md grid-cols-[repeat(5,auto)] gap-1">
               {([
                 { valor: 'consultas', rotulo: 'Consultas', icone: Calendar },
                 { valor: 'agendar', rotulo: 'Agendar', icone: Clock },

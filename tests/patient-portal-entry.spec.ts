@@ -18,6 +18,8 @@ test('portal do paciente rejeita código inválido com feedback acessível sem r
   await page.goto('/portal-paciente');
   const essentialCookies = page.getByRole('button', { name: 'Apenas Essenciais' });
   if (await essentialCookies.isVisible()) await essentialCookies.click();
+  await expect(page.getByText('Abra o link que a clínica enviou pelo WhatsApp ou e-mail')).toBeVisible();
+  await page.getByRole('button', { name: 'Tenho um código' }).click();
   const input = page.getByRole('textbox', { name: 'Código de acesso do paciente' });
   const submit = page.getByRole('button', { name: 'Acessar Portal' });
   await expect(input).toBeVisible();

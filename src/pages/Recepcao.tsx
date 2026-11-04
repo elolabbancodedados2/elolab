@@ -68,7 +68,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ageFromDateOnly, isValidDateOnly, parseDateOnly, todaySaoPauloDateOnly } from '@/lib/dateOnly';
 import { pacienteCorresponde, normalizarTexto } from '@/lib/buscaPaciente';
 import { calcularSaldoPagamento, formasDisponiveis, montarPagamentos, restanteDaPrincipal, resumirPagamentos, somaDasExtras, validarValorRecebido } from '@/lib/pagamentoDividido';
-import { patientStep } from '@/lib/receptionWorkflow';
+import { patientStep, portalArrivalLabel } from '@/lib/receptionWorkflow';
 import { passouPelaTriagem } from '@/lib/liberacaoTriagem';
 import { useRegrasLiberacaoClinica } from '@/hooks/useRegrasLiberacaoClinica';
 import {
@@ -764,7 +764,7 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
      : selectedReceptionEntry.ag.status === 'faltou'
        ? 'Não compareceu'
        : selectedReceptionEntry.step === 0
-         ? 'Aguardando check-in'
+         ? portalArrivalLabel(selectedReceptionEntry.ag, selectedReceptionEntry.fila) || 'Aguardando check-in'
          : selectedReceptionEntry.step === 1
            ? 'No balcão'
            : selectedReceptionEntry.step === 2
@@ -815,6 +815,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
    }, [now]);
 
    const statusFor = (item: any) => {
+     const arrival = portalArrivalLabel(item.ag, item.fila);
+     if (arrival) return { late: false, text: arrival };
      const appointmentMinutes = minutosDaHora(item.ag.hora_inicio);
      const late = item.step === 0 && appointmentMinutes !== null && appointmentMinutes < minutosAgora;
      const text = item.ag.status === 'faltou'
@@ -2127,6 +2129,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                             <button type="button" onClick={() => selecionarPaciente(item.ag.id)} aria-pressed={selected} aria-label={`Selecionar ${patientName}`} className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                               <span className={cn('block truncate text-sm font-semibold', feito ? 'text-muted-foreground' : 'text-foreground')}>{patientName}</span>
                               <span className="block truncate text-xs text-muted-foreground">{item.ag.tipo || 'Consulta'}{item.med?.nome ? ` · ${item.med.nome}` : ''}{item.sala?.nome ? ` · ${item.sala.nome}` : ''}</span>
+                              {portalArrivalLabel(item.ag, item.fila) && <Badge variant="outline">{portalArrivalLabel(item.ag, item.fila)}</Badge>}
+                              {(item.ag as any).identidade_pendente && item.step === 0 && <Badge variant="destructive">Confirmar identidade</Badge>}
                             </button>
                             {item.fila?.horario_chegada && item.step < 3 && <EsperaIndicador desde={item.fila.horario_chegada} className="text-[11px] font-medium" />}
                             <Badge variant={late || item.ag.status === 'faltou' ? 'destructive' : item.step === 4 ? 'secondary' : 'outline'} className="shrink-0 px-1.5 text-[10px]">{text}</Badge>
@@ -2180,6 +2184,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-xs font-semibold text-foreground">{patientName}</span>
                                   <span className="block truncate text-[10px] text-muted-foreground">{item.ag.tipo || 'Consulta'}{item.med?.nome ? ` · ${item.med.nome}` : ''}</span>
+                              {portalArrivalLabel(item.ag, item.fila) && <Badge variant="outline">{portalArrivalLabel(item.ag, item.fila)}</Badge>}
+                              {(item.ag as any).identidade_pendente && item.step === 0 && <Badge variant="destructive">Confirmar identidade</Badge>}
                                 </span>
                                 <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                               </button>
@@ -2250,6 +2256,8 @@ export default function Recepcao({ onOpenCaixa, task }: { onOpenCaixa?: () => vo
                                     {(pac as any)?.nome_social || pac?.nome || 'Paciente'}
                                   </h3>
                                   {fila && step >= 1 && <Badge variant="outline" className="font-mono text-[10px]">Senha {receptionTicketCode(fila.id)}</Badge>}
+                                  {portalArrivalLabel(ag, fila) && <Badge variant="outline">{portalArrivalLabel(ag, fila)}</Badge>}
+                                  {(ag as any).identidade_pendente && step === 0 && <Badge variant="destructive">Confirmar identidade</Badge>}
                                   {ehProximo && (
                                     <Badge className="border-transparent bg-primary text-[10px] text-primary-foreground hover:bg-primary">
                                       <Bell className="mr-0.5 h-2.5 w-2.5" /> Próximo a chamar

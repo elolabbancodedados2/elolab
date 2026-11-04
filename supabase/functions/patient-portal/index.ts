@@ -5,6 +5,9 @@ import { extrairCaminhoAnexoClinico, laudoPertenceAoPaciente } from '../_shared/
 import { attachPortalPreparationInstructions } from '../_shared/portalAppointmentPreparation.ts';
 import { horariosLivres, validarHorario as validatePortalSlot, agoraEmBrasilia, horarioConsultaPassou } from '../_shared/horarios.ts';
 import { limiteDataRemarcacao, recusarDataAlemDoLimite, remarcarAgendamento } from './remarcacao.ts';
+import { autenticarTokenPortal, perfilPublicoPortal, hashPortalToken } from '../_shared/portalSecurity.ts';
+import { assinarAparelhoPortal, verificarAparelhoPortal, bloqueioPortalAtivo } from '../_shared/portalDevice.ts';
+import { podeCheckinPortal } from '../_shared/portalCheckin.ts';
 import { assinarDocumentosPortal } from '../_shared/portalDocuments.ts';
 
 /** Data de hoje em "YYYY-MM-DD", para comparar com colunas `date` do Postgres. */
@@ -23,14 +26,9 @@ function addMinutes(time: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-async function sha256Hex(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
 Deno.serve(async (req) => {
   const corsHeaders = { ...corsPadrao(req), 'Cache-Control': "no-store, no-cache, must-revalidate, private", 'Pragma': "no-cache", 'Referrer-Policy': "no-referrer", 'X-Content-Type-Options': "nosniff" };
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -65,9 +63,28 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { action, token } = body;
+    if (typeof action !== 'string' || !/^[a-z_]{1,80}$/.test(action)) return json({ error: 'Ação inválida' }, 400);
+    const contatoClinica = async (clinicaId: string) => {
+      const { data, error } = await supabase.from('configuracoes_clinica').select('valor')
+        .eq('clinica_id', clinicaId).eq('chave', 'config_clinica')
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      const config = data?.valor as Record<string, unknown> | null;
+      return String(config?.celular || config?.telefone || '').replace(/\D/g, '');
+    };
+    if (action === 'get_access_help') {
+      if (!/^[a-f0-9-]{36}$/i.test(String(body.clinica_id || ''))) return json({ telefone: '' });
+      const { data: clinica, error } = await supabase.from('clinicas').select('id')
+        .eq('id', body.clinica_id).eq('suspensa', false).eq('arquivada', false).maybeSingle();
+      if (error) throw error;
+      if (!clinica) return json({ telefone: '' });
+      const { error: logError } = await supabase.from('portal_acessos').insert({ clinica_id: clinica.id, acao: action, ip: clientIp(req) });
+      if (logError) throw logError;
+      return json({ telefone: await contatoClinica(clinica.id) });
+    }
     const offset = body.offset === undefined ? 0 : Number(body.offset);
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100_000) {
-      return new Response(JSON.stringify({ error: "?ndice de p?gina inv?lido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: "Índice de página inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (!token) {
@@ -77,34 +94,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // O segredo bruto nunca fica no banco; comparamos apenas sua impressão.
-    const tokenHash = await sha256Hex(String(token));
-    let { data: tokenData, error: tokenError } = await supabase
-      .from("paciente_portal_tokens")
-      .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id, ativo)")
-      .eq("token", tokenHash)
-      .eq("ativo", true)
-      .gte("expires_at", new Date().toISOString())
-      .single();
-
-    // Compatibilidade durante o deploy: a Edge Function entra antes da
-    // migration. Enquanto a tabela ainda tiver os três tokens legados em
-    // texto puro, eles continuam aceitos; após o UPDATE, este ramo não acha
-    // mais nenhuma linha e pode ser removido numa migração futura.
+    const auth = await autenticarTokenPortal(token, async tokenHash => {
+      const { data, error } = await supabase.from("paciente_portal_tokens")
+        .select("*, pacientes(id, nome, nome_social, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, clinica_id, ativo)")
+        .eq("token", tokenHash).eq("ativo", true)
+        .gte("expires_at", new Date().toISOString()).maybeSingle();
+      if (error) throw error;
+      return data;
+    });
+    const tokenData = auth.tokenData;
+    const { error: accessLogError } = await supabase.from('portal_acessos').insert({
+      clinica_id: tokenData?.clinica_id ?? null, token_id: tokenData?.id ?? null,
+      token_hash: await hashPortalToken(String(token).slice(0, 256)), acao: action, ip: clientIp(req),
+    });
+    if (accessLogError) throw accessLogError;
     if (!tokenData) {
-      ({ data: tokenData, error: tokenError } = await supabase
-        .from("paciente_portal_tokens")
-        .select("*, pacientes(id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id, ativo)")
-        .eq("token", String(token))
-        .eq("ativo", true)
-        .gte("expires_at", new Date().toISOString())
-        .single());
-    }
-
-    if (tokenError || !tokenData) {
       return new Response(JSON.stringify({ error: "Token inválido ou expirado" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -120,17 +126,56 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Update last access
-    await supabase
+    const { data: security, error: securityError } = await supabase.from('portal_token_seguranca')
+      .select('bloqueado_ate').eq('token_id', tokenData.id).maybeSingle();
+    if (securityError) throw securityError;
+    if (bloqueioPortalAtivo(security?.bloqueado_ate ?? null)) {
+      return json({ error: 'Acesso bloqueado por 15 minutos após cinco tentativas. Aguarde e tente novamente.', code: 'device_locked' }, 429);
+    }
+    const signingSecret = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    if (action === 'verify_device') {
+      const { data: verification, error } = await supabase.rpc('confirmar_nascimento_portal', {
+        p_token_id: tokenData.id, p_nascimento: String(body.data_nascimento || '').slice(0, 10),
+      });
+      if (error) throw error;
+      if (!verification?.success) {
+        const code = verification?.code;
+        return json({ code, error: code === 'device_locked' ? 'Acesso bloqueado por 15 minutos após cinco tentativas.'
+          : code === 'birth_date_missing' ? 'Peça à clínica para atualizar sua data de nascimento antes de acessar.' : 'Data de nascimento não confere. Tente novamente.' }, code === 'device_locked' ? 429 : 403);
+      }
+      return json({ device_proof: await assinarAparelhoPortal(tokenData.id,
+        Math.min(Date.parse(tokenData.expires_at), Date.now() + 90 * 86400_000), signingSecret) });
+    }
+    if (!await verificarAparelhoPortal(body.device_proof, tokenData.id, signingSecret)) {
+      if (action === 'get_profile') return json({ requires_birth_date: true, clinica_telefone: await contatoClinica(pacienteClinicaId) });
+      return json({ error: 'Confirme sua data de nascimento neste aparelho.', code: 'device_verification_required' }, 403);
+    }
+
+    const { error: lastAccessError } = await supabase
       .from("paciente_portal_tokens")
       .update({ ultimo_acesso: new Date().toISOString() })
       .eq("id", tokenData.id);
+    if (lastAccessError) throw lastAccessError;
 
     let result: any;
 
     switch (action) {
+      case 'online_checkin': {
+        if (!/^[a-f0-9-]{36}$/i.test(String(body.agendamento_id || '')) || !['a_caminho', 'chegou'].includes(body.sinal)) return json({ error: 'Dados de chegada inválidos.' }, 400);
+        const { data: appointment, error } = await supabase.from('agendamentos').select('data, hora_inicio, status')
+          .eq('id', body.agendamento_id).eq('paciente_id', pacienteId).eq('clinica_id', pacienteClinicaId).maybeSingle();
+        if (error) throw error;
+        if (!appointment || !podeCheckinPortal(appointment)) return json({ error: 'Check-in online indisponível para esta consulta.' }, 409);
+        const { data, error: arrivalError } = await supabase.rpc('sinalizar_chegada_portal', {
+          p_clinica_id: pacienteClinicaId, p_paciente_id: pacienteId, p_agendamento_id: body.agendamento_id, p_sinal: body.sinal,
+        });
+        if (arrivalError) throw arrivalError;
+        if (!data?.success) return json({ error: data?.error || 'Não foi possível avisar sua chegada.' }, 409);
+        result = data;
+        break;
+      }
       case "get_profile":
-        result = tokenData.pacientes;
+        result = { ...perfilPublicoPortal(tokenData.pacientes), clinica_telefone: await contatoClinica(pacienteClinicaId) };
         break;
 
       case "update_contact": {
@@ -146,17 +191,17 @@ Deno.serve(async (req) => {
         const { data, error } = await supabase.from("pacientes")
           .update({ telefone: telefone || null, email: email || null })
           .eq("id", pacienteId).eq("clinica_id", pacienteClinicaId)
-          .select("id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, observacoes, clinica_id")
+          .select("id, nome, email, telefone, foto_url, cpf, data_nascimento, sexo, alergias, clinica_id")
           .single();
         if (error) throw error;
-        result = { success: true, profile: data };
+        result = { success: true, profile: perfilPublicoPortal(data) };
         break;
       }
 
       case "get_agendamentos": {
         const { data, error } = await supabase
           .from("agendamentos")
-          .select("id, medico_id, data, hora_inicio, hora_fim, tipo, status, medicos(nome, crm, especialidade)")
+          .select("id, medico_id, data, hora_inicio, hora_fim, tipo, status, portal_checkin_status, medicos(nome, crm, especialidade)")
           .eq("paciente_id", pacienteId)
           .eq("clinica_id", pacienteClinicaId)
           .order("data", { ascending: false })

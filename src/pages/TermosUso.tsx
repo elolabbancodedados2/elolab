@@ -143,6 +143,12 @@ export default function TermosUso() {
             <p>Questões sobre privacidade: <strong>privacidade@elolab.com.br</strong></p>
           </section>
           <NavegacaoLegal atual="/termos-uso" />
+          <section>
+            <h2 className="text-lg font-semibold text-foreground">Acesso ao Portal do Paciente</h2>
+            <p>Novos links têm validade de até 90 dias. Links emitidos anteriormente mantêm a validade informada na emissão. Gerar um novo link ou revogar o acesso invalida os links anteriores.</p>
+            <p>No primeiro acesso por aparelho, o paciente confirma a data de nascimento. Cinco erros bloqueiam o link por 15 minutos. Um comprovante assinado lembra o aparelho por até 90 dias, limitado à validade do link. Ao usar um aparelho compartilhado, encerre pelo botão Sair do portal para remover esse comprovante.</p>
+            <p>As ações no portal registram data, hora, endereço IP e referência da credencial para auditoria da clínica. O link é pessoal e não deve ser compartilhado.</p>
+          </section>
         </div>
       </div>
     </div>
